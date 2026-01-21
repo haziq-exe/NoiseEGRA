@@ -5,7 +5,7 @@ class EGRA:
         self.model = AutoModelForCausalLM.from_pretrained(model) 
         self.tokenizer = AutoTokenizer.from_pretrained(model)
     
-    def zero_shot(self, prompt, max_new_tokens=100, do_sample=True):
+    def generate(self, prompt, max_new_tokens=100, do_sample=True):
         """
         prompt should always be a list of dicts of the form [ {"role" : "system", "content" : system_prompt},
                                               {"role" : "user", "content" : user_prompt}  ]
@@ -16,3 +16,19 @@ class EGRA:
         outputs = self.model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=do_sample)
 
         return outputs
+
+    def zero_shot(self, prompt, max_new_tokens=100, do_sample=True, include_sys=True):
+
+        if prompt[0]["role"] != "system" and include_sys: #Allam shouldn't have system prompt
+            prompt.insert(0, [{"role" : "system" , "content" : "You are children's story generator in Arabic."}])
+
+        return self.generate(prompt=prompt, max_new_tokens=max_new_tokens, do_sample=do_sample)
+    
+    def CoT_selfReflection(self, prompt, max_new_tokens=100, do_sample=True):
+
+        if prompt[0]["role"] != "system":
+            prompt.insert(0, [{"role" : "system" , "content" : "You are children's story generator in Arabic."}])
+
+        prompt[1:1] = [{"role" : "user", "content" : "Example CoT"}, {"role" : "assistant", "content" : "Example reasoning"} ]
+
+        return self.generate(prompt=prompt, max_new_tokens=max_new_tokens, do_sample=do_sample)
