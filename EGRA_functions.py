@@ -1,6 +1,7 @@
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import csv
 from pathlib import Path
+import prompts
 
 # Need to update all the prompts to the actual prompts we will use
 
@@ -26,10 +27,10 @@ class EGRA:
     def zero_shot(self, output_file="example_file.csv", num_stories=1 ,max_new_tokens=100, do_sample=True, include_sys=True):
 
         output_csv = Path(output_file)
-        prompt = [{"role" : "user" , "content" : "Generate a short arabic story."}] 
+        prompt = [{"role" : "user" , "content" : prompts.PROMPT_ZERO_SHOT}] 
 
         if include_sys: #Allam shouldn't have system prompt
-            prompt.insert(0, [{"role" : "system" , "content" : "You are children's story generator in Arabic."}])
+            prompt.insert(0, {"role" : "system" , "content" : prompts.SYS_ZERO_SHOT})
 
         for _ in range(num_stories):
             output = self.generate(prompt, max_new_tokens, do_sample, include_sys)
@@ -43,12 +44,12 @@ class EGRA:
         output_csv = Path(output_file)
 
         if include_sys:
-            prompt.append({"role" : "system" , "content" : "You are children's story generator in Arabic."})
+            prompt.append({"role" : "system" , "content" : prompts.SYS_COT})
 
-        prompt.append({"role" : "user", "content" : "Example CoT"})
-        prompt.append({"role" : "assistant", "content" : "Example reasoning"})
+        prompt.append({"role" : "user", "content" : prompts.USER_COT_EXAMPLE})
+        prompt.append({"role" : "assistant", "content" : prompts.ASSISTANT_COT_EXAMPLE})
 
-        prompt.append([{"role" : "user" , "content" : "Generate a short arabic story."}])
+        prompt.append([{"role" : "user" , "content" : prompts.PROMPT_COT}])
 
         for _ in range(num_stories):
             output = self.generate(prompt, max_new_tokens, do_sample, include_sys)
