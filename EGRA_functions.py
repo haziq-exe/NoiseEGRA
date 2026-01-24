@@ -23,7 +23,8 @@ class EGRA:
         inputs = self.tokenizer(chat_text, return_tensors="pt").to(self.device)
         inputs.pop("token_type_ids", None)
         outputs = self.model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=do_sample)
-        text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        generated_ids = outputs[0][inputs["input_ids"].shape[-1]:]
+        text = self.tokenizer.decode(generated_ids, skip_special_tokens=True)
 
         return text
 
