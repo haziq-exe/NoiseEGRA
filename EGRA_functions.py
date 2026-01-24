@@ -41,7 +41,7 @@ class EGRA:
 
             with output_csv.open(mode="a", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
-                writer.writerow(output)
+                writer.writerow([output])
     
     def CoT_selfReflection(self, output_file="example_file.csv", num_stories=1 ,max_new_tokens=100, do_sample=True, include_sys=True):
         prompt = []
@@ -60,4 +60,4 @@ class EGRA:
 
             with output_csv.open(mode="a", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
-                writer.writerow(output)
+                writer.writerow([output])
