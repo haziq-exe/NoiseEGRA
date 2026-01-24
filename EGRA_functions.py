@@ -35,7 +35,7 @@ class EGRA:
             prompt.insert(0, {"role" : "system" , "content" : prompts.SYS_ZERO_SHOT})
 
         for _ in range(num_stories):
-            output = self.generate(prompt, max_new_tokens, do_sample, include_sys)
+            output = self.generate(prompt, max_new_tokens, do_sample)
 
             with output_csv.open(mode="a", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
@@ -54,7 +54,7 @@ class EGRA:
         prompt.append([{"role" : "user" , "content" : prompts.PROMPT_COT}])
 
         for _ in range(num_stories):
-            output = self.generate(prompt, max_new_tokens, do_sample, include_sys)
+            output = self.generate(prompt, max_new_tokens, do_sample)
 
             with output_csv.open(mode="a", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
