@@ -1,4 +1,4 @@
-from EGRA_functions import EGRA
+from .EGRA_functions import EGRA
 
 class Allam(EGRA):
     def __init__(self):

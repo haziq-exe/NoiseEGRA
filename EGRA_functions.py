@@ -1,7 +1,7 @@
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import csv
 from pathlib import Path
-import prompts
+from . import prompts
 
 # Need to update all the prompts to the actual prompts we will use
 
