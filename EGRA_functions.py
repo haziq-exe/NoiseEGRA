@@ -1,4 +1,5 @@
 from transformers import AutoModelForCausalLM, AutoTokenizer
+import torch
 import csv
 from pathlib import Path
 from . import prompts
@@ -8,9 +9,10 @@ from . import prompts
 
 class EGRA:
     def __init__(self, model):
-        self.model = AutoModelForCausalLM.from_pretrained(model) 
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.model = AutoModelForCausalLM.from_pretrained(model).to(self.device)
         self.tokenizer = AutoTokenizer.from_pretrained(model)
-    
+
     def generate(self, prompt, max_new_tokens=100, do_sample=True):
         """
         prompt should always be a list of dicts of the form [ {"role" : "system", "content" : system_prompt},
@@ -18,7 +20,7 @@ class EGRA:
         """
 
         chat_text = self.tokenizer.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
-        inputs = self.tokenizer(chat_text, return_tensors="pt").to(self.model.device)
+        inputs = self.tokenizer(chat_text, return_tensors="pt").to(self.device)
         inputs.pop("token_type_ids", None)
         outputs = self.model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=do_sample)
 
