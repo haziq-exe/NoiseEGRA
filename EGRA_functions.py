@@ -10,7 +10,7 @@ from . import prompts
 class EGRA:
     def __init__(self, model):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.model = AutoModelForCausalLM.from_pretrained(model).to(self.device)
+        self.model = AutoModelForCausalLM.from_pretrained(model, torch_dtype=torch.float16, device_map="auto").to(self.device)
         self.tokenizer = AutoTokenizer.from_pretrained(model)
 
     def generate(self, prompt, max_new_tokens=100, do_sample=True):
