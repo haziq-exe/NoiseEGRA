@@ -10,7 +10,7 @@ from . import prompts
 class EGRA:
     def __init__(self, model):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.model = AutoModelForCausalLM.from_pretrained(model, torch_dtype=torch.float16, device_map="auto").to(self.device)
+        self.model = AutoModelForCausalLM.from_pretrained(model, torch_dtype=torch.float16, device_map="auto")
         self.tokenizer = AutoTokenizer.from_pretrained(model)
 
     def generate(self, prompt, max_new_tokens=100, do_sample=True):
@@ -23,8 +23,9 @@ class EGRA:
         inputs = self.tokenizer(chat_text, return_tensors="pt").to(self.device)
         inputs.pop("token_type_ids", None)
         outputs = self.model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=do_sample)
+        text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
 
-        return outputs
+        return text
 
     def zero_shot(self, output_file="example_file.csv", num_stories=1 ,max_new_tokens=100, do_sample=True, include_sys=True):
 
