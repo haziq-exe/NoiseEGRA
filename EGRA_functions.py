@@ -92,12 +92,12 @@ class EGRA:
               inputs_embeds = inputs_embeds + noise
 
       # Logits warper
-      warper = GaussianLogitsWarper(
+      processor = GaussianLogitsProcessor(
           sigma=logits_noise_std,
           decay=logits_noise_decay,
           prompt_length=input_ids.shape[1],
       )
-      logits_warper = LogitsProcessorList([warper])
+      logits_processor = LogitsProcessorList([processor])
 
       # Generate
       outputs = self.model.generate(
@@ -107,7 +107,7 @@ class EGRA:
           temperature=temperature,
           top_p=top_p,
           max_new_tokens=max_new_tokens,
-          logits_warper=logits_warper,
+          logits_processor=logits_processor,
           eos_token_id=self.tokenizer.eos_token_id,
       )
 
@@ -132,21 +132,21 @@ class EGRA:
 
 
 
-class GaussianLogitsWarper(LogitsProcessor):
-  """
-  Adds zero-mean Gaussian noise to logits at each decoding step.
-  Std decays exponentially to avoid late-stage collapse.
-  """
-  def __init__(self, sigma: float = 0.5, decay: float = 0.9, prompt_length: int = 0):
-      self.sigma = sigma
-      self.decay = decay
-      self.prompt_length = prompt_length
+class GaussianLogitsProcessor(LogitsProcessor):
+    """
+    Adds zero-mean Gaussian noise to logits at each decoding step.
+    Noise decays exponentially over time.
+    """
+    def __init__(self, sigma: float = 0.5, decay: float = 0.9, prompt_length: int = 0):
+        self.sigma = sigma
+        self.decay = decay
+        self.prompt_length = prompt_length
 
-  def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor) -> torch.FloatTensor:
-      step = input_ids.shape[-1] - self.prompt_length
-      if step <= 0:
-          return scores
+    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor) -> torch.FloatTensor:
+        step = input_ids.shape[-1] - self.prompt_length
+        if step <= 0:
+            return scores
 
-      std = self.sigma * (self.decay ** (step - 1))
-      noise = torch.randn_like(scores) * std
-      return scores + noise
+        std = self.sigma * (self.decay ** (step - 1))
+        noise = torch.randn_like(scores) * std
+        return scores + noise
