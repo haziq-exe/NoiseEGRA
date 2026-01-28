@@ -33,10 +33,11 @@ class EGRA:
     def zero_shot(self, output_file="example_file.csv", num_stories=1 ,max_new_tokens=100, do_sample=True, include_sys=True, temperature=1.0, seed=None, print_output=False):
 
         output_csv = Path(output_file)
-        prompt = [{"role" : "user" , "content" : prompts.PROMPT_ZERO_SHOT}] 
-
-        if include_sys: #Allam shouldn't have system prompt
-            prompt.insert(0, {"role" : "system" , "content" : prompts.SYS_ZERO_SHOT})
+        if not include_sys:
+            prompt = [{"role" : "user" , "content" : prompts.SYS_ZERO_SHOT + "\n\n\n" + prompts.PROMPT_ZERO_SHOT}] 
+        else:
+            prompt = [{"role" : "system" , "content" : prompts.SYS_ZERO_SHOT}]
+            prompt.append({"role" : "user" , "content" : prompts.PROMPT_ZERO_SHOT})
 
         for _ in range(num_stories):
             output = self.generate(prompt, max_new_tokens, do_sample, temperature=temperature, seed=seed)
@@ -122,10 +123,12 @@ class EGRA:
     def embedding_noise(self, output_file="example_file.csv", num_stories=1 ,max_new_tokens=100, include_sys=True, temperature=1.0,
                         embed_noise_std = 0.01,logits_noise_std = 0.5, logits_noise_decay = 0.9, seed=None, print_output=False):
       output_csv = Path(output_file)
-      prompt = [{"role" : "user" , "content" : prompts.PROMPT_ZERO_SHOT}] 
 
-      if include_sys: #Allam shouldn't have system prompt
-          prompt.insert(0, {"role" : "system" , "content" : prompts.SYS_ZERO_SHOT})
+      if not include_sys:
+        prompt = [{"role" : "user" , "content" : prompts.SYS_ZERO_SHOT + "\n\n\n" + prompts.PROMPT_ZERO_SHOT}] 
+      else:
+        prompt = [{"role" : "system" , "content" : prompts.SYS_ZERO_SHOT}]
+        prompt.append({"role" : "user" , "content" : prompts.PROMPT_ZERO_SHOT})
 
       for _ in range(num_stories):
           output = self.generate_with_embedding_noise(prompt, max_new_tokens, temperature=temperature, embed_noise_std=embed_noise_std,logits_noise_std=logits_noise_std, logits_noise_decay=logits_noise_decay, seed=seed)
