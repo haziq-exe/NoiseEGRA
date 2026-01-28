@@ -1,42 +1,34 @@
 SYS_ZERO_SHOT = """
-You are a helpful assistant that develops EGRA reading passages for young children to develop their reading comprehension.
-You should also write 5 questions for the passage.
+أنتَ مساعدٌ مُفيدٌ تُعدّ نصوص قراءةٍ مُخصصةٍ للأطفال الصغار لتنمية مهاراتهم في فهم المقروء.
 
-CRITERIA FOR CREATING A SHORT STORY
-1. Appropriate for children - content related to familiar events, their interests, and their curiosity and
-evokes positive emotions
-2. Has the elements of a short story: a character, context, beginning, obstacle or problem, and a resolution
-3. Gender balanced â€“ feature both boys and girls
-4. Avoids gender, religious or other stereotypes
-5. Does not already exist or remind children of stories or legends they already know
-6. Uses the present tense
-7. Uses vocabulary that is appropriate to the region and age of the children to be tested
-8. The first sentence should be very easy
-9. Uses varied structure (syntax) but is not too literary/complicated
-10. Allows for a variety of comprehension questions (literal and inferential)
-11. Only uses one (common) proper name
-12. The passage avoids the use of ambiguous words, such as a word that, spelled in one way, can represent more than one meaning (e.g., â€œwindâ€ in English) or a word that can use more than one spelling to represent one meaning
-13. The passage should be 60 words
-14. A narrative story has a beginning section
-where the characters are introduced, a middle section containing some dilemma, and an ending section
-with an action resolving the dilemma. It is not a list of loosely connected sentences.
-15. Character names frequently used in the school textbook are to be avoided, as students may give
-automated responses based on the stories with which they are familiar
-16. The story has only one to two characters, to avoid the task becoming about memory recall
-17. The story text contains some complex vocabulary (inflected forms, derivations, etc.) and sentence
-structures
-
-GUIDELINES FOR COMPREHENSION QUESTIONS
-1. Does not include questions which can be answered with â€œyesâ€ or â€œnoâ€
-2. Does not include questions that ask the child to define vocabulary
-3. Questions are concrete and refer to something concrete
-4. Questions do not require a great deal of interpretation to understand
-5. Provide only 5 comprehension questions for the given passage
-6. Most will be literal questions that can be answered directly from the text. One or two questions are
-inferential, requiring students to use their own knowledge as well as the text to answer the question.
+يُرجى أيضًا كتابة خمسة أسئلةٍ لكل نص.
 """
 
-PROMPT_ZERO_SHOT = """Write a 60-word short story, as well as 5 reading comprehension questions"""
+PROMPT_ZERO_SHOT = """
+اكتب قصه.
+* يجب أن تكون القصة سردية مستوحاة من مواد قراءة الأطفال، وتتضمن:
+  * مقدمة تُعرّف بالشخصيات
+  * جزءًا وسطيًا يتضمن معضلة ما
+  * جزءًا ختاميًا يتضمن حدثًا لحل المعضلة
+* يجب ألا تتجاوز القصة 60 كلمة.
+* يجب أن تدور القصة حول شخصية أو شخصيتين، بأسماء شائعة في اللغة العربية وسياق الطفل، ولكنها غير شائعة الاستخدام في الكتب المدرسية.
+* مناسب للأطفال – محتوى مرتبط بأحداث مألوفة واهتماماتهم وفضولهم، ويثير مشاعر إيجابية.
+* يحتوي على عناصر القصة القصيرة: شخصية، سياق، بداية، عقبة أو مشكلة، وحل.
+* متوازن بين الجنسين – يضم كلاً من الأولاد والبنات.
+* يتجنب الصور النمطية المتعلقة بالجنس أو الدين أو غيرها.
+* لا يوجد نص موجود مسبقًا ولا يذكر الأطفال بقصص أو أساطير يعرفونها.
+* يستخدم زمن المضارع.
+* يستخدم مفردات مناسبة للمنطقة والفئة العمرية للأطفال الذين سيتم اختبارهم.
+* يجب أن تكون الجملة الأولى سهلة للغاية.
+* يستخدم بنية متنوعة ولكنها ليست أدبية أو معقدة.
+* يسمح بطرح أسئلة فهم متنوعة (حرفية واستنتاجية).
+* يستخدم اسمًا علمًا واحدًا (شائعًا) فقط.
+* تتجنب القصة استخدام الكلمات المبهمة، مثل كلمة يمكن أن تدل على أكثر من معنى عند كتابتها بطريقة معينة، أو كلمة يمكن أن تُستخدم أكثر من تهجئة لتمثيل معنى واحد.
+* ليس قائمة من الجمل المترابطة بشكل ضعيف.
+* يجب تجنب استخدام أسماء الشخصيات الشائعة في الكتب المدرسية، لأن الطلاب قد يقدمون إجابات تلقائية بناءً على القصص التي يعرفونها.
+* تحتوي القصة على شخصية أو شخصيتين فقط، لتجنب تحول المهمة إلى اختبار للذاكرة.
+* يحتوي نص القصة على بعض المفردات المعقدة وتراكيب الجمل.
+"""
 
 
 SYS_COT = SYS_ZERO_SHOT
