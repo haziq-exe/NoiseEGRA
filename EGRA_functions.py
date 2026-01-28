@@ -2,7 +2,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
 import csv
 from pathlib import Path
-from transformers import LogitsWarper, LogitsProcessorList
+from transformers import LogitsProcessor, LogitsProcessorList
 from . import prompts
 
 
@@ -131,7 +131,7 @@ class EGRA:
 
 
 
-class GaussianLogitsWarper(LogitsWarper):
+class GaussianLogitsWarper(LogitsProcessor):
   """
   Adds zero-mean Gaussian noise to logits at each decoding step.
   Std decays exponentially to avoid late-stage collapse.
