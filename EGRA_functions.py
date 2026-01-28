@@ -22,7 +22,7 @@ class EGRA:
           torch.manual_seed(seed)
 
         chat_text = self.tokenizer.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
-        inputs = self.tokenizer(chat_text, return_tensors="pt").to(self.device)
+        inputs = self.tokenizer(chat_text, return_tensors="pt")
         inputs.pop("token_type_ids", None)
         outputs = self.model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=do_sample, temperature=temperature)
         generated_ids = outputs[0][inputs["input_ids"].shape[-1]:]
@@ -83,7 +83,7 @@ class EGRA:
 
       # Tokenize
       chat_text = self.tokenizer.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
-      inputs = self.tokenizer(chat_text, return_tensors="pt").to(device)
+      inputs = self.tokenizer(chat_text, return_tensors="pt")
       input_ids = inputs["input_ids"]
       attention_mask = inputs.get("attention_mask", None)
 
