@@ -76,7 +76,8 @@ class EGRA:
       device = self.model.device
 
       # Tokenize
-      inputs = self.tokenizer(prompt, return_tensors="pt").to(device)
+      chat_text = self.tokenizer.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
+      inputs = self.tokenizer(chat_text, return_tensors="pt").to(device)
       input_ids = inputs["input_ids"]
       attention_mask = inputs.get("attention_mask", None)
 
