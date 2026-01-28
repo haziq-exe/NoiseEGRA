@@ -113,7 +113,7 @@ class EGRA:
       return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
 
   
-    def embedding_noise(self, output_file="example_file.csv", num_stories=1 ,max_new_tokens=100, do_sample=True, include_sys=True, temperature=1.0,
+    def embedding_noise(self, output_file="example_file.csv", num_stories=1 ,max_new_tokens=100, include_sys=True, temperature=1.0,
                         embed_noise_std = 0.01,logits_noise_std = 0.5, logits_noise_decay = 0.9):
       output_csv = Path(output_file)
       prompt = [{"role" : "user" , "content" : prompts.PROMPT_ZERO_SHOT}] 
@@ -122,7 +122,7 @@ class EGRA:
           prompt.insert(0, {"role" : "system" , "content" : prompts.SYS_ZERO_SHOT})
 
       for _ in range(num_stories):
-          output = self.generate_with_embedding_noise(prompt, max_new_tokens, do_sample, temperature=temperature, embed_noise_std=embed_noise_std,logits_noise_std=logits_noise_std, logits_noise_decay=logits_noise_decay)
+          output = self.generate_with_embedding_noise(prompt, max_new_tokens, temperature=temperature, embed_noise_std=embed_noise_std,logits_noise_std=logits_noise_std, logits_noise_decay=logits_noise_decay)
 
           with output_csv.open(mode="a", newline="", encoding="utf-8") as f:
               writer = csv.writer(f)
