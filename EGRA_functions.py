@@ -22,7 +22,8 @@ class EGRA:
           torch.manual_seed(seed)
 
         chat_text = self.tokenizer.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
-        inputs = self.tokenizer(chat_text, return_tensors="pt")
+        device = next(iter(self.model.hf_device_map.values()))
+        inputs = self.tokenizer(chat_text, return_tensors="pt").to(device)
         inputs.pop("token_type_ids", None)
         outputs = self.model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=do_sample, temperature=temperature)
         generated_ids = outputs[0][inputs["input_ids"].shape[-1]:]
@@ -57,7 +58,7 @@ class EGRA:
         prompt.append({"role" : "user", "content" : prompts.USER_COT_EXAMPLE})
         prompt.append({"role" : "assistant", "content" : prompts.ASSISTANT_COT_EXAMPLE})
 
-        prompt.append([{"role" : "user" , "content" : prompts.PROMPT_COT}])
+        prompt.append({"role" : "user" , "content" : prompts.PROMPT_COT})
 
         for _ in range(num_stories):
             output = self.generate(prompt, max_new_tokens, do_sample, temperature=temperature, seed=seed)
@@ -79,11 +80,10 @@ class EGRA:
       if seed is not None:
           torch.manual_seed(seed)
 
-      device = self.model.device
-
       # Tokenize
       chat_text = self.tokenizer.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
-      inputs = self.tokenizer(chat_text, return_tensors="pt")
+      device = next(iter(self.model.hf_device_map.values()))
+      inputs = self.tokenizer(chat_text, return_tensors="pt").to(device)
       input_ids = inputs["input_ids"]
       attention_mask = inputs.get("attention_mask", None)
 
@@ -122,23 +122,32 @@ class EGRA:
   
     def embedding_noise(self, output_file="example_file.csv", num_stories=1 ,max_new_tokens=100, include_sys=True, temperature=1.0,
                         embed_noise_std = 0.01,logits_noise_std = 0.5, logits_noise_decay = 0.9, seed=None, print_output=False):
+      
       output_csv = Path(output_file)
 
       if not include_sys:
-        prompt = [{"role" : "user" , "content" : prompts.SYS_ZERO_SHOT + "\n\n\n" + prompts.PROMPT_ZERO_SHOT}] 
+        prompt = [{"role" : "user" , "content" : prompts.SYS_NOISE + "\n\n\n" + prompts.NOISE_1}] 
       else:
-        prompt = [{"role" : "system" , "content" : prompts.SYS_ZERO_SHOT}]
-        prompt.append({"role" : "user" , "content" : prompts.PROMPT_ZERO_SHOT})
+        prompt = [{"role" : "system" , "content" : prompts.SYS_NOISE}]
+        prompt.append({"role" : "user" , "content" : prompts.NOISE_1})
 
       for _ in range(num_stories):
-          output = self.generate_with_embedding_noise(prompt, max_new_tokens, temperature=temperature, embed_noise_std=embed_noise_std,logits_noise_std=logits_noise_std, logits_noise_decay=logits_noise_decay, seed=seed)
+        output = self.generate_with_embedding_noise(prompt, max_new_tokens, temperature=temperature, embed_noise_std=embed_noise_std,logits_noise_std=logits_noise_std, logits_noise_decay=logits_noise_decay, seed=seed)
 
-          if print_output:
-              print(output)
+        if print_output:
+            print(output)
+    
+        prompt.append({"role" : "assistant" , "content" : output})
+        prompt.append({"role" : "user" , "content" : prompts.NOISE_2})
 
-          with output_csv.open(mode="a", newline="", encoding="utf-8") as f:
-              writer = csv.writer(f)
-              writer.writerow([output])
+        output = self.generate_with_embedding_noise(prompt, max_new_tokens, temperature=temperature, embed_noise_std=0.0,logits_noise_std=0.0, logits_noise_decay=0.0, seed=seed)
+
+        if print_output:
+            print(output)
+
+        with output_csv.open(mode="a", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow([output])
     
 
 
