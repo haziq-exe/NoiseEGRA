@@ -19,6 +19,8 @@ class AceGPT(EGRA):
 
         if add_generation_prompt:
             chat_text += "<assistant>"
+        
+        return chat_text
     
     def generate(self, prompt, max_new_tokens=100, do_sample=True, temperature=1, seed=None):
         """
@@ -36,4 +38,3 @@ class AceGPT(EGRA):
         text = self.tokenizer.decode(generated_ids, skip_special_tokens=True)
 
         return text
-
