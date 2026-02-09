@@ -12,14 +12,14 @@ class AceGPT(EGRA):
         chat_text = ""
         for message in messages:
             if message["role"] == "system":
-                chat_text += f"<system>{message['content']}\n"
+                chat_text += f"<System>:{message['content']} "
             elif message["role"] == "user":
-                chat_text += f"<user>{message['content']}\n"
+                chat_text += f"<User>:{message['content']} "
             elif message["role"] == "assistant":
-                chat_text += f"<assistant>{message['content']}\n"
+                chat_text += f"<Assistant>:{message['content']} "
 
         if add_generation_prompt:
-            chat_text += "<assistant>"
+            chat_text += "<Assistant>:"
         
         return chat_text
     
