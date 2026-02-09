@@ -40,8 +40,8 @@ class EGRA:
             prompt = [{"role" : "system" , "content" : prompts.SYS_ZERO_SHOT}]
             prompt.append({"role" : "user" , "content" : prompts.PROMPT_ZERO_SHOT})
 
-        for _ in range(num_stories):
-            output = self.generate(prompt, max_new_tokens, do_sample, temperature=temperature, seed=seed)
+        for x in range(num_stories):
+            output = self.generate(prompt, max_new_tokens, do_sample, temperature=temperature, seed=seed+(128*x))
             if print_output:
                 print(output)
             with output_csv.open(mode="a", newline="", encoding="utf-8") as f:
@@ -60,8 +60,8 @@ class EGRA:
 
         prompt.append({"role" : "user" , "content" : prompts.PROMPT_COT})
 
-        for _ in range(num_stories):
-            output = self.generate(prompt, max_new_tokens, do_sample, temperature=temperature, seed=seed)
+        for x in range(num_stories):
+            output = self.generate(prompt, max_new_tokens, do_sample, temperature=temperature, seed=seed+(128*x))
             if print_output:
                 print(output)
             with output_csv.open(mode="a", newline="", encoding="utf-8") as f:
@@ -131,8 +131,8 @@ class EGRA:
         prompt = [{"role" : "system" , "content" : prompts.SYS_NOISE}]
         prompt.append({"role" : "user" , "content" : prompts.NOISE_1})
 
-      for _ in range(num_stories):
-        output = self.generate_with_embedding_noise(prompt, max_new_tokens, temperature=temperature, embed_noise_std=embed_noise_std,logits_noise_std=logits_noise_std, logits_noise_decay=logits_noise_decay, seed=seed, top_p=top_p)
+      for x in range(num_stories):
+        output = self.generate_with_embedding_noise(prompt, max_new_tokens, temperature=temperature, embed_noise_std=embed_noise_std,logits_noise_std=logits_noise_std, logits_noise_decay=logits_noise_decay, seed=seed+(128*x), top_p=top_p)
 
         if print_output:
             print("----- FIRST STAGE OUTPUT-----\n")
@@ -141,7 +141,7 @@ class EGRA:
         prompt.append({"role" : "assistant" , "content" : output})
         prompt.append({"role" : "user" , "content" : prompts.NOISE_2})
 
-        output = self.generate(prompt, max_new_tokens, temperature=temperature, seed=seed)
+        output = self.generate(prompt, max_new_tokens, temperature=temperature, seed=seed+(128*x))
 
         if print_output:
             print("----- SECOND STAGE OUTPUT-----\n")
@@ -160,8 +160,8 @@ class EGRA:
             prompt = [{"role" : "system" , "content" : prompts.SYS_NOISE}]
             prompt.append({"role" : "user" , "content" : prompts.NOISE_1})
 
-        for _ in range(num_stories):
-            output = self.generate(prompt, max_new_tokens, do_sample, temperature=temperature, seed=seed)
+        for x in range(num_stories):
+            output = self.generate(prompt, max_new_tokens, do_sample, temperature=temperature, seed=seed+(128*x))
             if print_output:
                 print("----- FIRST STAGE OUTPUT -----\n")
                 print(output)
@@ -169,7 +169,7 @@ class EGRA:
             prompt.append({"role" : "assistant", "content" : output})
             prompt.append({"role" : "user", "content" : prompts.NOISE_2})
 
-            output = self.generate(prompt, max_new_tokens, do_sample, temperature=temperature, seed=seed)
+            output = self.generate(prompt, max_new_tokens, do_sample, temperature=temperature, seed=seed+(128*x))
 
             if print_output:
                 print("----- SECOND STAGE OUTPUT -----\n")
