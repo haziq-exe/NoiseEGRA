@@ -10,32 +10,16 @@ class AceGPT(EGRA):
 
     def apply_chat_template(self, messages, add_generation_prompt=False):
         chat_text = ""
-        system_content = None
-        conversation_started = False
-        
-        # Extract system message if present
         for message in messages:
             if message["role"] == "system":
-                system_content = message["content"]
-                break
-        
-        for message in messages:
-            if message["role"] == "system":
-                # Skip system messages, already extracted
-                continue
+                chat_text += f"<System>:{message['content']} "
             elif message["role"] == "user":
-                if not conversation_started:
-                    # First user message
-                    if system_content:
-                        chat_text += f"[INST] <<SYS>>\n{system_content}\n<</SYS>>\n\n{message['content']} [/INST]"
-                    else:
-                        chat_text += f"[INST] {message['content']} [/INST]"
-                    conversation_started = True
-                else:
-                    # Subsequent user messages
-                    chat_text += f"[INST] {message['content']} [/INST]"
+                chat_text += f"<User>:{message['content']} "
             elif message["role"] == "assistant":
-                chat_text += f"{message['content']}</s>"
+                chat_text += f"<Assistant>:{message['content']} "
+
+        if add_generation_prompt:
+            chat_text += "<Assistant>:"
         
         return chat_text
     
