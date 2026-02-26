@@ -1,9 +1,11 @@
+from .prompts import prompts
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
 import csv
 from pathlib import Path
 from transformers import LogitsProcessor, LogitsProcessorList
-from .prompts import prompts
+from typing import Callable, Dict, List, Optional, Sequence
+import math
 
 
 class EGRA:
@@ -54,89 +56,89 @@ class EGRA:
 
         return layer_idx
 
-    def generate(self, prompt, max_new_tokens=100, do_sample=True, temperature=1.0, seed=None):
-        """
-        prompt should always be a list of dicts of the form [ {"role" : "system", "content" : system_prompt},
-                                              {"role" : "user", "content" : user_prompt}  ]
-        """
+    # def generate(self, prompt, max_new_tokens=100, do_sample=True, temperature=1.0, seed=None):
+    #     """
+    #     prompt should always be a list of dicts of the form [ {"role" : "system", "content" : system_prompt},
+    #                                           {"role" : "user", "content" : user_prompt}  ]
+    #     """
 
-        if seed is not None:
-          torch.manual_seed(seed)
+    #     if seed is not None:
+    #       torch.manual_seed(seed)
 
-        chat_text = self.tokenizer.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
-        device = next(iter(self.model.hf_device_map.values()))
-        inputs = self.tokenizer(chat_text, return_tensors="pt").to(device)
-        inputs.pop("token_type_ids", None)
-        outputs = self.model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=do_sample, temperature=temperature)
-        generated_ids = outputs[0][inputs["input_ids"].shape[-1]:]
-        text = self.tokenizer.decode(generated_ids, skip_special_tokens=True)
+    #     chat_text = self.tokenizer.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
+    #     device = next(iter(self.model.hf_device_map.values()))
+    #     inputs = self.tokenizer(chat_text, return_tensors="pt").to(device)
+    #     inputs.pop("token_type_ids", None)
+    #     outputs = self.model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=do_sample, temperature=temperature)
+    #     generated_ids = outputs[0][inputs["input_ids"].shape[-1]:]
+    #     text = self.tokenizer.decode(generated_ids, skip_special_tokens=True)
 
-        return text
+    #     return text
 
-    def zero_shot(self, output_file="example_file.csv", num_stories=1 ,max_new_tokens=100, do_sample=True, include_sys=True, temperature=1.0, seed=None, print_output=False):
+    # def zero_shot(self, output_file="example_file.csv", num_stories=1 ,max_new_tokens=100, do_sample=True, include_sys=True, temperature=1.0, seed=None, print_output=False):
 
-        output_csv = Path(output_file)
-        if not include_sys:
-            prompt = [{"role" : "user" , "content" : prompts.SYS_ZERO_SHOT + "\n\n\n" + prompts.PROMPT_ZERO_SHOT}] 
-        else:
-            prompt = [{"role" : "system" , "content" : prompts.SYS_ZERO_SHOT}]
-            prompt.append({"role" : "user" , "content" : prompts.PROMPT_ZERO_SHOT})
+    #     output_csv = Path(output_file)
+    #     if not include_sys:
+    #         prompt = [{"role" : "user" , "content" : prompts.SYS_ZERO_SHOT + "\n\n\n" + prompts.PROMPT_ZERO_SHOT}] 
+    #     else:
+    #         prompt = [{"role" : "system" , "content" : prompts.SYS_ZERO_SHOT}]
+    #         prompt.append({"role" : "user" , "content" : prompts.PROMPT_ZERO_SHOT})
 
-        for x in range(num_stories):
-            output = self.generate(prompt, max_new_tokens, do_sample, temperature=temperature, seed=seed+(128*x))
-            if print_output:
-                print(output)
-            with output_csv.open(mode="a", newline="", encoding="utf-8") as f:
-                writer = csv.writer(f)
-                writer.writerow([output])
+    #     for x in range(num_stories):
+    #         output = self.generate(prompt, max_new_tokens, do_sample, temperature=temperature, seed=seed+(128*x))
+    #         if print_output:
+    #             print(output)
+    #         with output_csv.open(mode="a", newline="", encoding="utf-8") as f:
+    #             writer = csv.writer(f)
+    #             writer.writerow([output])
     
-    def CoT_selfReflection(self, output_file="example_file.csv", num_stories=1 ,max_new_tokens=100, do_sample=True, include_sys=True, temperature=1.0, seed=None, print_output=False):
-        prompt = []
-        output_csv = Path(output_file)
+    # def CoT_selfReflection(self, output_file="example_file.csv", num_stories=1 ,max_new_tokens=100, do_sample=True, include_sys=True, temperature=1.0, seed=None, print_output=False):
+    #     prompt = []
+    #     output_csv = Path(output_file)
 
-        if include_sys:
-            prompt.append({"role" : "system" , "content" : prompts.SYS_COT})
+    #     if include_sys:
+    #         prompt.append({"role" : "system" , "content" : prompts.SYS_COT})
 
-        prompt.append({"role" : "user", "content" : prompts.USER_COT_EXAMPLE})
-        prompt.append({"role" : "assistant", "content" : prompts.ASSISTANT_COT_EXAMPLE})
+    #     prompt.append({"role" : "user", "content" : prompts.USER_COT_EXAMPLE})
+    #     prompt.append({"role" : "assistant", "content" : prompts.ASSISTANT_COT_EXAMPLE})
 
-        prompt.append({"role" : "user" , "content" : prompts.PROMPT_COT})
+    #     prompt.append({"role" : "user" , "content" : prompts.PROMPT_COT})
 
-        for x in range(num_stories):
-            output = self.generate(prompt, max_new_tokens, do_sample, temperature=temperature, seed=seed+(128*x))
-            if print_output:
-                print(output)
-            with output_csv.open(mode="a", newline="", encoding="utf-8") as f:
-                writer = csv.writer(f)
-                writer.writerow([output])
+    #     for x in range(num_stories):
+    #         output = self.generate(prompt, max_new_tokens, do_sample, temperature=temperature, seed=seed+(128*x))
+    #         if print_output:
+    #             print(output)
+    #         with output_csv.open(mode="a", newline="", encoding="utf-8") as f:
+    #             writer = csv.writer(f)
+    #             writer.writerow([output])
 
-    def twoStage_zero_shot(self, output_file="example_file.csv", num_stories=1 ,max_new_tokens=100, do_sample=True, include_sys=True, temperature=1.0, seed=None, print_output=False):
+    # def twoStage_zero_shot(self, output_file="example_file.csv", num_stories=1 ,max_new_tokens=100, do_sample=True, include_sys=True, temperature=1.0, seed=None, print_output=False):
 
-        output_csv = Path(output_file)
-        if not include_sys:
-            prompt = [{"role" : "user" , "content" : prompts.SYS_NOISE + "\n\n\n" + prompts.NOISE_1}] 
-        else:
-            prompt = [{"role" : "system" , "content" : prompts.SYS_NOISE}]
-            prompt.append({"role" : "user" , "content" : prompts.NOISE_1})
+    #     output_csv = Path(output_file)
+    #     if not include_sys:
+    #         prompt = [{"role" : "user" , "content" : prompts.SYS_NOISE + "\n\n\n" + prompts.NOISE_1}] 
+    #     else:
+    #         prompt = [{"role" : "system" , "content" : prompts.SYS_NOISE}]
+    #         prompt.append({"role" : "user" , "content" : prompts.NOISE_1})
 
-        for x in range(num_stories):
-            output = self.generate(prompt, max_new_tokens, do_sample, temperature=temperature, seed=seed+(128*x))
-            if print_output:
-                print("----- FIRST STAGE OUTPUT -----\n")
-                print(output)
+    #     for x in range(num_stories):
+    #         output = self.generate(prompt, max_new_tokens, do_sample, temperature=temperature, seed=seed+(128*x))
+    #         if print_output:
+    #             print("----- FIRST STAGE OUTPUT -----\n")
+    #             print(output)
 
-            prompt.append({"role" : "assistant", "content" : output})
-            prompt.append({"role" : "user", "content" : prompts.NOISE_2})
+    #         prompt.append({"role" : "assistant", "content" : output})
+    #         prompt.append({"role" : "user", "content" : prompts.NOISE_2})
 
-            output = self.generate(prompt, max_new_tokens, do_sample, temperature=temperature, seed=seed+(128*x))
+    #         output = self.generate(prompt, max_new_tokens, do_sample, temperature=temperature, seed=seed+(128*x))
 
-            if print_output:
-                print("----- SECOND STAGE OUTPUT -----\n")
-                print(output)
+    #         if print_output:
+    #             print("----- SECOND STAGE OUTPUT -----\n")
+    #             print(output)
 
-            with output_csv.open(mode="a", newline="", encoding="utf-8") as f:
-                writer = csv.writer(f)
-                writer.writerow([output])
+    #         with output_csv.open(mode="a", newline="", encoding="utf-8") as f:
+    #             writer = csv.writer(f)
+    #             writer.writerow([output])
     
 
     def generate_with_embedding_noise(
@@ -252,77 +254,100 @@ class EGRA:
         generated_ids = outputs[0][input_ids.shape[-1]:]
         return self.tokenizer.decode(generated_ids, skip_special_tokens=True)
 
-    def generate_with_residual_stream_noise(
-        self, prompt, residual_layers, residual_noise_std, residual_noise_decay = 1.0,
-        logits_noise_std = 0.0, logits_noise_decay = 0.0, max_new_tokens = 100, temperature = 1.0, seed = None,
-    ):
+    def generate_with_residual_stream_noise(self, prompt, residual_layers, residual_noise_std, 
+            residual_noise_decay=1.0, max_noise_tokens=250,
+            logits_noise_std=0.0, logits_noise_decay=0.0, max_new_tokens=100, temperature=1.0, seed=None,
+        ):
         """
         Injects Gaussian noise into the residual stream (block output) at selected transformer layers.
-        Noise is applied on each generated token and decays exponentially over decoding steps.
+        Noise is applied on each generated token and decays over decoding steps.
         """
-
+    
         if seed is not None:
             torch.manual_seed(seed)
             if torch.cuda.is_available():
                 torch.cuda.manual_seed_all(seed)
-
+    
         if residual_noise_std <= 0:
             raise ValueError("residual_noise_std must be > 0.")
         if residual_noise_decay < 0:
             raise ValueError("residual_noise_decay must be >= 0.")
         if not isinstance(residual_layers, (list, tuple)) or len(residual_layers) == 0:
             raise ValueError("residual_layers must be a non-empty list/tuple of layer indices.")
-
+    
         chat_text = self.tokenizer.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
         device = next(iter(self.model.hf_device_map.values()))
         inputs = self.tokenizer(chat_text, return_tensors="pt").to(device)
         inputs.pop("token_type_ids", None)
         input_ids = inputs["input_ids"]
         prompt_len = input_ids.shape[1]
-
+    
         blocks = self._get_transformer_blocks()
         normalized_layers = sorted({self._normalize_layer_index(idx, len(blocks)) for idx in residual_layers})
-
+    
         handles = []
+        model_handle = None
+    
+        # Shared state across ALL residual hooks + model forward calls
+        shared = {
+            "forward_calls": 0,      # counts model forward invocations during generate()
+            "t": 0,                  # decoding step index (0 for first generated token)
+            "cur_t": 0,              # step index for *this* forward call
+            "is_prefill": True,      # first forward is prompt prefill
+        }
+    
         try:
-            def make_residual_hook():
-                state = {"prefill_done": False, "generated_tokens": 0}
-
-                def residual_hook(module, input, output):
-                    with torch.no_grad():
-                        if not state["prefill_done"]:
-                            # Skip the initial prompt prefill pass.
-                            state["prefill_done"] = True
-                            return None
-
-                        if isinstance(output, torch.Tensor):
-                            target = output
-                        elif isinstance(output, (tuple, list)) and len(output) > 0 and isinstance(output[0], torch.Tensor):
-                            target = output[0]
-                        else:
-                            return None
-
-                        if target.dim() != 3:
-                            return None
-
-                        cur_std = residual_noise_std * (residual_noise_decay ** state["generated_tokens"])
-                        state["generated_tokens"] += 1
-
-                        if cur_std <= 0:
-                            return None
-
-                        noise = torch.randn_like(target[:, -1:, :]) * cur_std
-                        target[:, -1:, :].add_(noise)
-
+            # Advance step counter exactly ONCE per forward call (not per layer)
+            def model_pre_hook(module, inp):
+                shared["forward_calls"] += 1
+                if shared["forward_calls"] == 1:
+                    # Prefill pass
+                    shared["is_prefill"] = True
+                    shared["cur_t"] = 0
+                else:
+                    # Decode pass: set cur_t for this pass, then increment t for next pass
+                    shared["is_prefill"] = False
+                    shared["cur_t"] = shared["t"]
+                    shared["t"] += 1
+    
+            model_handle = self.model.register_forward_pre_hook(model_pre_hook)
+    
+            def residual_hook(module, input, output):
+                # Skip prompt prefill for ALL layers
+                if shared["is_prefill"]:
                     return None
-
-                return residual_hook
-
+    
+                with torch.no_grad():
+                    if isinstance(output, torch.Tensor):
+                        target = output
+                    elif isinstance(output, (tuple, list)) and len(output) > 0 and isinstance(output[0], torch.Tensor):
+                        target = output[0]
+                    else:
+                        return None
+    
+                    if target.dim() != 3:
+                        return None
+    
+                    t = shared["cur_t"]
+    
+                    if max_noise_tokens:
+                        T = max_noise_tokens
+                        cosine_decay = 0.5 * (1 + math.cos(math.pi * min(t, T) / T))
+                        cur_std = residual_noise_std * cosine_decay
+                    else:
+                        cur_std = residual_noise_std * (residual_noise_decay ** t)
+    
+                    if cur_std <= 0:
+                        return None
+    
+                    noise = torch.randn_like(target[:, -1:, :]) * cur_std
+                    target[:, -1:, :].add_(noise)
+    
+                return None
+    
             for layer_idx in normalized_layers:
-                handles.append(blocks[layer_idx].register_forward_hook(make_residual_hook()))
-                # if blocks[layer_idx].register_forward_hook(make_residual_hook()) == None:
-                #     print(f"{layer_idx} : {blocks[layer_idx].register_forward_hook(make_residual_hook())} Hook")
-
+                handles.append(blocks[layer_idx].register_forward_hook(residual_hook))
+    
             logits_processor = None
             if logits_noise_std and logits_noise_std > 0:
                 processor = GaussianLogitsProcessor(
@@ -331,113 +356,117 @@ class EGRA:
                     prompt_length=prompt_len,
                 )
                 logits_processor = LogitsProcessorList([processor])
-
+    
             gen_kwargs = {
                 **inputs,
                 "do_sample": True,
                 "temperature": temperature,
                 "max_new_tokens": max_new_tokens,
             }
-
             if logits_processor is not None:
                 gen_kwargs["logits_processor"] = logits_processor
-
+    
             outputs = self.model.generate(**gen_kwargs)
-
+    
         finally:
             for h in handles:
                 try:
                     h.remove()
                 except Exception:
                     pass
-
+            if model_handle is not None:
+                try:
+                    model_handle.remove()
+                except Exception:
+                    pass
+    
         generated_ids = outputs[0][input_ids.shape[-1]:]
         return self.tokenizer.decode(generated_ids, skip_special_tokens=True)
 
-    def twoStage_residual_noise(
-        self, residual_noise_std, residual_noise_decay, residual_layers, logits_noise_std = 0.0, logits_noise_decay = 0.0,
-        output_file="example_file.csv", num_stories=1, max_new_tokens=100, include_sys=True, temperature=1.0, seed=None, print_output=False,
-    ):
-        output_csv = Path(output_file)
+    # def twoStage_residual_noise(
+    #     self, residual_noise_std, residual_noise_decay, residual_layers, logits_noise_std = 0.0, logits_noise_decay = 0.0,
+    #     output_file="example_file.csv", num_stories=1, max_new_tokens=100, include_sys=True, temperature=1.0, seed=None, print_output=False,
+    # ):
+    #     output_csv = Path(output_file)
 
-        if not include_sys:
-            prompt = [{"role": "user", "content": prompts.SYS_NOISE + "\n\n\n" + prompts.NOISE_1}]
-        else:
-            prompt = [{"role": "system", "content": prompts.SYS_NOISE}]
-            prompt.append({"role": "user", "content": prompts.NOISE_1})
+    #     if not include_sys:
+    #         prompt = [{"role": "user", "content": prompts.SYS_NOISE + "\n\n\n" + prompts.NOISE_1}]
+    #     else:
+    #         prompt = [{"role": "system", "content": prompts.SYS_NOISE}]
+    #         prompt.append({"role": "user", "content": prompts.NOISE_1})
 
-        for x in range(num_stories):
-            output = self.generate_with_residual_stream_noise(
-                prompt,
-                residual_layers=residual_layers,
-                residual_noise_std=residual_noise_std,
-                residual_noise_decay=residual_noise_decay,
-                logits_noise_std=logits_noise_std,
-                logits_noise_decay=logits_noise_decay,
-                max_new_tokens=max_new_tokens,
-                temperature=temperature,
-                seed=(seed + (128 * x)) if seed is not None else None,
-            )
+    #     for x in range(num_stories):
+    #         output = self.generate_with_residual_stream_noise(
+    #             prompt,
+    #             residual_layers=residual_layers,
+    #             residual_noise_std=residual_noise_std,
+    #             residual_noise_decay=residual_noise_decay,
+    #             logits_noise_std=logits_noise_std,
+    #             logits_noise_decay=logits_noise_decay,
+    #             max_new_tokens=max_new_tokens,
+    #             temperature=temperature,
+    #             seed=(seed + (128 * x)) if seed is not None else None,
+    #         )
 
-            if print_output:
-                print("----- FIRST STAGE OUTPUT -----\n")
-                print(output)
+    #         if print_output:
+    #             print("----- FIRST STAGE OUTPUT -----\n")
+    #             print(output)
 
-            prompt.append({"role": "assistant", "content": output})
-            prompt.append({"role": "user", "content": prompts.NOISE_2})
+    #         prompt.append({"role": "assistant", "content": output})
+    #         prompt.append({"role": "user", "content": prompts.NOISE_2})
 
-            output = self.generate(prompt, max_new_tokens, temperature=temperature, seed=(seed + (128 * x)) if seed is not None else None)
+    #         output = self.generate(prompt, max_new_tokens, temperature=temperature, seed=(seed + (128 * x)) if seed is not None else None)
 
-            if print_output:
-                print("----- SECOND STAGE OUTPUT -----\n")
-                print(output)
+    #         if print_output:
+    #             print("----- SECOND STAGE OUTPUT -----\n")
+    #             print(output)
 
-            with output_csv.open(mode="a", newline="", encoding="utf-8") as f:
-                writer = csv.writer(f)
-                writer.writerow([output])
+    #         with output_csv.open(mode="a", newline="", encoding="utf-8") as f:
+    #             writer = csv.writer(f)
+    #             writer.writerow([output])
                 
 
-    def twoStage_embedding_noise(
-        self, embed_noise_std, hidden_noise_std, hidden_layers, logits_noise_std = 0.0, logits_noise_decay = 0.0,
-        output_file="example_file.csv", num_stories=1, max_new_tokens=100, include_sys=True, temperature=1.0, seed=None, print_output=False,
-    ):
-        output_csv = Path(output_file)
+    # def twoStage_embedding_noise(
+    #     self, embed_noise_std, hidden_noise_std, hidden_layers, logits_noise_std = 0.0, logits_noise_decay = 0.0,
+    #     output_file="example_file.csv", num_stories=1, max_new_tokens=100, include_sys=True, temperature=1.0, seed=None, print_output=False,
+    # ):
+    #     output_csv = Path(output_file)
 
-        if not include_sys:
-            prompt = [{"role": "user", "content": prompts.SYS_NOISE + "\n\n\n" + prompts.NOISE_1}]
-        else:
-            prompt = [{"role": "system", "content": prompts.SYS_NOISE}]
-            prompt.append({"role": "user", "content": prompts.NOISE_1})
+    #     if not include_sys:
+    #         prompt = [{"role": "user", "content": prompts.SYS_NOISE + "\n\n\n" + prompts.NOISE_1}]
+    #     else:
+    #         prompt = [{"role": "system", "content": prompts.SYS_NOISE}]
+    #         prompt.append({"role": "user", "content": prompts.NOISE_1})
 
-        for x in range(num_stories):
-            output = self.generate_with_embedding_noise(
-                prompt,
-                max_new_tokens=max_new_tokens,
-                temperature=temperature,
-                seed=(seed + (128 * x)) if seed is not None else None,
-                embed_noise_std=embed_noise_std,
-                logits_noise_std=logits_noise_std,
-                logits_noise_decay=logits_noise_decay,
-                hidden_noise_std=hidden_noise_std,
-                hidden_layers=hidden_layers,
-            )
+    #     for x in range(num_stories):
+    #         output = self.generate_with_embedding_noise(
+    #             prompt,
+    #             max_new_tokens=max_new_tokens,
+    #             temperature=temperature,
+    #             seed=(seed + (128 * x)) if seed is not None else None,
+    #             embed_noise_std=embed_noise_std,
+    #             logits_noise_std=logits_noise_std,
+    #             logits_noise_decay=logits_noise_decay,
+    #             hidden_noise_std=hidden_noise_std,
+    #             hidden_layers=hidden_layers,
+    #         )
 
-            if print_output:
-                print("----- FIRST STAGE OUTPUT-----\n")
-                print(output)
+    #         if print_output:
+    #             print("----- FIRST STAGE OUTPUT-----\n")
+    #             print(output)
 
-            prompt.append({"role": "assistant", "content": output})
-            prompt.append({"role": "user", "content": prompts.NOISE_2})
+    #         prompt.append({"role": "assistant", "content": output})
+    #         prompt.append({"role": "user", "content": prompts.NOISE_2})
 
-            output = self.generate(prompt, max_new_tokens, temperature=temperature, seed=(seed + (128 * x)) if seed is not None else None)
+    #         output = self.generate(prompt, max_new_tokens, temperature=temperature, seed=(seed + (128 * x)) if seed is not None else None)
 
-            if print_output:
-                print("----- SECOND STAGE OUTPUT-----\n")
-                print(output)
+    #         if print_output:
+    #             print("----- SECOND STAGE OUTPUT-----\n")
+    #             print(output)
 
-            with output_csv.open(mode="a", newline="", encoding="utf-8") as f:
-                writer = csv.writer(f)
-                writer.writerow([output])
+    #         with output_csv.open(mode="a", newline="", encoding="utf-8") as f:
+    #             writer = csv.writer(f)
+    #             writer.writerow([output])
 
 
 class GaussianLogitsProcessor(LogitsProcessor):
