@@ -1,5 +1,5 @@
 from __future__ import annotations
-from .prompts import prompts
+from . import prompts
 from .EGRA_functions import EGRA
 from .egra_constraint_checker import EGRAConstraintChecker
 from .creativity_metrics import CreativityScorer

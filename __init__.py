@@ -1,6 +1,6 @@
 from .RMS_std import RMSStats, ResidualRMSCalibrator
 from .EGRA_functions import EGRA, GaussianLogitsProcessor
-from .prompts import prompts
+from . import prompts
 
 from .egra_constraint_checker import (
     ConstraintResult,

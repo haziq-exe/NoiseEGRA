@@ -1,9 +1,6 @@
-class prompts:
-    def __init__(self):
-        self.SYS_ZERO_SHOT = """أنتَ مساعدٌ مُفيدٌ تُعدّ نصوص قراءةٍ مُخصصةٍ للأطفال الصغار لتنمية مهاراتهم في فهم المقروء.
-        """
-        
-        self.PROMPT_ZERO_SHOT = """اكتب قصه.
+SYS_ZERO_SHOT = """أنتَ مساعدٌ مُفيدٌ تُعدّ نصوص قراءةٍ مُخصصةٍ للأطفال الصغار لتنمية مهاراتهم في فهم المقروء."""
+
+PROMPT_ZERO_SHOT = """اكتب قصه.
 * يجب أن تكون القصة سردية مستوحاة من مواد قراءة الأطفال، وتتضمن:
 * مقدمة تُعرّف بالشخصيات
 * جزءًا وسطيًا يتضمن معضلة ما
@@ -27,16 +24,16 @@ class prompts:
 * يحتوي نص القصة على بعض المفردات المعقدة وتراكيب الجمل.
 
 اكتب القصة كنص سردي متصل دون عناوين أو تسميات أو تقسيمات أو أي مؤشرات هيكلية.
-        """
-        
-        
-        self.SYS_COT = self.SYS_ZERO_SHOT
-        
-        self.PROMPT_COT = self.PROMPT_ZERO_SHOT
-        
-        self.USER_COT_EXAMPLE = self.PROMPT_ZERO_SHOT
-        
-        self.ASSISTANT_COT_EXAMPLE = """Okay, let me think and plan through this story step by step. First, I will create a character that is relatable to children. Next, I will set the context and introduce a problem or obstacle that the character must overcome. Finally, I will resolve the story in a positive way. After writing the story, I will create 5 comprehension questions that are clear and relevant to the story.
+"""
+
+
+SYS_COT = SYS_ZERO_SHOT
+
+PROMPT_COT = PROMPT_ZERO_SHOT
+
+USER_COT_EXAMPLE = PROMPT_ZERO_SHOT
+
+ASSISTANT_COT_EXAMPLE = """Okay, let me think and plan through this story step by step. First, I will create a character that is relatable to children. Next, I will set the context and introduce a problem or obstacle that the character must overcome. Finally, I will resolve the story in a positive way. After writing the story, I will create 5 comprehension questions that are clear and relevant to the story.
 Okay, I think the character should be a relatable kindergartener named Sara. The context will be her first day at a new school, where she feels nervous and unsure. The obstacle will be that she has trouble making friends, but with the help of a kind classmate, she overcomes her fears and finds friendship. Now, I will write the story and questions.
 Story:
 Sara was nervous on her first day at a new school. She didn't know anyone and felt shy. During recess , a girl named Laila invited Sara to play. They had fun together and became friends. Sara felt happy and excited to go to school the next day.
@@ -46,9 +43,9 @@ Comprehension Questions:
 3. How did Sara feel after making a new friend?
 4. What activity did Sara and Laila do together?
 5. Why was Sara excited to go to school the next day?
-        """
-        
-        self.SYS_NOISE = """الصفة: أنت خبير في تطوير مواد "تقييم القراءة للأعمار المبكرة" (EGRA) للأطفال الناطقين باللغة العربية. هدفك هو إنشاء نصوص سردية تقيس طلاقة القراءة وفهم المقروء.
+"""
+
+SYS_NOISE = """الصفة: أنت خبير في تطوير مواد "تقييم القراءة للأعمار المبكرة" (EGRA) للأطفال الناطقين باللغة العربية. هدفك هو إنشاء نصوص سردية تقيس طلاقة القراءة وفهم المقروء.
 التوجيهات الأساسية:
 الدقة اللغوية: يجب عليك الالتزام الصارم بالقيود القواعدية (مثل الزمن وعدد الكلمات) دون الإخلال بالتدفق الطبيعي للقصة.
 تجنب النمطية: يجب الابتعاد عن لغة "الكتب المدرسية" والقصص الشعبية أو الأساطير المستهلكة. يجب أن تكون القصص مبتكرة، حديثة، وأصلية.
@@ -58,8 +55,8 @@ Comprehension Questions:
 
  التزم بتقديم المخرجات المطلوبة فقط. يُمنع منعاً باتاً إضافة أي نصوص ترحيبية، أو شروحات، أو تعليقات جانبية؛ قدم الإجابة المباشرة كما طلبها المستخدم تماماً.
 """
-        
-        self.NOISE_1 = """أريد منك التخطيط لقصة أطفال قصيرة وأصلية تماماً لغرض تقييم القراءة (EGRA).
+
+NOISE_1 = """أريد منك التخطيط لقصة أطفال قصيرة وأصلية تماماً لغرض تقييم القراءة (EGRA).
 
 الهدف: ابتكر فكرة جديدة ومبتكرة لم يسبق للطفل سماعها في الكتب المدرسية أو الأساطير أو القصص الشعبية المعروفة.
 
@@ -73,9 +70,9 @@ Comprehension Questions:
 
 العنصر الاستنتاجي: حدّد الفكرة التي سيبني عليها الطفل استنتاجه عند قراءة النص لاحقاً.
 """
-        
-        
-        self.NOISE_2 = """الآن، حوّل المخطط السابق إلى قصة سردية متماسكة مع الالتزام الصارم بالقيود التالية:
+
+
+NOISE_2 = """الآن، حوّل المخطط السابق إلى قصة سردية متماسكة مع الالتزام الصارم بالقيود التالية:
 الطول: يجب ألا تتجاوز القصة 60 كلمة.
 الزمن: استخدم زمن المضارع فقط في كامل النص.
 الأسماء: استخدم اسماً علماً واحداً فقط (اختر واحداً من المخطط)، وعوض عن الشخصية الأخرى بصفة أو صلة قرابة (مثلاً: الصديقة، الأخ) لضمان توازن الجنسين.
@@ -85,7 +82,7 @@ Comprehension Questions:
  أخرج نص القصة فقط من البداية إلى النهاية، دون أي نص تمهيدي أو جمل توضيحية قبل القصة أو بعدها
 """
 
-        self.NOISE_3 = """بناءً على مخطط القصة الموضح أدناه، اكتب قصة سردية متماسكة مع الالتزام الصارم بالقيود التالية:
+NOISE_3 = """بناءً على مخطط القصة الموضح أدناه، اكتب قصة سردية متماسكة مع الالتزام الصارم بالقيود التالية:
 
 مخطط القصة:
 [STORY PLAN]
@@ -106,7 +103,7 @@ Comprehension Questions:
 """
 
 
-        self.SAMPLE_1 = """مخطط القصة
+SAMPLE_1 = """مخطط القصة
 
 الشخصيات:
 
@@ -125,6 +122,6 @@ Comprehension Questions:
 يمكن للطفل أن يستنتج أن الظلال تعتمد على وجود الشمس، وأن مراقبة البيئة تساعد في حل المشكلات.
 """
 
-        self.SAMPLE_2 = """
+SAMPLE_2 = """
 سليم يلعب في الساحة. يلاحظ أن الظلال تختفي فجأة، فتقلق الصديقة لأنهما يعتمدان عليها لمعرفة الاتجاه. يتأمل سليم السماء، فيرى غيوماً كثيفة تحجب الشمس وتسبب هذا التبدل الغامض. يقترح مراقبة حركة الأشجار مع النسيم لتحديد الطريق، فتطمئن الصديقة، ثم تنقشع الغيوم وتعود الظلال واضحة.
 """

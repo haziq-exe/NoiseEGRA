@@ -4,7 +4,7 @@ import csv
 from pathlib import Path
 from transformers import LogitsProcessor, LogitsProcessorList
 from typing import Callable, Dict, List, Optional, Sequence
-from .prompts import prompts
+from . import prompts
 import math
 
 
