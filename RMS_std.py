@@ -1,7 +1,7 @@
 import math
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Union
-
+from .EGRA_functions import EGRA
 import torch
 
 

@@ -1,8 +1,13 @@
 from __future__ import annotations
-
+from .prompts import prompts
+from .EGRA_functions import EGRA
+from .egra_constraint_checker import EGRAConstraintChecker
+from .creativity_metrics import CreativityScorer
 import csv
 import gc
 from dataclasses import dataclass
+import io
+from contextlib import redirect_stdout
 from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
 
@@ -173,14 +178,21 @@ def run_story_experiments(
             gc.collect()
             torch.cuda.empty_cache()
 
-    # scoring + constraints
-    for rid in run_ids:
-        stories = outputs[rid]
-        print(f"\n\n---- {rid} ----\n")
-        CreativityScorer(stories).creativity_score(print_report=True)
+    # scoring + constraints (also save to TXT)
+    results_path = out_dir / f"{model_name}_RESULTS.txt"
 
-        print(f"\n\n------------------ {rid} CONSTRAINT ---------------------\n\n\n")
-        checker.print_report(stories)
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        for rid in run_ids:
+            stories = outputs[rid]
+            print(f"\n\n---- {rid} ----\n")
+            CreativityScorer(stories).creativity_score(print_report=True)
+
+            print(f"\n\n------------------ {rid} CONSTRAINT ---------------------\n\n\n")
+            checker.print_report(stories)
+
+    # write once at end (overwrite each run of the script)
+    results_path.write_text(buf.getvalue(), encoding="utf-8")
 
     return outputs
 
