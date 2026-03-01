@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Union
 
 import torch
-from .EGRA_functions import EGRA
 
 
 @dataclass
