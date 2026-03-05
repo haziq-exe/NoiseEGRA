@@ -389,13 +389,16 @@ class EGRA:
     ):
         output_csv = Path(output_file)
 
-        if not include_sys:
-            prompt = [{"role": "user", "content": prompts.SYS_NOISE + "\n\n\n" + prompts.NOISE_1}]
-        else:
-            prompt = [{"role": "system", "content": prompts.SYS_NOISE}]
-            prompt.append({"role": "user", "content": prompts.NOISE_1})
+
 
         for x in range(num_stories):
+
+            if not include_sys:
+                prompt = [{"role": "user", "content": prompts.SYS_NOISE + "\n\n\n" + prompts.NOISE_1}]
+            else:
+                prompt = [{"role": "system", "content": prompts.SYS_NOISE}]
+                prompt.append({"role": "user", "content": prompts.NOISE_1})
+                
             output = self.generate_with_residual_stream_noise(
                 prompt,
                 residual_layers=residual_layers,
