@@ -1,4 +1,4 @@
-from .RMS_std import RMSStats, ResidualRMSCalibrator
+from .RMS_std import RMSStats, RMSCalibrator
 from .EGRA_functions import EGRA, GaussianLogitsProcessor
 from . import prompts
 
@@ -19,7 +19,7 @@ from .creativity_metrics import (
 
 __all__ = [
     "RMSStats",
-    "ResidualRMSCalibrator",
+    "RMSCalibrator",
     "ConstraintResult",
     "EGRAConstraintChecker",
     "EGRA",
