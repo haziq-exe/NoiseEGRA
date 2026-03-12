@@ -17,16 +17,22 @@ import torch
 @dataclass(frozen=True)
 class ExperimentSpec:
     use_residual_noise: bool = False
+    use_attention_output_noise: bool = False
     residual_layers: Optional[Sequence[int]] = None
     residual_noise_std: float = 0.0
     residual_noise_decay: float = 0.0
+    attention_layers: Optional[Sequence[int]] = None
+    attention_noise_std: float = 0.0
     max_noise_tokens: int = 250
 
     logits_noise_std: float = 0.0
     logits_noise_decay: float = 0.0
     max_new_tokens_plan: int = 500
     max_new_tokens_story: int = 500
+    do_sample: bool = True
     temperature: float = 1.0
+    top_p: Optional[float] = None
+    top_k: Optional[int] = None
 
 
 def _seed_for_story(x: int) -> int:
@@ -72,14 +78,63 @@ def _float_tag(x: float) -> str:
     return s.replace(".", "p").replace("-", "m")
 
 
+def _spec_mode(spec: ExperimentSpec) -> str:
+    if spec.use_residual_noise and spec.use_attention_output_noise:
+        raise ValueError("ExperimentSpec cannot enable both residual noise and attention output noise.")
+    if spec.use_attention_output_noise:
+        return "attention_output_noise"
+    if spec.use_residual_noise:
+        return "residual_stream_noise"
+    return "baseline"
+
+
+def _sampling_tag(spec: ExperimentSpec) -> str:
+    parts: list[str] = []
+
+    if not spec.do_sample:
+        parts.append("greedy")
+    else:
+        if spec.temperature != 1.0:
+            parts.append(f"temp{_float_tag(spec.temperature)}")
+        if spec.top_p is not None:
+            parts.append(f"topp{_float_tag(spec.top_p)}")
+        if spec.top_k is not None:
+            parts.append(f"topk{spec.top_k}")
+
+    if not parts:
+        return ""
+    return "__" + "__".join(parts)
+
+
 def _spec_to_run_id(model_name: str, spec: ExperimentSpec) -> str:
-    if not spec.use_residual_noise:
-        return f"{model_name}__BASELINE"
-    return (
-        f"{model_name}__{_layers_tag(spec.residual_layers)}"
-        f"__std{_float_tag(spec.residual_noise_std)}"
-        f"__decay{_float_tag(spec.residual_noise_decay)}"
-    )
+    mode = _spec_mode(spec)
+    sampling_tag = _sampling_tag(spec)
+
+    if mode == "baseline":
+        return f"{model_name}__BASELINE{sampling_tag}"
+
+    if mode == "residual_stream_noise":
+        parts = [
+            f"{model_name}__{_layers_tag(spec.residual_layers)}"
+            f"__std{_float_tag(spec.residual_noise_std)}"
+            f"__decay{_float_tag(spec.residual_noise_decay)}"
+        ]
+    else:
+        parts = [
+            f"{model_name}__ATTN__{_layers_tag(spec.attention_layers)}"
+            f"__std{_float_tag(spec.attention_noise_std)}"
+        ]
+
+    if spec.max_noise_tokens != 250:
+        parts.append(f"__maxtok{spec.max_noise_tokens}")
+    if spec.logits_noise_std != 0.0:
+        parts.append(f"__logstd{_float_tag(spec.logits_noise_std)}")
+    if spec.logits_noise_decay != 0.0:
+        parts.append(f"__logdecay{_float_tag(spec.logits_noise_decay)}")
+    if sampling_tag:
+        parts.append(sampling_tag)
+
+    return "".join(parts)
 
 
 def run_story_experiments(
@@ -90,6 +145,8 @@ def run_story_experiments(
     *,
     output_dir: str = "results",
     clear_cuda_each_iter: bool = True,
+    sanity_check: bool = False,
+    sanity_check_n: int = 2,
 ) -> dict[str, list[str]]:
     """
     Auto filenames: {run_id}.csv where run_id encodes model + spec.
@@ -109,16 +166,30 @@ def run_story_experiments(
     # ---- EXPERIMENT SUMMARY (printed once) ----
     print("\n================ RUN CONFIGURATION ================\n")
     for spec, rid in zip(specs, run_ids):
+        mode = _spec_mode(spec)
         print(f"RUN ID: {rid}")
-        if not spec.use_residual_noise:
+        if mode == "baseline":
             print("  type: BASELINE (no residual noise)")
-        else:
+        elif mode == "residual_stream_noise":
             print("  type: RESIDUAL NOISE")
             print(f"  residual_layers: {list(spec.residual_layers or [])}")
             print(f"  residual_noise_std: {spec.residual_noise_std}")
             print(f"  residual_noise_decay: {spec.residual_noise_decay}")
             print(f"  logits_noise_std: {spec.logits_noise_std}")
             print(f"  logits_noise_decay: {spec.logits_noise_decay}")
+        else:
+            print("  type: ATTENTION OUTPUT NOISE")
+            print(f"  attention_layers: {list(spec.attention_layers or [])}")
+            print(f"  attention_noise_std: {spec.attention_noise_std}")
+            print(f"  logits_noise_std: {spec.logits_noise_std}")
+            print(f"  logits_noise_decay: {spec.logits_noise_decay}")
+        print(f"  do_sample: {spec.do_sample}")
+        if spec.do_sample:
+            print(f"  temperature: {spec.temperature}")
+            if spec.top_p is not None:
+                print(f"  top_p: {spec.top_p}")
+            if spec.top_k is not None:
+                print(f"  top_k: {spec.top_k}")
         print()
 
     print("===================================================\n")
@@ -132,17 +203,36 @@ def run_story_experiments(
             # 1) plan
             # plan_prompt = _make_plan_prompt()
             story_prompt = _story_prompt()
-            if spec.use_residual_noise:
+            mode = _spec_mode(spec)
+            if mode == "residual_stream_noise":
                 story_text = model.generate_with_residual_stream_noise(
                     story_prompt,
                     residual_layers=list(spec.residual_layers or []),
                     residual_noise_std=spec.residual_noise_std,
                     residual_noise_decay=spec.residual_noise_decay,
-                    max_noise_tokens = spec.max_noise_tokens,
+                    max_noise_tokens=spec.max_noise_tokens,
                     logits_noise_std=spec.logits_noise_std,
                     logits_noise_decay=spec.logits_noise_decay,
                     max_new_tokens=spec.max_new_tokens_plan,
+                    do_sample=spec.do_sample,
                     temperature=spec.temperature,
+                    top_p=spec.top_p,
+                    top_k=spec.top_k,
+                    seed=seed,
+                )
+            elif mode == "attention_output_noise":
+                story_text = model.generate_with_attention_output_noise(
+                    story_prompt,
+                    attn_layers=list(spec.attention_layers or []),
+                    attn_noise_std=spec.attention_noise_std,
+                    max_noise_tokens=spec.max_noise_tokens,
+                    logits_noise_std=spec.logits_noise_std,
+                    logits_noise_decay=spec.logits_noise_decay,
+                    max_new_tokens=spec.max_new_tokens_plan,
+                    do_sample=spec.do_sample,
+                    temperature=spec.temperature,
+                    top_p=spec.top_p,
+                    top_k=spec.top_k,
                     seed=seed,
                 )
             #     plan_text = model.generate_with_residual_stream_noise(
@@ -160,6 +250,10 @@ def run_story_experiments(
                 story_text = model.generate(
                     story_prompt,
                     max_new_tokens=spec.max_new_tokens_plan,
+                    do_sample=spec.do_sample,
+                    temperature=spec.temperature,
+                    top_p=spec.top_p,
+                    top_k=spec.top_k,
                     seed=seed,
                 )
 
@@ -173,6 +267,10 @@ def run_story_experiments(
 
             outputs[rid].append(story_text)
             _append_csv(out_paths[rid], [story_text])
+
+            if sanity_check and x < sanity_check_n:
+                print(f"======== SANITY CHECK: STORY {x} ({rid}) =======\n{story_text}\n=============================================\n")
+                break
 
         if clear_cuda_each_iter:
             gc.collect()
@@ -200,29 +298,135 @@ def run_story_experiments(
 def make_specs(*items: Any) -> list[ExperimentSpec]:
     """
     Accepts:
-      - dicts with residual parameters
       - "zero_shot"/"baseline"
+      - dicts describing:
+          * baseline / zero_shot sampling
+          * residual stream noise
+          * attention output noise
+        Mode aliases accepted via "generator"/"mode"/"type"/"kind"/"method"/
+        "function", including:
+          * "baseline", "zero_shot", "generate"
+          * "residual_stream_noise", "residual", "generate_with_residual_stream_noise"
+          * "attention_output_noise", "attention", "attn",
+            "generate_with_attention_output_noise"
     """
     specs: list[ExperimentSpec] = []
 
+    def _first_present(mapping: Mapping[str, Any], *keys: str) -> Any:
+        for key in keys:
+            if key in mapping:
+                return mapping[key]
+        return None
+
+    def _normalize_mode(value: str) -> str:
+        key = value.strip().lower().replace("-", "_").replace(" ", "_")
+        aliases = {
+            "baseline": "baseline",
+            "zero_shot": "baseline",
+            "generate": "baseline",
+            "residual": "residual_stream_noise",
+            "residual_noise": "residual_stream_noise",
+            "residual_stream_noise": "residual_stream_noise",
+            "generate_with_residual_stream_noise": "residual_stream_noise",
+            "attention": "attention_output_noise",
+            "attention_noise": "attention_output_noise",
+            "attention_output": "attention_output_noise",
+            "attention_output_noise": "attention_output_noise",
+            "attn": "attention_output_noise",
+            "attn_noise": "attention_output_noise",
+            "generate_with_attention_output_noise": "attention_output_noise",
+        }
+        if key not in aliases:
+            raise ValueError(f"Unsupported experiment mode: {value}")
+        return aliases[key]
+
+    def _detect_mode(mapping: Mapping[str, Any]) -> str:
+        residual_flag = bool(mapping.get("use_residual_noise", False))
+        attention_flag = bool(mapping.get("use_attention_output_noise", False))
+        if residual_flag and attention_flag:
+            raise ValueError("Spec mapping cannot enable both residual and attention output noise.")
+        if attention_flag:
+            return "attention_output_noise"
+        if residual_flag:
+            return "residual_stream_noise"
+
+        mode_value = _first_present(
+            mapping,
+            "generator",
+            "generation_mode",
+            "mode",
+            "type",
+            "kind",
+            "method",
+            "function",
+        )
+        if mode_value is not None:
+            return _normalize_mode(str(mode_value))
+
+        if _first_present(
+            mapping,
+            "attention_layers",
+            "attention_output_layers",
+            "attn_layers",
+            "attention_noise_std",
+            "attention_output_noise_std",
+            "attn_noise_std",
+        ) is not None:
+            return "attention_output_noise"
+
+        if _first_present(
+            mapping,
+            "residual_layers",
+            "residual_noise_std",
+            "residual_noise_decay",
+        ) is not None:
+            return "residual_stream_noise"
+
+        return "baseline"
+
+    def _optional_float(value: Any) -> Optional[float]:
+        if value is None:
+            return None
+        return float(value)
+
+    def _optional_int(value: Any) -> Optional[int]:
+        if value is None:
+            return None
+        return int(value)
+
     for it in items:
-        if isinstance(it, str) and it.lower() in {"zero_shot", "baseline"}:
-            specs.append(ExperimentSpec(use_residual_noise=False))
+        if isinstance(it, str):
+            mode = _normalize_mode(it)
+            if mode != "baseline":
+                raise ValueError(
+                    f"String spec '{it}' is missing parameters. "
+                    "Use a mapping for residual or attention output noise experiments."
+                )
+            specs.append(ExperimentSpec())
             continue
 
         if isinstance(it, Mapping):
+            mode = _detect_mode(it)
             specs.append(
                 ExperimentSpec(
-                    use_residual_noise=True,
-                    residual_layers=it.get("residual_layers"),
+                    use_residual_noise=(mode == "residual_stream_noise"),
+                    use_attention_output_noise=(mode == "attention_output_noise"),
+                    residual_layers=_first_present(it, "residual_layers"),
                     residual_noise_std=float(it.get("residual_noise_std", 0.0)),
                     residual_noise_decay=float(it.get("residual_noise_decay", 0.0)),
-                    max_noise_tokens=float(it.get("max_noise_tokens", 250.0)),
+                    attention_layers=_first_present(it, "attention_layers", "attention_output_layers", "attn_layers"),
+                    attention_noise_std=float(
+                        _first_present(it, "attention_noise_std", "attention_output_noise_std", "attn_noise_std") or 0.0
+                    ),
+                    max_noise_tokens=int(it.get("max_noise_tokens", 250)),
                     logits_noise_std=float(it.get("logits_noise_std", 0.0)),
                     logits_noise_decay=float(it.get("logits_noise_decay", 0.0)),
                     max_new_tokens_plan=int(it.get("max_new_tokens_plan", 1000)),
                     max_new_tokens_story=int(it.get("max_new_tokens_story", 500)),
+                    do_sample=bool(it.get("do_sample", True)),
                     temperature=float(it.get("temperature", 1.0)),
+                    top_p=_optional_float(it.get("top_p")),
+                    top_k=_optional_int(it.get("top_k")),
                 )
             )
             continue

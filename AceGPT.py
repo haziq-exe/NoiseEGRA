@@ -23,7 +23,7 @@ class AceGPT(EGRA):
         
         return chat_text
     
-    def generate(self, prompt, max_new_tokens=100, do_sample=True, temperature=1, seed=None):
+    def generate(self, prompt, max_new_tokens=100, do_sample=True, temperature=1, top_p=None, top_k=None, seed=None):
         """
         For some reason AceGPT doesn't have a built in apply_chat_template function so need to implement custom one.
         """
@@ -34,13 +34,22 @@ class AceGPT(EGRA):
         device = next(iter(self.model.hf_device_map.values()))
         inputs = self.tokenizer(chat_text, return_tensors="pt").to(device)
         inputs.pop("token_type_ids", None)
-        outputs = self.model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=do_sample, temperature=temperature)
+        outputs = self.model.generate(
+            **inputs,
+            max_new_tokens=max_new_tokens,
+            **self._sampling_kwargs(
+                do_sample=do_sample,
+                temperature=temperature,
+                top_p=top_p,
+                top_k=top_k,
+            ),
+        )
         generated_ids = outputs[0][inputs["input_ids"].shape[-1]:]
         text = self.tokenizer.decode(generated_ids, skip_special_tokens=True)
 
         return text
     
-    def generate_with_embedding_noise(self, prompt, max_new_tokens = 100, temperature = 1.0, top_p = 0.9, seed = None,
+    def generate_with_embedding_noise(self, prompt, max_new_tokens = 100, temperature = 1.0, top_p = 0.9, top_k = None, seed = None,
                                     embed_noise_std = 0.01,logits_noise_std = 0.5, logits_noise_decay = 0.9):
 
         """
@@ -81,12 +90,15 @@ class AceGPT(EGRA):
         outputs = self.model.generate(
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
-            do_sample=True,
-            temperature=temperature,
-            top_p=top_p,
             max_new_tokens=max_new_tokens,
             logits_processor=logits_processor,
             eos_token_id=self.tokenizer.eos_token_id,
+            **self._sampling_kwargs(
+                do_sample=True,
+                temperature=temperature,
+                top_p=top_p,
+                top_k=top_k,
+            ),
         )
 
         return self.tokenizer.decode(outputs[0], skip_special_tokens=True)

@@ -56,7 +56,17 @@ class EGRA:
 
         return layer_idx
 
-    def generate(self, prompt, max_new_tokens=100, do_sample=True, temperature=1.0, seed=None):
+    def _sampling_kwargs(self, do_sample=True, temperature=1.0, top_p=None, top_k=None):
+        kwargs = {"do_sample": do_sample}
+        if do_sample:
+            kwargs["temperature"] = temperature
+            if top_p is not None:
+                kwargs["top_p"] = top_p
+            if top_k is not None:
+                kwargs["top_k"] = top_k
+        return kwargs
+
+    def generate(self, prompt, max_new_tokens=100, do_sample=True, temperature=1.0, top_p=None, top_k=None, seed=None):
         """
         prompt should always be a list of dicts of the form [ {"role" : "system", "content" : system_prompt},
                                               {"role" : "user", "content" : user_prompt}  ]
@@ -69,13 +79,34 @@ class EGRA:
         device = next(iter(self.model.hf_device_map.values()))
         inputs = self.tokenizer(chat_text, return_tensors="pt").to(device)
         inputs.pop("token_type_ids", None)
-        outputs = self.model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=do_sample, temperature=temperature)
+        outputs = self.model.generate(
+            **inputs,
+            max_new_tokens=max_new_tokens,
+            **self._sampling_kwargs(
+                do_sample=do_sample,
+                temperature=temperature,
+                top_p=top_p,
+                top_k=top_k,
+            ),
+        )
         generated_ids = outputs[0][inputs["input_ids"].shape[-1]:]
         text = self.tokenizer.decode(generated_ids, skip_special_tokens=True)
 
         return text
 
-    def zero_shot(self, output_file="example_file.csv", num_stories=1 ,max_new_tokens=100, do_sample=True, include_sys=True, temperature=1.0, seed=None, print_output=False):
+    def zero_shot(
+        self,
+        output_file="example_file.csv",
+        num_stories=1,
+        max_new_tokens=100,
+        do_sample=True,
+        include_sys=True,
+        temperature=1.0,
+        top_p=None,
+        top_k=None,
+        seed=None,
+        print_output=False,
+    ):
 
         output_csv = Path(output_file)
         if not include_sys:
@@ -85,14 +116,35 @@ class EGRA:
             prompt.append({"role" : "user" , "content" : prompts.PROMPT_ZERO_SHOT})
 
         for x in range(num_stories):
-            output = self.generate(prompt, max_new_tokens, do_sample, temperature=temperature, seed=seed+(128*x))
+            story_seed = (seed + (128 * x)) if seed is not None else None
+            output = self.generate(
+                prompt,
+                max_new_tokens,
+                do_sample,
+                temperature=temperature,
+                top_p=top_p,
+                top_k=top_k,
+                seed=story_seed,
+            )
             if print_output:
                 print(output)
             with output_csv.open(mode="a", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
                 writer.writerow([output])
     
-    def CoT_selfReflection(self, output_file="example_file.csv", num_stories=1 ,max_new_tokens=100, do_sample=True, include_sys=True, temperature=1.0, seed=None, print_output=False):
+    def CoT_selfReflection(
+        self,
+        output_file="example_file.csv",
+        num_stories=1,
+        max_new_tokens=100,
+        do_sample=True,
+        include_sys=True,
+        temperature=1.0,
+        top_p=None,
+        top_k=None,
+        seed=None,
+        print_output=False,
+    ):
         prompt = []
         output_csv = Path(output_file)
 
@@ -105,14 +157,35 @@ class EGRA:
         prompt.append({"role" : "user" , "content" : prompts.PROMPT_COT})
 
         for x in range(num_stories):
-            output = self.generate(prompt, max_new_tokens, do_sample, temperature=temperature, seed=seed+(128*x))
+            story_seed = (seed + (128 * x)) if seed is not None else None
+            output = self.generate(
+                prompt,
+                max_new_tokens,
+                do_sample,
+                temperature=temperature,
+                top_p=top_p,
+                top_k=top_k,
+                seed=story_seed,
+            )
             if print_output:
                 print(output)
             with output_csv.open(mode="a", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
                 writer.writerow([output])
 
-    def twoStage_zero_shot(self, output_file="example_file.csv", num_stories=1 ,max_new_tokens=100, do_sample=True, include_sys=True, temperature=1.0, seed=None, print_output=False):
+    def twoStage_zero_shot(
+        self,
+        output_file="example_file.csv",
+        num_stories=1,
+        max_new_tokens=100,
+        do_sample=True,
+        include_sys=True,
+        temperature=1.0,
+        top_p=None,
+        top_k=None,
+        seed=None,
+        print_output=False,
+    ):
 
         output_csv = Path(output_file)
         if not include_sys:
@@ -122,7 +195,16 @@ class EGRA:
             prompt.append({"role" : "user" , "content" : prompts.NOISE_1})
 
         for x in range(num_stories):
-            output = self.generate(prompt, max_new_tokens, do_sample, temperature=temperature, seed=seed+(128*x))
+            story_seed = (seed + (128 * x)) if seed is not None else None
+            output = self.generate(
+                prompt,
+                max_new_tokens,
+                do_sample,
+                temperature=temperature,
+                top_p=top_p,
+                top_k=top_k,
+                seed=story_seed,
+            )
             if print_output:
                 print("----- FIRST STAGE OUTPUT -----\n")
                 print(output)
@@ -130,7 +212,15 @@ class EGRA:
             prompt.append({"role" : "assistant", "content" : output})
             prompt.append({"role" : "user", "content" : prompts.NOISE_2})
 
-            output = self.generate(prompt, max_new_tokens, do_sample, temperature=temperature, seed=seed+(128*x))
+            output = self.generate(
+                prompt,
+                max_new_tokens,
+                do_sample,
+                temperature=temperature,
+                top_p=top_p,
+                top_k=top_k,
+                seed=story_seed,
+            )
 
             if print_output:
                 print("----- SECOND STAGE OUTPUT -----\n")
@@ -141,16 +231,43 @@ class EGRA:
                 writer.writerow([output])
     
 
-    def generate_with_embedding_noise(
-        self, prompt, embed_noise_std, hidden_noise_std, hidden_noise_decay, hidden_layers,
+    def generate_with_attention_output_noise(
+        self, prompt, attn_noise_std, attn_layers,
         logits_noise_std=0.0, logits_noise_decay=0.0,
-        max_new_tokens=100, temperature=1.0, seed=None,
+        max_new_tokens=100, do_sample=True, temperature=1.0, top_p=None, top_k=None, seed=None,
         max_noise_tokens=250,
     ):
+        """
+        Injects Gaussian noise into the self-attention output at selected layers,
+        specifically after the output projection (o_proj) but before the MLP
+        and before the residual addition. This targets the attention branch's
+        contribution to the residual stream in isolation.
+
+        Injection site within each transformer block:
+            x = input_layernorm(hidden_states)
+            attn_out, attn_weights, past_kv = self_attn(x)   # <-- noise added here
+            hidden_states = hidden_states + attn_out          # residual add (unmodified)
+            hidden_states = hidden_states + mlp(post_attention_layernorm(hidden_states))
+
+        The self_attn forward hook receives output as a tuple:
+            (attn_output, attn_weights, past_key_value)
+        We perturb output[0] (shape: B x 1 x D during decoding) and return
+        the full tuple with the modified tensor so the KV cache is preserved.
+
+        Args:
+            attn_noise_std:  Base noise standard deviation (before cosine decay).
+            attn_layers:     List of layer indices at which to inject noise.
+            max_noise_tokens: Decay horizon T; noise reaches zero at token T.
+        """
         if seed is not None:
             torch.manual_seed(seed)
             if torch.cuda.is_available():
                 torch.cuda.manual_seed_all(seed)
+
+        if attn_noise_std <= 0:
+            raise ValueError("attn_noise_std must be > 0.")
+        if not isinstance(attn_layers, (list, tuple)) or len(attn_layers) == 0:
+            raise ValueError("attn_layers must be a non-empty list/tuple of layer indices.")
 
         chat_text = self.tokenizer.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
         device = next(iter(self.model.hf_device_map.values()))
@@ -159,22 +276,22 @@ class EGRA:
         input_ids = inputs["input_ids"]
         prompt_len = input_ids.shape[1]
 
+        blocks = self._get_transformer_blocks()
+        normalized_layers = sorted({
+            self._normalize_layer_index(idx, len(blocks)) for idx in attn_layers
+        })
+
         handles = []
         model_handle = None
 
-        # Shared step state: tracks decode step index across all hooks in one forward pass.
-        # is_prefill=True on the first forward call (prompt), False on all decode steps.
         shared = {
             "forward_calls": 0,
-            "t": 0,        # decode step index, incremented after each decode forward
-            "cur_t": 0,    # step index for the current forward pass (read by hooks)
+            "t": 0,
+            "cur_t": 0,
             "is_prefill": True,
         }
 
         try:
-            # Model-level pre-hook: advances the shared step counter once per forward call.
-            # This is the same pattern used in residual stream noise to keep all layer
-            # hooks in sync on the same decode step index.
             def model_pre_hook(module, inp):
                 shared["forward_calls"] += 1
                 if shared["forward_calls"] == 1:
@@ -187,94 +304,52 @@ class EGRA:
 
             model_handle = self.model.register_forward_pre_hook(model_pre_hook)
 
-            # --- Embedding noise ---
-            # FIX 1: Was applied to prompt only (first pass). Now skips prefill and
-            #         applies cosine-decayed noise on every decode step instead.
-            # FIX 2: Was constant magnitude. Now uses the same cosine decay schedule
-            #         as residual stream noise for consistency.
-            if embed_noise_std and embed_noise_std > 0:
-                embed_layer = self.model.get_input_embeddings()
-
-                def embedding_hook(module, input, output):
-                    # Skip prompt prefill - only add noise on generated tokens
+            def make_attn_hook(std):
+                def hook(module, input, output):
+                    # Skip prompt prefill — only perturb during decoding
                     if shared["is_prefill"]:
-                        return output
+                        return None
+
+                    # self_attn returns a tuple: (attn_output, attn_weights, past_key_value)
+                    # attn_output is the result of softmax(QK)V @ W_o, shape (B, T, D).
+                    # We must return the full tuple to preserve the KV cache —
+                    # returning only a tensor would silently drop past_key_value.
+                    if not isinstance(output, (tuple, list)) or len(output) == 0:
+                        return None
+
+                    attn_output = output[0]
+
+                    if not isinstance(attn_output, torch.Tensor) or attn_output.dim() != 3:
+                        return None
 
                     with torch.no_grad():
                         t = shared["cur_t"]
                         T = max_noise_tokens
                         cosine_decay = 0.5 * (1 + math.cos(math.pi * min(t, T) / T))
-                        cur_std = embed_noise_std * cosine_decay
+                        cur_std = std * cosine_decay
 
                         if cur_std <= 0:
-                            return output
-
-                        # During decoding, output shape is (B, 1, D) — one token at a time
-                        noise = torch.randn_like(output) * cur_std
-                        output.add_(noise)
-
-                    return output
-
-                handles.append(embed_layer.register_forward_hook(embedding_hook))
-
-            # --- Hidden layer noise ---
-            # FIX 3: Was using exponential decay (decay ** step). Now uses cosine decay
-            #         to match residual stream noise and the embed noise above.
-            # FIX 4: Was firing on prefill with no guard, causing an off-by-one on
-            #         the step counter and perturbing the prompt. Now skips prefill.
-            if hidden_noise_std and hidden_noise_std > 0 and hidden_layers:
-                named = list(self.model.named_modules())
-                for idx in hidden_layers:
-                    str_idx = str(idx)
-                    candidates = [
-                        (name, module) for name, module in named
-                        if name and str_idx in name.split('.')
-                    ]
-                    if not candidates:
-                        continue
-                    chosen_name, chosen_module = max(candidates, key=lambda nm: len(nm[0]))
-
-                    def make_hook(std):
-                        def hook(module, input, output):
-                            # Skip prompt prefill
-                            if shared["is_prefill"]:
-                                return None
-
-                            with torch.no_grad():
-                                if isinstance(output, torch.Tensor):
-                                    target = output
-                                elif (
-                                    isinstance(output, (tuple, list))
-                                    and len(output) > 0
-                                    and isinstance(output[0], torch.Tensor)
-                                ):
-                                    target = output[0]
-                                else:
-                                    return None
-
-                                if target.dim() != 3:
-                                    return None
-
-                                t = shared["cur_t"]
-                                T = max_noise_tokens
-                                cosine_decay = 0.5 * (1 + math.cos(math.pi * min(t, T) / T))
-                                cur_std = std * cosine_decay
-
-                                if cur_std <= 0:
-                                    return None
-
-                                noise = torch.randn_like(target[:, -1:, :]) * cur_std
-                                target[:, -1:, :].add_(noise)
-
                             return None
 
-                        return hook
+                        # During decoding, attn_output shape is (B, 1, D).
+                        # Perturb only the last token position to match residual stream
+                        # noise convention and avoid touching any cached positions.
+                        noise = torch.randn_like(attn_output[:, -1:, :]) * cur_std
+                        attn_output[:, -1:, :].add_(noise)
 
-                    # FIX 3+4: `decay` parameter removed from make_hook since cosine
-                    # schedule is now driven by shared["cur_t"] and max_noise_tokens.
-                    handles.append(chosen_module.register_forward_hook(make_hook(hidden_noise_std)))
+                    # Return the full tuple with the modified attn_output in position 0.
+                    # output[1:] contains attn_weights and past_key_value — untouched.
+                    return (attn_output,) + tuple(output[1:])
 
-            # --- Logits noise (unchanged) ---
+                return hook
+
+            for layer_idx in normalized_layers:
+                # Hook on block.self_attn, not on block itself.
+                # This fires after o_proj inside self_attn has run, but before
+                # the MLP and before the residual addition in the decoder layer.
+                attn_module = blocks[layer_idx].self_attn
+                handles.append(attn_module.register_forward_hook(make_attn_hook(attn_noise_std)))
+
             logits_processor = None
             if logits_noise_std and logits_noise_std > 0:
                 processor = GaussianLogitsProcessor(
@@ -286,9 +361,13 @@ class EGRA:
 
             gen_kwargs = {
                 **inputs,
-                "do_sample": True,
-                "temperature": temperature,
                 "max_new_tokens": max_new_tokens,
+                **self._sampling_kwargs(
+                    do_sample=do_sample,
+                    temperature=temperature,
+                    top_p=top_p,
+                    top_k=top_k,
+                ),
             }
             if logits_processor is not None:
                 gen_kwargs["logits_processor"] = logits_processor
@@ -310,9 +389,10 @@ class EGRA:
         generated_ids = outputs[0][input_ids.shape[-1]:]
         return self.tokenizer.decode(generated_ids, skip_special_tokens=True)
 
+
     def generate_with_residual_stream_noise(self, prompt, residual_layers, residual_noise_std, 
             residual_noise_decay=1.0, max_noise_tokens=250,
-            logits_noise_std=0.0, logits_noise_decay=0.0, max_new_tokens=100, temperature=1.0, seed=None,
+            logits_noise_std=0.0, logits_noise_decay=0.0, max_new_tokens=100, do_sample=True, temperature=1.0, top_p=None, top_k=None, seed=None,
         ):
         """
         Injects Gaussian noise into the residual stream (block output) at selected transformer layers.
@@ -415,9 +495,13 @@ class EGRA:
     
             gen_kwargs = {
                 **inputs,
-                "do_sample": True,
-                "temperature": temperature,
                 "max_new_tokens": max_new_tokens,
+                **self._sampling_kwargs(
+                    do_sample=do_sample,
+                    temperature=temperature,
+                    top_p=top_p,
+                    top_k=top_k,
+                ),
             }
             if logits_processor is not None:
                 gen_kwargs["logits_processor"] = logits_processor
@@ -441,7 +525,7 @@ class EGRA:
 
     def twoStage_residual_noise(
         self, residual_noise_std, residual_noise_decay, residual_layers, logits_noise_std = 0.0, logits_noise_decay = 0.0,
-        output_file="example_file.csv", num_stories=1, max_new_tokens=100, include_sys=True, temperature=1.0, seed=None, print_output=False,
+        output_file="example_file.csv", num_stories=1, max_new_tokens=100, include_sys=True, temperature=1.0, top_p=None, top_k=None, seed=None, print_output=False,
     ):
         output_csv = Path(output_file)
 
@@ -464,6 +548,8 @@ class EGRA:
                 logits_noise_decay=logits_noise_decay,
                 max_new_tokens=max_new_tokens,
                 temperature=temperature,
+                top_p=top_p,
+                top_k=top_k,
                 seed=(seed + (128 * x)) if seed is not None else None,
             )
 
@@ -474,7 +560,14 @@ class EGRA:
             prompt.append({"role": "assistant", "content": output})
             prompt.append({"role": "user", "content": prompts.NOISE_2})
 
-            output = self.generate(prompt, max_new_tokens, temperature=temperature, seed=(seed + (128 * x)) if seed is not None else None)
+            output = self.generate(
+                prompt,
+                max_new_tokens,
+                temperature=temperature,
+                top_p=top_p,
+                top_k=top_k,
+                seed=(seed + (128 * x)) if seed is not None else None,
+            )
 
             if print_output:
                 print("----- SECOND STAGE OUTPUT -----\n")
@@ -487,7 +580,7 @@ class EGRA:
 
     def twoStage_embedding_noise(
         self, embed_noise_std, hidden_noise_std, hidden_layers, logits_noise_std = 0.0, logits_noise_decay = 0.0,
-        output_file="example_file.csv", num_stories=1, max_new_tokens=100, include_sys=True, temperature=1.0, seed=None, print_output=False,
+        output_file="example_file.csv", num_stories=1, max_new_tokens=100, include_sys=True, temperature=1.0, top_p=None, top_k=None, seed=None, print_output=False,
     ):
         output_csv = Path(output_file)
 
@@ -508,6 +601,8 @@ class EGRA:
                 logits_noise_decay=logits_noise_decay,
                 hidden_noise_std=hidden_noise_std,
                 hidden_layers=hidden_layers,
+                top_p=top_p,
+                top_k=top_k,
             )
 
             if print_output:
@@ -517,7 +612,14 @@ class EGRA:
             prompt.append({"role": "assistant", "content": output})
             prompt.append({"role": "user", "content": prompts.NOISE_2})
 
-            output = self.generate(prompt, max_new_tokens, temperature=temperature, seed=(seed + (128 * x)) if seed is not None else None)
+            output = self.generate(
+                prompt,
+                max_new_tokens,
+                temperature=temperature,
+                top_p=top_p,
+                top_k=top_k,
+                seed=(seed + (128 * x)) if seed is not None else None,
+            )
 
             if print_output:
                 print("----- SECOND STAGE OUTPUT-----\n")
