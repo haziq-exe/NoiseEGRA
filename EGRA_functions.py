@@ -142,85 +142,139 @@ class EGRA:
     
 
     def generate_with_embedding_noise(
-        self, prompt, embed_noise_std, hidden_noise_std, hidden_noise_decay, hidden_layers, logits_noise_std = 0.0, logits_noise_decay = 0.0,
-        max_new_tokens = 100, temperature = 1.0,seed = None,
+        self, prompt, embed_noise_std, hidden_noise_std, hidden_noise_decay, hidden_layers,
+        logits_noise_std=0.0, logits_noise_decay=0.0,
+        max_new_tokens=100, temperature=1.0, seed=None,
+        max_noise_tokens=250,
     ):
         if seed is not None:
             torch.manual_seed(seed)
             if torch.cuda.is_available():
                 torch.cuda.manual_seed_all(seed)
-    
-        
+
         chat_text = self.tokenizer.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
         device = next(iter(self.model.hf_device_map.values()))
         inputs = self.tokenizer(chat_text, return_tensors="pt").to(device)
         inputs.pop("token_type_ids", None)
         input_ids = inputs["input_ids"]
         prompt_len = input_ids.shape[1]
-    
-        
+
         handles = []
-        
+        model_handle = None
+
+        # Shared step state: tracks decode step index across all hooks in one forward pass.
+        # is_prefill=True on the first forward call (prompt), False on all decode steps.
+        shared = {
+            "forward_calls": 0,
+            "t": 0,        # decode step index, incremented after each decode forward
+            "cur_t": 0,    # step index for the current forward pass (read by hooks)
+            "is_prefill": True,
+        }
+
         try:
-            
+            # Model-level pre-hook: advances the shared step counter once per forward call.
+            # This is the same pattern used in residual stream noise to keep all layer
+            # hooks in sync on the same decode step index.
+            def model_pre_hook(module, inp):
+                shared["forward_calls"] += 1
+                if shared["forward_calls"] == 1:
+                    shared["is_prefill"] = True
+                    shared["cur_t"] = 0
+                else:
+                    shared["is_prefill"] = False
+                    shared["cur_t"] = shared["t"]
+                    shared["t"] += 1
+
+            model_handle = self.model.register_forward_pre_hook(model_pre_hook)
+
+            # --- Embedding noise ---
+            # FIX 1: Was applied to prompt only (first pass). Now skips prefill and
+            #         applies cosine-decayed noise on every decode step instead.
+            # FIX 2: Was constant magnitude. Now uses the same cosine decay schedule
+            #         as residual stream noise for consistency.
             if embed_noise_std and embed_noise_std > 0:
                 embed_layer = self.model.get_input_embeddings()
-                noise_applied = {"done": False}
-                
-                def embedding_hook(module, input, output):
-                    if not noise_applied["done"]:
-                        # adding only on first forward pass to the prompt
-                        with torch.no_grad():
-                            noise = torch.randn_like(output) * embed_noise_std
-                            output.add_(noise)
-                        noise_applied["done"] = True
-                    return output
-                
-                handle = embed_layer.register_forward_hook(embedding_hook)
-                handles.append(handle)
-    
 
+                def embedding_hook(module, input, output):
+                    # Skip prompt prefill - only add noise on generated tokens
+                    if shared["is_prefill"]:
+                        return output
+
+                    with torch.no_grad():
+                        t = shared["cur_t"]
+                        T = max_noise_tokens
+                        cosine_decay = 0.5 * (1 + math.cos(math.pi * min(t, T) / T))
+                        cur_std = embed_noise_std * cosine_decay
+
+                        if cur_std <= 0:
+                            return output
+
+                        # During decoding, output shape is (B, 1, D) — one token at a time
+                        noise = torch.randn_like(output) * cur_std
+                        output.add_(noise)
+
+                    return output
+
+                handles.append(embed_layer.register_forward_hook(embedding_hook))
+
+            # --- Hidden layer noise ---
+            # FIX 3: Was using exponential decay (decay ** step). Now uses cosine decay
+            #         to match residual stream noise and the embed noise above.
+            # FIX 4: Was firing on prefill with no guard, causing an off-by-one on
+            #         the step counter and perturbing the prompt. Now skips prefill.
             if hidden_noise_std and hidden_noise_std > 0 and hidden_layers:
                 named = list(self.model.named_modules())
                 for idx in hidden_layers:
                     str_idx = str(idx)
-                    candidates = [(name, module) for name, module in named if name and str_idx in name.split('.')]
+                    candidates = [
+                        (name, module) for name, module in named
+                        if name and str_idx in name.split('.')
+                    ]
                     if not candidates:
                         continue
                     chosen_name, chosen_module = max(candidates, key=lambda nm: len(nm[0]))
-    
-                    def make_hook(std, decay):
-                        state = {"step": 0}
-                    
+
+                    def make_hook(std):
                         def hook(module, input, output):
+                            # Skip prompt prefill
+                            if shared["is_prefill"]:
+                                return None
+
                             with torch.no_grad():
                                 if isinstance(output, torch.Tensor):
                                     target = output
-                                elif isinstance(output, (tuple, list)) and len(output) > 0 and isinstance(output[0], torch.Tensor):
+                                elif (
+                                    isinstance(output, (tuple, list))
+                                    and len(output) > 0
+                                    and isinstance(output[0], torch.Tensor)
+                                ):
                                     target = output[0]
                                 else:
                                     return None
-                    
+
                                 if target.dim() != 3:
                                     return None
-                    
-                                cur_std = std * (decay ** state["step"])
-                                state["step"] += 1
-                    
+
+                                t = shared["cur_t"]
+                                T = max_noise_tokens
+                                cosine_decay = 0.5 * (1 + math.cos(math.pi * min(t, T) / T))
+                                cur_std = std * cosine_decay
+
                                 if cur_std <= 0:
                                     return None
-                    
+
                                 noise = torch.randn_like(target[:, -1:, :]) * cur_std
                                 target[:, -1:, :].add_(noise)
-                    
+
                             return None
-                    
+
                         return hook
-    
-                    handle = chosen_module.register_forward_hook(make_hook(hidden_noise_std, hidden_noise_decay))
-                    handles.append(handle)
-    
-            
+
+                    # FIX 3+4: `decay` parameter removed from make_hook since cosine
+                    # schedule is now driven by shared["cur_t"] and max_noise_tokens.
+                    handles.append(chosen_module.register_forward_hook(make_hook(hidden_noise_std)))
+
+            # --- Logits noise (unchanged) ---
             logits_processor = None
             if logits_noise_std and logits_noise_std > 0:
                 processor = GaussianLogitsProcessor(
@@ -229,28 +283,30 @@ class EGRA:
                     prompt_length=prompt_len,
                 )
                 logits_processor = LogitsProcessorList([processor])
-    
-            
+
             gen_kwargs = {
                 **inputs,
                 "do_sample": True,
                 "temperature": temperature,
                 "max_new_tokens": max_new_tokens,
             }
-            
             if logits_processor is not None:
                 gen_kwargs["logits_processor"] = logits_processor
-    
+
             outputs = self.model.generate(**gen_kwargs)
-            
+
         finally:
             for h in handles:
                 try:
                     h.remove()
                 except Exception:
                     pass
-    
-        
+            if model_handle is not None:
+                try:
+                    model_handle.remove()
+                except Exception:
+                    pass
+
         generated_ids = outputs[0][input_ids.shape[-1]:]
         return self.tokenizer.decode(generated_ids, skip_special_tokens=True)
 
