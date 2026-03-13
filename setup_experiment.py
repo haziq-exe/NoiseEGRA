@@ -9,7 +9,7 @@ from dataclasses import dataclass
 import io
 from contextlib import redirect_stdout
 from pathlib import Path
-from typing import Any, Mapping, Optional, Sequence
+from typing import Any, Callable, Mapping, Optional, Sequence
 
 import torch
 
@@ -145,6 +145,7 @@ def run_story_experiments(
     *,
     output_dir: str = "results",
     clear_cuda_each_iter: bool = True,
+    seed_fn: Optional[Callable[[int], Optional[int]]] = _seed_for_story,
     sanity_check: bool = False,
     sanity_check_n: int = 2,
 ) -> dict[str, list[str]]:
@@ -197,7 +198,7 @@ def run_story_experiments(
     start_story = num_stories[0]
     end_story = num_stories[1]
     for x in range(start_story, end_story):
-        seed = _seed_for_story(x)
+        seed = seed_fn(x) if seed_fn is not None else None
 
         for spec, rid in zip(specs, run_ids):
             # 1) plan
@@ -270,7 +271,6 @@ def run_story_experiments(
 
             if sanity_check and x < sanity_check_n:
                 print(f"======== SANITY CHECK: STORY {x} ({rid}) =======\n{story_text}\n=============================================\n")
-                break
 
         if clear_cuda_each_iter:
             gc.collect()
