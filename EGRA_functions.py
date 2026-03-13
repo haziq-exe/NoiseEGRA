@@ -712,13 +712,13 @@ class EGRA:
                         T = max_noise_tokens
 
                         # Cosine decay factor
-                        cosine_decay = 0.5 * (1 + math.cos(math.pi * min(t, T) / T))
+                        # cosine_decay = 0.5 * (1 + math.cos(math.pi * min(t, T) / T))
 
                         # Entropy gate: low entropy (peaked) -> (1 - H_norm) near 1 -> more noise
                         #               high entropy (diffuse) -> (1 - H_norm) near 0 -> less noise
                         entropy_scale = 1.0 - H_norm
 
-                        cur_std = std * entropy_scale * cosine_decay
+                        cur_std = std * entropy_scale #* cosine_decay
 
                         if cur_std <= 0:
                             return None
