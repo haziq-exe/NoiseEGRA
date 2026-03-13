@@ -718,6 +718,9 @@ class EGRA:
                         #               high entropy (diffuse) -> (1 - H_norm) near 0 -> less noise
                         entropy_scale = 1.0 - H_norm
 
+                        if t < 5:
+                            print(f"H_norm for layer {layer_idx} at step {t}: {H_norm:.4f}, entropy_scale: {entropy_scale:.4f}")
+
                         cur_std = std * entropy_scale #* cosine_decay
 
                         if cur_std <= 0:
