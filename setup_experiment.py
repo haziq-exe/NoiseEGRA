@@ -13,17 +13,23 @@ from typing import Any, Callable, Mapping, Optional, Sequence
 
 import torch
 
-
 @dataclass(frozen=True)
 class ExperimentSpec:
     use_residual_noise: bool = False
     use_attention_output_noise: bool = False
+    use_attention_entropy_noise: bool = False          # NEW
+
     residual_layers: Optional[Sequence[int]] = None
     residual_noise_std: float = 0.0
     residual_noise_decay: float = 0.0
+
     attention_layers: Optional[Sequence[int]] = None
     attention_noise_std: float = 0.0
-    max_noise_tokens: int = 250
+
+    attn_entropy_layers: Optional[Sequence[int]] = None   # NEW
+    attn_entropy_noise_std: float = 0.0                   # NEW
+
+    max_noise_tokens: int = 200
 
     logits_noise_std: float = 0.0
     logits_noise_decay: float = 0.0
@@ -73,14 +79,20 @@ def _layers_tag(layers: Optional[Sequence[int]]) -> str:
 
 
 def _float_tag(x: float) -> str:
-    # stable filesystem-friendly formatting
-    s = f"{x:.6g}"          # up to 6 sig figs
+    s = f"{x:.6g}"
     return s.replace(".", "p").replace("-", "m")
 
 
 def _spec_mode(spec: ExperimentSpec) -> str:
-    if spec.use_residual_noise and spec.use_attention_output_noise:
-        raise ValueError("ExperimentSpec cannot enable both residual noise and attention output noise.")
+    active = sum([
+        spec.use_residual_noise,
+        spec.use_attention_output_noise,
+        spec.use_attention_entropy_noise,
+    ])
+    if active > 1:
+        raise ValueError("ExperimentSpec cannot enable more than one noise mode at a time.")
+    if spec.use_attention_entropy_noise:
+        return "attention_entropy_noise"
     if spec.use_attention_output_noise:
         return "attention_output_noise"
     if spec.use_residual_noise:
@@ -119,13 +131,18 @@ def _spec_to_run_id(model_name: str, spec: ExperimentSpec) -> str:
             f"__std{_float_tag(spec.residual_noise_std)}"
             f"__decay{_float_tag(spec.residual_noise_decay)}"
         ]
-    else:
+    elif mode == "attention_output_noise":
         parts = [
             f"{model_name}__ATTN__{_layers_tag(spec.attention_layers)}"
             f"__std{_float_tag(spec.attention_noise_std)}"
         ]
+    else:  # attention_entropy_noise
+        parts = [
+            f"{model_name}__ENTROPY__{_layers_tag(spec.attn_entropy_layers)}"
+            f"__std{_float_tag(spec.attn_entropy_noise_std)}"
+        ]
 
-    if spec.max_noise_tokens != 250:
+    if spec.max_noise_tokens != 200:
         parts.append(f"__maxtok{spec.max_noise_tokens}")
     if spec.logits_noise_std != 0.0:
         parts.append(f"__logstd{_float_tag(spec.logits_noise_std)}")
@@ -158,19 +175,18 @@ def run_story_experiments(
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # build run_ids and output paths (no hashing specs)
     run_ids: list[str] = [_spec_to_run_id(model_name, s) for s in specs]
     out_paths: dict[str, Path] = {rid: out_dir / f"{rid}.csv" for rid in run_ids}
 
     outputs: dict[str, list[str]] = {rid: [] for rid in run_ids}
 
-    # ---- EXPERIMENT SUMMARY (printed once) ----
+    # ---- EXPERIMENT SUMMARY ----
     print("\n================ RUN CONFIGURATION ================\n")
     for spec, rid in zip(specs, run_ids):
         mode = _spec_mode(spec)
         print(f"RUN ID: {rid}")
         if mode == "baseline":
-            print("  type: BASELINE (no residual noise)")
+            print("  type: BASELINE (no noise)")
         elif mode == "residual_stream_noise":
             print("  type: RESIDUAL NOISE")
             print(f"  residual_layers: {list(spec.residual_layers or [])}")
@@ -178,10 +194,16 @@ def run_story_experiments(
             print(f"  residual_noise_decay: {spec.residual_noise_decay}")
             print(f"  logits_noise_std: {spec.logits_noise_std}")
             print(f"  logits_noise_decay: {spec.logits_noise_decay}")
-        else:
+        elif mode == "attention_output_noise":
             print("  type: ATTENTION OUTPUT NOISE")
             print(f"  attention_layers: {list(spec.attention_layers or [])}")
             print(f"  attention_noise_std: {spec.attention_noise_std}")
+            print(f"  logits_noise_std: {spec.logits_noise_std}")
+            print(f"  logits_noise_decay: {spec.logits_noise_decay}")
+        else:  # attention_entropy_noise
+            print("  type: ATTENTION ENTROPY NOISE")
+            print(f"  attn_entropy_layers: {list(spec.attn_entropy_layers or [])}")
+            print(f"  attn_entropy_noise_std: {spec.attn_entropy_noise_std}")
             print(f"  logits_noise_std: {spec.logits_noise_std}")
             print(f"  logits_noise_decay: {spec.logits_noise_decay}")
         print(f"  do_sample: {spec.do_sample}")
@@ -201,10 +223,9 @@ def run_story_experiments(
         seed = seed_fn(x) if seed_fn is not None else None
 
         for spec, rid in zip(specs, run_ids):
-            # 1) plan
-            # plan_prompt = _make_plan_prompt()
             story_prompt = _story_prompt()
             mode = _spec_mode(spec)
+
             if mode == "residual_stream_noise":
                 story_text = model.generate_with_residual_stream_noise(
                     story_prompt,
@@ -236,17 +257,18 @@ def run_story_experiments(
                     top_k=spec.top_k,
                     seed=seed,
                 )
-            #     plan_text = model.generate_with_residual_stream_noise(
-            #         plan_prompt,
-            #         residual_layers=list(spec.residual_layers or []),
-            #         residual_noise_std=spec.residual_noise_std,
-            #         residual_noise_decay=spec.residual_noise_decay,
-            #         logits_noise_std=spec.logits_noise_std,
-            #         logits_noise_decay=spec.logits_noise_decay,
-            #         max_new_tokens=spec.max_new_tokens_plan,
-            #         temperature=spec.temperature,
-            #         seed=seed,
-            #     )
+            elif mode == "attention_entropy_noise":
+                story_text = model.generate_with_entropy_noise(
+                    story_prompt,
+                    attention_noise_std=spec.attn_entropy_noise_std,
+                    attn_entropy_layers=list(spec.attn_entropy_layers or []),
+                    logits_noise_std=spec.logits_noise_std,
+                    logits_noise_decay=spec.logits_noise_decay,
+                    max_new_tokens=spec.max_new_tokens_plan,
+                    temperature=spec.temperature,
+                    seed=seed,
+                    max_noise_tokens=spec.max_noise_tokens,
+                )
             else:
                 story_text = model.generate(
                     story_prompt,
@@ -258,14 +280,6 @@ def run_story_experiments(
                     seed=seed,
                 )
 
-            # 2) story
-            # story_prompt = _make_story_prompt(plan_text)
-            # story_text = model.generate(
-            #     story_prompt,
-            #     max_new_tokens=spec.max_new_tokens_story,
-            #     seed=seed,
-            # )
-
             outputs[rid].append(story_text)
             _append_csv(out_paths[rid], [story_text])
 
@@ -276,7 +290,7 @@ def run_story_experiments(
             gc.collect()
             torch.cuda.empty_cache()
 
-    # scoring + constraints (also save to TXT)
+    # scoring + constraints
     results_path = out_dir / f"{model_name}_RESULTS.txt"
 
     buf = io.StringIO()
@@ -289,7 +303,6 @@ def run_story_experiments(
             print(f"\n\n------------------ {rid} CONSTRAINT ---------------------\n\n\n")
             checker.print_report(stories)
 
-    # write once at end (overwrite each run of the script)
     results_path.write_text(buf.getvalue(), encoding="utf-8")
 
     return outputs
@@ -303,12 +316,14 @@ def make_specs(*items: Any) -> list[ExperimentSpec]:
           * baseline / zero_shot sampling
           * residual stream noise
           * attention output noise
+          * attention entropy noise
         Mode aliases accepted via "generator"/"mode"/"type"/"kind"/"method"/
         "function", including:
           * "baseline", "zero_shot", "generate"
           * "residual_stream_noise", "residual", "generate_with_residual_stream_noise"
           * "attention_output_noise", "attention", "attn",
             "generate_with_attention_output_noise"
+          * "attention_entropy_noise", "attention_entropy", "attn_entropy"
     """
     specs: list[ExperimentSpec] = []
 
@@ -335,6 +350,10 @@ def make_specs(*items: Any) -> list[ExperimentSpec]:
             "attn": "attention_output_noise",
             "attn_noise": "attention_output_noise",
             "generate_with_attention_output_noise": "attention_output_noise",
+            "attn_entropy": "attention_entropy_noise",
+            "attention_entropy": "attention_entropy_noise",
+            "attention_entropy_noise": "attention_entropy_noise",
+            "generate_with_entropy_noise": "attention_entropy_noise",
         }
         if key not in aliases:
             raise ValueError(f"Unsupported experiment mode: {value}")
@@ -343,8 +362,14 @@ def make_specs(*items: Any) -> list[ExperimentSpec]:
     def _detect_mode(mapping: Mapping[str, Any]) -> str:
         residual_flag = bool(mapping.get("use_residual_noise", False))
         attention_flag = bool(mapping.get("use_attention_output_noise", False))
-        if residual_flag and attention_flag:
-            raise ValueError("Spec mapping cannot enable both residual and attention output noise.")
+        att_entropy_flag = bool(mapping.get("use_attention_entropy_noise", False))
+
+        active = sum([residual_flag, attention_flag, att_entropy_flag])
+        if active > 1:
+            raise ValueError("Spec mapping cannot enable more than one noise mode at a time.")
+
+        if att_entropy_flag:
+            return "attention_entropy_noise"
         if attention_flag:
             return "attention_output_noise"
         if residual_flag:
@@ -352,33 +377,28 @@ def make_specs(*items: Any) -> list[ExperimentSpec]:
 
         mode_value = _first_present(
             mapping,
-            "generator",
-            "generation_mode",
-            "mode",
-            "type",
-            "kind",
-            "method",
-            "function",
+            "generator", "generation_mode", "mode", "type", "kind", "method", "function",
         )
         if mode_value is not None:
             return _normalize_mode(str(mode_value))
 
+        # Auto-detect from keys present
         if _first_present(
             mapping,
-            "attention_layers",
-            "attention_output_layers",
-            "attn_layers",
-            "attention_noise_std",
-            "attention_output_noise_std",
-            "attn_noise_std",
+            "attention_entropy_layers", "attn_entropy_layers", "attn_entropy_noise_std",
+        ) is not None:
+            return "attention_entropy_noise"
+
+        if _first_present(
+            mapping,
+            "attention_layers", "attention_output_layers", "attn_layers",
+            "attention_noise_std", "attention_output_noise_std", "attn_noise_std",
         ) is not None:
             return "attention_output_noise"
 
         if _first_present(
             mapping,
-            "residual_layers",
-            "residual_noise_std",
-            "residual_noise_decay",
+            "residual_layers", "residual_noise_std", "residual_noise_decay",
         ) is not None:
             return "residual_stream_noise"
 
@@ -400,7 +420,7 @@ def make_specs(*items: Any) -> list[ExperimentSpec]:
             if mode != "baseline":
                 raise ValueError(
                     f"String spec '{it}' is missing parameters. "
-                    "Use a mapping for residual or attention output noise experiments."
+                    "Use a mapping for noise experiments."
                 )
             specs.append(ExperimentSpec())
             continue
@@ -411,14 +431,25 @@ def make_specs(*items: Any) -> list[ExperimentSpec]:
                 ExperimentSpec(
                     use_residual_noise=(mode == "residual_stream_noise"),
                     use_attention_output_noise=(mode == "attention_output_noise"),
+                    use_attention_entropy_noise=(mode == "attention_entropy_noise"),
                     residual_layers=_first_present(it, "residual_layers"),
                     residual_noise_std=float(it.get("residual_noise_std", 0.0)),
                     residual_noise_decay=float(it.get("residual_noise_decay", 0.0)),
-                    attention_layers=_first_present(it, "attention_layers", "attention_output_layers", "attn_layers"),
-                    attention_noise_std=float(
-                        _first_present(it, "attention_noise_std", "attention_output_noise_std", "attn_noise_std") or 0.0
+                    attention_layers=_first_present(
+                        it, "attention_layers", "attention_output_layers", "attn_layers"
                     ),
-                    max_noise_tokens=int(it.get("max_noise_tokens", 250)),
+                    attention_noise_std=float(
+                        _first_present(
+                            it, "attention_noise_std", "attention_output_noise_std", "attn_noise_std"
+                        ) or 0.0
+                    ),
+                    attn_entropy_layers=_first_present(
+                        it, "attention_entropy_layers", "attn_entropy_layers"
+                    ),
+                    attn_entropy_noise_std=float(
+                        _first_present(it, "attn_entropy_noise_std", "attention_entropy_noise_std") or 0.0
+                    ),
+                    max_noise_tokens=int(it.get("max_noise_tokens", 200)),
                     logits_noise_std=float(it.get("logits_noise_std", 0.0)),
                     logits_noise_decay=float(it.get("logits_noise_decay", 0.0)),
                     max_new_tokens_plan=int(it.get("max_new_tokens_plan", 1000)),
