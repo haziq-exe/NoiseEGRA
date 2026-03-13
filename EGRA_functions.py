@@ -656,6 +656,8 @@ class EGRA:
 
                     with torch.no_grad():
                         w = attn_weights[:, :, -1, :]          # (B, num_heads, T_k)
+                        
+                        w = w.float().clamp(min=0.0)
     
                         # Mean of per-head entropies — avoids Jensen's inequality bias
                         eps = 1e-10
