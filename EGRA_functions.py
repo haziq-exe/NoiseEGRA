@@ -59,10 +59,8 @@ class EGRA:
     def _sampling_kwargs(self, do_sample=True, temperature=1.0, top_p=None, top_k=None):
         kwargs = {
             "do_sample": do_sample,
-            "remove_invalid_values": True,
         }
         if do_sample:
-            kwargs["renormalize_logits"] = True
             kwargs["temperature"] = temperature
             if top_p is not None:
                 kwargs["top_p"] = top_p
