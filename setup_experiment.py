@@ -5,11 +5,11 @@ from .egra_constraint_checker import EGRAConstraintChecker
 from .creativity_metrics import CreativityScorer
 import csv
 import gc
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import io
 from contextlib import redirect_stdout
 from pathlib import Path
-from typing import Any, Callable, Mapping, Optional, Sequence
+from typing import Any, Callable, Dict, Mapping, Optional, Sequence
 
 import torch
 
@@ -17,7 +17,7 @@ import torch
 class ExperimentSpec:
     use_residual_noise: bool = False
     use_attention_output_noise: bool = False
-    use_attention_entropy_noise: bool = False          # NEW
+    use_attention_entropy_noise: bool = False
 
     residual_layers: Optional[Sequence[int]] = None
     residual_noise_std: float = 0.0
@@ -26,8 +26,12 @@ class ExperimentSpec:
     attention_layers: Optional[Sequence[int]] = None
     attention_noise_std: float = 0.0
 
-    attn_entropy_layers: Optional[Sequence[int]] = None   # NEW
-    attn_entropy_noise_std: float = 0.0                   # NEW
+    attn_entropy_layers: Optional[Sequence[int]] = None
+    attn_entropy_noise_std: float = 0.0
+    # Per-layer calibration stats from calibrate_entropy.py.
+    # Required when use_attention_entropy_noise=True.
+    # Format: {layer_idx: {"H_min": float, "H_max": float}, ...}
+    attn_entropy_stats: Optional[Dict[int, Dict[str, float]]] = None
 
     max_noise_tokens: int = 200
 
@@ -63,6 +67,7 @@ def _make_story_prompt(plan_text: str):
         {"role": "system", "content": prompts.SYS_NOISE},
         {"role": "user", "content": prompts.NOISE_3.replace("[STORY PLAN]", plan_text)},
     ]
+
 
 def _story_prompt():
     return [
@@ -170,6 +175,14 @@ def run_story_experiments(
     Auto filenames: {run_id}.csv where run_id encodes model + spec.
     Returns: {run_id: [story_text, ...]}.
     """
+    # Validate entropy specs up front so we fail before running any stories
+    for spec in specs:
+        if _spec_mode(spec) == "attention_entropy_noise" and not spec.attn_entropy_stats:
+            raise ValueError(
+                "ExperimentSpec with use_attention_entropy_noise=True must provide "
+                "attn_entropy_stats. Run calibrate_entropy.py for this model first."
+            )
+
     checker = EGRAConstraintChecker()
 
     out_dir = Path(output_dir)
@@ -204,6 +217,7 @@ def run_story_experiments(
             print("  type: ATTENTION ENTROPY NOISE")
             print(f"  attn_entropy_layers: {list(spec.attn_entropy_layers or [])}")
             print(f"  attn_entropy_noise_std: {spec.attn_entropy_noise_std}")
+            print(f"  attn_entropy_stats: {len(spec.attn_entropy_stats or {})} layers calibrated")
             print(f"  logits_noise_std: {spec.logits_noise_std}")
             print(f"  logits_noise_decay: {spec.logits_noise_decay}")
         print(f"  do_sample: {spec.do_sample}")
@@ -262,6 +276,7 @@ def run_story_experiments(
                     story_prompt,
                     attention_noise_std=spec.attn_entropy_noise_std,
                     attn_entropy_layers=list(spec.attn_entropy_layers or []),
+                    entropy_stats=spec.attn_entropy_stats,
                     logits_noise_std=spec.logits_noise_std,
                     logits_noise_decay=spec.logits_noise_decay,
                     max_new_tokens=spec.max_new_tokens_plan,
@@ -386,6 +401,7 @@ def make_specs(*items: Any) -> list[ExperimentSpec]:
         if _first_present(
             mapping,
             "attention_entropy_layers", "attn_entropy_layers", "attn_entropy_noise_std",
+            "attn_entropy_stats", "entropy_stats",
         ) is not None:
             return "attention_entropy_noise"
 
@@ -448,6 +464,9 @@ def make_specs(*items: Any) -> list[ExperimentSpec]:
                     ),
                     attn_entropy_noise_std=float(
                         _first_present(it, "attn_entropy_noise_std", "attention_entropy_noise_std") or 0.0
+                    ),
+                    attn_entropy_stats=_first_present(
+                        it, "attn_entropy_stats", "entropy_stats"
                     ),
                     max_noise_tokens=int(it.get("max_noise_tokens", 200)),
                     logits_noise_std=float(it.get("logits_noise_std", 0.0)),
