@@ -530,7 +530,7 @@ class EGRA:
 
 
     def generate_with_entropy_noise(
-        self, prompt, attention_noise_std, attn_entropy_layers,
+        self, prompt, attention_noise_std, attn_entropy_layers, entropy_stats,
         logits_noise_std=0.0, logits_noise_decay=0.0,
         max_new_tokens=100, temperature=1.0, seed=None,
         max_noise_tokens=200,
@@ -655,28 +655,30 @@ class EGRA:
                         return None
 
                     with torch.no_grad():
-                        # attn_weights: (B, num_heads, T_q, T_k)
-                        # Take last query row only — what the current token attends to
-                        w = attn_weights[:, :, -1, :]  # (B, num_heads, T_k)
+                        w = attn_weights[:, :, -1, :]          # (B, num_heads, T_k)
     
-                        # FIX: Compute mean of per-head entropies rather than
-                        # entropy of the head-averaged distribution.
-                        # H(mean(heads)) >= mean(H(heads)) by Jensen's inequality,
-                        # so averaging first overestimates entropy and under-injects noise.
+                        # Mean of per-head entropies — avoids Jensen's inequality bias
                         eps = 1e-10
-                        # Per-head entropy: H_head = -sum_k( p_k * log(p_k) )
-                        # w shape: (B, num_heads, T_k)
                         H_per_head = -(w * torch.log(w + eps)).sum(dim=-1)  # (B, num_heads)
-    
-                        # Mean over heads and batch -> scalar
                         H = H_per_head.mean().item()
     
-                        # Normalise by log(T_k) to get H_norm in [0, 1]
-                        T_k = w.shape[-1]
-                        H_max = math.log(T_k) if T_k > 1 else 1.0
-                        H_norm = float(H / H_max) if H_max > 0 else 1.0
-                        H_norm = max(0.0, min(1.0, H_norm))
+                        # Empirical normalisation using offline calibration stats
+                        layer_stats = entropy_stats.get(layer_idx)
+                        if layer_stats is not None:
+                            H_lo = layer_stats["H_min"]
+                            H_hi = layer_stats["H_max"]
+                            denom = H_hi - H_lo
+                            if denom > 1e-6:
+                                H_norm = float((H - H_lo) / denom)
+                            else:
+                                H_norm = 1.0  # degenerate range — no noise
+                        else:
+                            # Fallback: theoretical maximum (will likely collapse to ~1.0)
+                            T_k = w.shape[-1]
+                            H_max_theoretical = math.log(T_k) if T_k > 1 else 1.0
+                            H_norm = float(H / H_max_theoretical) if H_max_theoretical > 0 else 1.0
     
+                        H_norm = max(0.0, min(1.0, H_norm))
                         layer_entropy[layer_idx] = H_norm
 
                     return None  # do not modify self_attn output
