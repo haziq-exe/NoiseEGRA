@@ -9,9 +9,12 @@ import math
 
 
 class EGRA:
-    def __init__(self, model):
+    def __init__(self, model, use_AENI=False):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.model = AutoModelForCausalLM.from_pretrained(model, dtype=torch.float16, device_map="auto")
+        if use_AENI:
+            self.model = AutoModelForCausalLM.from_pretrained(model, dtype=torch.float16, device_map="auto", attn_implementation="eager")
+        else:
+            self.model = AutoModelForCausalLM.from_pretrained(model, dtype=torch.float16, device_map="auto")
         self.tokenizer = AutoTokenizer.from_pretrained(model)
 
     def _get_transformer_blocks(self):
@@ -757,7 +760,6 @@ class EGRA:
                 "max_new_tokens": max_new_tokens,
                 # Required to obtain post-softmax attention weights in self_attn output
                 "output_attentions": True,
-                "attn_implementation": "eager",
             }
             if logits_processor is not None:
                 gen_kwargs["logits_processor"] = logits_processor
