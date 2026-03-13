@@ -15,13 +15,18 @@ class RMSStats:
     count: Dict[int, int] = field(default_factory=dict)
 
     def update_last_token(self, layer_idx: int, x: torch.Tensor) -> None:
-        # Expects x shape (B, T, H). Uses last token only.
         if not isinstance(x, torch.Tensor) or x.dim() != 3:
             return
-        xt = x[:, -1, :].float()           # (B, H)
-        v = (xt * xt).mean().item()        # scalar mean over B and H
+
+        xt = x[:, -1, :].float()
+
+        if not torch.isfinite(xt).all():
+            return
+
+        v = (xt * xt).mean().item()
         self.sumsq[layer_idx] = self.sumsq.get(layer_idx, 0.0) + v
         self.count[layer_idx] = self.count.get(layer_idx, 0) + 1
+
 
     def rms(self) -> Dict[int, float]:
         out: Dict[int, float] = {}
@@ -187,8 +192,34 @@ class RMSCalibrator:
                 if temperature <= 0 or not do_sample:
                     next_token = torch.argmax(next_logits, dim=-1, keepdim=True)
                 else:
-                    probs = torch.softmax(next_logits / temperature, dim=-1)
-                    next_token = torch.multinomial(probs, num_samples=1)
+                    safe_logits = (next_logits.float() / temperature)
+                    safe_logits = torch.nan_to_num(
+                        safe_logits,
+                        nan=0.0,
+                        posinf=1e9,
+                        neginf=-1e9,
+                    )
+                    safe_logits = safe_logits - safe_logits.amax(dim=-1, keepdim=True)
+
+                    probs = torch.softmax(safe_logits, dim=-1)
+                    probs = torch.nan_to_num(
+                        probs,
+                        nan=0.0,
+                        posinf=0.0,
+                        neginf=0.0,
+                    )
+                    probs_sum = probs.sum(dim=-1, keepdim=True)
+
+                    if (
+                        not torch.isfinite(probs).all()
+                        or (probs < 0).any()
+                        or (probs_sum <= 0).any()
+                    ):
+                        if debug_shapes:
+                            print("[RMS sampler] Invalid probability row; falling back to argmax.")
+                        next_token = torch.argmax(safe_logits, dim=-1, keepdim=True)
+                    else:
+                        next_token = torch.multinomial(probs / probs_sum, num_samples=1)
 
                 out = self.egra.model(
                     input_ids=next_token,
@@ -276,7 +307,7 @@ class RMSCalibrator:
         blocks = self.egra._get_transformer_blocks()
         n_layers = len(blocks)
         idxs = [self.egra._normalize_layer_index(i, n_layers) for i in layer_set]
-        vals = [rms_by_layer[i] for i in idxs if i in rms_by_layer]
+        vals = [rms_by_layer[i] for i in idxs if i in rms_by_layer and math.isfinite(rms_by_layer[i])]
         if not vals:
             raise ValueError(
                 "No RMS values found for the requested layers. "
