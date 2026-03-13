@@ -757,6 +757,7 @@ class EGRA:
                 "max_new_tokens": max_new_tokens,
                 # Required to obtain post-softmax attention weights in self_attn output
                 "output_attentions": True,
+                "attn_implementation": "eager",
             }
             if logits_processor is not None:
                 gen_kwargs["logits_processor"] = logits_processor
