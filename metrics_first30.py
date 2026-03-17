@@ -20,7 +20,7 @@ from typing import Dict, List, Tuple
 
 
 BASE_DIR = Path("EGRA_RESULTS")
-FIRST_N = 30
+FIRST_N = 50
 
 
 QUALITY_ALIASES = {
