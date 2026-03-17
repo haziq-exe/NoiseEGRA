@@ -529,220 +529,278 @@ class EGRA:
         return self.tokenizer.decode(generated_ids, skip_special_tokens=True)
 
 
-
     def generate_with_entropy_noise(
-            self, prompt, attention_noise_std, attn_entropy_layers, entropy_stats,
-            logits_noise_std=0.0, logits_noise_decay=0.0,
-            max_new_tokens=100, temperature=1.0, seed=None,
-            max_noise_tokens=200,
-        ):
-            """
-            Attention Entropy-Based Noise Injection (AENI).
+        self, prompt, attention_noise_std, attn_entropy_layers,
+        entropy_calc: str = "max_weight",
+        top_k_size: int = 10,
+        logits_noise_std=0.0, logits_noise_decay=0.0,
+        max_new_tokens=100, temperature=1.0, seed=None,
+        max_noise_tokens=200,
+    ):
+        """
+        Attention Entropy-Based Noise Injection (AENI).
 
-            At each decode step, computes the Shannon entropy of the post-softmax
-            attention weights at each targeted layer and injects Gaussian noise into
-            the self-attention output (post o_proj, pre-MLP, pre-residual addition).
-            Noise magnitude scales inversely and linearly with normalised entropy:
+        At each decode step, measures the peakedness of the post-softmax attention
+        distribution at each targeted layer using one of four methods (controlled
+        by `entropy_calc`), then injects Gaussian noise into the self-attention
+        output (post o_proj, pre-MLP, pre-residual addition) scaled by:
 
-                noise_std(layer, t) = attention_noise_std
-                                    * (1 - H_norm(layer, t))   # entropy gate
-                                    * delta(t)                  # cosine decay
+            cur_std = attention_noise_std * entropy_scale * cosine_decay
 
-            H_norm is normalised using per-layer empirical H_min/H_max values from
-            offline calibration (calibrate_entropy.py).
+        where entropy_scale ∈ [0, 1] is HIGH when attention is peaked (low entropy)
+        and LOW when attention is diffuse (high entropy). `attention_noise_std` acts
+        as the ceiling — calibrated per-model via RMS as with other noise methods.
 
-            A single hook per layer is registered on self_attn. It reads attn_weights
-            from output[1] to compute entropy, perturbs output[0] (the attn output),
-            and returns the full tuple to preserve the KV cache.
+        entropy_calc options
+        --------------------
+        "max_weight":
+            entropy_scale = mean_heads( max_position(w) )
+            The mean per-head maximum attention weight. Peaked → high max → more noise.
+            Naturally in [0, 1]. Zero context-length dependency. No normalisation needed.
+            Recommended as the simplest and most robust option.
 
-            Args:
-                attention_noise_std:  Maximum noise std (when H_norm=0 and t=0).
-                attn_entropy_layers:  List of layer indices to target.
-                entropy_stats:        Per-layer calibration dict from calibrate_entropy.py:
-                                        {layer_idx: {"H_min": float, "H_max": float}, ...}
-                max_noise_tokens:     Cosine decay horizon T.
-            """
-            if seed is not None:
-                torch.manual_seed(seed)
-                if torch.cuda.is_available():
-                    torch.cuda.manual_seed_all(seed)
+        "topk_entropy":
+            Takes the top-`top_k_size` attention weights per head, renormalises them
+            to sum to 1, and computes Shannon entropy over those k values.
+            H_max = log(top_k_size) — a fixed constant, NOT log(T_k).
+            entropy_scale = 1 - H_topk / log(top_k_size)
+            Eliminates the context-length collapse problem of standard Shannon entropy.
+            `top_k_size` controls sensitivity (smaller k = more sensitive to peaks).
 
-            chat_text = self.tokenizer.apply_chat_template(
-                prompt, tokenize=False, add_generation_prompt=True
+        "gini":
+            entropy_scale = Gini coefficient of the attention distribution.
+            G = (2/n) * sum(rank_i * w_sorted_asc_i) - (n+1)/n
+            G=0 for uniform, G→1 for all mass on one token.
+            Directly measures inequality; naturally in [0,1), zero context-length
+            dependency. No normalisation needed.
+
+        "renyi2":
+            Rényi entropy of order α=2: H_2 = -log(sum(w²)).
+            The quadratic term makes it far more sensitive to peaks than Shannon
+            entropy — a single high-weight token dominates sum(w²) even in long
+            contexts. Normalised by log(T_k): entropy_scale = 1 - H_2 / log(T_k).
+            Retains a mild context-length dependency but substantially less than
+            Shannon entropy.
+
+        Args:
+            attention_noise_std:  Noise std ceiling (scaled by entropy_scale at each step).
+            attn_entropy_layers:  List of layer indices to target.
+            entropy_calc:         One of "max_weight", "topk_entropy", "gini", "renyi2".
+            top_k_size:           k for "topk_entropy" method (default 10).
+            max_noise_tokens:     Cosine decay horizon T.
+        """
+        VALID_METHODS = ("max_weight", "topk_entropy", "gini", "renyi2")
+        if entropy_calc not in VALID_METHODS:
+            raise ValueError(
+                f"entropy_calc must be one of {VALID_METHODS}, got '{entropy_calc}'."
             )
-            device = next(iter(self.model.hf_device_map.values()))
-            inputs = self.tokenizer(chat_text, return_tensors="pt").to(device)
-            inputs.pop("token_type_ids", None)
-            input_ids = inputs["input_ids"]
-            prompt_len = input_ids.shape[1]
 
-            blocks = self._get_transformer_blocks()
-            normalized_layers = sorted({
-                self._normalize_layer_index(idx, len(blocks)) for idx in attn_entropy_layers
-            })
+        if seed is not None:
+            torch.manual_seed(seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed_all(seed)
 
-            # Warn about any layers missing from calibration stats
-            for li in normalized_layers:
-                if li not in entropy_stats:
-                    print(
-                        f"[AENI] WARNING: No calibration stats for layer {li}. "
-                        f"Falling back to log(T_k) normalisation for this layer."
-                    )
+        chat_text = self.tokenizer.apply_chat_template(
+            prompt, tokenize=False, add_generation_prompt=True
+        )
+        device = next(self.model.parameters()).device
+        inputs = self.tokenizer(chat_text, return_tensors="pt").to(device)
+        inputs.pop("token_type_ids", None)
+        input_ids = inputs["input_ids"]
+        prompt_len = input_ids.shape[1]
 
-            handles = []
-            model_handle = None
+        blocks = self._get_transformer_blocks()
+        normalized_layers = sorted({
+            self._normalize_layer_index(idx, len(blocks)) for idx in attn_entropy_layers
+        })
 
-            shared = {
-                "forward_calls": 0,
-                "t": 0,
-                "cur_t": 0,
-                "is_prefill": True,
-            }
+        handles = []
+        model_handle = None
 
-            try:
-                def model_pre_hook(module, inp):
-                    shared["forward_calls"] += 1
-                    if shared["forward_calls"] == 1:
-                        shared["is_prefill"] = True
-                        shared["cur_t"] = 0
-                    else:
-                        shared["is_prefill"] = False
-                        shared["cur_t"] = shared["t"]
-                        shared["t"] += 1
+        shared = {
+            "forward_calls": 0,
+            "t": 0,
+            "cur_t": 0,
+            "is_prefill": True,
+        }
 
-                model_handle = self.model.register_forward_pre_hook(model_pre_hook)
+        try:
+            def model_pre_hook(module, inp):
+                shared["forward_calls"] += 1
+                if shared["forward_calls"] == 1:
+                    shared["is_prefill"] = True
+                    shared["cur_t"] = 0
+                else:
+                    shared["is_prefill"] = False
+                    shared["cur_t"] = shared["t"]
+                    shared["t"] += 1
 
-                def make_attn_entropy_hook(layer_idx: int):
-                    def hook(module, input, output):
-                        if shared["is_prefill"]:
-                            return None
+            model_handle = self.model.register_forward_pre_hook(model_pre_hook)
 
-                        # self_attn returns: (attn_output, attn_weights, past_key_value)
-                        # attn_output shape: (B, T, D)
-                        # attn_weights shape: (B, num_heads, T_q, T_k)
-                        if not isinstance(output, (tuple, list)) or len(output) < 2:
-                            print(
-                                f"[AENI] Layer {layer_idx}: unexpected self_attn output "
-                                f"format — defaulting to no noise."
-                            )
-                            return None
+            def _compute_entropy_scale(w: torch.Tensor) -> float:
+                """
+                w: (B, num_heads, T_k) — float32, clamped ≥ 0, current token only.
+                Returns entropy_scale in [0, 1]:
+                    HIGH  = peaked attention  = more noise
+                    LOW   = diffuse attention = less noise
+                """
+                eps = 1e-10
 
-                        attn_output = output[0]
-                        attn_weights = output[1]
+                if entropy_calc == "max_weight":
+                    # Mean of per-head maximum weight.
+                    # Peaked head → max near 1 → high scale.
+                    # Uniform → max near 1/T_k → low scale.
+                    # No normalisation, no context-length dependency.
+                    scale = w.max(dim=-1).values.mean().item()
 
-                        if not isinstance(attn_output, torch.Tensor) or attn_output.dim() != 3:
-                            return None
+                elif entropy_calc == "topk_entropy":
+                    # Top-k Shannon entropy with fixed normaliser log(k).
+                    # Eliminates context-length collapse: max entropy is always
+                    # log(top_k_size) regardless of how long the sequence is.
+                    k = min(top_k_size, w.shape[-1])
+                    top_vals = torch.topk(w, k, dim=-1).values  # (B, num_heads, k)
+                    # Renormalise so the k values sum to 1
+                    top_vals = top_vals / (top_vals.sum(dim=-1, keepdim=True) + eps)
+                    H_topk = -(top_vals * torch.log(top_vals + eps)).sum(dim=-1)  # (B, num_heads)
+                    H_norm = H_topk.mean().item() / (math.log(k) if k > 1 else 1.0)
+                    H_norm = max(0.0, min(1.0, H_norm))
+                    scale = 1.0 - H_norm  # invert: low entropy → high scale
 
-                        if attn_weights is None or not isinstance(attn_weights, torch.Tensor):
-                            print(
-                                f"[AENI] Layer {layer_idx}: attn_weights is None — "
-                                f"eager mode not active, defaulting to no noise."
-                            )
-                            return None
+                elif entropy_calc == "gini":
+                    # Gini coefficient of the attention distribution.
+                    # Measures inequality directly; zero context-length dependency.
+                    # Formula: G = (2/n) * sum(rank_i * w_sorted_asc_i) - (n+1)/n
+                    # where ranks are 1-indexed and weights are sorted ascending.
+                    w_sorted = w.sort(dim=-1).values   # ascending (B, num_heads, T_k)
+                    n = w_sorted.shape[-1]
+                    ranks = torch.arange(
+                        1, n + 1, device=w.device, dtype=torch.float32
+                    )  # (T_k,)
+                    G_per_head = (
+                        (2.0 / n) * (ranks * w_sorted).sum(dim=-1) - (n + 1.0) / n
+                    )  # (B, num_heads)
+                    scale = G_per_head.mean().item()
+                    scale = max(0.0, min(1.0, scale))
 
-                        if attn_weights.dim() != 4:
-                            print(
-                                f"[AENI] Layer {layer_idx}: unexpected attn_weights shape "
-                                f"{attn_weights.shape} — defaulting to no noise."
-                            )
-                            return None
+                elif entropy_calc == "renyi2":
+                    # Rényi entropy α=2: H_2 = -log(sum(w²))
+                    # Quadratic weighting makes peak tokens dominate sum(w²),
+                    # giving much stronger sensitivity to peaks than Shannon entropy
+                    # even over long contexts.
+                    sum_sq = (w * w).sum(dim=-1)         # (B, num_heads)
+                    H_2 = -torch.log(sum_sq + eps)       # (B, num_heads)
+                    H_2_mean = H_2.mean().item()
+                    # Normalise by log(T_k) — mild context-length dependency,
+                    # far less severe than Shannon because sum(w²) is dominated
+                    # by peak values, not the long uniform tail.
+                    T_k = w.shape[-1]
+                    H_max = math.log(T_k) if T_k > 1 else 1.0
+                    H_norm = max(0.0, min(1.0, H_2_mean / H_max))
+                    scale = 1.0 - H_norm  # invert: low H_2 → peaked → high scale
 
-                        with torch.no_grad():
-                            # ── Compute entropy ───────────────────────────────────
-                            # Last query row only — what the current token attends to
-                            w = attn_weights[:, :, -1, :]   # (B, num_heads, T_k)
+                return float(scale)
 
-                            # Clamp before log: guards against fp16/bf16 underflow
-                            # producing tiny negative values after softmax, which
-                            # cause log(negative) = nan at specific layers.
-                            w = w.float().clamp(min=0.0)
+            def make_attn_entropy_hook(layer_idx: int):
+                def hook(module, input, output):
+                    if shared["is_prefill"]:
+                        return None
 
-                            # Mean of per-head entropies — avoids Jensen's inequality
-                            # bias from entropy of the head-averaged distribution.
-                            eps = 1e-10
-                            H_per_head = -(w * torch.log(w + eps)).sum(dim=-1)  # (B, num_heads)
-                            H = H_per_head.mean().item()
-
-                            # Empirical normalisation using offline calibration stats
-                            layer_stats = entropy_stats.get(layer_idx)
-                            if layer_stats is not None:
-                                H_lo = layer_stats["H_min"]
-                                H_hi = layer_stats["H_max"]
-                                denom = H_hi - H_lo
-                                H_norm = float((H - H_lo) / denom) if denom > 1e-6 else 1.0
-                            else:
-                                # Fallback: theoretical maximum
-                                print("using fallback")
-                                T_k = w.shape[-1]
-                                H_max_theoretical = math.log(T_k) if T_k > 1 else 1.0
-                                H_norm = float(H / H_max_theoretical) if H_max_theoretical > 0 else 1.0
-
-                            H_norm = max(0.0, min(1.0, H_norm))
-
-                            # ── Scale and inject noise into attn_output ───────────
-                            t = shared["cur_t"]
-                            T = max_noise_tokens
-                            cosine_decay = 0.5 * (1 + math.cos(math.pi * min(t, T) / T))
-
-                            # Low H_norm (peaked) -> entropy_scale near 1 -> more noise
-                            # High H_norm (diffuse) -> entropy_scale near 0 -> less noise
-                            entropy_scale = 1.0 - H_norm
-                            cur_std = attention_noise_std * entropy_scale * cosine_decay
-
-                            if cur_std <= 0:
-                                return None
-
-                            noise = torch.randn_like(attn_output[:, -1:, :]) * cur_std
-                            attn_output[:, -1:, :].add_(noise)
-
-                        # Return full tuple with modified attn_output at position 0.
-                        # output[1:] (attn_weights, past_key_value) are untouched.
-                        return (attn_output,) + tuple(output[1:])
-
-                    return hook
-
-                for layer_idx in normalized_layers:
-                    handles.append(
-                        blocks[layer_idx].self_attn.register_forward_hook(
-                            make_attn_entropy_hook(layer_idx)
+                    # self_attn returns: (attn_output, attn_weights, past_key_value)
+                    if not isinstance(output, (tuple, list)) or len(output) < 2:
+                        print(
+                            f"[AENI] Layer {layer_idx}: unexpected self_attn output "
+                            f"format — skipping noise injection."
                         )
+                        return None
+
+                    attn_output = output[0]
+                    attn_weights = output[1]
+
+                    if not isinstance(attn_output, torch.Tensor) or attn_output.dim() != 3:
+                        return None
+
+                    if attn_weights is None or not isinstance(attn_weights, torch.Tensor):
+                        print(
+                            f"[AENI] Layer {layer_idx}: attn_weights is None — "
+                            f"eager mode not active, skipping noise injection."
+                        )
+                        return None
+
+                    if attn_weights.dim() != 4:
+                        print(
+                            f"[AENI] Layer {layer_idx}: unexpected attn_weights shape "
+                            f"{attn_weights.shape} — skipping noise injection."
+                        )
+                        return None
+
+                    with torch.no_grad():
+                        # Last query row only — what the current token attends to.
+                        # Clamp + cast: guards against fp16/bf16 underflow producing
+                        # tiny negative values after softmax (causes nan in log).
+                        w = attn_weights[:, :, -1, :].float().clamp(min=0.0)  # (B, heads, T_k)
+
+                        entropy_scale = _compute_entropy_scale(w)
+
+                        t = shared["cur_t"]
+                        T = max_noise_tokens
+                        cosine_decay = 0.5 * (1 + math.cos(math.pi * min(t, T) / T))
+
+                        cur_std = attention_noise_std * entropy_scale * cosine_decay
+
+                        if cur_std <= 0:
+                            return None
+
+                        noise = torch.randn_like(attn_output[:, -1:, :]) * cur_std
+                        attn_output[:, -1:, :].add_(noise)
+
+                    # Return full tuple: modified attn_output at [0],
+                    # attn_weights and past_key_value untouched at [1:].
+                    return (attn_output,) + tuple(output[1:])
+
+                return hook
+
+            for layer_idx in normalized_layers:
+                handles.append(
+                    blocks[layer_idx].self_attn.register_forward_hook(
+                        make_attn_entropy_hook(layer_idx)
                     )
+                )
 
-                logits_processor = None
-                if logits_noise_std and logits_noise_std > 0:
-                    processor = GaussianLogitsProcessor(
-                        sigma=logits_noise_std,
-                        decay=logits_noise_decay,
-                        prompt_length=prompt_len,
-                    )
-                    logits_processor = LogitsProcessorList([processor])
+            logits_processor = None
+            if logits_noise_std and logits_noise_std > 0:
+                processor = GaussianLogitsProcessor(
+                    sigma=logits_noise_std,
+                    decay=logits_noise_decay,
+                    prompt_length=prompt_len,
+                )
+                logits_processor = LogitsProcessorList([processor])
 
-                gen_kwargs = {
-                    **inputs,
-                    "do_sample": True,
-                    "temperature": temperature,
-                    "max_new_tokens": max_new_tokens,
-                    "output_attentions": True,
-                }
-                if logits_processor is not None:
-                    gen_kwargs["logits_processor"] = logits_processor
+            gen_kwargs = {
+                **inputs,
+                "do_sample": True,
+                "temperature": temperature,
+                "max_new_tokens": max_new_tokens,
+                "output_attentions": True,
+            }
+            if logits_processor is not None:
+                gen_kwargs["logits_processor"] = logits_processor
 
-                outputs = self.model.generate(**gen_kwargs)
+            outputs = self.model.generate(**gen_kwargs)
 
-            finally:
-                for h in handles:
-                    try:
-                        h.remove()
-                    except Exception:
-                        pass
-                if model_handle is not None:
-                    try:
-                        model_handle.remove()
-                    except Exception:
-                        pass
+        finally:
+            for h in handles:
+                try:
+                    h.remove()
+                except Exception:
+                    pass
+            if model_handle is not None:
+                try:
+                    model_handle.remove()
+                except Exception:
+                    pass
 
-            generated_ids = outputs[0][input_ids.shape[-1]:]
-            return self.tokenizer.decode(generated_ids, skip_special_tokens=True)
+        generated_ids = outputs[0][input_ids.shape[-1]:]
+        return self.tokenizer.decode(generated_ids, skip_special_tokens=True)
 
     def twoStage_residual_noise(
         self, residual_noise_std, residual_noise_decay, residual_layers, logits_noise_std = 0.0, logits_noise_decay = 0.0,
