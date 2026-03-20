@@ -802,6 +802,126 @@ class EGRA:
         generated_ids = outputs[0][input_ids.shape[-1]:]
         return self.tokenizer.decode(generated_ids, skip_special_tokens=True)
 
+
+    def generate_with_embedding_noise(
+        self, prompt, embed_noise_std,
+        logits_noise_std=0.0, logits_noise_decay=0.0,
+        max_new_tokens=100, temperature=1.0, seed=None,
+        max_noise_tokens=200,
+    ):
+        """
+        Injects Gaussian noise into the token embedding lookup table output
+        during decoding. This is the only embedding-level injection site that
+        has no residual-stream equivalent — all hidden-layer embedding inputs
+        are equivalent to the previous block's residual output.
+
+        Injection site:
+            model.get_input_embeddings()  (nn.Embedding)
+            Output shape during decode: (B, 1, D)
+
+        Noise is added only during decode steps (prefill is skipped), with the
+        same cosine decay schedule used by all other noise methods.
+        """
+        if seed is not None:
+            torch.manual_seed(seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed_all(seed)
+
+        if embed_noise_std <= 0:
+            raise ValueError("embed_noise_std must be > 0.")
+
+        chat_text = self.tokenizer.apply_chat_template(
+            prompt, tokenize=False, add_generation_prompt=True
+        )
+        device = next(self.model.parameters()).device
+        inputs = self.tokenizer(chat_text, return_tensors="pt").to(device)
+        inputs.pop("token_type_ids", None)
+        input_ids = inputs["input_ids"]
+        prompt_len = input_ids.shape[1]
+
+        handles = []
+        model_handle = None
+
+        shared = {
+            "forward_calls": 0,
+            "t": 0,
+            "cur_t": 0,
+            "is_prefill": True,
+        }
+
+        try:
+            def model_pre_hook(module, inp):
+                shared["forward_calls"] += 1
+                if shared["forward_calls"] == 1:
+                    shared["is_prefill"] = True
+                    shared["cur_t"] = 0
+                else:
+                    shared["is_prefill"] = False
+                    shared["cur_t"] = shared["t"]
+                    shared["t"] += 1
+
+            model_handle = self.model.register_forward_pre_hook(model_pre_hook)
+
+            embed_layer = self.model.get_input_embeddings()
+
+            def embed_hook(module, input, output):
+                if shared["is_prefill"]:
+                    return None
+
+                if not isinstance(output, torch.Tensor) or output.dim() != 3:
+                    return None
+
+                with torch.no_grad():
+                    t = shared["cur_t"]
+                    T = max_noise_tokens
+                    cosine_decay = 0.5 * (1 + math.cos(math.pi * min(t, T) / T))
+                    cur_std = embed_noise_std * cosine_decay
+
+                    if cur_std <= 0:
+                        return None
+
+                    noise = torch.randn_like(output) * cur_std
+                    output.add_(noise)
+
+                return output
+
+            handles.append(embed_layer.register_forward_hook(embed_hook))
+
+            logits_processor = None
+            if logits_noise_std and logits_noise_std > 0:
+                processor = GaussianLogitsProcessor(
+                    sigma=logits_noise_std,
+                    decay=logits_noise_decay,
+                    prompt_length=prompt_len,
+                )
+                logits_processor = LogitsProcessorList([processor])
+
+            gen_kwargs = {
+                **inputs,
+                "max_new_tokens": max_new_tokens,
+                "do_sample": True,
+                "temperature": temperature,
+            }
+            if logits_processor is not None:
+                gen_kwargs["logits_processor"] = logits_processor
+
+            outputs = self.model.generate(**gen_kwargs)
+
+        finally:
+            for h in handles:
+                try:
+                    h.remove()
+                except Exception:
+                    pass
+            if model_handle is not None:
+                try:
+                    model_handle.remove()
+                except Exception:
+                    pass
+
+        generated_ids = outputs[0][input_ids.shape[-1]:]
+        return self.tokenizer.decode(generated_ids, skip_special_tokens=True)
+
     def twoStage_residual_noise(
         self, residual_noise_std, residual_noise_decay, residual_layers, logits_noise_std = 0.0, logits_noise_decay = 0.0,
         output_file="example_file.csv", num_stories=1, max_new_tokens=100, include_sys=True, temperature=1.0, top_p=None, top_k=None, seed=None, print_output=False,
@@ -856,57 +976,6 @@ class EGRA:
                 writer = csv.writer(f)
                 writer.writerow([output])
                 
-
-    def twoStage_embedding_noise(
-        self, embed_noise_std, hidden_noise_std, hidden_layers, logits_noise_std = 0.0, logits_noise_decay = 0.0,
-        output_file="example_file.csv", num_stories=1, max_new_tokens=100, include_sys=True, temperature=1.0, top_p=None, top_k=None, seed=None, print_output=False,
-    ):
-        output_csv = Path(output_file)
-
-        if not include_sys:
-            prompt = [{"role": "user", "content": prompts.SYS_NOISE + "\n\n\n" + prompts.NOISE_1}]
-        else:
-            prompt = [{"role": "system", "content": prompts.SYS_NOISE}]
-            prompt.append({"role": "user", "content": prompts.NOISE_1})
-
-        for x in range(num_stories):
-            output = self.generate_with_embedding_noise(
-                prompt,
-                max_new_tokens=max_new_tokens,
-                temperature=temperature,
-                seed=(seed + (128 * x)) if seed is not None else None,
-                embed_noise_std=embed_noise_std,
-                logits_noise_std=logits_noise_std,
-                logits_noise_decay=logits_noise_decay,
-                hidden_noise_std=hidden_noise_std,
-                hidden_layers=hidden_layers,
-                top_p=top_p,
-                top_k=top_k,
-            )
-
-            if print_output:
-                print("----- FIRST STAGE OUTPUT-----\n")
-                print(output)
-
-            prompt.append({"role": "assistant", "content": output})
-            prompt.append({"role": "user", "content": prompts.NOISE_2})
-
-            output = self.generate(
-                prompt,
-                max_new_tokens,
-                temperature=temperature,
-                top_p=top_p,
-                top_k=top_k,
-                seed=(seed + (128 * x)) if seed is not None else None,
-            )
-
-            if print_output:
-                print("----- SECOND STAGE OUTPUT-----\n")
-                print(output)
-
-            with output_csv.open(mode="a", newline="", encoding="utf-8") as f:
-                writer = csv.writer(f)
-                writer.writerow([output])
 
 
 class GaussianLogitsProcessor(LogitsProcessor):

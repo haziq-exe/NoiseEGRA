@@ -293,6 +293,120 @@ class RMSCalibrator:
             debug_shapes=debug_shapes,
         )
 
+    def collect_embedding_rms(
+        self,
+        prompt: Union[str, List[Dict[str, str]]],
+        *,
+        max_new_tokens: int = 32,
+        do_sample: bool = True,
+        temperature: float = 1.0,
+        seed: Optional[int] = 0,
+        debug_shapes: bool = False,
+    ) -> float:
+        """
+        Measures RMS of the token embedding lookup table output during decode
+        steps only. Returns a single scalar (there is only one embedding layer).
+
+        Use with alpha_from_target_std / std_for_model by wrapping the result
+        in a single-key dict, e.g.:
+            rms_val = cal.collect_embedding_rms(prompt)
+            rms_dict = {0: rms_val}
+            alpha = cal.alpha_from_target_std(target, rms_dict, layer_set=[0])
+            std   = cal.std_for_model(alpha, rms_dict, layer_set=[0])
+        """
+        if seed is not None:
+            torch.manual_seed(seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed_all(seed)
+
+        stats = RMSStats()
+        handles = []
+        dbg = {"printed": 0}
+
+        embed_layer = self.egra.model.get_input_embeddings()
+
+        def embed_hook(module, inp, out):
+            if not isinstance(out, torch.Tensor) or out.dim() != 3:
+                return None
+            # Only collect on decode steps (seq_len == 1 with KV cache active)
+            if out.shape[1] != 1:
+                return None
+            if debug_shapes and dbg["printed"] < 20:
+                print(
+                    f"[RMS hook | embedding] shape={tuple(out.shape)} "
+                    f"type={type(out)}"
+                )
+                dbg["printed"] += 1
+            stats.update_last_token(0, out)
+            return None
+
+        try:
+            handles.append(embed_layer.register_forward_hook(embed_hook))
+
+            device = self._model_device()
+            self.egra.model.eval()
+
+            text = self._prompt_to_text(prompt)
+            enc = self.egra.tokenizer(text, return_tensors="pt").to(device)
+            enc.pop("token_type_ids", None)
+
+            # Prefill
+            out = self.egra.model(**enc, use_cache=True, return_dict=True)
+            past = out.past_key_values
+            next_logits = out.logits[:, -1, :]
+
+            # Manual decode loop — seq_len == 1 at every step
+            for _ in range(max_new_tokens):
+                if temperature <= 0 or not do_sample:
+                    next_token = torch.argmax(next_logits, dim=-1, keepdim=True)
+                else:
+                    safe_logits = (next_logits.float() / temperature)
+                    safe_logits = torch.nan_to_num(
+                        safe_logits, nan=0.0, posinf=1e9, neginf=-1e9,
+                    )
+                    safe_logits = safe_logits - safe_logits.amax(dim=-1, keepdim=True)
+
+                    probs = torch.softmax(safe_logits, dim=-1)
+                    probs = torch.nan_to_num(
+                        probs, nan=0.0, posinf=0.0, neginf=0.0,
+                    )
+                    probs_sum = probs.sum(dim=-1, keepdim=True)
+
+                    if (
+                        not torch.isfinite(probs).all()
+                        or (probs < 0).any()
+                        or (probs_sum <= 0).any()
+                    ):
+                        if debug_shapes:
+                            print("[RMS sampler] Invalid probability row; falling back to argmax.")
+                        next_token = torch.argmax(safe_logits, dim=-1, keepdim=True)
+                    else:
+                        next_token = torch.multinomial(probs / probs_sum, num_samples=1)
+
+                out = self.egra.model(
+                    input_ids=next_token,
+                    past_key_values=past,
+                    use_cache=True,
+                    return_dict=True,
+                )
+                past = out.past_key_values
+                next_logits = out.logits[:, -1, :]
+
+        finally:
+            for h in handles:
+                try:
+                    h.remove()
+                except Exception:
+                    pass
+
+        rms_dict = stats.rms()
+        if 0 not in rms_dict:
+            raise ValueError(
+                "No embedding RMS samples collected. "
+                "Check that the model uses a standard nn.Embedding layer."
+            )
+        return rms_dict[0]
+
     # ------------------------------------------------------------------ #
     #  Aggregation and alpha / std computation                             #
     # ------------------------------------------------------------------ #
