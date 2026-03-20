@@ -43,7 +43,7 @@ class CreativityScorer:
     def __init__(
         self,
         texts: Sequence[str],
-        embedding_model: str = "BAAI/bge-m3",
+        embedding_model: str = "Omartificial-Intelligence-Space/Arabic-Triplet-Matryoshka-V2",
         max_k: int = 10,
         random_state: int = 42,
     ):
