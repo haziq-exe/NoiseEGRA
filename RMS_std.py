@@ -293,6 +293,7 @@ class RMSCalibrator:
             debug_shapes=debug_shapes,
         )
 
+    @torch.no_grad()
     def collect_embedding_rms(
         self,
         prompt: Union[str, List[Dict[str, str]]],
