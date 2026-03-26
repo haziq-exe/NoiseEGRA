@@ -528,7 +528,7 @@ class EGRA:
         generated_ids = outputs[0][input_ids.shape[-1]:]
         return self.tokenizer.decode(generated_ids, skip_special_tokens=True)
 
-
+    @torch.no_grad()
     def generate_with_entropy_noise(
         self, prompt, attention_noise_std, attn_entropy_layers,
         entropy_calc: str = "max_weight",
@@ -537,6 +537,7 @@ class EGRA:
         max_new_tokens=100, temperature=1.0, seed=None,
         max_noise_tokens=200,
     ):
+
         """
         Attention Entropy-Based Noise Injection (AENI).
 
