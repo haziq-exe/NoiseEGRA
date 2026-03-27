@@ -242,7 +242,8 @@ class RMSCalibrator:
     # ------------------------------------------------------------------ #
     #  Public collection methods                                           #
     # ------------------------------------------------------------------ #
-
+    
+    @torch.no_grad()
     def collect_block_rms(
         self,
         prompt: Union[str, List[Dict[str, str]]],
@@ -267,7 +268,8 @@ class RMSCalibrator:
             seed=seed,
             debug_shapes=debug_shapes,
         )
-
+    
+    @torch.no_grad()
     def collect_attn_rms(
         self,
         prompt: Union[str, List[Dict[str, str]]],

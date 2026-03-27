@@ -114,7 +114,7 @@ class CreativityScorer:
             best_sil = 0.0
 
         # Normalized components for semantic score
-        dispersion_norm = self._safe_clip(pairwise_dispersion_mean / 2.0)
+        dispersion_norm = self._safe_clip(pairwise_dispersion_mean / 1.0)
         cluster_norm = self._safe_clip((best_k - 1) / max(n - 1, 1))
 
         semantic_score_mean = 0.5 * dispersion_norm + 0.5 * cluster_norm
