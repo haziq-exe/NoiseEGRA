@@ -1,6 +1,10 @@
+.env
+.env.*
 .history
 .venv
+final_scores.py
+score_stories_gpt52.py
 .DS_Store
 __pycache__
-
+.env
 EGRA_RESULTS
