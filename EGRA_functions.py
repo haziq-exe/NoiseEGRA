@@ -744,7 +744,7 @@ class EGRA:
         attn_entropy_layers,
         attention_noise_std,
         entropy_calc: str = "max_weight",
-        residual_noise_decay=1.0,
+        residual_noise_decay=0.0,
         max_noise_tokens=200,
         logits_noise_std=0.0,
         logits_noise_decay=0.0,
@@ -754,6 +754,7 @@ class EGRA:
         top_p=None,
         top_k=None,
         seed=None,
+        top_k_size=None,
     ):
         """
         Combined residual-stream and entropy-based attention noise generation.
