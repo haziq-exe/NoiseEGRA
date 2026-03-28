@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import csv
-from pathlib import Path
 from dataclasses import dataclass
 from typing import Dict, List, Sequence
 import math
@@ -42,67 +40,52 @@ class CreativityScorer:
     - Self-BLEU (lower is more diverse), converted to lexical score as 1 - self_bleu, with stds.
     """
 
+    TOTAL_MODAL_COLLAPSE_INDICES_BY_RUN: Dict[str, List[int]] = {
+        "ALLam__ATTN__L12-20__std0p105__maxtok200": [0, 1, 8, 10, 12, 13, 17, 30, 41, 46, 47, 48, 49],
+        "ALLam__BASELINE": [],
+        "ALLam__BASELINE__temp1p8__topk40": [],
+        "ALLam__BASELINE__temp1p8__topp0p95": [0, 1, 2, 10, 12, 13],
+        "ALLam__EMBED__std0p015": [11, 18, 19, 21, 32, 35, 36, 37, 38, 39, 42, 46, 48, 49],
+        "ALLam__ENTROPY__L12-20__std0p105": [],
+        "ALLam__L12-20__std0p036__decay0": [],
+        "Fanar_9B__L18-26__std0p625__decay0": [],
+        "Fanar__ATTN__L18-26__std4p095": [10, 12, 14, 16, 18, 20, 23, 25, 27, 29, 30],
+        "Fanar__BASELINE": [],
+        "Fanar__BASELINE__temp1p8__topk40": [40],
+        "Fanar__BASELINE__temp1p8__topp0p95": [],
+        "Fanar__EMBED__std0p042": [10, 12, 15, 17, 19, 20, 21, 23, 25, 27, 29, 30],
+        "Fanar__ENTROPY__L18-26__std4p095": [40],
+        "JAIS__ATTN__L12-20__std4p6375": [10, 48],
+        "Jais__BASELINE": [],
+        "Jais__BASELINE__temp1p8__topk40": [],
+        "Jais__BASELINE__temp1p8__topp0p95": [],
+        "Jais__EMBED__std7p19426": [43],
+        "Jais__ENTROPY__L12-20__std4p6375": [],
+        "Jais__ENTROPY__L12-20__std9p275": [],
+        "Jais__L12-20__std5p25__decay0": [],
+        "PHI-4-MINI__ATTN__L12-20__std0p2975": [0, 3, 4, 7, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 32, 35, 38, 40],
+        "PHI-4-MINI__BASELINE__temp1p8__topk40": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 46, 47, 49],
+        "PHI-4-MINI__BASELINE__temp1p8__topp0p95": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 14, 16, 17, 18, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39],
+        "PHI-4-MINI__L12-20__std0p177__decay0": [],
+        "Phi-4__BASELINE": [],
+        "Phi-4__ENTROPY__L12-20__std0p2975": [],
+    }
+
     def __init__(
         self,
         texts: Sequence[str],
         embedding_model: str = "Omartificial-Intelligence-Space/Arabic-Triplet-Matryoshka-V2",
         max_k: int = 10,
         random_state: int = 42,
-        scores_dir: str | None = "EGRA_RESULTS/SCORES",
     ):
         self.texts = [t.strip() for t in texts if isinstance(t, str) and t.strip()]
-        self.embedding_model_name = embedding_model
         self.model = SentenceTransformer(embedding_model, trust_remote_code=True)
         self.max_k = max_k
         self.random_state = random_state
-        self.scores_dir = self._resolve_scores_dir(scores_dir)
-        self.total_modal_collapse_indices_by_run = self._build_modal_collapse_index_map()
-
-    def _resolve_scores_dir(self, scores_dir: str | None) -> Path | None:
-        if scores_dir is None:
-            return None
-
-        path = Path(scores_dir)
-        if not path.is_absolute():
-            path = Path(__file__).resolve().parent / path
-        return path
-
-    def _build_modal_collapse_index_map(self) -> Dict[str, List[int]]:
-        """
-        Build a mapping: run_type -> zero-based story indices with TotalModalCollapse == 1.
-        run_type is taken from file name without the trailing '_SCORE.csv'.
-        """
-        collapse_map: Dict[str, List[int]] = {}
-        if self.scores_dir is None or not self.scores_dir.exists():
-            return collapse_map
-
-        for csv_file in sorted(self.scores_dir.glob("*_SCORE.csv")):
-            run_type = csv_file.name.removesuffix("_SCORE.csv")
-            collapsed_indices: List[int] = []
-
-            with csv_file.open("r", encoding="utf-8", newline="") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    collapse_val = str(row.get("TotalModalCollapse", "")).strip()
-                    if collapse_val != "1":
-                        continue
-
-                    story_number_str = str(row.get("Story number", "")).strip()
-                    if not story_number_str:
-                        continue
-
-                    try:
-                        # Convert 1-based story id in CSV to Python zero-based index.
-                        story_index = int(float(story_number_str)) - 1
-                    except ValueError:
-                        continue
-
-                    if story_index >= 0:
-                        collapsed_indices.append(story_index)
-
-            collapse_map[run_type] = sorted(set(collapsed_indices))
-
-        return collapse_map
+        # Copy to avoid accidental in-place edits affecting class-level constant.
+        self.total_modal_collapse_indices_by_run = {
+            k: list(v) for k, v in self.TOTAL_MODAL_COLLAPSE_INDICES_BY_RUN.items()
+        }
 
     def _encode(self) -> np.ndarray:
         if not self.texts:

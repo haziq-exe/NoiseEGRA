@@ -560,28 +560,6 @@ class EGRA:
             Naturally in [0, 1]. Zero context-length dependency. No normalisation needed.
             Recommended as the simplest and most robust option.
 
-        "topk_entropy":
-            Takes the top-`top_k_size` attention weights per head, renormalises them
-            to sum to 1, and computes Shannon entropy over those k values.
-            H_max = log(top_k_size) — a fixed constant, NOT log(T_k).
-            entropy_scale = 1 - H_topk / log(top_k_size)
-            Eliminates the context-length collapse problem of standard Shannon entropy.
-            `top_k_size` controls sensitivity (smaller k = more sensitive to peaks).
-
-        "gini":
-            entropy_scale = Gini coefficient of the attention distribution.
-            G = (2/n) * sum(rank_i * w_sorted_asc_i) - (n+1)/n
-            G=0 for uniform, G→1 for all mass on one token.
-            Directly measures inequality; naturally in [0,1), zero context-length
-            dependency. No normalisation needed.
-
-        "renyi2":
-            Rényi entropy of order α=2: H_2 = -log(sum(w²)).
-            The quadratic term makes it far more sensitive to peaks than Shannon
-            entropy — a single high-weight token dominates sum(w²) even in long
-            contexts. Normalised by log(T_k): entropy_scale = 1 - H_2 / log(T_k).
-            Retains a mild context-length dependency but substantially less than
-            Shannon entropy.
 
         Args:
             attention_noise_std:  Noise std ceiling (scaled by entropy_scale at each step).
@@ -645,59 +623,12 @@ class EGRA:
                     HIGH  = peaked attention  = more noise
                     LOW   = diffuse attention = less noise
                 """
-                eps = 1e-10
 
-                if entropy_calc == "max_weight":
-                    # Mean of per-head maximum weight.
-                    # Peaked head → max near 1 → high scale.
-                    # Uniform → max near 1/T_k → low scale.
-                    # No normalisation, no context-length dependency.
-                    scale = w.max(dim=-1).values.mean().item()
-
-                elif entropy_calc == "topk_entropy":
-                    # Top-k Shannon entropy with fixed normaliser log(k).
-                    # Eliminates context-length collapse: max entropy is always
-                    # log(top_k_size) regardless of how long the sequence is.
-                    k = min(top_k_size, w.shape[-1])
-                    top_vals = torch.topk(w, k, dim=-1).values  # (B, num_heads, k)
-                    # Renormalise so the k values sum to 1
-                    top_vals = top_vals / (top_vals.sum(dim=-1, keepdim=True) + eps)
-                    H_topk = -(top_vals * torch.log(top_vals + eps)).sum(dim=-1)  # (B, num_heads)
-                    H_norm = H_topk.mean().item() / (math.log(k) if k > 1 else 1.0)
-                    H_norm = max(0.0, min(1.0, H_norm))
-                    scale = 1.0 - H_norm  # invert: low entropy → high scale
-
-                elif entropy_calc == "gini":
-                    # Gini coefficient of the attention distribution.
-                    # Measures inequality directly; zero context-length dependency.
-                    # Formula: G = (2/n) * sum(rank_i * w_sorted_asc_i) - (n+1)/n
-                    # where ranks are 1-indexed and weights are sorted ascending.
-                    w_sorted = w.sort(dim=-1).values   # ascending (B, num_heads, T_k)
-                    n = w_sorted.shape[-1]
-                    ranks = torch.arange(
-                        1, n + 1, device=w.device, dtype=torch.float32
-                    )  # (T_k,)
-                    G_per_head = (
-                        (2.0 / n) * (ranks * w_sorted).sum(dim=-1) - (n + 1.0) / n
-                    )  # (B, num_heads)
-                    scale = G_per_head.mean().item()
-                    scale = max(0.0, min(1.0, scale))
-
-                elif entropy_calc == "renyi2":
-                    # Rényi entropy α=2: H_2 = -log(sum(w²))
-                    # Quadratic weighting makes peak tokens dominate sum(w²),
-                    # giving much stronger sensitivity to peaks than Shannon entropy
-                    # even over long contexts.
-                    sum_sq = (w * w).sum(dim=-1)         # (B, num_heads)
-                    H_2 = -torch.log(sum_sq + eps)       # (B, num_heads)
-                    H_2_mean = H_2.mean().item()
-                    # Normalise by log(T_k) — mild context-length dependency,
-                    # far less severe than Shannon because sum(w²) is dominated
-                    # by peak values, not the long uniform tail.
-                    T_k = w.shape[-1]
-                    H_max = math.log(T_k) if T_k > 1 else 1.0
-                    H_norm = max(0.0, min(1.0, H_2_mean / H_max))
-                    scale = 1.0 - H_norm  # invert: low H_2 → peaked → high scale
+                # Mean of per-head maximum weight.
+                # Peaked head → max near 1 → high scale.
+                # Uniform → max near 1/T_k → low scale.
+                # No normalisation, no context-length dependency.
+                scale = w.max(dim=-1).values.mean().item()
 
                 return float(scale)
 
@@ -782,6 +713,223 @@ class EGRA:
                 "temperature": temperature,
                 "max_new_tokens": max_new_tokens,
                 "output_attentions": True,
+            }
+            if logits_processor is not None:
+                gen_kwargs["logits_processor"] = logits_processor
+
+            outputs = self.model.generate(**gen_kwargs)
+
+        finally:
+            for h in handles:
+                try:
+                    h.remove()
+                except Exception:
+                    pass
+            if model_handle is not None:
+                try:
+                    model_handle.remove()
+                except Exception:
+                    pass
+
+        generated_ids = outputs[0][input_ids.shape[-1]:]
+        return self.tokenizer.decode(generated_ids, skip_special_tokens=True)
+
+
+    @torch.no_grad()
+    def generate_with_residual_and_entropy_noise(
+        self,
+        prompt,
+        residual_layers,
+        residual_noise_std,
+        attn_entropy_layers,
+        attention_noise_std,
+        entropy_calc: str = "max_weight",
+        residual_noise_decay=1.0,
+        max_noise_tokens=200,
+        logits_noise_std=0.0,
+        logits_noise_decay=0.0,
+        max_new_tokens=100,
+        do_sample=True,
+        temperature=1.0,
+        top_p=None,
+        top_k=None,
+        seed=None,
+    ):
+        """
+        Combined residual-stream and entropy-based attention noise generation.
+
+        During decode steps only (prefill skipped):
+            1) Add entropy-scaled noise to self-attention output at
+               `attn_entropy_layers`.
+            2) Add residual-stream noise to block output at `residual_layers`.
+
+        Both schedules share the same decode-step counter and cosine decay
+        horizon (`max_noise_tokens`).
+        """
+        VALID_METHODS = ("max_weight", "topk_entropy", "gini", "renyi2")
+        if entropy_calc not in VALID_METHODS:
+            raise ValueError(
+                f"entropy_calc must be one of {VALID_METHODS}, got '{entropy_calc}'."
+            )
+
+        if seed is not None:
+            torch.manual_seed(seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed_all(seed)
+
+        if residual_noise_std <= 0:
+            raise ValueError("residual_noise_std must be > 0.")
+        if attention_noise_std <= 0:
+            raise ValueError("attention_noise_std must be > 0.")
+        if residual_noise_decay < 0:
+            raise ValueError("residual_noise_decay must be >= 0.")
+        if not isinstance(residual_layers, (list, tuple)) or len(residual_layers) == 0:
+            raise ValueError("residual_layers must be a non-empty list/tuple of layer indices.")
+        if not isinstance(attn_entropy_layers, (list, tuple)) or len(attn_entropy_layers) == 0:
+            raise ValueError("attn_entropy_layers must be a non-empty list/tuple of layer indices.")
+
+        chat_text = self.tokenizer.apply_chat_template(
+            prompt, tokenize=False, add_generation_prompt=True
+        )
+        device = next(iter(self.model.hf_device_map.values()))
+        inputs = self.tokenizer(chat_text, return_tensors="pt").to(device)
+        inputs.pop("token_type_ids", None)
+        input_ids = inputs["input_ids"]
+        prompt_len = input_ids.shape[1]
+
+        blocks = self._get_transformer_blocks()
+        normalized_residual_layers = sorted({
+            self._normalize_layer_index(idx, len(blocks)) for idx in residual_layers
+        })
+        normalized_attn_layers = sorted({
+            self._normalize_layer_index(idx, len(blocks)) for idx in attn_entropy_layers
+        })
+
+        handles = []
+        model_handle = None
+
+        shared = {
+            "forward_calls": 0,
+            "t": 0,
+            "cur_t": 0,
+            "is_prefill": True,
+        }
+
+        try:
+            def model_pre_hook(module, inp):
+                shared["forward_calls"] += 1
+                if shared["forward_calls"] == 1:
+                    shared["is_prefill"] = True
+                    shared["cur_t"] = 0
+                else:
+                    shared["is_prefill"] = False
+                    shared["cur_t"] = shared["t"]
+                    shared["t"] += 1
+
+            model_handle = self.model.register_forward_pre_hook(model_pre_hook)
+
+            def _compute_entropy_scale(w: torch.Tensor) -> float:
+                # Mean per-head max attention weight.
+                scale = w.max(dim=-1).values.mean().item()
+                return float(scale)
+
+            def attn_entropy_hook(module, input, output):
+                if shared["is_prefill"]:
+                    return None
+
+                if not isinstance(output, (tuple, list)) or len(output) < 2:
+                    return None
+
+                attn_output = output[0]
+                attn_weights = output[1]
+
+                if not isinstance(attn_output, torch.Tensor) or attn_output.dim() != 3:
+                    return None
+
+                if attn_weights is None or not isinstance(attn_weights, torch.Tensor):
+                    return None
+
+                if attn_weights.dim() != 4:
+                    return None
+
+                with torch.no_grad():
+                    w = attn_weights[:, :, -1, :].float().clamp(min=0.0)
+                    entropy_scale = _compute_entropy_scale(w)
+
+                    t = shared["cur_t"]
+                    if max_noise_tokens:
+                        T = max_noise_tokens
+                        cosine_decay = 0.5 * (1 + math.cos(math.pi * min(t, T) / T))
+                        cur_std = attention_noise_std * entropy_scale * cosine_decay
+                    else:
+                        cur_std = attention_noise_std * entropy_scale * (residual_noise_decay ** t)
+
+                    if cur_std <= 0:
+                        return None
+
+                    noise = torch.randn_like(attn_output[:, -1:, :]) * cur_std
+                    attn_output[:, -1:, :].add_(noise)
+
+                return (attn_output,) + tuple(output[1:])
+
+            def residual_hook(module, input, output):
+                if shared["is_prefill"]:
+                    return None
+
+                with torch.no_grad():
+                    if isinstance(output, torch.Tensor):
+                        target = output
+                    elif isinstance(output, (tuple, list)) and len(output) > 0 and isinstance(output[0], torch.Tensor):
+                        target = output[0]
+                    else:
+                        return None
+
+                    if target.dim() != 3:
+                        return None
+
+                    t = shared["cur_t"]
+                    if max_noise_tokens:
+                        T = max_noise_tokens
+                        cosine_decay = 0.5 * (1 + math.cos(math.pi * min(t, T) / T))
+                        cur_std = residual_noise_std * cosine_decay
+                    else:
+                        cur_std = residual_noise_std * (residual_noise_decay ** t)
+
+                    if cur_std <= 0:
+                        return None
+
+                    noise = torch.randn_like(target[:, -1:, :]) * cur_std
+                    target[:, -1:, :].add_(noise)
+
+                return None
+
+            for layer_idx in normalized_attn_layers:
+                handles.append(
+                    blocks[layer_idx].self_attn.register_forward_hook(attn_entropy_hook)
+                )
+
+            for layer_idx in normalized_residual_layers:
+                handles.append(blocks[layer_idx].register_forward_hook(residual_hook))
+
+            logits_processor = None
+            if logits_noise_std and logits_noise_std > 0:
+                processor = GaussianLogitsProcessor(
+                    sigma=logits_noise_std,
+                    decay=logits_noise_decay,
+                    prompt_length=prompt_len,
+                )
+                logits_processor = LogitsProcessorList([processor])
+
+            gen_kwargs = {
+                **inputs,
+                "max_new_tokens": max_new_tokens,
+                "output_attentions": True,
+                **self._sampling_kwargs(
+                    do_sample=do_sample,
+                    temperature=temperature,
+                    top_p=top_p,
+                    top_k=top_k,
+                ),
             }
             if logits_processor is not None:
                 gen_kwargs["logits_processor"] = logits_processor
