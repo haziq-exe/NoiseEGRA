@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import csv
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Dict, List, Sequence
 import math
@@ -46,11 +48,61 @@ class CreativityScorer:
         embedding_model: str = "Omartificial-Intelligence-Space/Arabic-Triplet-Matryoshka-V2",
         max_k: int = 10,
         random_state: int = 42,
+        scores_dir: str | None = "EGRA_RESULTS/SCORES",
     ):
         self.texts = [t.strip() for t in texts if isinstance(t, str) and t.strip()]
+        self.embedding_model_name = embedding_model
         self.model = SentenceTransformer(embedding_model, trust_remote_code=True)
         self.max_k = max_k
         self.random_state = random_state
+        self.scores_dir = self._resolve_scores_dir(scores_dir)
+        self.total_modal_collapse_indices_by_run = self._build_modal_collapse_index_map()
+
+    def _resolve_scores_dir(self, scores_dir: str | None) -> Path | None:
+        if scores_dir is None:
+            return None
+
+        path = Path(scores_dir)
+        if not path.is_absolute():
+            path = Path(__file__).resolve().parent / path
+        return path
+
+    def _build_modal_collapse_index_map(self) -> Dict[str, List[int]]:
+        """
+        Build a mapping: run_type -> zero-based story indices with TotalModalCollapse == 1.
+        run_type is taken from file name without the trailing '_SCORE.csv'.
+        """
+        collapse_map: Dict[str, List[int]] = {}
+        if self.scores_dir is None or not self.scores_dir.exists():
+            return collapse_map
+
+        for csv_file in sorted(self.scores_dir.glob("*_SCORE.csv")):
+            run_type = csv_file.name.removesuffix("_SCORE.csv")
+            collapsed_indices: List[int] = []
+
+            with csv_file.open("r", encoding="utf-8", newline="") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    collapse_val = str(row.get("TotalModalCollapse", "")).strip()
+                    if collapse_val != "1":
+                        continue
+
+                    story_number_str = str(row.get("Story number", "")).strip()
+                    if not story_number_str:
+                        continue
+
+                    try:
+                        # Convert 1-based story id in CSV to Python zero-based index.
+                        story_index = int(float(story_number_str)) - 1
+                    except ValueError:
+                        continue
+
+                    if story_index >= 0:
+                        collapsed_indices.append(story_index)
+
+            collapse_map[run_type] = sorted(set(collapsed_indices))
+
+        return collapse_map
 
     def _encode(self) -> np.ndarray:
         if not self.texts:
@@ -263,6 +315,54 @@ class CreativityScorer:
             self.print_report(report)
 
         return float(combined_mean)
+
+    def creativity_score_without_modal_collapse(
+        self,
+        run_type: str,
+        semantic_weight: float = 0.5,
+        lexical_weight: float = 0.5,
+        print_report: bool = True,
+    ) -> float:
+        """
+        Compute creativity score after removing stories that have TotalModalCollapse==1
+        for the given run_type.
+        """
+        if run_type not in self.total_modal_collapse_indices_by_run:
+            available = ", ".join(sorted(self.total_modal_collapse_indices_by_run.keys()))
+            raise ValueError(
+                f"Unknown run_type '{run_type}'. Available run types: {available}"
+            )
+
+        excluded_indices = set(self.total_modal_collapse_indices_by_run[run_type])
+        filtered_texts = [t for idx, t in enumerate(self.texts) if idx not in excluded_indices]
+
+        if not filtered_texts:
+            raise ValueError(
+                f"All stories were removed for run_type '{run_type}'. "
+                "Cannot compute creativity score."
+            )
+
+        original_texts = self.texts
+        try:
+            self.texts = filtered_texts
+            return self.creativity_score(
+                semantic_weight=semantic_weight,
+                lexical_weight=lexical_weight,
+                print_report=print_report,
+            )
+        finally:
+            self.texts = original_texts
+
+    def print_run_types(self) -> None:
+        """Print available run_type keys discovered from SCORE files."""
+        run_types = sorted(self.total_modal_collapse_indices_by_run.keys())
+        if not run_types:
+            print("No run_type keys found. Check scores_dir and SCORE files.")
+            return
+
+        print("=== Available run_type keys ===")
+        for run_type in run_types:
+            print(run_type)
 
     @staticmethod
     def print_report(report: Dict[str, float]) -> None:
