@@ -193,13 +193,14 @@ class EGRA:
     ):
 
         output_csv = Path(output_file)
-        if not include_sys:
-            prompt = [{"role" : "user" , "content" : prompts.SYS_NOISE + "\n\n\n" + prompts.NOISE_1}] 
-        else:
-            prompt = [{"role" : "system" , "content" : prompts.SYS_NOISE}]
-            prompt.append({"role" : "user" , "content" : prompts.NOISE_1})
 
         for x in range(num_stories):
+            if not include_sys:
+                prompt = [{"role" : "user" , "content" : prompts.SYS_NOISE + "\n\n\n" + prompts.NOISE_1}]
+            else:
+                prompt = [{"role" : "system" , "content" : prompts.SYS_NOISE}]
+                prompt.append({"role" : "user" , "content" : prompts.NOISE_1})
+
             story_seed = (seed + (128 * x)) if seed is not None else None
             output = self.generate(
                 prompt,
@@ -1074,13 +1075,14 @@ class EGRA:
 
     def twoStage_residual_noise(
         self, residual_noise_std, residual_noise_decay, residual_layers, logits_noise_std = 0.0, logits_noise_decay = 0.0,
-        output_file="example_file.csv", num_stories=1, max_new_tokens=100, include_sys=True, temperature=1.0, top_p=None, top_k=None, seed=None, print_output=False,
+        output_file="example_file.csv", num_stories=1, max_new_tokens=100, do_sample=True, include_sys=True, temperature=1.0, top_p=None, top_k=None, seed=None, print_output=False,
     ):
         output_csv = Path(output_file)
 
 
 
         for x in range(num_stories):
+            story_seed = (seed + (128 * x)) if seed is not None else None
 
             if not include_sys:
                 prompt = [{"role": "user", "content": prompts.SYS_NOISE + "\n\n\n" + prompts.NOISE_1}]
@@ -1096,10 +1098,11 @@ class EGRA:
                 logits_noise_std=logits_noise_std,
                 logits_noise_decay=logits_noise_decay,
                 max_new_tokens=max_new_tokens,
+                do_sample=do_sample,
                 temperature=temperature,
                 top_p=top_p,
                 top_k=top_k,
-                seed=(seed + (128 * x)) if seed is not None else None,
+                seed=story_seed,
             )
 
             if print_output:
@@ -1112,10 +1115,11 @@ class EGRA:
             output = self.generate(
                 prompt,
                 max_new_tokens,
+                do_sample=do_sample,
                 temperature=temperature,
                 top_p=top_p,
                 top_k=top_k,
-                seed=(seed + (128 * x)) if seed is not None else None,
+                seed=story_seed,
             )
 
             if print_output:
