@@ -744,9 +744,9 @@ class EGRA:
 
                         t = shared["cur_t"]
                         T = max_noise_tokens
-                        # cosine_decay = 0.5 * (1 + math.cos(math.pi * min(t, T) / T))
+                        cosine_decay = 0.5 * (1 + math.cos(math.pi * min(t, T) / T))
 
-                        cur_std = attention_noise_std * entropy_scale  # * cosine_decay
+                        cur_std = attention_noise_std * entropy_scale  * cosine_decay
 
                         if cur_std <= 0:
                             return None
