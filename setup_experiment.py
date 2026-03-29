@@ -17,6 +17,7 @@ import torch
 class ExperimentSpec:
     use_two_stage_zero_shot: bool = False
     use_two_stage_residual_noise: bool = False
+    use_double_residual_noise: bool = False
     use_residual_noise: bool = False
     use_attention_output_noise: bool = False
     use_attention_entropy_noise: bool = False
@@ -25,6 +26,7 @@ class ExperimentSpec:
 
     residual_layers: Optional[Sequence[int]] = None
     residual_noise_std: float = 0.0
+    residual_noise_std_stage2: float = 0.0
     residual_noise_decay: float = 0.0
 
     attention_layers: Optional[Sequence[int]] = None
@@ -97,6 +99,7 @@ def _spec_mode(spec: ExperimentSpec) -> str:
     active = sum([
         spec.use_two_stage_zero_shot,
         spec.use_two_stage_residual_noise,
+        spec.use_double_residual_noise,
         spec.use_residual_noise,
         spec.use_attention_output_noise,
         spec.use_attention_entropy_noise,
@@ -105,6 +108,8 @@ def _spec_mode(spec: ExperimentSpec) -> str:
     ])
     if active > 1:
         raise ValueError("ExperimentSpec cannot enable more than one noise mode at a time.")
+    if spec.use_double_residual_noise:
+        return "double_residual_noise"
     if spec.use_two_stage_residual_noise:
         return "two_stage_residual_noise"
     if spec.use_two_stage_zero_shot:
@@ -158,6 +163,16 @@ def _spec_to_run_id(model_name: str, spec: ExperimentSpec) -> str:
             f"{model_name}__TWOSTAGE_RESID"
             f"__{_layers_tag(spec.residual_layers)}"
             f"__std{_float_tag(spec.residual_noise_std)}"
+            f"__decay{_float_tag(spec.residual_noise_decay)}"
+        ]
+        if not spec.include_sys:
+            parts.append("__nosys")
+    elif mode == "double_residual_noise":
+        parts = [
+            f"{model_name}__DOUBLE_RESID"
+            f"__{_layers_tag(spec.residual_layers)}"
+            f"__std1{_float_tag(spec.residual_noise_std)}"
+            f"__std2{_float_tag(spec.residual_noise_std_stage2)}"
             f"__decay{_float_tag(spec.residual_noise_decay)}"
         ]
         if not spec.include_sys:
@@ -245,6 +260,15 @@ def run_story_experiments(
             print(f"  include_sys: {spec.include_sys}")
             print(f"  residual_layers: {list(spec.residual_layers or [])}")
             print(f"  residual_noise_std: {spec.residual_noise_std}")
+            print(f"  residual_noise_decay: {spec.residual_noise_decay}")
+            print(f"  logits_noise_std: {spec.logits_noise_std}")
+            print(f"  logits_noise_decay: {spec.logits_noise_decay}")
+        elif mode == "double_residual_noise":
+            print("  type: DOUBLE RESIDUAL NOISE")
+            print(f"  include_sys: {spec.include_sys}")
+            print(f"  residual_layers: {list(spec.residual_layers or [])}")
+            print(f"  residual_noise_std_stage1: {spec.residual_noise_std}")
+            print(f"  residual_noise_std_stage2: {spec.residual_noise_std_stage2}")
             print(f"  residual_noise_decay: {spec.residual_noise_decay}")
             print(f"  logits_noise_std: {spec.logits_noise_std}")
             print(f"  logits_noise_decay: {spec.logits_noise_decay}")
@@ -379,6 +403,51 @@ def run_story_experiments(
                     top_k=spec.top_k,
                     seed=seed,
                 )
+            elif mode == "double_residual_noise":
+                if not spec.include_sys:
+                    two_stage_prompt = [
+                        {"role": "user", "content": prompts.SYS_NOISE + "\n\n\n" + prompts.NOISE_1}
+                    ]
+                else:
+                    two_stage_prompt = [
+                        {"role": "system", "content": prompts.SYS_NOISE},
+                        {"role": "user", "content": prompts.NOISE_1},
+                    ]
+
+                first_stage = model.generate_with_residual_stream_noise(
+                    two_stage_prompt,
+                    residual_layers=list(spec.residual_layers or []),
+                    residual_noise_std=spec.residual_noise_std,
+                    residual_noise_decay=spec.residual_noise_decay,
+                    max_noise_tokens=spec.max_noise_tokens,
+                    logits_noise_std=spec.logits_noise_std,
+                    logits_noise_decay=spec.logits_noise_decay,
+                    max_new_tokens=spec.max_new_tokens_plan,
+                    do_sample=spec.do_sample,
+                    temperature=spec.temperature,
+                    top_p=spec.top_p,
+                    top_k=spec.top_k,
+                    seed=seed,
+                )
+
+                two_stage_prompt.append({"role": "assistant", "content": first_stage})
+                two_stage_prompt.append({"role": "user", "content": prompts.NOISE_2})
+
+                story_text = model.generate_with_residual_stream_noise(
+                    two_stage_prompt,
+                    residual_layers=list(spec.residual_layers or []),
+                    residual_noise_std=spec.residual_noise_std_stage2,
+                    residual_noise_decay=spec.residual_noise_decay,
+                    max_noise_tokens=spec.max_noise_tokens,
+                    logits_noise_std=spec.logits_noise_std,
+                    logits_noise_decay=spec.logits_noise_decay,
+                    max_new_tokens=spec.max_new_tokens_story,
+                    do_sample=spec.do_sample,
+                    temperature=spec.temperature,
+                    top_p=spec.top_p,
+                    top_k=spec.top_k,
+                    seed=seed,
+                )
             elif mode == "embedding_noise":
                 story_text = model.generate_with_embedding_noise(
                     story_prompt,
@@ -499,7 +568,7 @@ def make_specs(*items: Any) -> list[ExperimentSpec]:
     Build experiment specs from mode strings or mapping dictionaries.
 
     Supported modes: baseline, two_stage_zero_shot,
-    two_stage_residual_noise, residual_stream_noise,
+    two_stage_residual_noise, double_residual_noise, residual_stream_noise,
     residual_and_entropy_noise, attention_output_noise,
     attention_entropy_noise, embedding_noise.
     """
@@ -528,6 +597,11 @@ def make_specs(*items: Any) -> list[ExperimentSpec]:
             "twostage_residual_noise": "two_stage_residual_noise",
             "twostage_residualnoise": "two_stage_residual_noise",
             "generate_two_stage_residual_noise": "two_stage_residual_noise",
+            "double_residual": "double_residual_noise",
+            "double_residual_noise": "double_residual_noise",
+            "double_resid": "double_residual_noise",
+            "double_res": "double_residual_noise",
+            "double_residuals": "double_residual_noise",
             "residual": "residual_stream_noise",
             "residual_noise": "residual_stream_noise",
             "residual_stream_noise": "residual_stream_noise",
@@ -561,6 +635,7 @@ def make_specs(*items: Any) -> list[ExperimentSpec]:
     def _detect_mode(mapping: Mapping[str, Any]) -> str:
         two_stage_zero_flag = bool(mapping.get("use_two_stage_zero_shot", False))
         two_stage_residual_flag = bool(mapping.get("use_two_stage_residual_noise", False))
+        double_residual_flag = bool(mapping.get("use_double_residual_noise", False))
         residual_flag = bool(mapping.get("use_residual_noise", False))
         attention_flag = bool(mapping.get("use_attention_output_noise", False))
         att_entropy_flag = bool(mapping.get("use_attention_entropy_noise", False))
@@ -570,6 +645,7 @@ def make_specs(*items: Any) -> list[ExperimentSpec]:
         active = sum([
             two_stage_zero_flag,
             two_stage_residual_flag,
+            double_residual_flag,
             residual_flag,
             attention_flag,
             att_entropy_flag,
@@ -579,6 +655,8 @@ def make_specs(*items: Any) -> list[ExperimentSpec]:
         if active > 1:
             raise ValueError("Spec mapping cannot enable more than one noise mode at a time.")
 
+        if double_residual_flag:
+            return "double_residual_noise"
         if two_stage_residual_flag:
             return "two_stage_residual_noise"
         if two_stage_zero_flag:
@@ -612,6 +690,14 @@ def make_specs(*items: Any) -> list[ExperimentSpec]:
             mapping,
             "residual_layers", "residual_noise_std", "residual_noise_decay",
         ) is not None
+
+        has_double_residual_keys = _first_present(
+            mapping,
+            "residual_noise_std_stage2", "stage2_residual_noise_std", "second_stage_residual_noise_std",
+        ) is not None
+
+        if has_double_residual_keys:
+            return "double_residual_noise"
 
         if has_entropy_keys and has_residual_keys:
             return "residual_and_entropy_noise"
@@ -647,6 +733,27 @@ def make_specs(*items: Any) -> list[ExperimentSpec]:
             return None
         return int(value)
 
+    def _resolve_stage_residual_stds(mapping: Mapping[str, Any]) -> tuple[float, float]:
+        stage1 = _first_present(
+            mapping,
+            "residual_noise_std_stage1",
+            "stage1_residual_noise_std",
+            "residual_noise_std",
+        )
+        if stage1 is None:
+            stage1 = 0.0
+
+        stage2 = _first_present(
+            mapping,
+            "residual_noise_std_stage2",
+            "stage2_residual_noise_std",
+            "second_stage_residual_noise_std",
+        )
+        if stage2 is None:
+            stage2 = stage1
+
+        return float(stage1), float(stage2)
+
     for it in items:
         if isinstance(it, str):
             mode = _normalize_mode(it)
@@ -663,17 +770,20 @@ def make_specs(*items: Any) -> list[ExperimentSpec]:
 
         if isinstance(it, Mapping):
             mode = _detect_mode(it)
+            stage1_std, stage2_std = _resolve_stage_residual_stds(it)
             specs.append(
                 ExperimentSpec(
                     use_two_stage_zero_shot=(mode == "two_stage_zero_shot"),
                     use_two_stage_residual_noise=(mode == "two_stage_residual_noise"),
+                    use_double_residual_noise=(mode == "double_residual_noise"),
                     use_residual_noise=(mode == "residual_stream_noise"),
                     use_attention_output_noise=(mode == "attention_output_noise"),
                     use_attention_entropy_noise=(mode == "attention_entropy_noise"),
                     use_residual_and_entropy_noise=(mode == "residual_and_entropy_noise"),
                     use_embedding_noise=(mode == "embedding_noise"),
                     residual_layers=_first_present(it, "residual_layers"),
-                    residual_noise_std=float(it.get("residual_noise_std", 0.0)),
+                    residual_noise_std=stage1_std,
+                    residual_noise_std_stage2=stage2_std,
                     residual_noise_decay=float(it.get("residual_noise_decay", 0.0)),
                     attention_layers=_first_present(
                         it, "attention_layers", "attention_output_layers", "attn_layers"
