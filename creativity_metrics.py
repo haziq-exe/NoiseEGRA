@@ -2,20 +2,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Dict, List, Sequence
+import importlib
 import math
 
 import numpy as np
 from sentence_transformers import SentenceTransformer
-from sklearn.cluster import KMeans
-from sklearn.metrics import pairwise_distances, silhouette_score
 
 
 @dataclass
 class SemanticDiversityResult:
-    pairwise_dispersion_mean: float
-    pairwise_dispersion_std: float
-    cluster_count: int
-    best_silhouette: float
+    vendi_score: float
     semantic_score_mean: float
     semantic_score_std: float
 
@@ -33,8 +29,8 @@ class CreativityScorer:
     Computes semantic diversity, lexical diversity, and a combined creativity score.
 
     Semantic diversity:
-    - Pairwise embedding dispersion (mean cosine distance) + std.
-    - Cluster count selected by silhouette score over k-means.
+    - Vendi Score over cosine-similarity kernel from normalized embeddings.
+    - Normalized semantic score in [0, 1] using (vendi_score - 1) / (n - 1).
 
     Lexical diversity:
     - Self-BLEU (lower is more diverse), converted to lexical score as 1 - self_bleu, with stds.
@@ -74,7 +70,7 @@ class CreativityScorer:
     def __init__(
         self,
         texts: Sequence[str],
-        embedding_model: str = "Omartificial-Intelligence-Space/Arabic-Triplet-Matryoshka-V2",
+        embedding_model: str = "BAAI/bge-m3",
         max_k: int = 10,
         random_state: int = 42,
     ):
@@ -94,6 +90,7 @@ class CreativityScorer:
             self.texts,
             convert_to_numpy=True,
             normalize_embeddings=True,
+            batch_size=32,
         )
 
     @staticmethod
@@ -107,65 +104,26 @@ class CreativityScorer:
         embeddings = self._encode()
         n = embeddings.shape[0]
 
+        # With normalized embeddings, dot-product equals cosine similarity.
+        kernel = embeddings @ embeddings.T
+        try:
+            vendi_module = importlib.import_module("vendi_score.vendi")
+        except ModuleNotFoundError as exc:
+            raise ModuleNotFoundError(
+                "Missing dependency 'vendi_score'. Install it with: pip install vendi-score"
+            ) from exc
+
+        vendi_score = float(vendi_module.score_K(kernel))
+
         if n == 1:
-            return SemanticDiversityResult(
-                pairwise_dispersion_mean=0.0,
-                pairwise_dispersion_std=0.0,
-                cluster_count=1,
-                best_silhouette=0.0,
-                semantic_score_mean=0.0,
-                semantic_score_std=0.0,
-            )
-
-        # Pairwise cosine distances (unique pairs only)
-        dists = pairwise_distances(embeddings, metric="cosine")
-        upper = dists[np.triu_indices(n, k=1)]
-        pairwise_dispersion_mean = float(np.mean(upper))
-        pairwise_dispersion_std = float(np.std(upper))
-
-        best_k = 1
-        best_sil = float("-inf")
-
-        k_upper = min(self.max_k, n - 1)
-        if n >= 3 and k_upper >= 2:
-            for k in range(2, k_upper + 1):
-                labels = KMeans(
-                    n_clusters=k,
-                    n_init=10,
-                    random_state=self.random_state,
-                ).fit_predict(embeddings)
-
-                if len(set(labels)) < 2:
-                    continue
-
-                sil = float(silhouette_score(embeddings, labels, metric="cosine"))
-                if sil > best_sil:
-                    best_sil = sil
-                    best_k = k
+            semantic_score_mean = 0.0
         else:
-            best_sil = 0.0
-
-        if best_sil == float("-inf"):
-            best_sil = 0.0
-
-        # Normalized components for semantic score
-        dispersion_norm = self._safe_clip(pairwise_dispersion_mean / 1.0)
-        cluster_norm = self._safe_clip((best_k - 1) / max(n - 1, 1))
-
-        semantic_score_mean = 0.5 * dispersion_norm + 0.5 * cluster_norm
-
-        # Only dispersion component varies here; cluster_norm is deterministic given best_k.
-        # dispersion_norm = clip(mean/2). We approximate std scaling by linear factor,
-        # ignoring clipping effects (clipping can reduce variance near bounds).
-        semantic_score_std = 0.5 * (pairwise_dispersion_std / 2.0)
+            semantic_score_mean = self._safe_clip((vendi_score - 1.0) / (n - 1.0))
 
         return SemanticDiversityResult(
-            pairwise_dispersion_mean=pairwise_dispersion_mean,
-            pairwise_dispersion_std=pairwise_dispersion_std,
-            cluster_count=best_k,
-            best_silhouette=best_sil,
+            vendi_score=vendi_score,
             semantic_score_mean=semantic_score_mean,
-            semantic_score_std=semantic_score_std,
+            semantic_score_std=0.0,
         )
 
     @staticmethod
@@ -280,10 +238,7 @@ class CreativityScorer:
         ) ** 0.5 / total_weight
 
         report = {
-            "pairwise_embedding_dispersion_mean": semantic.pairwise_dispersion_mean,
-            "pairwise_embedding_dispersion_std": semantic.pairwise_dispersion_std,
-            "cluster_count": float(semantic.cluster_count),
-            "best_silhouette": semantic.best_silhouette,
+            "vendi_score": semantic.vendi_score,
             "semantic_diversity_score_mean": semantic.semantic_score_mean,
             "semantic_diversity_score_std": semantic.semantic_score_std,
             "self_bleu_mean": lexical.self_bleu_mean,
@@ -351,12 +306,9 @@ class CreativityScorer:
     def print_report(report: Dict[str, float]) -> None:
         print("=== Creativity Report ===")
         print(
-            "Semantic - Pairwise Embedding Dispersion: "
-            f"{report['pairwise_embedding_dispersion_mean']:.4f} "
-            f"(std {report['pairwise_embedding_dispersion_std']:.4f})"
+            "Semantic - Vendi Score: "
+            f"{report['vendi_score']:.4f}"
         )
-        print(f"Semantic - Cluster Count (k via silhouette): {int(report['cluster_count'])}")
-        print(f"Semantic - Best Silhouette: {report['best_silhouette']:.4f}")
         print(
             "Semantic Diversity Score: "
             f"{report['semantic_diversity_score_mean']:.4f} "
