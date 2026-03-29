@@ -65,6 +65,17 @@ class CreativityScorer:
         "PHI-4-MINI__L12-20__std0p177__decay0": [],
         "Phi-4__BASELINE": [],
         "Phi-4__ENTROPY__L12-20__std0p2975": [],
+        "ALLam__TWOSTAGE_RESID__L12-20__std0p036__decay0": [],
+        "ALLam__TWOSTAGE_ZERO": [],
+        "Fanar__TWOSTAGE_RESID__L18-26__std0p625__decay0": [],
+        "Fanar__TWOSTAGE_ZERO": [],
+        "Jais__TWOSTAGE_RESID__L12-20__std5p25__decay0": [],
+        "Jais__TWOSTAGE_ZERO": [],
+        "PHI-4__TWOSTAGE_RESID__L12-20__std0p177__decay0": [],
+        "PHI-4__TWOSTAGE_ZERO": [],
+        "ALLam__DOUBLE_RESID__L12-20__std10p036__std20p024__decay0": [],
+        "Fanar__DOUBLE_RESID__L18-26__std10p625__std20p416667__decay0": [],
+        "Jais__DOUBLE_RESID__L12-20__std15p25__std23p5__decay0": [],
     }
 
     def __init__(

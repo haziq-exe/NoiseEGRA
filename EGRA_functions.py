@@ -71,6 +71,18 @@ class EGRA:
                 kwargs["top_k"] = top_k
         return kwargs
 
+    def apply_chat_template(self, messages, tokenize=False, add_generation_prompt=False):
+        """
+        Central chat-template entry point for all EGRA generation methods.
+        Subclasses can override this to support tokenizers/models without a
+        built-in chat template implementation.
+        """
+        return self.tokenizer.apply_chat_template(
+            messages,
+            tokenize=tokenize,
+            add_generation_prompt=add_generation_prompt,
+        )
+
     def generate(self, prompt, max_new_tokens=100, do_sample=True, temperature=1.0, top_p=None, top_k=None, seed=None):
         """
         prompt should always be a list of dicts of the form [ {"role" : "system", "content" : system_prompt},
@@ -80,7 +92,7 @@ class EGRA:
         if seed is not None:
           torch.manual_seed(seed)
 
-        chat_text = self.tokenizer.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
+        chat_text = self.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
         device = next(iter(self.model.hf_device_map.values()))
         inputs = self.tokenizer(chat_text, return_tensors="pt").to(device)
         inputs.pop("token_type_ids", None)
@@ -275,7 +287,7 @@ class EGRA:
         if not isinstance(attn_layers, (list, tuple)) or len(attn_layers) == 0:
             raise ValueError("attn_layers must be a non-empty list/tuple of layer indices.")
 
-        chat_text = self.tokenizer.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
+        chat_text = self.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
         device = next(iter(self.model.hf_device_map.values()))
         inputs = self.tokenizer(chat_text, return_tensors="pt").to(device)
         inputs.pop("token_type_ids", None)
@@ -417,7 +429,7 @@ class EGRA:
         if not isinstance(residual_layers, (list, tuple)) or len(residual_layers) == 0:
             raise ValueError("residual_layers must be a non-empty list/tuple of layer indices.")
     
-        chat_text = self.tokenizer.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
+        chat_text = self.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
         device = next(iter(self.model.hf_device_map.values()))
         inputs = self.tokenizer(chat_text, return_tensors="pt").to(device)
         inputs.pop("token_type_ids", None)
@@ -580,7 +592,7 @@ class EGRA:
             if torch.cuda.is_available():
                 torch.cuda.manual_seed_all(seed)
 
-        chat_text = self.tokenizer.apply_chat_template(
+        chat_text = self.apply_chat_template(
             prompt, tokenize=False, add_generation_prompt=True
         )
         device = next(self.model.parameters()).device
@@ -790,7 +802,7 @@ class EGRA:
         if not isinstance(attn_entropy_layers, (list, tuple)) or len(attn_entropy_layers) == 0:
             raise ValueError("attn_entropy_layers must be a non-empty list/tuple of layer indices.")
 
-        chat_text = self.tokenizer.apply_chat_template(
+        chat_text = self.apply_chat_template(
             prompt, tokenize=False, add_generation_prompt=True
         )
         device = next(iter(self.model.hf_device_map.values()))
@@ -981,7 +993,7 @@ class EGRA:
         if embed_noise_std <= 0:
             raise ValueError("embed_noise_std must be > 0.")
 
-        chat_text = self.tokenizer.apply_chat_template(
+        chat_text = self.apply_chat_template(
             prompt, tokenize=False, add_generation_prompt=True
         )
         device = next(self.model.parameters()).device
