@@ -28,6 +28,7 @@ class ExperimentSpec:
     residual_noise_std: float = 0.0
     residual_noise_std_stage2: float = 0.0
     residual_noise_decay: float = 0.0
+    disable_residual_noise_decay: bool = False
 
     attention_layers: Optional[Sequence[int]] = None
     attention_noise_std: float = 0.0
@@ -213,6 +214,13 @@ def _spec_to_run_id(model_name: str, spec: ExperimentSpec) -> str:
         parts.append(f"__logstd{_float_tag(spec.logits_noise_std)}")
     if spec.logits_noise_decay != 0.0:
         parts.append(f"__logdecay{_float_tag(spec.logits_noise_decay)}")
+    if mode in {
+        "two_stage_residual_noise",
+        "double_residual_noise",
+        "residual_stream_noise",
+        "residual_and_entropy_noise",
+    } and spec.disable_residual_noise_decay:
+        parts.append("__nodecay")
     if sampling_tag:
         parts.append(sampling_tag)
 
@@ -261,6 +269,7 @@ def run_story_experiments(
             print(f"  residual_layers: {list(spec.residual_layers or [])}")
             print(f"  residual_noise_std: {spec.residual_noise_std}")
             print(f"  residual_noise_decay: {spec.residual_noise_decay}")
+            print(f"  disable_residual_noise_decay: {spec.disable_residual_noise_decay}")
             print(f"  logits_noise_std: {spec.logits_noise_std}")
             print(f"  logits_noise_decay: {spec.logits_noise_decay}")
         elif mode == "double_residual_noise":
@@ -270,6 +279,7 @@ def run_story_experiments(
             print(f"  residual_noise_std_stage1: {spec.residual_noise_std}")
             print(f"  residual_noise_std_stage2: {spec.residual_noise_std_stage2}")
             print(f"  residual_noise_decay: {spec.residual_noise_decay}")
+            print(f"  disable_residual_noise_decay: {spec.disable_residual_noise_decay}")
             print(f"  logits_noise_std: {spec.logits_noise_std}")
             print(f"  logits_noise_decay: {spec.logits_noise_decay}")
         elif mode == "residual_stream_noise":
@@ -277,6 +287,7 @@ def run_story_experiments(
             print(f"  residual_layers: {list(spec.residual_layers or [])}")
             print(f"  residual_noise_std: {spec.residual_noise_std}")
             print(f"  residual_noise_decay: {spec.residual_noise_decay}")
+            print(f"  disable_residual_noise_decay: {spec.disable_residual_noise_decay}")
             print(f"  logits_noise_std: {spec.logits_noise_std}")
             print(f"  logits_noise_decay: {spec.logits_noise_decay}")
         elif mode == "residual_and_entropy_noise":
@@ -284,6 +295,7 @@ def run_story_experiments(
             print(f"  residual_layers: {list(spec.residual_layers or [])}")
             print(f"  residual_noise_std: {spec.residual_noise_std}")
             print(f"  residual_noise_decay: {spec.residual_noise_decay}")
+            print(f"  disable_residual_noise_decay: {spec.disable_residual_noise_decay}")
             print(f"  attn_entropy_layers: {list(spec.attn_entropy_layers or [])}")
             print(f"  attn_entropy_noise_std: {spec.attn_entropy_noise_std}")
             print(f"  entropy_calc: {spec.entropy_calc}")
@@ -381,6 +393,7 @@ def run_story_experiments(
                     residual_noise_std=spec.residual_noise_std,
                     residual_noise_decay=spec.residual_noise_decay,
                     max_noise_tokens=spec.max_noise_tokens,
+                    disable_residual_noise_decay=spec.disable_residual_noise_decay,
                     logits_noise_std=spec.logits_noise_std,
                     logits_noise_decay=spec.logits_noise_decay,
                     max_new_tokens=spec.max_new_tokens_plan,
@@ -420,6 +433,7 @@ def run_story_experiments(
                     residual_noise_std=spec.residual_noise_std,
                     residual_noise_decay=spec.residual_noise_decay,
                     max_noise_tokens=spec.max_noise_tokens,
+                    disable_residual_noise_decay=spec.disable_residual_noise_decay,
                     logits_noise_std=spec.logits_noise_std,
                     logits_noise_decay=spec.logits_noise_decay,
                     max_new_tokens=spec.max_new_tokens_plan,
@@ -439,6 +453,7 @@ def run_story_experiments(
                     residual_noise_std=spec.residual_noise_std_stage2,
                     residual_noise_decay=spec.residual_noise_decay,
                     max_noise_tokens=spec.max_noise_tokens,
+                    disable_residual_noise_decay=spec.disable_residual_noise_decay,
                     logits_noise_std=spec.logits_noise_std,
                     logits_noise_decay=spec.logits_noise_decay,
                     max_new_tokens=spec.max_new_tokens_story,
@@ -466,6 +481,7 @@ def run_story_experiments(
                     residual_noise_std=spec.residual_noise_std,
                     residual_noise_decay=spec.residual_noise_decay,
                     max_noise_tokens=spec.max_noise_tokens,
+                    disable_residual_noise_decay=spec.disable_residual_noise_decay,
                     logits_noise_std=spec.logits_noise_std,
                     logits_noise_decay=spec.logits_noise_decay,
                     max_new_tokens=spec.max_new_tokens_plan,
@@ -494,6 +510,7 @@ def run_story_experiments(
                     top_p=spec.top_p,
                     top_k=spec.top_k,
                     seed=seed,
+                    disable_residual_noise_decay=spec.disable_residual_noise_decay,
                 )
             elif mode == "attention_output_noise":
                 story_text = model.generate_with_attention_output_noise(
@@ -785,6 +802,15 @@ def make_specs(*items: Any) -> list[ExperimentSpec]:
                     residual_noise_std=stage1_std,
                     residual_noise_std_stage2=stage2_std,
                     residual_noise_decay=float(it.get("residual_noise_decay", 0.0)),
+                    disable_residual_noise_decay=bool(
+                        _first_present(
+                            it,
+                            "disable_residual_noise_decay",
+                            "residual_noise_decay_off",
+                            "no_residual_noise_decay",
+                        )
+                        or False
+                    ),
                     attention_layers=_first_present(
                         it, "attention_layers", "attention_output_layers", "attn_layers"
                     ),

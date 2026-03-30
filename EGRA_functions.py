@@ -410,11 +410,13 @@ class EGRA:
 
     def generate_with_residual_stream_noise(self, prompt, residual_layers, residual_noise_std, 
             residual_noise_decay=1.0, max_noise_tokens=250,
+            disable_residual_noise_decay=False,
             logits_noise_std=0.0, logits_noise_decay=0.0, max_new_tokens=100, do_sample=True, temperature=1.0, top_p=None, top_k=None, seed=None,
         ):
         """
         Injects Gaussian noise into the residual stream (block output) at selected transformer layers.
-        Noise is applied on each generated token and decays over decoding steps.
+        Noise is applied on each generated token.
+        If disable_residual_noise_decay is True, noise std stays constant across decode steps.
         """
     
         if seed is not None:
@@ -484,7 +486,9 @@ class EGRA:
     
                     t = shared["cur_t"]
     
-                    if max_noise_tokens:
+                    if disable_residual_noise_decay:
+                        cur_std = residual_noise_std
+                    elif max_noise_tokens:
                         T = max_noise_tokens
                         cosine_decay = 0.5 * (1 + math.cos(math.pi * min(t, T) / T))
                         cur_std = residual_noise_std * cosine_decay
@@ -768,6 +772,7 @@ class EGRA:
         top_k=None,
         seed=None,
         top_k_size=None,
+        disable_residual_noise_decay=False,
     ):
         """
         Combined residual-stream and entropy-based attention noise generation.
@@ -902,7 +907,9 @@ class EGRA:
                         return None
 
                     t = shared["cur_t"]
-                    if max_noise_tokens:
+                    if disable_residual_noise_decay:
+                        cur_std = residual_noise_std
+                    elif max_noise_tokens:
                         T = max_noise_tokens
                         cosine_decay = 0.5 * (1 + math.cos(math.pi * min(t, T) / T))
                         cur_std = residual_noise_std * cosine_decay
@@ -1087,6 +1094,7 @@ class EGRA:
 
     def twoStage_residual_noise(
         self, residual_noise_std, residual_noise_decay, residual_layers, logits_noise_std = 0.0, logits_noise_decay = 0.0,
+        disable_residual_noise_decay=False,
         output_file="example_file.csv", num_stories=1, max_new_tokens=100, do_sample=True, include_sys=True, temperature=1.0, top_p=None, top_k=None, seed=None, print_output=False,
     ):
         output_csv = Path(output_file)
@@ -1107,6 +1115,7 @@ class EGRA:
                 residual_layers=residual_layers,
                 residual_noise_std=residual_noise_std,
                 residual_noise_decay=residual_noise_decay,
+                disable_residual_noise_decay=disable_residual_noise_decay,
                 logits_noise_std=logits_noise_std,
                 logits_noise_decay=logits_noise_decay,
                 max_new_tokens=max_new_tokens,
@@ -1161,6 +1170,7 @@ class EGRA:
         seed=None,
         print_output=False,
         max_noise_tokens=200,
+        disable_residual_noise_decay=False,
     ):
         """
         Two-stage generation with residual-stream noise injected in both stages.
@@ -1183,6 +1193,7 @@ class EGRA:
                 residual_noise_std=residual_noise_std_stage1,
                 residual_noise_decay=residual_noise_decay,
                 max_noise_tokens=max_noise_tokens,
+                disable_residual_noise_decay=disable_residual_noise_decay,
                 logits_noise_std=logits_noise_std,
                 logits_noise_decay=logits_noise_decay,
                 max_new_tokens=max_new_tokens,
@@ -1206,6 +1217,7 @@ class EGRA:
                 residual_noise_std=residual_noise_std_stage2,
                 residual_noise_decay=residual_noise_decay,
                 max_noise_tokens=max_noise_tokens,
+                disable_residual_noise_decay=disable_residual_noise_decay,
                 logits_noise_std=logits_noise_std,
                 logits_noise_decay=logits_noise_decay,
                 max_new_tokens=max_new_tokens,
