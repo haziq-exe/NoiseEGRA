@@ -12,7 +12,7 @@
 ### Haziq Mohammad Khalid, Salsabeel Shapsough, Imran Zualkernan 
 ### American University of Sharjah
 #### Presented at BEA @ ACL 26'
-[![arXiv](https://img.shields.io/badge/arXiv-2604.03380-b31b1b.svg)]([https://arxiv.org/abs/2604.03380](https://arxiv.org/abs/2604.03380))
+[![arXiv](https://img.shields.io/badge/arXiv-2604.03380-b31b1b.svg)](https://arxiv.org/abs/2604.03380)
 </div>
 <hr>
 
