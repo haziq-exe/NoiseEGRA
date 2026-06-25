@@ -251,8 +251,7 @@ EGRAConstraintChecker().print_report(stories)
 
 ## Per-model settings used in the paper
 
-Layer ranges and per-model noise std values, taken from the run filenames in
-`experiment_results/` (`L12-20` = layers 12–20; `L18-26` = layers 18–26). RMS ceiling uses `alpha = 0.175 * median(block RMS)`;.
+Layer ranges and specific models used. RMS ceiling uses `alpha = 0.175 * median(block RMS)`.
 
 | Model | HF model id | Layers |
 |---|---|---|
