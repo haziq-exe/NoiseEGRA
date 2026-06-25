@@ -208,7 +208,6 @@ specs = make_specs(
 | `attention_output_noise` | `attention_layers`, `attention_noise_std` |
 | `attention_entropy_noise` (AENI) | `attn_entropy_layers`, `attn_entropy_noise_std`, `entropy_calc` |
 | `embedding_noise` | `embed_noise_std` |
-| `two_stage_zero_shot`, `two_stage_residual_noise`, `double_residual_noise`, `residual_and_entropy_noise` | see `noiseegra/setup_experiment.py` |
 
 All modes also accept `max_noise_tokens` (cosine-decay horizon, default 200),
 `logits_noise_std`/`logits_noise_decay`, `max_new_tokens_plan`/`max_new_tokens_story`,
