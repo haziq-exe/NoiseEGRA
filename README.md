@@ -1,16 +1,19 @@
+<div align="center">
+
 # NoiseEGRA — Noise Steering for Arabic EGRA Story Generation
+
+## Haziq Mohammad Khalid, Salsabeel Shapsough, Imran Zualkernan — American University of Sharjah
+
+<br>
+
+</div>
 
 Training-free **noise steering**: inject calibrated Gaussian perturbations into the
 internal representations of transformer LLMs at inference time to improve the
 *diversity* of Arabic Early-Grade Reading Assessment (EGRA) stories without losing
 quality, constraint adherence, or early-grade reading level.
 
-This repository is the code and experiment artifacts behind the paper:
-
-> **Noise Steering for Controlled Text Generation: Improving Diversity and
-> Reading-Level Fidelity in Arabic Educational Story Generation**
-> Haziq Mohammad Khalid, Salsabeel Shapsough, Imran Zualkernan — American University of Sharjah.
-> See [`ArXiV Link`](https://arxiv.org/abs/2604.03380) for full paper.
+This repository contains the code behind the paper (Presented at BEA @ ACL 26').
 
 The method injects noise at four sites and compares them against high-temperature
 sampling baselines:
@@ -29,7 +32,7 @@ model explores early and restores constraint-following later.
 
 ```
 .
-├── noiseegra/                  # Core Python package
+├── noiseegra/                  
 │   ├── EGRA_functions.py       # EGRA generation class + all noise-injection methods
 │   ├── prompts.py              # Arabic EGRA system/user prompts (zero-shot, two-stage, noise)
 │   ├── RMS_std.py              # RMSCalibrator: per-model noise-std calibration
@@ -44,8 +47,7 @@ model explores early and restores constraint-following later.
 │   ├── final_scores.py         # aggregate per-run summaries -> Final_Scores.txt
 │   ├── build_final_scores_markdown.py  # -> Final_Scores_Table.md
 │   ├── metrics_first30.py      # first-N capped metrics
-│   ├── extract_parts_vendi.py  # split stories into Beginning/Middle/End for Vendi analysis
-│   └── oneoff/                 # one-off scratch scripts (hardcoded single-run paths)
+│   ├── extract_parts_vendi.py  # split stories into Beginning/Middle/End for Vendi analysis (Not included in final paper)
 ├── examples/
 │   └── main_eg.py              # minimal generation example
 ├── pyproject.toml              # Installable package (pip install -e .)
