@@ -223,8 +223,8 @@ def compute_combined_metrics(
 
 
 result = compute_combined_metrics(
-    results_txt="EGRA_RESULTS/ATT_JAIS/Jais_RESULTS.txt",
-    scores_csv="EGRA_RESULTS/ATT_JAIS/ATTN_Jais_Middle_Scores.csv",
+    results_txt="experiment_results/ATT_JAIS/Jais_RESULTS.txt",
+    scores_csv="experiment_results/ATT_JAIS/ATTN_Jais_Middle_Scores.csv",
     run_name="Jais__ATTN__L12-20__std4p6375",
     first_n=50,   # or None to use everything
 )

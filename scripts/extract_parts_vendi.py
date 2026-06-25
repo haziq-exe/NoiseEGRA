@@ -2,11 +2,11 @@
 """Extract Beginning/Middle/End story parts for Vendi analysis.
 
 Workflow:
-1) For each score file in EGRA_RESULTS/SCORES/*_SCORE.csv,
+1) For each score file in experiment_results/SCORES/*_SCORE.csv,
 2) Keep stories where Structure == 1,
 3) Ask Azure OpenAI to choose strict split boundaries,
 4) Slice exact text from original stories into Beginning/Middle/End,
-5) Save per-run CSV outputs under EGRA_RESULTS/PARTS_VENDI.
+5) Save per-run CSV outputs under experiment_results/PARTS_VENDI.
 
 No embedding or vendi computation is performed here.
 """
@@ -26,8 +26,8 @@ from dotenv import load_dotenv
 from openai import AzureOpenAI
 
 
-ROOT = Path(__file__).resolve().parent
-EGRA_RESULTS = ROOT / "EGRA_RESULTS"
+ROOT = Path(__file__).resolve().parents[1]
+EGRA_RESULTS = ROOT / "experiment_results"
 SCORES_DIR = EGRA_RESULTS / "SCORES"
 PARTS_DIR = EGRA_RESULTS / "PARTS_VENDI"
 

@@ -2,7 +2,7 @@
 """Build markdown summary table from Final_Scores and RESULTS reports.
 
 Output:
-  EGRA_RESULTS/Final_Scores_Table.md
+  experiment_results/Final_Scores_Table.md
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 
-BASE = Path("EGRA_RESULTS")
+BASE = Path(__file__).resolve().parents[1] / "experiment_results"
 FINAL_TXT = BASE / "Final_Scores.txt"
 RESULTS_DIR = BASE / "RESULTS"
 SCORES_DIR = BASE / "SCORES"

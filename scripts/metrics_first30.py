@@ -3,9 +3,9 @@
 Compute EGRA experiment metrics with a strict first-N story cap.
 
 Outputs:
-  - EGRA_RESULTS/metrics_first30_summary.csv
-  - EGRA_RESULTS/metrics_first30_details.json
-  - EGRA_RESULTS/metrics_first30_audit.txt
+  - experiment_results/metrics_first30_summary.csv
+  - experiment_results/metrics_first30_details.json
+  - experiment_results/metrics_first30_audit.txt
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 
-BASE_DIR = Path("EGRA_RESULTS")
+BASE_DIR = Path(__file__).resolve().parents[1] / "experiment_results"
 FIRST_N = 50
 
 
@@ -266,11 +266,11 @@ def main() -> None:
 
     results_txt_files = sorted(BASE_DIR.glob("*/*_RESULTS.txt"))
     if not results_txt_files:
-        raise FileNotFoundError("No *_RESULTS.txt files found under EGRA_RESULTS/*/")
+        raise FileNotFoundError("No *_RESULTS.txt files found under experiment_results/*/")
 
     scorer_obj = None
     if args.recompute_creativity:
-        from creativity_metrics import CreativityScorer
+        from noiseegra.creativity_metrics import CreativityScorer
 
         # Initialized once and reused across runs.
         scorer_obj = CreativityScorer(texts=["x", "y"], embedding_model=args.embedding_model)

@@ -2,11 +2,11 @@ import csv
 import io
 from contextlib import redirect_stdout
 from pathlib import Path
-from egra_constraint_checker import EGRAConstraintChecker
-from creativity_metrics import CreativityScorer
+from noiseegra.egra_constraint_checker import EGRAConstraintChecker
+from noiseegra.creativity_metrics import CreativityScorer
 
-csv_path = Path("EGRA_RESULTS/ResidNoise/AceGPT__L12-20__std0p0197__decay0.csv")
-results_path = Path("EGRA_RESULTS/RESULTS/AceGPT__L12-20__std0p0197__decay0.txt")
+csv_path = Path("experiment_results/ResidNoise/AceGPT__L12-20__std0p0197__decay0.csv")
+results_path = Path("experiment_results/RESULTS/AceGPT__L12-20__std0p0197__decay0.txt")
 run_name = "AceGPT__L12-20__std0p0197__decay0"
 
 # Read stories from CSV

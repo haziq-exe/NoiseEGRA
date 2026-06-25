@@ -1,4 +1,4 @@
-from .EGRA_functions import EGRA
+from ..EGRA_functions import EGRA
 import torch
 
 class Jais(EGRA):

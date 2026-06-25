@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "noiseegra"
+version = "0.1.0"
+description = "Noise steering for controlled text generation in Arabic EGRA story generation"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "torch",
+    "transformers",
+    "accelerate",
+    "sentence-transformers",
+    "vendi-score",
+    "numpy",
+    "pandas",
+]
+
+[project.optional-dependencies]
+# Needed only for the LLM-judge scoring / segmentation scripts in scripts/
+judge = ["openai", "python-dotenv"]
+# Optional spaCy PERSON NER backend for the EGRA constraint name checks
+names = ["spacy"]
+# Hugging Face auth helper used by the experiment notebook
+hub = ["huggingface_hub"]
+
+[tool.setuptools]
+packages = ["noiseegra", "noiseegra.models"]

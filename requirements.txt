@@ -1,0 +1,25 @@
+# Core generation + RMS calibration
+torch
+transformers
+accelerate
+
+# Diversity / creativity metrics (Vendi score, Self-BLEU, embeddings)
+sentence-transformers
+vendi-score
+numpy
+pandas
+
+# LLM-judge scoring scripts: scripts/score_stories_gpt52.py, scripts/extract_parts_vendi.py
+openai
+python-dotenv
+
+# Hugging Face auth (used by the experiment notebook)
+huggingface_hub
+
+# Optional: spaCy PERSON NER for the EGRA name-based constraint checks
+# (C14/C17/C18 are skipped unless a name extractor or spaCy model is provided)
+# spacy
+
+# NOTE: The newest Arabic models (e.g. Jais-2) may require transformers built
+# from source rather than the latest PyPI release:
+#   pip install git+https://github.com/huggingface/transformers.git

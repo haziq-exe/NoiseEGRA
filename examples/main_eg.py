@@ -1,5 +1,5 @@
-from .Jais import Jais
-from .EGRA_functions import EGRA
+from noiseegra.models.Jais import Jais
+from noiseegra.EGRA_functions import EGRA
 
 Jais_model = Jais()
 
