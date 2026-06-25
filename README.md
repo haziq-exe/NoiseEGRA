@@ -210,7 +210,6 @@ specs = make_specs(
 | `embedding_noise` | `embed_noise_std` |
 
 All modes also accept `max_noise_tokens` (cosine-decay horizon, default 200),
-`logits_noise_std`/`logits_noise_decay`, `max_new_tokens_plan`/`max_new_tokens_story`,
 and the sampling params.
 
 ### 4. Score quality and constraints (LLM judge)
