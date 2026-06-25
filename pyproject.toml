@@ -28,3 +28,6 @@ hub = ["huggingface_hub"]
 
 [tool.setuptools]
 packages = ["noiseegra", "noiseegra.models"]
+
+[tool.setuptools.package-data]
+noiseegra = ["data/*.json"]

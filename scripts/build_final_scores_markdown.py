@@ -7,17 +7,15 @@ Output:
 
 from __future__ import annotations
 
+import argparse
 import csv
 import re
+import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
-
-BASE = Path(__file__).resolve().parents[1] / "experiment_results"
-FINAL_TXT = BASE / "Final_Scores.txt"
-RESULTS_DIR = BASE / "RESULTS"
-SCORES_DIR = BASE / "SCORES"
-OUT_MD = BASE / "Final_Scores_Table.md"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from scoring_common import resolve_results_dir
 
 
 def norm(s: str) -> str:
@@ -183,13 +181,26 @@ def build_markdown(
 
 
 def main() -> int:
-    final_rows = parse_final_scores(FINAL_TXT)
-    results_map = parse_results_metrics(RESULTS_DIR)
-    collapse_counts = parse_modal_collapse_counts(SCORES_DIR)
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--results-dir", type=Path, default=None, help="Experiment results root")
+    args = ap.parse_args()
+
+    base = resolve_results_dir(args.results_dir)
+    final_txt = base / "Final_Scores.txt"
+    results_dir = base / "RESULTS"
+    scores_dir = base / "SCORES"
+    out_md = base / "Final_Scores_Table.md"
+
+    if not final_txt.is_file():
+        raise SystemExit(f"Missing {final_txt}. Run scripts/final_scores.py first.")
+
+    final_rows = parse_final_scores(final_txt)
+    results_map = parse_results_metrics(results_dir)
+    collapse_counts = parse_modal_collapse_counts(scores_dir)
 
     md = build_markdown(final_rows, results_map, collapse_counts)
-    OUT_MD.write_text(md, encoding="utf-8")
-    print(f"Wrote: {OUT_MD}")
+    out_md.write_text(md, encoding="utf-8")
+    print(f"Wrote: {out_md}")
     print(f"Rows: {len(final_rows)}")
     return 0
 

@@ -8,13 +8,24 @@ from . import prompts
 import math
 
 
+def _cosine_noise_decay(t: int, max_noise_tokens: int) -> float:
+    if max_noise_tokens <= 0:
+        return 0.0
+    return 0.5 * (1 + math.cos(math.pi * min(t, max_noise_tokens) / max_noise_tokens))
+
+
 class EGRA:
-    def __init__(self, model, use_AENI=False):
+    def __init__(self, model, use_AENI=False, dtype=None):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        model_dtype = dtype if dtype is not None else torch.float16
         if use_AENI:
-            self.model = AutoModelForCausalLM.from_pretrained(model, dtype=torch.float16, device_map="auto", attn_implementation="eager")
+            self.model = AutoModelForCausalLM.from_pretrained(
+                model, dtype=model_dtype, device_map="auto", attn_implementation="eager"
+            )
         else:
-            self.model = AutoModelForCausalLM.from_pretrained(model, dtype=torch.float16, device_map="auto")
+            self.model = AutoModelForCausalLM.from_pretrained(
+                model, dtype=model_dtype, device_map="auto"
+            )
         self.tokenizer = AutoTokenizer.from_pretrained(model)
 
     def _get_transformer_blocks(self):
@@ -253,7 +264,7 @@ class EGRA:
         self, prompt, attn_noise_std, attn_layers,
         logits_noise_std=0.0, logits_noise_decay=0.0,
         max_new_tokens=100, do_sample=True, temperature=1.0, top_p=None, top_k=None, seed=None,
-        max_noise_tokens=250,
+        max_noise_tokens=200,
     ):
         """
         Injects Gaussian noise into the self-attention output at selected layers,
@@ -343,7 +354,7 @@ class EGRA:
                     with torch.no_grad():
                         t = shared["cur_t"]
                         T = max_noise_tokens
-                        cosine_decay = 0.5 * (1 + math.cos(math.pi * min(t, T) / T))
+                        cosine_decay = _cosine_noise_decay(t, max_noise_tokens)
                         cur_std = std * cosine_decay
 
                         if cur_std <= 0:
@@ -409,7 +420,7 @@ class EGRA:
 
 
     def generate_with_residual_stream_noise(self, prompt, residual_layers, residual_noise_std, 
-            residual_noise_decay=1.0, max_noise_tokens=250,
+            residual_noise_decay=1.0, max_noise_tokens=200,
             disable_residual_noise_decay=False,
             logits_noise_std=0.0, logits_noise_decay=0.0, max_new_tokens=100, do_sample=True, temperature=1.0, top_p=None, top_k=None, seed=None,
         ):
@@ -490,7 +501,7 @@ class EGRA:
                         cur_std = residual_noise_std
                     elif max_noise_tokens:
                         T = max_noise_tokens
-                        cosine_decay = 0.5 * (1 + math.cos(math.pi * min(t, T) / T))
+                        cosine_decay = _cosine_noise_decay(t, max_noise_tokens)
                         cur_std = residual_noise_std * cosine_decay
                     else:
                         cur_std = residual_noise_std * (residual_noise_decay ** t)
@@ -692,7 +703,7 @@ class EGRA:
 
                         t = shared["cur_t"]
                         T = max_noise_tokens
-                        cosine_decay = 0.5 * (1 + math.cos(math.pi * min(t, T) / T))
+                        cosine_decay = _cosine_noise_decay(t, max_noise_tokens)
 
                         cur_std = attention_noise_std * entropy_scale  * cosine_decay
 
@@ -878,7 +889,7 @@ class EGRA:
                     t = shared["cur_t"]
                     if max_noise_tokens:
                         T = max_noise_tokens
-                        cosine_decay = 0.5 * (1 + math.cos(math.pi * min(t, T) / T))
+                        cosine_decay = _cosine_noise_decay(t, max_noise_tokens)
                         cur_std = attention_noise_std * entropy_scale * cosine_decay
                     else:
                         cur_std = attention_noise_std * entropy_scale * (residual_noise_decay ** t)
@@ -911,7 +922,7 @@ class EGRA:
                         cur_std = residual_noise_std
                     elif max_noise_tokens:
                         T = max_noise_tokens
-                        cosine_decay = 0.5 * (1 + math.cos(math.pi * min(t, T) / T))
+                        cosine_decay = _cosine_noise_decay(t, max_noise_tokens)
                         cur_std = residual_noise_std * cosine_decay
                     else:
                         cur_std = residual_noise_std * (residual_noise_decay ** t)
@@ -1043,8 +1054,7 @@ class EGRA:
 
                 with torch.no_grad():
                     t = shared["cur_t"]
-                    T = max_noise_tokens
-                    cosine_decay = 0.5 * (1 + math.cos(math.pi * min(t, T) / T))
+                    cosine_decay = _cosine_noise_decay(t, max_noise_tokens)
                     cur_std = embed_noise_std * cosine_decay
 
                     if cur_std <= 0:

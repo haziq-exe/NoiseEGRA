@@ -238,15 +238,25 @@ def run_story_experiments(
     seed_fn: Optional[Callable[[int], Optional[int]]] = _seed_for_story,
     sanity_check: bool = False,
     sanity_check_n: int = 2,
+    spacy_model: Optional[str] = None,
 ) -> dict[str, list[str]]:
     """
     Auto filenames: {run_id}.csv where run_id encodes model + spec.
+    Also writes per-run RESULTS/{run_id}.txt and combined {model_name}_RESULTS.txt.
     Returns: {run_id: [story_text, ...]}.
     """
-    checker = EGRAConstraintChecker()
+    checker = EGRAConstraintChecker(spacy_model=spacy_model)
+    if spacy_model is None:
+        print(
+            "NOTE: EGRA name constraints (C14, C17, C18) are not checked without "
+            "spacy_model. Install optional deps: pip install -e \".[names]\" and "
+            "pass spacy_model=\"en_core_web_sm\" (or your NER model)."
+        )
 
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    results_dir = out_dir / "RESULTS"
+    results_dir.mkdir(parents=True, exist_ok=True)
 
     run_ids: list[str] = [_spec_to_run_id(model_name, s) for s in specs]
     out_paths: dict[str, Path] = {rid: out_dir / f"{rid}.csv" for rid in run_ids}
@@ -565,17 +575,22 @@ def run_story_experiments(
     # scoring + constraints
     results_path = out_dir / f"{model_name}_RESULTS.txt"
 
-    buf = io.StringIO()
-    with redirect_stdout(buf):
-        for rid in run_ids:
-            stories = outputs[rid]
+    combined_buf = io.StringIO()
+    for rid in run_ids:
+        stories = outputs[rid]
+        run_buf = io.StringIO()
+        with redirect_stdout(run_buf):
             print(f"\n\n---- {rid} ----\n")
             CreativityScorer(stories).creativity_score(print_report=True)
 
             print(f"\n\n------------------ {rid} CONSTRAINT ---------------------\n\n\n")
             checker.print_report(stories)
 
-    results_path.write_text(buf.getvalue(), encoding="utf-8")
+        run_text = run_buf.getvalue()
+        (results_dir / f"{rid}.txt").write_text(run_text, encoding="utf-8")
+        combined_buf.write(run_text)
+
+    results_path.write_text(combined_buf.getvalue(), encoding="utf-8")
 
     return outputs
 
@@ -831,7 +846,7 @@ def make_specs(*items: Any) -> list[ExperimentSpec]:
                     max_noise_tokens=int(it.get("max_noise_tokens", 200)),
                     logits_noise_std=float(it.get("logits_noise_std", 0.0)),
                     logits_noise_decay=float(it.get("logits_noise_decay", 0.0)),
-                    max_new_tokens_plan=int(it.get("max_new_tokens_plan", 1000)),
+                    max_new_tokens_plan=int(it.get("max_new_tokens_plan", 500)),
                     max_new_tokens_story=int(it.get("max_new_tokens_story", 500)),
                     do_sample=bool(it.get("do_sample", True)),
                     include_sys=bool(it.get("include_sys", True)),

@@ -16,20 +16,15 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import os
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
-from dotenv import load_dotenv
-from openai import AzureOpenAI
-
-
-ROOT = Path(__file__).resolve().parents[1]
-EGRA_RESULTS = ROOT / "experiment_results"
-SCORES_DIR = EGRA_RESULTS / "SCORES"
-PARTS_DIR = EGRA_RESULTS / "PARTS_VENDI"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from judge_common import chat_with_retry, create_azure_client, repo_root
+from scoring_common import resolve_results_dir
 
 
 def _norm(s: str) -> str:
@@ -44,28 +39,22 @@ def _as_int(v: object) -> int:
 
 
 def read_stories(path: Path) -> List[str]:
-    # Files are effectively one story per CSV row. Stories may include newlines.
-    try:
-        with path.open("r", encoding="utf-8", errors="replace", newline="") as f:
-            rows = list(csv.reader(f))
-        out: List[str] = []
-        for r in rows:
-            if not r:
-                continue
-            s = " ".join(part.strip() for part in r if str(part).strip())
-            if s:
-                out.append(s)
-        if out:
-            return out
-    except Exception:
-        pass
-
-    text = path.read_text(encoding="utf-8", errors="replace")
-    return [line.strip() for line in text.splitlines() if line.strip()]
+    with path.open("r", encoding="utf-8", errors="replace", newline="") as f:
+        rows = list(csv.reader(f))
+    out: List[str] = []
+    for r in rows:
+        if not r:
+            continue
+        s = " ".join(part.strip() for part in r if str(part).strip())
+        if s:
+            out.append(s)
+    if not out:
+        raise ValueError(f"No stories found in {path}")
+    return out
 
 
-def iter_source_csvs() -> Iterable[Path]:
-    for p in sorted(EGRA_RESULTS.rglob("*.csv")):
+def iter_source_csvs(egra_results: Path) -> Iterable[Path]:
+    for p in sorted(egra_results.rglob("*.csv")):
         if "SCORES" in p.parts:
             continue
         if "PARTS_VENDI" in p.parts:
@@ -73,10 +62,10 @@ def iter_source_csvs() -> Iterable[Path]:
         yield p
 
 
-def build_source_maps() -> Tuple[Dict[str, Path], Dict[str, List[Path]]]:
+def build_source_maps(egra_results: Path) -> Tuple[Dict[str, Path], Dict[str, List[Path]]]:
     by_stem: Dict[str, Path] = {}
     by_norm: Dict[str, List[Path]] = {}
-    for p in iter_source_csvs():
+    for p in iter_source_csvs(egra_results):
         by_stem[p.stem] = p
         by_norm.setdefault(_norm(p.stem), []).append(p)
     return by_stem, by_norm
@@ -172,7 +161,7 @@ def _extract_json(text: str) -> dict:
 
 
 def _segment_batch(
-    client: AzureOpenAI,
+    client,
     model: str,
     batch: Sequence[StoryTarget],
     max_retries: int = 3,
@@ -215,12 +204,7 @@ def _segment_batch(
             },
         ]
 
-        resp = client.chat.completions.create(
-            model=model,
-            messages=messages,
-        )
-
-        content = resp.choices[0].message.content or ""
+        content = chat_with_retry(client, model=model, messages=messages)
 
         try:
             parsed = _extract_json(content)
@@ -282,7 +266,7 @@ def _segment_batch(
 
 
 def extract_parts_for_run(
-    client: AzureOpenAI,
+    client,
     model: str,
     source_csv: Path,
     score_csv: Path,
@@ -326,13 +310,14 @@ def write_parts_csv(out_path: Path, source_csv: Path, score_csv: Path, parts: Se
                 p.beginning,
                 p.middle,
                 p.end,
-                str(source_csv.relative_to(ROOT)),
-                str(score_csv.relative_to(ROOT)),
+                str(source_csv.relative_to(repo_root())),
+                str(score_csv.relative_to(repo_root())),
             ])
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Extract Beginning/Middle/End parts for Structure==1 stories")
+    ap.add_argument("--results-dir", type=Path, default=None, help="Experiment results root")
     ap.add_argument("--batch-size", type=int, default=8, help="Stories per model call")
     ap.add_argument(
         "--only-stem",
@@ -342,28 +327,15 @@ def main() -> int:
     )
     args = ap.parse_args()
 
-    load_dotenv(dotenv_path=ROOT / ".env", override=False)
+    root = repo_root()
+    egra_results = resolve_results_dir(args.results_dir)
+    scores_dir = egra_results / "SCORES"
+    parts_dir = egra_results / "PARTS_VENDI"
 
-    api_key = os.getenv("AZURE_KEY")
-    if not api_key:
-        raise RuntimeError("Missing AZURE_KEY in environment/.env")
+    client, model = create_azure_client()
 
-    api_version = os.getenv("AZURE_API_VERSION", "2024-12-01-preview")
-    endpoint = os.getenv(
-        "AZURE_ENDPOINT",
-        "https://haziq-mn8xvnty-eastus2.cognitiveservices.azure.com/",
-    )
-    # Default to stronger model unless caller overrides by env.
-    model = os.getenv("AZURE_DEPLOYMENT", "gpt-5.3-chat")
-
-    client = AzureOpenAI(
-        api_version=api_version,
-        azure_endpoint=endpoint,
-        api_key=api_key,
-    )
-
-    by_stem, by_norm = build_source_maps()
-    score_files = sorted(SCORES_DIR.glob("*_SCORE.csv"))
+    by_stem, by_norm = build_source_maps(egra_results)
+    score_files = sorted(scores_dir.glob("*_SCORE.csv"))
 
     if args.only_stem:
         allowed = {_norm(s) for s in args.only_stem}
@@ -374,7 +346,7 @@ def main() -> int:
                 filtered.append(p)
         score_files = filtered
 
-    PARTS_DIR.mkdir(parents=True, exist_ok=True)
+    parts_dir.mkdir(parents=True, exist_ok=True)
     summary_lines: List[str] = []
     summary_lines.append(f"Model: {model}")
     summary_lines.append(f"Score files scanned: {len(score_files)}")
@@ -396,12 +368,12 @@ def main() -> int:
         targets = collect_structure_one_targets(score_csv=score_csv, stories=stories)
         total_targets += len(targets)
 
-        rel_parent = source_csv.parent.relative_to(EGRA_RESULTS)
-        out_path = PARTS_DIR / rel_parent / f"{source_csv.stem}__PARTS.csv"
+        rel_parent = source_csv.parent.relative_to(egra_results)
+        out_path = parts_dir / rel_parent / f"{source_csv.stem}__PARTS.csv"
 
         if not targets:
             write_parts_csv(out_path=out_path, source_csv=source_csv, score_csv=score_csv, parts=[])
-            summary_lines.append(f"{source_csv.stem}: Structure=1 stories 0 -> wrote empty {out_path.relative_to(ROOT)}")
+            summary_lines.append(f"{source_csv.stem}: Structure=1 stories 0 -> wrote empty {out_path.relative_to(root)}")
             print(f"[DONE] {source_csv.stem}: no Structure=1 stories")
             continue
 
@@ -419,9 +391,9 @@ def main() -> int:
 
             total_extracted += len(parts)
             summary_lines.append(
-                f"{source_csv.stem}: Structure=1 stories {len(targets)} -> {out_path.relative_to(ROOT)}"
+                f"{source_csv.stem}: Structure=1 stories {len(targets)} -> {out_path.relative_to(root)}"
             )
-            print(f"[DONE] {source_csv.stem}: wrote {out_path.relative_to(ROOT)}")
+            print(f"[DONE] {source_csv.stem}: wrote {out_path.relative_to(root)}")
         except Exception as exc:
             summary_lines.append(f"ERROR {source_csv.stem}: {exc}")
             print(f"[ERROR] {source_csv.stem}: {exc}")
@@ -429,9 +401,9 @@ def main() -> int:
     summary_lines.append(f"Total Structure=1 targets: {total_targets}")
     summary_lines.append(f"Total extracted parts: {total_extracted}")
 
-    manifest = PARTS_DIR / "MANIFEST.txt"
+    manifest = parts_dir / "MANIFEST.txt"
     manifest.write_text("\n".join(summary_lines) + "\n", encoding="utf-8")
-    print(f"Wrote manifest: {manifest.relative_to(ROOT)}")
+    print(f"Wrote manifest: {manifest.relative_to(root)}")
     return 0
 
 

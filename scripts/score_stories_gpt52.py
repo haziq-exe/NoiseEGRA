@@ -4,28 +4,30 @@ Input files are treated as one story per row with no header.
 Outputs are written to experiment_results/SCORES with the same base name + _SCORE.csv.
 
 Uses Azure OpenAI via the `openai` Python package.
-Credentials are loaded from environment variables and `.env` (AZURE_KEY).
+Credentials are loaded from environment variables and `.env` (see .env.example).
 """
 
 from __future__ import annotations
 
+import argparse
 import csv
-import os
-import re
 import io
 import json
+import os
+import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, List, Sequence
 
-from dotenv import load_dotenv
-from openai import AzureOpenAI
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from judge_common import chat_with_retry, create_azure_client, repo_root
+from scoring_common import resolve_results_dir
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from noiseegra.defaults import DEFAULT_EXPERIMENT_INPUT_FOLDERS
 
-ROOT = Path(__file__).resolve().parents[1]
-EGRA_RESULTS = ROOT / "experiment_results"
-INPUT_FOLDERS = ["AENIMaxW", "baseline", "EmbedNoise", "ResidNoise", "AttnNoise"]
-SCORES_DIR = EGRA_RESULTS / "SCORES"
+DEFAULT_INPUT_FOLDERS = DEFAULT_EXPERIMENT_INPUT_FOLDERS
 
 OUTPUT_COLUMNS = [
     "Story number",
@@ -53,13 +55,6 @@ PROMPT = (
     "Your response should be as a table format csv with the following column names:\n\n"
     "Story number, Readability, Logic, GrammarandLinguistics, ReadingLevel, TotalModalCollapse, Structure, VocabularyLevel, Stereotypes, Gender-balanced"
 )
-
-
-AZURE_API_VERSION = os.getenv("AZURE_API_VERSION", "2024-12-01-preview")
-AZURE_ENDPOINT = os.getenv(
-    "AZURE_ENDPOINT", "https://haziq-mn8xvnty-eastus2.cognitiveservices.azure.com/"
-)
-AZURE_DEPLOYMENT = os.getenv("AZURE_DEPLOYMENT", "gpt-4o")
 
 
 @dataclass(frozen=True)
@@ -90,48 +85,56 @@ class ScoreRow:
         ]
 
 
-def iter_input_csv_files() -> Iterable[Path]:
-    for folder in INPUT_FOLDERS:
-        for path in sorted((EGRA_RESULTS / folder).glob("*.csv")):
+def iter_input_csv_files(egra_results: Path, input_folders: Sequence[str]) -> Iterable[Path]:
+    for folder in input_folders:
+        folder_path = egra_results / folder
+        if not folder_path.is_dir():
+            continue
+        for path in sorted(folder_path.glob("*.csv")):
             if path.name.endswith("_SCORE.csv"):
                 continue
             yield path
 
 
 def read_stories(path: Path) -> List[str]:
-    # These files are effectively single-column CSVs (one story per ROW).
-    # Stories themselves can contain embedded newlines, so we must not split on lines.
-    try:
-        with path.open("r", encoding="utf-8", errors="replace", newline="") as f:
-            rows = list(csv.reader(f))
-        stories: List[str] = []
-        for r in rows:
-            if not r:
-                continue
-            # If there are multiple columns unexpectedly, join them.
-            s = " ".join(part.strip() for part in r if str(part).strip())
-            if s:
-                stories.append(s)
-        if stories:
-            return stories
-    except Exception:
-        pass
+    """Read one story per CSV row (stories may contain embedded newlines)."""
+    with path.open("r", encoding="utf-8", errors="replace", newline="") as f:
+        rows = list(csv.reader(f))
 
-    # Fallback: treat as one record per non-empty line.
-    text = path.read_text(encoding="utf-8", errors="replace")
-    return [line.strip() for line in text.splitlines() if line.strip()]
+    stories: List[str] = []
+    for r in rows:
+        if not r:
+            continue
+        s = " ".join(part.strip() for part in r if str(part).strip())
+        if s:
+            stories.append(s)
 
-
-def ensure_scores_dir() -> None:
-    SCORES_DIR.mkdir(parents=True, exist_ok=True)
+    if not stories:
+        raise ValueError(
+            f"No stories found in {path}. Expected a single-column CSV with one story per row."
+        )
+    return stories
 
 
 def _extract_csv_block(text: str) -> str:
-    # Model may wrap CSV in code fences; strip to raw CSV.
     fenced = re.search(r"```(?:csv)?\s*(.*?)```", text, flags=re.DOTALL | re.IGNORECASE)
     if fenced:
         return fenced.group(1).strip()
     return text.strip()
+
+
+def _as_int(v: object) -> int:
+    v2 = str(v).strip()
+    if v2 == "":
+        return 0
+    return int(round(float(v2)))
+
+
+def _as_float(v: object) -> float:
+    v2 = str(v).strip()
+    if v2 == "":
+        return 0.0
+    return float(v2)
 
 
 def _parse_score_csv(csv_text: str) -> List[ScoreRow]:
@@ -146,31 +149,19 @@ def _parse_score_csv(csv_text: str) -> List[ScoreRow]:
     if missing:
         raise ValueError(f"Model CSV missing columns: {sorted(missing)}")
 
-    def as_int(v: str) -> int:
-        v2 = str(v).strip()
-        if v2 == "":
-            return 0
-        return int(float(v2))
-
-    def as_float(v: str) -> float:
-        v2 = str(v).strip()
-        if v2 == "":
-            return 0.0
-        return float(v2)
-
     for r in reader:
         rows.append(
             ScoreRow(
-                story_number=as_int(r["Story number"]),
-                readability=as_float(r["Readability"]),
-                logic=as_float(r["Logic"]),
-                grammar_and_linguistics=as_float(r["GrammarandLinguistics"]),
+                story_number=_as_int(r["Story number"]),
+                readability=_as_float(r["Readability"]),
+                logic=_as_float(r["Logic"]),
+                grammar_and_linguistics=_as_float(r["GrammarandLinguistics"]),
                 reading_level=str(r["ReadingLevel"]).strip(),
-                total_modal_collapse=as_int(r["TotalModalCollapse"]),
-                structure=as_int(r["Structure"]),
-                vocabulary_level=as_int(r["VocabularyLevel"]),
-                stereotypes=as_int(r["Stereotypes"]),
-                gender_balanced=as_int(r["Gender-balanced"]),
+                total_modal_collapse=_as_int(r["TotalModalCollapse"]),
+                structure=_as_int(r["Structure"]),
+                vocabulary_level=_as_int(r["VocabularyLevel"]),
+                stereotypes=_as_int(r["Stereotypes"]),
+                gender_balanced=_as_int(r["Gender-balanced"]),
             )
         )
     return rows
@@ -193,29 +184,13 @@ def _parse_score_json(json_text: str) -> List[ScoreRow]:
 
     if isinstance(data, dict):
         items = data.get("items")
-        if isinstance(items, list):
-            rows_data = items
-        else:
-            rows_data = [data]
+        rows_data = items if isinstance(items, list) else [data]
     elif isinstance(data, list):
         rows_data = data
     else:
         raise ValueError("JSON response must be an object or list")
 
     rows: List[ScoreRow] = []
-
-    def as_int(v: object) -> int:
-        v2 = str(v).strip()
-        if v2 == "":
-            return 0
-        return int(float(v2))
-
-    def as_float(v: object) -> float:
-        v2 = str(v).strip()
-        if v2 == "":
-            return 0.0
-        return float(v2)
-
     key_aliases = {
         "storynumber": ["storynumber", "story_no", "storyid"],
         "readability": ["readability"],
@@ -243,52 +218,43 @@ def _parse_score_json(json_text: str) -> List[ScoreRow]:
 
         rows.append(
             ScoreRow(
-                story_number=as_int(pick("storynumber")),
-                readability=as_float(pick("readability")),
-                logic=as_float(pick("logic")),
-                grammar_and_linguistics=as_float(pick("grammarandlinguistics")),
+                story_number=_as_int(pick("storynumber")),
+                readability=_as_float(pick("readability")),
+                logic=_as_float(pick("logic")),
+                grammar_and_linguistics=_as_float(pick("grammarandlinguistics")),
                 reading_level=str(pick("readinglevel")).strip(),
-                total_modal_collapse=as_int(pick("totalmodalcollapse")),
-                structure=as_int(pick("structure")),
-                vocabulary_level=as_int(pick("vocabularylevel")),
-                stereotypes=as_int(pick("stereotypes")),
-                gender_balanced=as_int(pick("genderbalanced")),
+                total_modal_collapse=_as_int(pick("totalmodalcollapse")),
+                structure=_as_int(pick("structure")),
+                vocabulary_level=_as_int(pick("vocabularylevel")),
+                stereotypes=_as_int(pick("stereotypes")),
+                gender_balanced=_as_int(pick("genderbalanced")),
             )
         )
 
     return rows
 
 
+def _looks_like_score_csv(text: str) -> bool:
+    block = _extract_csv_block(text)
+    return "Story number" in block and "Readability" in block
+
+
 def _parse_score_response(text: str) -> List[ScoreRow]:
-    # Preferred format is CSV. If model returns JSON, parse that too.
-    try:
-        return _parse_score_csv(text)
-    except Exception:
-        return _parse_score_json(text)
+    if _looks_like_score_csv(text):
+        try:
+            return _parse_score_csv(text)
+        except Exception as csv_exc:
+            if "```json" in text.lower() or text.strip().startswith(("{", "[")):
+                return _parse_score_json(text)
+            raise csv_exc
+    return _parse_score_json(text)
 
 
 def score_with_gpt52(stories: Sequence[str], source_path: Path) -> List[ScoreRow]:
-    """Score stories using Azure OpenAI GPT-5.2.
-
-    Per your requirement, each input CSV is scored via a fresh client invocation.
-    """
-
     if not stories:
         return []
 
-    # load env (supports local development)
-    load_dotenv(dotenv_path=ROOT / ".env", override=False)
-
-    api_key = os.getenv("AZURE_KEY")
-    if not api_key:
-        raise RuntimeError("Missing AZURE_KEY in environment/.env")
-
-    client = AzureOpenAI(
-        api_version=AZURE_API_VERSION,
-        azure_endpoint=AZURE_ENDPOINT,
-        api_key=api_key,
-    )
-
+    client, deployment = create_azure_client()
     batch_size = int(os.getenv("STORY_BATCH_SIZE", "10"))
     all_rows: List[ScoreRow] = []
 
@@ -326,12 +292,7 @@ def score_with_gpt52(stories: Sequence[str], source_path: Path) -> List[ScoreRow
                 },
             ]
 
-            resp = client.chat.completions.create(
-                model=AZURE_DEPLOYMENT,
-                messages=messages,
-            )
-
-            content = resp.choices[0].message.content or ""
+            content = chat_with_retry(client, model=deployment, messages=messages)
             try:
                 batch_rows = _parse_score_response(content)
             except Exception as exc:
@@ -339,9 +300,7 @@ def score_with_gpt52(stories: Sequence[str], source_path: Path) -> List[ScoreRow
                 continue
 
             if len(batch_rows) != len(batch):
-                retry_note = (
-                    f"row_count_mismatch expected={len(batch)} got={len(batch_rows)}"
-                )
+                retry_note = f"row_count_mismatch expected={len(batch)} got={len(batch_rows)}"
                 batch_rows = []
                 continue
 
@@ -349,16 +308,10 @@ def score_with_gpt52(stories: Sequence[str], source_path: Path) -> List[ScoreRow
 
         if not batch_rows:
             raise ValueError(
-                f"Failed to parse scoring output for {source_path.name} batch {start}-{start+len(batch)-1}"
+                f"Failed to parse scoring output for {source_path.name} "
+                f"batch {start}-{start + len(batch) - 1}"
             )
 
-        if len(batch_rows) != len(batch):
-            raise ValueError(
-                f"Row count mismatch for {source_path.name} batch {start}-{start+len(batch)-1}: "
-                f"got {len(batch_rows)} scores for {len(batch)} stories"
-            )
-
-        # Renumber into global indices regardless of what the model returned
         for i, row in enumerate(batch_rows, start=1):
             global_idx = start + i
             all_rows.append(
@@ -378,7 +331,8 @@ def score_with_gpt52(stories: Sequence[str], source_path: Path) -> List[ScoreRow
 
     if len(all_rows) != len(stories):
         raise ValueError(
-            f"Final row count mismatch for {source_path.name}: got {len(all_rows)} for {len(stories)}"
+            f"Final row count mismatch for {source_path.name}: "
+            f"got {len(all_rows)} for {len(stories)}"
         )
 
     return all_rows
@@ -396,35 +350,58 @@ def _existing_score_file_is_complete(score_path: Path, expected_story_count: int
     if not score_path.exists():
         return False
     try:
-        with score_path.open("r", encoding="utf-8", errors="replace", newline="") as f:
-            reader = csv.reader(f)
-            rows = list(reader)
-        # header + N rows
-        return len(rows) == expected_story_count + 1
+        with score_path.open("r", encoding="utf-8-sig", errors="replace", newline="") as f:
+            reader = csv.DictReader(f)
+            if not reader.fieldnames:
+                return False
+            if list(reader.fieldnames) != OUTPUT_COLUMNS:
+                return False
+            data_rows = list(reader)
+        if len(data_rows) != expected_story_count:
+            return False
+        if data_rows:
+            first = data_rows[0]
+            if _as_float(first.get("Readability")) is None and str(first.get("Readability", "")).strip() == "":
+                return False
+        return True
     except Exception:
         return False
 
 
 def main() -> int:
-    ensure_scores_dir()
+    ap = argparse.ArgumentParser(description="Batch-score story CSVs with Azure OpenAI")
+    ap.add_argument("--results-dir", type=Path, default=None, help="Experiment results root")
+    ap.add_argument(
+        "--input-dirs",
+        action="append",
+        default=None,
+        help="Subfolders under results-dir containing story CSVs (repeatable)",
+    )
+    args = ap.parse_args()
 
-    inputs = list(iter_input_csv_files())
+    egra_results = resolve_results_dir(args.results_dir)
+    scores_dir = egra_results / "SCORES"
+    scores_dir.mkdir(parents=True, exist_ok=True)
+
+    input_folders = args.input_dirs if args.input_dirs else DEFAULT_INPUT_FOLDERS
+    inputs = list(iter_input_csv_files(egra_results, input_folders))
     if not inputs:
         print("No input CSVs found.")
         return 0
 
+    root = repo_root()
     for input_path in inputs:
         stories = read_stories(input_path)
-        output_path = SCORES_DIR / f"{input_path.stem}_SCORE.csv"
+        output_path = scores_dir / f"{input_path.stem}_SCORE.csv"
 
         if _existing_score_file_is_complete(output_path, expected_story_count=len(stories)):
             print(f"Skipping (already scored): {output_path.name}")
             continue
 
-        print(f"Scoring {input_path.relative_to(ROOT)} ({len(stories)} stories)...")
+        print(f"Scoring {input_path.relative_to(root)} ({len(stories)} stories)...")
         rows = score_with_gpt52(stories, input_path)
         write_scores(output_path, rows)
-        print(f"Wrote: {output_path.relative_to(ROOT)}")
+        print(f"Wrote: {output_path.relative_to(root)}")
 
     return 0
 

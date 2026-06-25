@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Dict, List, Sequence
 import importlib
+import json
 import math
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Dict, List, Optional, Sequence
 
 import numpy as np
 from sentence_transformers import SentenceTransformer
@@ -36,55 +38,15 @@ class CreativityScorer:
     - Self-BLEU (lower is more diverse), converted to lexical score as 1 - self_bleu, with stds.
     """
 
-    TOTAL_MODAL_COLLAPSE_INDICES_BY_RUN: Dict[str, List[int]] = {
-        "ALLam__ATTN__L12-20__std0p105__maxtok200": [0, 1, 8, 10, 12, 13, 17, 30, 41, 46, 47, 48, 49],
-        "ALLam__BASELINE": [],
-        "ALLam__BASELINE__temp1p8__topk40": [],
-        "ALLam__BASELINE__temp1p8__topp0p95": [0, 1, 2, 10, 12, 13],
-        "ALLam__EMBED__std0p015": [11, 18, 19, 21, 32, 35, 36, 37, 38, 39, 42, 46, 48, 49],
-        "ALLam__ENTROPY__L12-20__std0p105": [],
-        "ALLam__L12-20__std0p036__decay0": [],
-        "Fanar_9B__L18-26__std0p625__decay0": [],
-        "Fanar__ATTN__L18-26__std4p095": [10, 12, 14, 16, 18, 20, 23, 25, 27, 29, 30],
-        "Fanar__BASELINE": [],
-        "Fanar__BASELINE__temp1p8__topk40": [40],
-        "Fanar__BASELINE__temp1p8__topp0p95": [],
-        "Fanar__EMBED__std0p042": [10, 12, 15, 17, 19, 20, 21, 23, 25, 27, 29, 30],
-        "Fanar__ENTROPY__L18-26__std4p095": [40],
-        "JAIS__ATTN__L12-20__std4p6375": [10, 48],
-        "Jais__BASELINE": [],
-        "Jais__BASELINE__temp1p8__topk40": [],
-        "Jais__BASELINE__temp1p8__topp0p95": [],
-        "Jais__EMBED__std7p19426": [43],
-        "Jais__ENTROPY__L12-20__std4p6375": [],
-        "Jais__ENTROPY__L12-20__std9p275": [],
-        "Jais__L12-20__std5p25__decay0": [],
-        "PHI-4-MINI__ATTN__L12-20__std0p2975": [0, 3, 4, 7, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 32, 35, 38, 40],
-        "PHI-4-MINI__BASELINE__temp1p8__topk40": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 46, 47, 49],
-        "PHI-4-MINI__BASELINE__temp1p8__topp0p95": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 14, 16, 17, 18, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39],
-        "PHI-4-MINI__L12-20__std0p177__decay0": [],
-        "Phi-4__BASELINE": [],
-        "Phi-4__ENTROPY__L12-20__std0p2975": [],
-        "ALLam__TWOSTAGE_RESID__L12-20__std0p036__decay0": [],
-        "ALLam__TWOSTAGE_ZERO": [],
-        "Fanar__TWOSTAGE_RESID__L18-26__std0p625__decay0": [],
-        "Fanar__TWOSTAGE_ZERO": [],
-        "Jais__TWOSTAGE_RESID__L12-20__std5p25__decay0": [],
-        "Jais__TWOSTAGE_ZERO": [],
-        "PHI-4__TWOSTAGE_RESID__L12-20__std0p177__decay0": [],
-        "PHI-4__TWOSTAGE_ZERO": [],
-        "ALLam__DOUBLE_RESID__L12-20__std10p036__std20p024__decay0": [],
-        "Fanar__DOUBLE_RESID__L18-26__std10p625__std20p416667__decay0": [],
-        "Jais__DOUBLE_RESID__L12-20__std15p25__std23p5__decay0": [],
-        "AceGPT__ATTN__L12-20__std0p0235641": [],
-        "AceGPT__BASELINE": [33],
-        "AceGPT__BASELINE__temp1p8__topk40": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 18, 20, 21, 22, 24, 25, 26, 27, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 46, 48, 49],
-        "AceGPT__BASELINE__temp1p8__topp0p95": [0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 20, 21, 22, 24, 26, 27, 30, 31, 32, 34, 35, 36, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48],
-        "AceGPT__EMBED__std0p0066345": [],
-        "AceGPT__ENTROPY__L12-20__std0p0235629": [],
-        "AceGPT__L12-20__std0p0564493__decay0": [15, 17, 21, 24, 25, 26, 32, 37, 39, 42, 43, 44, 45, 47, 49],
-        "AceGPT__L12-20__std0p0197__decay0": [],
-    }
+    _PAPER_MODAL_COLLAPSE_PATH = Path(__file__).resolve().parent / "data" / "paper_modal_collapse_indices.json"
+
+    @classmethod
+    def load_paper_modal_collapse_indices(cls) -> Dict[str, List[int]]:
+        if not cls._PAPER_MODAL_COLLAPSE_PATH.is_file():
+            return {}
+        with cls._PAPER_MODAL_COLLAPSE_PATH.open(encoding="utf-8") as fh:
+            raw = json.load(fh)
+        return {str(k): [int(i) for i in v] for k, v in raw.items()}
 
     def __init__(
         self,
@@ -97,10 +59,7 @@ class CreativityScorer:
         self.model = SentenceTransformer(embedding_model, trust_remote_code=True)
         self.max_k = max_k
         self.random_state = random_state
-        # Copy to avoid accidental in-place edits affecting class-level constant.
-        self.total_modal_collapse_indices_by_run = {
-            k: list(v) for k, v in self.TOTAL_MODAL_COLLAPSE_INDICES_BY_RUN.items()
-        }
+        self.total_modal_collapse_indices_by_run = self.load_paper_modal_collapse_indices()
 
     def _encode(self) -> np.ndarray:
         if not self.texts:
@@ -279,18 +238,24 @@ class CreativityScorer:
         semantic_weight: float = 0.5,
         lexical_weight: float = 0.5,
         print_report: bool = True,
+        exclude_indices: Optional[Sequence[int]] = None,
     ) -> float:
         """
-        Compute creativity score after removing stories that have TotalModalCollapse==1
-        for the given run_type.
+        Compute creativity score after removing stories with TotalModalCollapse==1.
+
+        Pass ``exclude_indices`` (0-based story indices) for new runs, or ``run_type``
+        to use paper-replication indices from ``data/paper_modal_collapse_indices.json``.
         """
-        if run_type not in self.total_modal_collapse_indices_by_run:
+        if exclude_indices is not None:
+            excluded_indices = set(int(i) for i in exclude_indices)
+        elif run_type in self.total_modal_collapse_indices_by_run:
+            excluded_indices = set(self.total_modal_collapse_indices_by_run[run_type])
+        else:
             available = ", ".join(sorted(self.total_modal_collapse_indices_by_run.keys()))
             raise ValueError(
-                f"Unknown run_type '{run_type}'. Available run types: {available}"
+                f"Unknown run_type '{run_type}' and no exclude_indices provided. "
+                f"Paper run types: {available}"
             )
-
-        excluded_indices = set(self.total_modal_collapse_indices_by_run[run_type])
         filtered_texts = [t for idx, t in enumerate(self.texts) if idx not in excluded_indices]
 
         if not filtered_texts:

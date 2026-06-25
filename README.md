@@ -46,6 +46,7 @@ model explores early and restores constraint-following later.
 │   ├── RMS_std.py              # RMSCalibrator: per-model noise-std calibration
 │   ├── egra_constraint_checker.py  # Rule-based EGRA constraint checks
 │   ├── creativity_metrics.py   # Vendi Score + Self-BLEU -> creativity score
+│   ├── defaults.py             # Paper hyperparameters (alpha, layer ranges, etc.)
 │   ├── setup_experiment.py     
 │   └── models/                 
 │       ├── Jais.py  Fanar.py  Allam.py  AceGPT.py  Qween.py
@@ -54,8 +55,10 @@ model explores early and restores constraint-following later.
 │   ├── per_story_scores.py     # per-story quality + total violations
 │   ├── final_scores.py         
 │   ├── build_final_scores_markdown.py  
-│   ├── metrics_first30.py      # first-N capped metrics
-│   ├── extract_parts_vendi.py  # split stories into Beginning/Middle/End for Vendi analysis (Not included in final paper)
+│   ├── collect_run_results.py  
+│   ├── split_combined_results.py  
+│   ├── metrics_first30.py      # optional first-N capped metrics (default N=50)
+│   ├── extract_parts_vendi.py  # split stories into Beginning/Middle/End (not in final paper)
 ├── examples/
 │   └── main_eg.py              
 ├── pyproject.toml              
@@ -78,11 +81,12 @@ pip install -e .
 
 Notes:
 
-- A **CUDA GPU** is required for generation; models are loaded with `device_map="auto"` in `float16`.
+- A **CUDA GPU** is required for generation; models load with `device_map="auto"` (`float16` by default; the `Jais` wrapper uses `bfloat16` when supported).
 - The newest models (e.g. **Jais-2**) may need `transformers` built from source:
   `pip install git+https://github.com/huggingface/transformers.git`
-- The **LLM-judge** scoring scripts use **Azure OpenAI**. Copy `.env.example` to `.env`
-  and fill in `AZURE_KEY` / `AZURE_ENDPOINT` / `AZURE_DEPLOYMENT`.
+- **LLM-judge** scripts require Azure OpenAI. Copy `.env.example` to `.env` and set **all** of:
+  `AZURE_KEY`, `AZURE_ENDPOINT`, `AZURE_DEPLOYMENT`
+- Override the results root with env var `EGRA_RESULTS_DIR` or `--results-dir` on scripts.
 
 ---
 
@@ -126,23 +130,23 @@ model = EGRA("QCRI/Fanar-1-9B-Instruct")
 # model = Fanar()
 ```
 
-Jais Model needs a dtype tweak:
+For Jais, use the wrapper (handles dtype automatically):
 
 ```python
-import torch
-model.model = model.model.to(torch.bfloat16)
+from noiseegra.models.Jais import Jais
+model = Jais()
 ```
 
 ### 2. Calibrate the noise standard deviation
 
 Noise is scaled to each model's own activation magnitude:
-`std = alpha * median_layer(RMS)`. The paper uses **alpha = 0.175** for residual-stream
-noise.
+`std = alpha * median_layer(RMS)`. The paper uses **alpha = 0.175**.
 
 ```python
 import numpy as np
 from noiseegra import prompts
 from noiseegra.RMS_std import RMSCalibrator
+from noiseegra.defaults import MODEL_LAYER_RANGES, RMS_ALPHA
 
 cal = RMSCalibrator(model)
 prompt = [
@@ -150,9 +154,10 @@ prompt = [
     {"role": "user",   "content": prompts.PROMPT_ZERO_SHOT},
 ]
 
-layers = list(range(18, 27))                 # Fanar uses layers 18-26
+lo, hi = MODEL_LAYER_RANGES["Fanar"]
+layers = list(range(lo, hi))
 rms = cal.collect_block_rms(prompt, layers=layers)   # residual stream
-std = 0.175 * float(np.median(list(rms.values())))
+std = RMS_ALPHA * float(np.median(list(rms.values())))
 print("calibrated residual std:", std)
 ```
 
@@ -162,9 +167,13 @@ print("calibrated residual std:", std)
 
 ### 3. Build specs and generate
 
-`make_specs(...)` accepts mode strings or dicts; `run_story_experiments(...)` writes one
-CSV per run (`{run_id}.csv`, one story per row) and a `{model_name}_RESULTS.txt` report
-(creativity + constraint adherence) into `output_dir`.
+`make_specs(...)` accepts mode strings or dicts; `run_story_experiments(...)` writes:
+
+| Path | Contents |
+|------|----------|
+| `{output_dir}/{run_id}.csv` | One story per row (raw generation output) |
+| `{output_dir}/RESULTS/{run_id}.txt` | Per-run creativity + constraint report |
+| `{output_dir}/{model_name}_RESULTS.txt` | Combined report (all runs in one file) |
 
 ```python
 from noiseegra.setup_experiment import make_specs, run_story_experiments
@@ -214,25 +223,37 @@ and the sampling params.
 
 ### 4. Score quality and constraints (LLM judge)
 
-Requires `.env` with Azure OpenAI credentials. The judge rates each story (readability,
-logic, grammar, reading level, modal collapse, structure, vocabulary, stereotypes,
-gender balance) and writes `experiment_results/SCORES/<run>_SCORE.csv`.
+Requires a complete `.env` (see Installation). The judge rates each story and writes
+`experiment_results/SCORES/<run>_SCORE.csv`.
 
 ```bash
+pip install -e ".[judge]"
 python scripts/score_stories_gpt52.py
+# Custom folders: python scripts/score_stories_gpt52.py --input-dirs ResidNoise --input-dirs baseline
+# Custom root:     python scripts/score_stories_gpt52.py --results-dir /path/to/experiment_results
 ```
 
-(By default it scores CSVs in `experiment_results/{AENIMaxW,baseline,EmbedNoise,ResidNoise,AttnNoise}`;
-edit `INPUT_FOLDERS` in the script to point at your run folders.)
+By default it scores CSVs in `experiment_results/{AENIMaxW,baseline,EmbedNoise,ResidNoise,AttnNoise}`.
 
 ### 5. Aggregate into summary tables
+
+Copy per-run RESULTS into the top-level folder expected by aggregation (once per condition folder):
+
+```bash
+python scripts/collect_run_results.py
+# Legacy combined files: python scripts/split_combined_results.py experiment_results/ResidNoise/Fanar_RESULTS.txt
+```
+
+Then aggregate (quality = mean of Readability, Logic, GrammarandLinguistics; stories aligned by `Story number`):
 
 ```bash
 python scripts/per_story_scores.py            # experiment_results/PER_STORY_SCORES/<run>.csv
 python scripts/final_scores.py                # experiment_results/Final_Scores.txt
 python scripts/build_final_scores_markdown.py # experiment_results/Final_Scores_Table.md
-python scripts/metrics_first30.py             # first-N capped metrics (optional)
+python scripts/metrics_first30.py --first-n 30  # optional; default cap is 50
 ```
+
+All aggregation scripts accept `--results-dir`.
 
 The rule-based EGRA checks and creativity scores can also be used directly:
 
@@ -249,7 +270,7 @@ EGRAConstraintChecker().print_report(stories)
 
 ## Per-model settings used in the paper
 
-Layer ranges and specific models used. RMS ceiling uses `alpha = 0.175 * median(block RMS)`.
+Layer ranges and HF ids are centralized in `noiseegra.defaults` (`MODEL_LAYER_RANGES`, `MODEL_HF_IDS`). RMS ceiling uses `alpha = 0.175 * median(block RMS)`.
 
 | Model | HF model id | Layers |
 |---|---|---|
@@ -267,7 +288,7 @@ Baselines: noise-free (`T=1.0`), high-temperature `T=1.8` with `top_k=40`, and
 
 ---
 
-Main findings: **residual-stream noise (L-Res)** and **AENI** are the only methods
+Main finding: **residual-stream noise (L-Res)** and **AENI** are the only methods
 that consistently improve diversity while preserving quality, constraint adherence, and
 early-grade reading level — unlike high-temperature sampling, which inflates reading level
 and triggers catastrophic collapse on several models.
