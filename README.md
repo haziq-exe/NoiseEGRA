@@ -42,25 +42,25 @@ model explores early and restores constraint-following later.
 .
 ├── noiseegra/                  
 │   ├── EGRA_functions.py       # EGRA generation class + all noise-injection methods
-│   ├── prompts.py              # Arabic EGRA system/user prompts (zero-shot, two-stage, noise)
+│   ├── prompts.py              
 │   ├── RMS_std.py              # RMSCalibrator: per-model noise-std calibration
 │   ├── egra_constraint_checker.py  # Rule-based EGRA constraint checks
 │   ├── creativity_metrics.py   # Vendi Score + Self-BLEU -> creativity score
-│   ├── setup_experiment.py     # ExperimentSpec, make_specs, run_story_experiments
-│   └── models/                 # Thin model wrappers (pin a HF model id)
+│   ├── setup_experiment.py     
+│   └── models/                 
 │       ├── Jais.py  Fanar.py  Allam.py  AceGPT.py  Qween.py
-├── scripts/                    # Evaluation + aggregation pipeline (run from repo root)
+├── scripts/                    
 │   ├── score_stories_gpt52.py  # LLM-judge scoring (Azure OpenAI) -> SCORES/*_SCORE.csv
 │   ├── per_story_scores.py     # per-story quality + total violations
-│   ├── final_scores.py         # aggregate per-run summaries -> Final_Scores.txt
-│   ├── build_final_scores_markdown.py  # -> Final_Scores_Table.md
+│   ├── final_scores.py         
+│   ├── build_final_scores_markdown.py  
 │   ├── metrics_first30.py      # first-N capped metrics
 │   ├── extract_parts_vendi.py  # split stories into Beginning/Middle/End for Vendi analysis (Not included in final paper)
 ├── examples/
-│   └── main_eg.py              # minimal generation example
-├── pyproject.toml              # Installable package (pip install -e .)
+│   └── main_eg.py              
+├── pyproject.toml              
 ├── requirements.txt
-└── .env.example                # Template for Azure OpenAI judge credentials
+└── .env.example                
 ```
 
 ---
@@ -71,8 +71,8 @@ model explores early and restores constraint-following later.
 git clone https://github.com/haziq-exe/NoiseEGRA.git
 cd NoiseEGRA
 
-python -m venv .venv && source .venv/bin/activate   # optional but recommended
-pip install -e .                                     # installs noiseegra + deps from pyproject
+python -m venv .venv && source .venv/bin/activate
+pip install -e .                                     
 # or: pip install -r requirements.txt
 ```
 
@@ -126,7 +126,7 @@ model = EGRA("QCRI/Fanar-1-9B-Instruct")
 # model = Fanar()
 ```
 
-Some models need a dtype tweak (mirrors the notebook), e.g. Jais:
+Jais Model needs a dtype tweak:
 
 ```python
 import torch
@@ -137,7 +137,7 @@ model.model = model.model.to(torch.bfloat16)
 
 Noise is scaled to each model's own activation magnitude:
 `std = alpha * median_layer(RMS)`. The paper uses **alpha = 0.175** for residual-stream
-noise (see `paper/` §5.1).
+noise.
 
 ```python
 import numpy as np
@@ -252,17 +252,15 @@ EGRAConstraintChecker().print_report(stories)
 ## Per-model settings used in the paper
 
 Layer ranges and per-model noise std values, taken from the run filenames in
-`experiment_results/` (`L12-20` = layers 12–20; `L18-26` = layers 18–26). Residual noise
-uses `alpha = 0.175 * median(block RMS)`; attention/AENI runs used a larger RMS-based
-ceiling (≈ `1.75 * median(attention-output RMS)`, see the notebook).
+`experiment_results/` (`L12-20` = layers 12–20; `L18-26` = layers 18–26). RMS ceiling uses `alpha = 0.175 * median(block RMS)`;.
 
-| Model | HF model id | Layers | L-Res std | AENI std | Attn std | Embed std |
-|---|---|---|---|---|---|---|
-| ALLaM 7B | `humain-ai/ALLaM-7B-Instruct-preview` | 12–20 | 0.036 | 0.105 | 0.105 | 0.015 |
-| AceGPT 8B | `FreedomIntelligence/AceGPT-v2-8B-Chat` | 12–20 | 0.0197 | 0.0235629 | 0.0235641 | 0.0066345 |
-| Fanar 9B | `QCRI/Fanar-1-9B-Instruct` | 18–26 | 0.625 | 4.095 | 4.095 | 0.042 |
-| Jais 8B | `inceptionai/Jais-2-8B-Chat` | 12–20 | 5.25 | 4.6375 | 4.6375 | 7.19426 |
-| Phi-4-mini | run via `EGRA("<phi-4-mini id>")` | 12–20 | 0.177 | 0.2975 | 0.2975 | (collapsed) |
+| Model | HF model id | Layers |
+|---|---|---|
+| ALLaM 7B | `humain-ai/ALLaM-7B-Instruct-preview` | 12–20 |
+| AceGPT 8B | `FreedomIntelligence/AceGPT-v2-8B-Chat` | 12–20 |
+| Fanar 9B | `QCRI/Fanar-1-9B-Instruct` | 18–26 |
+| Jais 8B | `inceptionai/Jais-2-8B-Chat` | 12–20 |
+| Phi-4-mini | run via `EGRA("microsoft/Phi-4-mini-instruct")` | 12–20 |
 
 > AENI requires attention weights, so build the model with eager attention:
 > `EGRA(model_id, use_AENI=True)`.
@@ -272,28 +270,25 @@ Baselines: noise-free (`T=1.0`), high-temperature `T=1.8` with `top_k=40`, and
 
 ---
 
-## `experiment_results/` layout
-
-| Folder / file | Contents |
-|---|---|
-| `baseline/`, `ResidNoise/`, `AttnNoise/`, `EmbedNoise/`, `AENIMaxW/`, `TwoStage/`, `DoubleResid/`, `Alpha_Test/` | Raw generated stories (one story per CSV row) |
-| `RESULTS/` | Per-run creativity + constraint reports (`*.txt`) |
-| `SCORES/` | LLM-judge scores (`*_SCORE.csv`) |
-| `PER_STORY_SCORES/` | Per-story quality + violation counts |
-| `PARTS_VENDI/`, `PARTS_RESULTS/` | Beginning/Middle/End splits and analyses |
-| `OsmanScores/` | OSMAN readability scores |
-| `Final_Scores.txt`, `Final_Scores_Table.md`, `Sum_Constraints_Report.txt` | Aggregated summaries |
-
----
-
-## Reproducing the paper results
-
-1. Generate 50 stories per condition per model (steps 1–3 above), using the per-model
-   layer ranges / std values in the table.
-2. Score with the LLM judge (step 4).
-3. Aggregate (step 5). Compare against the shipped `experiment_results/Final_Scores*.{txt,md}`.
-
-The headline finding: **residual-stream noise (L-Res)** and **AENI** are the only methods
+Main findings: **residual-stream noise (L-Res)** and **AENI** are the only methods
 that consistently improve diversity while preserving quality, constraint adherence, and
 early-grade reading level — unlike high-temperature sampling, which inflates reading level
 and triggers catastrophic collapse on several models.
+
+---
+
+## Citation
+
+If you use our paper in your research, please cite our paper:
+
+```bibtex
+@misc{khalid2026noisesteeringcontrolledtext,
+      title={Noise Steering for Controlled Text Generation: Improving Diversity and Reading-Level Fidelity in Arabic Educational Story Generation}, 
+      author={Haziq Mohammad Khalid and Salsabeel Shapsough and Imran Zualkernan},
+      year={2026},
+      eprint={2604.03380},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL},
+      url={https://arxiv.org/abs/2604.03380}, 
+}
+```
