@@ -4,18 +4,17 @@
 
 <br>
 
-<img src="https://raw.githubusercontent.com/haziq-exe/NoiseEGRA/main/READMEImg/Noise_Steering.png" width="414" alt="Representative Diagram" />
+<img src="https://raw.githubusercontent.com/haziq-exe/NoiseEGRA/main/READMEImg/Noise_Steering.png" width="660" alt="Representative Diagram" />
 
-[![arXiv](https://img.shields.io/badge/arXiv-1234.56789-b31b1b.svg)]([https://arxiv.org/abs/1234.56789](https://arxiv.org/abs/2604.03380))
-[![Hugging Face](https://img.shields.io/badge/Hugging%20Face-FFD21E?logo=huggingface&logoColor=000)](#)
+
+<br>
 
 ### Haziq Mohammad Khalid, Salsabeel Shapsough, Imran Zualkernan 
 ### American University of Sharjah
 #### Presented at BEA @ ACL 26'
-
-<br>
-
+[![arXiv](https://img.shields.io/badge/arXiv-1234.56789-b31b1b.svg)]([https://arxiv.org/abs/1234.56789](https://arxiv.org/abs/2604.03380))
 </div>
+<hr>
 
 Training-free **noise steering**: inject calibrated Gaussian perturbations into the
 internal representations of transformer LLMs at inference time to improve the
