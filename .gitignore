@@ -24,3 +24,5 @@ dist/
 # Archives and OS cruft
 *.zip
 .DS_Store
+
+.gitignore
