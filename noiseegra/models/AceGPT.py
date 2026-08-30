@@ -1,8 +1,10 @@
 from ..EGRA_functions import EGRA
 
 class AceGPT(EGRA):
-    def __init__(self, use_AENI=False):
-        super().__init__(model="FreedomIntelligence/AceGPT-v2-8B-Chat", use_AENI=use_AENI)
+    def __init__(self, use_AENI=False, dtype=None):
+        super().__init__(
+            model="FreedomIntelligence/AceGPT-v2-8B-Chat", use_AENI=use_AENI, dtype=dtype
+        )
 
 
     def apply_chat_template(self, messages, tokenize=False, add_generation_prompt=False, **tokenizer_kwargs):

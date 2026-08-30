@@ -98,6 +98,12 @@ def generate_one(model, spec, mode, story_prompt, seed, max_new_tokens):
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--model", default="Fanar", choices=sorted(MODEL_HF_IDS))
+    ap.add_argument("--model-id", help="HF id or a local snapshot directory; "
+                                       "overrides the id --model maps to")
+    ap.add_argument("--layers", nargs=2, type=int, metavar=("LO", "HI"),
+                    help="layer range [LO, HI); defaults to the paper range for --model")
+    ap.add_argument("--dtype", default="auto", choices=["auto", "float16", "bfloat16"],
+                    help="auto picks float16 on pre-Ampere GPUs such as the T4")
     ap.add_argument("--suite", nargs="+", default=["core"],
                     choices=["core", "ortho", "beta", "loo", "all"])
     ap.add_argument("--num-stories", type=int, default=50)
@@ -119,9 +125,17 @@ def main() -> None:
     state_path = out / "state.json"
     state = load_state(state_path)
 
-    model_id = MODEL_HF_IDS[args.model]
-    lo, hi = MODEL_LAYER_RANGES[args.model]
+    hf_id = MODEL_HF_IDS[args.model]
+    model_id = args.model_id or hf_id
+    lo, hi = args.layers if args.layers else MODEL_LAYER_RANGES[args.model]
     layers = list(range(lo, hi))
+
+    if args.dtype == "auto":
+        from noiseegra.models.Jais import preferred_dtype
+
+        dtype_arg = preferred_dtype()
+    else:
+        dtype_arg = getattr(torch, args.dtype)
 
     done_before = sum(len(v) for v in state["runs"].values())
     print(f"model    : {model_id}")
@@ -129,8 +143,8 @@ def main() -> None:
     print(f"out      : {out}")
     print(f"resuming : {done_before} stories already in {state_path.name}\n")
 
-    print("loading model ...")
-    model = build_model(model_id)
+    print(f"loading model in {dtype_arg} ...")
+    model = build_model(model_id, dtype=dtype_arg, wrapper_for=hf_id)
     dtype = next(model.model.parameters()).dtype
     if torch.cuda.is_available() and dtype not in (torch.float16, torch.bfloat16):
         raise SystemExit(

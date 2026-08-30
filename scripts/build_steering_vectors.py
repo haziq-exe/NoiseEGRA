@@ -28,22 +28,35 @@ from noiseegra.steering_vectors import (  # noqa: E402
 )
 
 
-def build_model(model_id: str, use_aeni: bool = False):
-    """Prefer the per-model wrapper (custom chat templates / dtype), else generic EGRA."""
+WRAPPERS = {
+    "inceptionai/Jais-2-8B-Chat": ("noiseegra.models.Jais", "Jais"),
+    "FreedomIntelligence/AceGPT-v2-8B-Chat": ("noiseegra.models.AceGPT", "AceGPT"),
+    "humain-ai/ALLaM-7B-Instruct-preview": ("noiseegra.models.Allam", "Allam"),
+    "QCRI/Fanar-1-9B-Instruct": ("noiseegra.models.Fanar", "Fanar"),
+}
+
+
+def build_model(model_id: str, use_aeni: bool = False, dtype=None, wrapper_for: str = None):
+    """Prefer the per-model wrapper (custom chat templates), else generic EGRA.
+
+    ``wrapper_for`` lets a local snapshot directory still pick up the right
+    wrapper, e.g. build_model("/kaggle/input/acegpt", wrapper_for=<hf id>).
+    """
+    import importlib
+
     from noiseegra.EGRA_functions import EGRA
 
-    wrappers = {
-        "inceptionai/Jais-2-8B-Chat": ("noiseegra.models.Jais", "Jais"),
-        "FreedomIntelligence/AceGPT-v2-8B-Chat": ("noiseegra.models.AceGPT", "AceGPT"),
-        "humain-ai/ALLaM-7B-Instruct-preview": ("noiseegra.models.Allam", "Allam"),
-        "QCRI/Fanar-1-9B-Instruct": ("noiseegra.models.Fanar", "Fanar"),
-    }
-    if model_id in wrappers:
-        module, cls = wrappers[model_id]
-        import importlib
-
-        return getattr(importlib.import_module(module), cls)()
-    return EGRA(model_id, use_AENI=use_aeni)
+    key = wrapper_for or model_id
+    if key in WRAPPERS:
+        module, cls = WRAPPERS[key]
+        klass = getattr(importlib.import_module(module), cls)
+        if key == model_id:
+            return klass(dtype=dtype)
+        # Local path: bypass the wrapper's pinned id but keep its chat template.
+        obj = klass.__new__(klass)
+        EGRA.__init__(obj, model_id, use_AENI=use_aeni, dtype=dtype)
+        return obj
+    return EGRA(model_id, use_AENI=use_aeni, dtype=dtype)
 
 
 def main() -> None:
