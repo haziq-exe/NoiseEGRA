@@ -70,6 +70,18 @@ class EGRA:
 
         return layer_idx
 
+    def _input_device(self):
+        """Device to place input ids on.
+
+        Prefers the accelerate device map (set when the model is loaded with
+        ``device_map=...``) and falls back to the first parameter's device, so
+        models placed manually or run on CPU work too.
+        """
+        device_map = getattr(self.model, "hf_device_map", None)
+        if device_map:
+            return next(iter(device_map.values()))
+        return next(self.model.parameters()).device
+
     def _sampling_kwargs(self, do_sample=True, temperature=1.0, top_p=None, top_k=None):
         kwargs = {
             "do_sample": do_sample,
@@ -104,7 +116,7 @@ class EGRA:
           torch.manual_seed(seed)
 
         chat_text = self.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
-        device = next(iter(self.model.hf_device_map.values()))
+        device = self._input_device()
         inputs = self.tokenizer(chat_text, return_tensors="pt").to(device)
         inputs.pop("token_type_ids", None)
         outputs = self.model.generate(
@@ -299,7 +311,7 @@ class EGRA:
             raise ValueError("attn_layers must be a non-empty list/tuple of layer indices.")
 
         chat_text = self.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
-        device = next(iter(self.model.hf_device_map.values()))
+        device = self._input_device()
         inputs = self.tokenizer(chat_text, return_tensors="pt").to(device)
         inputs.pop("token_type_ids", None)
         input_ids = inputs["input_ids"]
@@ -443,7 +455,7 @@ class EGRA:
             raise ValueError("residual_layers must be a non-empty list/tuple of layer indices.")
     
         chat_text = self.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
-        device = next(iter(self.model.hf_device_map.values()))
+        device = self._input_device()
         inputs = self.tokenizer(chat_text, return_tensors="pt").to(device)
         inputs.pop("token_type_ids", None)
         input_ids = inputs["input_ids"]
@@ -556,6 +568,152 @@ class EGRA:
         generated_ids = outputs[0][input_ids.shape[-1]:]
         return self.tokenizer.decode(generated_ids, skip_special_tokens=True)
 
+    def generate_with_orthogonal_steering(
+        self, prompt, plan,
+        max_new_tokens=500, do_sample=True, temperature=1.0, top_p=None, top_k=None, seed=None,
+    ):
+        """
+        Constraint steering with direction-constrained noise, injected at the same
+        site as residual stream noise (block output, last token, decode steps).
+
+        At every targeted layer and decode step the block output is perturbed by
+
+            delta = sum_c beta_c * f_c(t) * rho * s_c   +   epsilon
+
+        where ``s_c`` are the per-constraint unit steering directions (optionally
+        orthogonalised against each other), ``rho`` is the model's median block RMS
+        so that ``beta`` is on the same dimensionless scale as the paper's ``alpha``,
+        ``f_c`` is a per-constraint schedule, and ``epsilon`` is Gaussian noise
+        restricted to the orthogonal complement of the protected subspace
+        (``plan.noise_mode == "orth"``), confined to it (``"para"``), or
+        unrestricted (``"iso"``, i.e. the published L-Res method).
+
+        Two caveats worth stating in any write-up. First, orthogonality holds
+        **at the injection site, at that step** -- once the perturbed state is
+        written to the KV cache and read by later layers the two components mix,
+        so this is a per-site invariant, not a global one. Second, in a
+        ``D``-dimensional stream a random draw already places only ``k/D`` of its
+        energy inside a ``k``-dimensional subspace, so ``"orth"`` differs from
+        ``"iso"`` only in proportion to the protected rank; enlarge it via
+        ``SteeringVectorSet.protect_extra`` if you want the arms to separate.
+
+        Args:
+            plan: a :class:`noiseegra.subspace.SteeringPlan`. Build it with
+                ``SteeringPlan.build(...)`` from an extracted
+                :class:`noiseegra.steering_vectors.SteeringVectorSet`.
+        """
+        if seed is not None:
+            torch.manual_seed(seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed_all(seed)
+
+        chat_text = self.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
+        device = self._input_device()
+        inputs = self.tokenizer(chat_text, return_tensors="pt").to(device)
+        inputs.pop("token_type_ids", None)
+        input_ids = inputs["input_ids"]
+
+        blocks = self._get_transformer_blocks()
+        normalized_layers = sorted({
+            self._normalize_layer_index(idx, len(blocks)) for idx in plan.layers
+        })
+        unknown = [li for li in normalized_layers if li not in plan.layer_plans]
+        if unknown:
+            raise KeyError(
+                f"plan has no per-layer geometry for layers {unknown}; "
+                f"available: {sorted(plan.layer_plans)}"
+            )
+
+        handles = []
+        model_handle = None
+
+        # Same decode-step bookkeeping as the other noise methods: one increment
+        # per model forward call, not per layer.
+        shared = {"forward_calls": 0, "t": 0, "cur_t": 0, "is_prefill": True}
+
+        try:
+            def model_pre_hook(module, inp):
+                shared["forward_calls"] += 1
+                if shared["forward_calls"] == 1:
+                    shared["is_prefill"] = True
+                    shared["cur_t"] = 0
+                else:
+                    shared["is_prefill"] = False
+                    shared["cur_t"] = shared["t"]
+                    shared["t"] += 1
+
+            model_handle = self.model.register_forward_pre_hook(model_pre_hook)
+
+            def make_hook(layer_idx):
+                def hook(module, input, output):
+                    if isinstance(output, torch.Tensor):
+                        target = output
+                    elif (
+                        isinstance(output, (tuple, list))
+                        and len(output) > 0
+                        and isinstance(output[0], torch.Tensor)
+                    ):
+                        target = output[0]
+                    else:
+                        return None
+
+                    if target.dim() != 3:
+                        return None
+
+                    with torch.no_grad():
+                        if shared["is_prefill"]:
+                            # Noise never touches the prompt (paper convention).
+                            # Steering optionally does, CAA-style, across all
+                            # prompt positions.
+                            if not plan.steer_prefill:
+                                return None
+                            delta = plan.delta_for(
+                                layer_idx, 0, with_noise=False, device=target.device
+                            )
+                            if delta is None:
+                                return None
+                            target.add_(delta.to(target.dtype).view(1, 1, -1))
+                            return None
+
+                        delta = plan.delta_for(
+                            layer_idx, shared["cur_t"], with_noise=True, device=target.device
+                        )
+                        if delta is None:
+                            return None
+                        target[:, -1:, :].add_(delta.to(target.dtype).view(1, 1, -1))
+
+                    return None
+                return hook
+
+            for layer_idx in normalized_layers:
+                handles.append(blocks[layer_idx].register_forward_hook(make_hook(layer_idx)))
+
+            outputs = self.model.generate(
+                **inputs,
+                max_new_tokens=max_new_tokens,
+                **self._sampling_kwargs(
+                    do_sample=do_sample,
+                    temperature=temperature,
+                    top_p=top_p,
+                    top_k=top_k,
+                ),
+            )
+
+        finally:
+            for h in handles:
+                try:
+                    h.remove()
+                except Exception:
+                    pass
+            if model_handle is not None:
+                try:
+                    model_handle.remove()
+                except Exception:
+                    pass
+
+        generated_ids = outputs[0][input_ids.shape[-1]:]
+        return self.tokenizer.decode(generated_ids, skip_special_tokens=True)
+
     @torch.no_grad()
     def generate_with_entropy_noise(
         self, prompt, attention_noise_std, attn_entropy_layers,
@@ -610,7 +768,7 @@ class EGRA:
         chat_text = self.apply_chat_template(
             prompt, tokenize=False, add_generation_prompt=True
         )
-        device = next(self.model.parameters()).device
+        device = self._input_device()
         inputs = self.tokenizer(chat_text, return_tensors="pt").to(device)
         inputs.pop("token_type_ids", None)
         input_ids = inputs["input_ids"]
@@ -821,7 +979,7 @@ class EGRA:
         chat_text = self.apply_chat_template(
             prompt, tokenize=False, add_generation_prompt=True
         )
-        device = next(iter(self.model.hf_device_map.values()))
+        device = self._input_device()
         inputs = self.tokenizer(chat_text, return_tensors="pt").to(device)
         inputs.pop("token_type_ids", None)
         input_ids = inputs["input_ids"]
@@ -1014,7 +1172,7 @@ class EGRA:
         chat_text = self.apply_chat_template(
             prompt, tokenize=False, add_generation_prompt=True
         )
-        device = next(self.model.parameters()).device
+        device = self._input_device()
         inputs = self.tokenizer(chat_text, return_tensors="pt").to(device)
         inputs.pop("token_type_ids", None)
         input_ids = inputs["input_ids"]

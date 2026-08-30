@@ -3,6 +3,7 @@ from . import prompts
 from .EGRA_functions import EGRA
 from .egra_constraint_checker import EGRAConstraintChecker
 from .creativity_metrics import CreativityScorer
+from .constraint_metrics import ExactConstraintChecker
 import csv
 import gc
 from dataclasses import dataclass, field
@@ -23,6 +24,11 @@ class ExperimentSpec:
     use_attention_entropy_noise: bool = False
     use_residual_and_entropy_noise: bool = False
     use_embedding_noise: bool = False
+    use_orthogonal_steering: bool = False
+
+    # Prebuilt noiseegra.subspace.SteeringPlan (carries layers, directions,
+    # protected basis, betas, schedules and the noise arm).
+    steering_plan: Optional[Any] = None
 
     residual_layers: Optional[Sequence[int]] = None
     residual_noise_std: float = 0.0
@@ -106,9 +112,12 @@ def _spec_mode(spec: ExperimentSpec) -> str:
         spec.use_attention_entropy_noise,
         spec.use_residual_and_entropy_noise,
         spec.use_embedding_noise,
+        spec.use_orthogonal_steering,
     ])
     if active > 1:
         raise ValueError("ExperimentSpec cannot enable more than one noise mode at a time.")
+    if spec.use_orthogonal_steering:
+        return "orthogonal_steering"
     if spec.use_double_residual_noise:
         return "double_residual_noise"
     if spec.use_two_stage_residual_noise:
@@ -146,12 +155,48 @@ def _sampling_tag(spec: ExperimentSpec) -> str:
     return "__" + "__".join(parts)
 
 
+_SCHEDULE_CODE = {"constant": "c", "cosine_decay": "d", "ramp": "r", "linear_decay": "l"}
+
+
+def _ortho_tag(model_name: str, spec: ExperimentSpec) -> str:
+    """Encode a SteeringPlan into a filesystem-safe, ablation-distinguishing run id."""
+    plan = spec.steering_plan
+    if plan is None:
+        raise ValueError("orthogonal_steering specs require a `steering_plan`.")
+
+    names = "-".join(s.name[:3] for s in plan.specs)
+    betas = "-".join(_float_tag(s.beta) for s in plan.specs)
+    parts = [
+        f"{model_name}__ORTHO",
+        f"__{_layers_tag(plan.layers)}",
+        f"__C{names}",
+        f"__b{betas}",
+        f"__{plan.orthogonalize}",
+        f"__nz{plan.noise_mode}",
+        f"__a{_float_tag(plan.noise_alpha)}",
+        f"__k{plan.protect_rank}",
+    ]
+    schedules = [s.schedule for s in plan.specs]
+    if any(sc != "constant" for sc in schedules):
+        parts.append("__sch" + "-".join(_SCHEDULE_CODE.get(sc, sc[:1]) for sc in schedules))
+    if plan.noise_norm_match != "energy":
+        parts.append(f"__nm{plan.noise_norm_match}")
+    if plan.noise_schedule != "constant":
+        parts.append(f"__nsch{_SCHEDULE_CODE.get(plan.noise_schedule, plan.noise_schedule[:1])}")
+    if plan.steer_prefill:
+        parts.append("__prefill")
+    return "".join(parts)
+
+
 def _spec_to_run_id(model_name: str, spec: ExperimentSpec) -> str:
     mode = _spec_mode(spec)
     sampling_tag = _sampling_tag(spec)
 
     if mode == "baseline":
         return f"{model_name}__BASELINE{sampling_tag}"
+
+    if mode == "orthogonal_steering":
+        return _ortho_tag(model_name, spec) + sampling_tag
 
     if mode == "two_stage_zero_shot":
         parts = [
@@ -239,6 +284,7 @@ def run_story_experiments(
     sanity_check: bool = False,
     sanity_check_n: int = 2,
     spacy_model: Optional[str] = None,
+    exact_constraints: bool = True,
 ) -> dict[str, list[str]]:
     """
     Auto filenames: {run_id}.csv where run_id encodes model + spec.
@@ -246,6 +292,7 @@ def run_story_experiments(
     Returns: {run_id: [story_text, ...]}.
     """
     checker = EGRAConstraintChecker(spacy_model=spacy_model)
+    exact_checker = ExactConstraintChecker() if exact_constraints else None
     if spacy_model is None:
         print(
             "NOTE: EGRA name constraints (C14, C17, C18) are not checked without "
@@ -268,6 +315,9 @@ def run_story_experiments(
     for spec, rid in zip(specs, run_ids):
         mode = _spec_mode(spec)
         print(f"RUN ID: {rid}")
+        if mode == "orthogonal_steering":
+            print("  type: ORTHOGONAL CONSTRAINT STEERING")
+            spec.steering_plan.print_report()
         if mode == "baseline":
             print("  type: BASELINE (no noise)")
         elif mode == "two_stage_zero_shot":
@@ -537,6 +587,17 @@ def run_story_experiments(
                     top_k=spec.top_k,
                     seed=seed,
                 )
+            elif mode == "orthogonal_steering":
+                story_text = model.generate_with_orthogonal_steering(
+                    story_prompt,
+                    spec.steering_plan,
+                    max_new_tokens=spec.max_new_tokens_plan,
+                    do_sample=spec.do_sample,
+                    temperature=spec.temperature,
+                    top_p=spec.top_p,
+                    top_k=spec.top_k,
+                    seed=seed,
+                )
             elif mode == "attention_entropy_noise":
                 story_text = model.generate_with_entropy_noise(
                     story_prompt,
@@ -586,6 +647,10 @@ def run_story_experiments(
             print(f"\n\n------------------ {rid} CONSTRAINT ---------------------\n\n\n")
             checker.print_report(stories)
 
+            if exact_constraints:
+                print()
+                exact_checker.print_report(stories, label=rid)
+
         run_text = run_buf.getvalue()
         (results_dir / f"{rid}.txt").write_text(run_text, encoding="utf-8")
         combined_buf.write(run_text)
@@ -602,7 +667,11 @@ def make_specs(*items: Any) -> list[ExperimentSpec]:
     Supported modes: baseline, two_stage_zero_shot,
     two_stage_residual_noise, double_residual_noise, residual_stream_noise,
     residual_and_entropy_noise, attention_output_noise,
-    attention_entropy_noise, embedding_noise.
+    attention_entropy_noise, embedding_noise, orthogonal_steering.
+
+    ``orthogonal_steering`` requires a prebuilt
+    :class:`noiseegra.subspace.SteeringPlan` passed as ``steering_plan`` (or
+    ``plan``); every other knob for that mode lives on the plan.
     """
     specs: list[ExperimentSpec] = []
 
@@ -659,6 +728,13 @@ def make_specs(*items: Any) -> list[ExperimentSpec]:
             "embedding_noise": "embedding_noise",
             "embed_noise": "embedding_noise",
             "generate_with_embedding_noise": "embedding_noise",
+            "ortho": "orthogonal_steering",
+            "orthosteer": "orthogonal_steering",
+            "ortho_steering": "orthogonal_steering",
+            "orthogonal_steering": "orthogonal_steering",
+            "steering": "orthogonal_steering",
+            "constraint_steering": "orthogonal_steering",
+            "generate_with_orthogonal_steering": "orthogonal_steering",
         }
         if key not in aliases:
             raise ValueError(f"Unsupported experiment mode: {value}")
@@ -673,6 +749,9 @@ def make_specs(*items: Any) -> list[ExperimentSpec]:
         att_entropy_flag = bool(mapping.get("use_attention_entropy_noise", False))
         residual_and_entropy_flag = bool(mapping.get("use_residual_and_entropy_noise", False))
         embed_flag = bool(mapping.get("use_embedding_noise", False))
+        ortho_flag = bool(mapping.get("use_orthogonal_steering", False)) or (
+            _first_present(mapping, "steering_plan", "plan") is not None
+        )
 
         active = sum([
             two_stage_zero_flag,
@@ -683,9 +762,13 @@ def make_specs(*items: Any) -> list[ExperimentSpec]:
             att_entropy_flag,
             residual_and_entropy_flag,
             embed_flag,
+            ortho_flag,
         ])
         if active > 1:
             raise ValueError("Spec mapping cannot enable more than one noise mode at a time.")
+
+        if ortho_flag:
+            return "orthogonal_steering"
 
         if double_residual_flag:
             return "double_residual_noise"
@@ -813,6 +896,8 @@ def make_specs(*items: Any) -> list[ExperimentSpec]:
                     use_attention_entropy_noise=(mode == "attention_entropy_noise"),
                     use_residual_and_entropy_noise=(mode == "residual_and_entropy_noise"),
                     use_embedding_noise=(mode == "embedding_noise"),
+                    use_orthogonal_steering=(mode == "orthogonal_steering"),
+                    steering_plan=_first_present(it, "steering_plan", "plan"),
                     residual_layers=_first_present(it, "residual_layers"),
                     residual_noise_std=stage1_std,
                     residual_noise_std_stage2=stage2_std,

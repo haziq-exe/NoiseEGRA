@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
 import numpy as np
-from sentence_transformers import SentenceTransformer
 
 
 @dataclass
@@ -55,6 +54,10 @@ class CreativityScorer:
         max_k: int = 10,
         random_state: int = 42,
     ):
+        # Imported lazily: `import noiseegra` should not pull in sentence-transformers
+        # (and its model download) for callers that only generate or score constraints.
+        from sentence_transformers import SentenceTransformer
+
         self.texts = [t.strip() for t in texts if isinstance(t, str) and t.strip()]
         self.model = SentenceTransformer(embedding_model, trust_remote_code=True)
         self.max_k = max_k

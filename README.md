@@ -310,3 +310,104 @@ If you use our paper in your research, please cite our paper:
       url={https://arxiv.org/abs/2604.03380}, 
 }
 ```
+
+---
+
+## Extension: orthogonal constraint steering with direction-constrained noise
+
+An ablation that decomposes the published method's single isotropic perturbation
+into a **signal** (constraint-directed steering) and a **noise** (diversity) term,
+and then asks where the noise is allowed to live.
+
+At every targeted layer and decode step the block output is perturbed by
+
+```
+delta = sum_c  beta_c * f_c(t) * rho * s_c        +   epsilon
+        \_____________ steering ______________/       \_ noise _/
+```
+
+* `s_c` — unit steering direction for constraint `c`, from contrastive
+  mean-difference (CAA), optionally orthogonalised against the other constraints.
+* `rho` — the model's median block RMS, so `beta` is dimensionless and directly
+  comparable to the paper's `alpha`.
+* `f_c(t)` — per-constraint schedule (`constant`, `ramp`, `cosine_decay`,
+  `linear_decay`).
+* `epsilon` — Gaussian noise restricted to the orthogonal complement of the
+  protected subspace (`orth`), confined to it (`para`), or unrestricted (`iso`,
+  i.e. the published L-Res method).
+
+### Steered constraints
+
+| Constraint | Steering direction | Exact check (no LLM judge) |
+|---|---|---|
+| `length` | `closure` — narrative wrap-up vs. plot escalation | word count ≤ 60 |
+| `present_tense` | present (المضارع) vs. past (الماضي) minimal pairs | fraction of finite verbs in the imperfect ≥ 0.8 |
+| `simple_register` | short child register vs. elaborate literary MSA | mean ≤ 12 and longest ≤ 18 words per sentence |
+
+Length is steered through *closure* rather than through long/short story examples:
+a "short story" contrast confounds length with topic, whereas contrasting a
+resolution against a complication isolates the discourse move that actually ends
+a story. All three checks are deterministic — see `noiseegra/constraint_metrics.py`.
+Install `camel-tools` (`pip install -e ".[arabic]"` then
+`camel_data -i disambig-mle-calima-msa-r13`) for proper morphological
+disambiguation; a documented regex fallback runs without it.
+
+Baseline adherence, measured on the stories already in `experiment_results/`, so
+every constraint has real headroom:
+
+| Model | words ≤ 60 | present tense | simple register | mean viol. / 3 |
+|---|---|---|---|---|
+| Jais 8B | 54% | 14% | 92% | 1.40 |
+| Phi-4-mini | 16% | 4% | 60% | 2.20 |
+| AceGPT 8B | 16% | 10% | 44% | 2.30 |
+| Fanar 9B | 6% | 10% | 36% | 2.48 |
+| ALLaM 7B | 0% | 52% | 0% | 2.48 |
+
+### Running it
+
+```bash
+# 1. extract and cache the steering vectors (once per model)
+python scripts/build_steering_vectors.py --model Fanar
+
+# 2. run the ablation
+python scripts/run_orthosteer_experiment.py --model Fanar --suite core --num-stories 50
+python scripts/run_orthosteer_experiment.py --model Fanar --suite all --dry-run   # list conditions first
+
+# 3. score with the exact checks (add --diversity for Vendi + Self-BLEU)
+python scripts/score_orthosteer.py --input-dir experiment_results/OrthoSteer
+```
+
+Suites: `core` (Baseline / L-Res / steer-only / steer + {orth, iso, para}),
+`ortho` (steering-vector orthogonalisation: none vs. Gram–Schmidt vs. Löwdin),
+`beta` (constraint-pressure sweep), `loo` (leave-one-out over constraints), `all`.
+
+### Two things to know before interpreting the results
+
+**1. `orth` is nearly a no-op unless the protected subspace is enlarged.** In a
+`D`-dimensional residual stream a random draw already places only `k/D` of its
+energy inside a `k`-dimensional subspace. With three mean directions and
+`D = 4096` that is 0.07%, and `cos(orth_noise, iso_noise) > 0.9999`. Use
+`--protect-rank` (default 8 principal components per constraint) to protect a
+subspace large enough for the arms to separate. The informative contrast is the
+three-way `orth` / `iso` / `para` comparison at matched total energy — if `orth ≈
+iso` while `para` is destructive, the finding is that the constraint-carrying
+subspace is a tiny, fragile, identifiable part of the stream, which is itself an
+explanation for *why* generic noise steering works.
+
+**2. Orthogonality holds at the injection site, at that step.** Once the
+perturbed state enters the KV cache and passes through later layers the steering
+and noise components mix. This is a per-site invariant, not a global one, and
+should be stated as such.
+
+`SteeringPlan.print_report()` prints the raw cosine similarities between the
+constraint directions and how much of each direction survived orthogonalisation
+(`retained`) — report both. Gram–Schmidt is order-dependent (the first constraint
+keeps its direction, the last is amputated most); Löwdin is order-free and
+minimum-change.
+
+### Tests
+
+```bash
+python tests/test_subspace.py          # geometry, schedules, exact metrics
+python tests/test_orthosteer_smoke.py  # extraction + hook + plumbing, tiny CPU model
+```

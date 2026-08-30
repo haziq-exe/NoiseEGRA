@@ -86,7 +86,10 @@ class RMSCalibrator:
 
     def _prompt_to_text(self, prompt) -> str:
         if isinstance(prompt, (list, tuple)) and len(prompt) > 0 and isinstance(prompt[0], dict):
-            return self.egra.tokenizer.apply_chat_template(
+            # Go through EGRA.apply_chat_template, not the tokenizer directly, so
+            # models with a hand-written template (AceGPT) calibrate on the same
+            # text they generate from.
+            return self.egra.apply_chat_template(
                 prompt, tokenize=False, add_generation_prompt=True
             )
         if isinstance(prompt, str):

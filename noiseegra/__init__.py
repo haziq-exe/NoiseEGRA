@@ -16,6 +16,13 @@ from .creativity_metrics import (
     LexicalDiversityResult,
     CreativityScorer,
 )
+from .constraint_metrics import ExactConstraintChecker, StoryMetrics
+from .subspace import ConstraintSpec, SteeringPlan
+from .steering_vectors import (
+    SteeringVectorExtractor,
+    SteeringVectorSet,
+    load_pairs,
+)
 
 __all__ = [
     "RMSStats",
@@ -30,5 +37,12 @@ __all__ = [
     "SemanticDiversityResult",
     "LexicalDiversityResult",
     "CreativityScorer",
+    "ExactConstraintChecker",
+    "StoryMetrics",
+    "ConstraintSpec",
+    "SteeringPlan",
+    "SteeringVectorExtractor",
+    "SteeringVectorSet",
+    "load_pairs",
     "prompts",
 ]

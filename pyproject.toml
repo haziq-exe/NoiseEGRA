@@ -23,6 +23,9 @@ dependencies = [
 judge = ["openai", "python-dotenv"]
 # Optional spaCy PERSON NER backend for the EGRA constraint name checks
 names = ["spacy"]
+# Rigorous Arabic morphological backend for the exact present-tense check.
+# After installing run: camel_data -i disambig-mle-calima-msa-r13
+arabic = ["camel-tools"]
 # Hugging Face auth helper used by the experiment notebook
 hub = ["huggingface_hub"]
 
