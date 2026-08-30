@@ -103,7 +103,8 @@ def main() -> None:
     ap.add_argument("--layers", nargs=2, type=int, metavar=("LO", "HI"),
                     help="layer range [LO, HI); defaults to the paper range for --model")
     ap.add_argument("--dtype", default="auto", choices=["auto", "float16", "bfloat16"],
-                    help="auto picks float16 on pre-Ampere GPUs such as the T4")
+                    help="auto lets each model wrapper choose (Jais requires bfloat16; "
+                         "the rest default to float16). Only override deliberately.")
     ap.add_argument("--suite", nargs="+", default=["core"],
                     choices=["core", "ortho", "beta", "loo", "all"])
     ap.add_argument("--num-stories", type=int, default=50)
@@ -130,12 +131,9 @@ def main() -> None:
     lo, hi = args.layers if args.layers else MODEL_LAYER_RANGES[args.model]
     layers = list(range(lo, hi))
 
-    if args.dtype == "auto":
-        from noiseegra.models.Jais import preferred_dtype
-
-        dtype_arg = preferred_dtype()
-    else:
-        dtype_arg = getattr(torch, args.dtype)
+    # None means "let the wrapper decide" -- Jais pins bfloat16 because float16
+    # overflows on its activation scale; the others fall through to EGRA's float16.
+    dtype_arg = None if args.dtype == "auto" else getattr(torch, args.dtype)
 
     done_before = sum(len(v) for v in state["runs"].values())
     print(f"model    : {model_id}")
@@ -143,7 +141,7 @@ def main() -> None:
     print(f"out      : {out}")
     print(f"resuming : {done_before} stories already in {state_path.name}\n")
 
-    print(f"loading model in {dtype_arg} ...")
+    print(f"loading model ({'wrapper default' if dtype_arg is None else dtype_arg}) ...")
     model = build_model(model_id, dtype=dtype_arg, wrapper_for=hf_id)
     dtype = next(model.model.parameters()).dtype
     if torch.cuda.is_available() and dtype not in (torch.float16, torch.bfloat16):
