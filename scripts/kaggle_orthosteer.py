@@ -7,6 +7,13 @@ picks up from the next unfinished story. Nothing is regenerated.
 
     python scripts/kaggle_orthosteer.py --model Fanar --suite core --num-stories 50
 
+Or from inside a notebook, which keeps the model in memory so a retry does not
+reload 16 GB of weights:
+
+    from kaggle_orthosteer import load_model, run, make_args
+    model = load_model("Jais")                       # once
+    run(model, make_args(model="Jais", suite=["method"], num_stories=5))
+
 Outputs, all under --out:
     state.json                 the checkpoint (also the raw story archive)
     steering_<model>.pt        cached steering vectors (built once)
@@ -95,7 +102,7 @@ def generate_one(model, spec, mode, story_prompt, seed, max_new_tokens):
     raise ValueError(f"kaggle_orthosteer does not handle mode '{mode}'")
 
 
-def main() -> None:
+def _parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--model", default="Fanar", choices=sorted(MODEL_HF_IDS))
     ap.add_argument("--model-id", help="HF id or a local snapshot directory; "
@@ -119,21 +126,54 @@ def main() -> None:
     ap.add_argument("--max-new-tokens", type=int, default=500)
     ap.add_argument("--temperature", type=float, default=1.0)
     ap.add_argument("--pca-rank", type=int, default=8)
-    args = ap.parse_args()
+    return ap
 
+
+def make_args(**overrides) -> argparse.Namespace:
+    """Defaults from the CLI parser, with any keyword overridden.
+
+    Lets a notebook call ``run(model, make_args(suite=["method"], num_stories=5))``
+    without going through the command line.
+    """
+    args = _parser().parse_args([])
+    for key, value in overrides.items():
+        if not hasattr(args, key):
+            raise TypeError(f"unknown setting '{key}'; see --help for the full list")
+        setattr(args, key, value)
+    return args
+
+
+def load_model(model: str = "Fanar", model_id: str = None, dtype=None):
+    """Load a model once, so it can be reused across repeated run() calls.
+
+    ``model`` selects the paper preset (layers + chat template). ``model_id``
+    optionally points somewhere else for the weights themselves -- a different
+    Hugging Face id, or a local directory you downloaded into yourself.
+    ``dtype=None`` lets the wrapper choose (Jais pins bfloat16).
+    """
+    hf_id = MODEL_HF_IDS[model]
+    obj = build_model(model_id or hf_id, dtype=dtype, wrapper_for=hf_id)
+    loaded = next(obj.model.parameters()).dtype
+    if torch.cuda.is_available() and loaded not in (torch.float16, torch.bfloat16):
+        raise SystemExit(
+            f"model loaded in {loaded}, which will not fit on 2x T4. "
+            "Upgrade transformers (>=4.56) so the `dtype=` argument is honoured."
+        )
+    print(f"loaded {model_id or hf_id}  dtype={loaded}  "
+          f"devices={sorted({str(p.device) for p in obj.model.parameters()})}")
+    return obj
+
+
+def run(model, args: argparse.Namespace) -> Path:
+    """Generate every condition in ``args.suite``, resuming from the checkpoint."""
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     state_path = out / "state.json"
     state = load_state(state_path)
 
-    hf_id = MODEL_HF_IDS[args.model]
-    model_id = args.model_id or hf_id
+    model_id = args.model_id or MODEL_HF_IDS[args.model]
     lo, hi = args.layers if args.layers else MODEL_LAYER_RANGES[args.model]
     layers = list(range(lo, hi))
-
-    # None means "let the wrapper decide" -- Jais pins bfloat16 because float16
-    # overflows on its activation scale; the others fall through to EGRA's float16.
-    dtype_arg = None if args.dtype == "auto" else getattr(torch, args.dtype)
 
     done_before = sum(len(v) for v in state["runs"].values())
     print(f"model    : {model_id}")
@@ -141,16 +181,6 @@ def main() -> None:
     print(f"out      : {out}")
     print(f"resuming : {done_before} stories already in {state_path.name}\n")
 
-    print(f"loading model ({'wrapper default' if dtype_arg is None else dtype_arg}) ...")
-    model = build_model(model_id, dtype=dtype_arg, wrapper_for=hf_id)
-    dtype = next(model.model.parameters()).dtype
-    if torch.cuda.is_available() and dtype not in (torch.float16, torch.bfloat16):
-        raise SystemExit(
-            f"model loaded in {dtype}, which will not fit on 2x T4. "
-            "Upgrade transformers (>=4.56) so the `dtype=` argument is honoured."
-        )
-    devices = {str(p.device) for p in model.model.parameters()}
-    print(f"  dtype={dtype}  devices={sorted(devices)}")
 
     # ---- steering vectors (built once, then cached) ---------------------- #
     vec_path = out / f"steering_{args.model}.pt"
@@ -247,6 +277,14 @@ def main() -> None:
     write_csvs(out, state)
     print(f"\ndone. {done}/{total} stories -> {out}")
     print(f"score with:\n  python scripts/score_orthosteer.py --input-dir {out}")
+    return out
+
+
+def main() -> None:
+    args = _parser().parse_args()
+    dtype = None if args.dtype == "auto" else getattr(torch, args.dtype)
+    model = load_model(args.model, args.model_id, dtype)
+    run(model, args)
 
 
 if __name__ == "__main__":
