@@ -54,9 +54,19 @@ def seed_for_story(x: int) -> int:
 
 
 def load_state(path: Path) -> dict:
-    if path.is_file():
-        return json.loads(path.read_text(encoding="utf-8"))
-    return {"rms_scale": None, "runs": {}}
+    if not path.is_file():
+        return {"rms_scale": {}, "runs": {}}
+    state = json.loads(path.read_text(encoding="utf-8"))
+    # Older checkpoints stored a single activation scale for the whole file. It
+    # belongs to whichever model ran first, and reusing it for a second model
+    # mis-scales every steering and noise vector, so drop it and recalibrate.
+    if not isinstance(state.get("rms_scale"), dict):
+        if state.get("rms_scale") is not None:
+            print("[warn] checkpoint predates per-model calibration; recalibrating. "
+                  "Stories already generated are kept, but any generated for a model "
+                  "other than the first one in this folder used the wrong scale.")
+        state["rms_scale"] = {}
+    return state
 
 
 def save_state(path: Path, state: dict) -> None:
@@ -201,18 +211,28 @@ def run(model, args: argparse.Namespace) -> Path:
         print(f"  {name:<16} agreement across pairs: {min(cons):.2f}-{max(cons):.2f}{flag}")
 
     # ---- noise/steering scale (calibrated once, then cached) ------------- #
-    if state["rms_scale"] is None:
+    # Keyed by model AND layer range: activation scale differs by ~30x across
+    # these models (Fanar 3.57, AceGPT 0.11), so sharing one value across models
+    # in a single output folder would mis-scale everything.
+    cal_key = f"{args.model}|{lo}-{hi}"
+    if cal_key not in state["rms_scale"]:
         print("\ncalibrating activation scale ...")
         rms = RMSCalibrator(model).collect_block_rms(
             [{"role": "system", "content": prompts.SYS_ZERO_SHOT},
              {"role": "user", "content": prompts.PROMPT_ZERO_SHOT}],
             layers=layers,
         )
-        state["rms_scale"] = float(np.median(list(rms.values())))
+        state["rms_scale"][cal_key] = float(np.median(list(rms.values())))
         save_state(state_path, state)
-    rms_scale = state["rms_scale"]
-    print(f"activation scale = {rms_scale:.4g}  "
+    rms_scale = state["rms_scale"][cal_key]
+    print(f"activation scale [{cal_key}] = {rms_scale:.4g}  "
           f"(noise size {args.alpha * rms_scale:.4g}, steering size {args.beta * rms_scale:.4g})")
+
+    others = sorted({r.split("__")[0] for r in state["runs"]} - {args.model})
+    if others:
+        print(f"[note] this folder also holds runs for {others}. Their stories are kept "
+              f"under their own run ids, but score_orthosteer.py scores every CSV here, "
+              f"so use one folder per model if you want clean tables.")
 
     # ---- conditions ------------------------------------------------------ #
     suites = ["core", "ortho", "beta", "loo"] if "all" in args.suite else args.suite
