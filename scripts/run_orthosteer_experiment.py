@@ -9,6 +9,8 @@
 
 Suites
 ------
+``method`` just the proposed method, a single condition -- for a quick test run
+           that does not regenerate the Baseline and L-Res references.
 ``core``   the main comparison: Baseline, published L-Res (isotropic noise),
            steering with no noise, and steering + {orth, iso, para} noise.
            ``para`` is the destructive control that confines all the noise energy
@@ -102,6 +104,13 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
     resid_std = args.alpha * rms_scale
     items = []
 
+    if name == "method":
+        # Just the proposed method, one condition. For a quick smoke run that does
+        # not regenerate the Baseline and L-Res references you already have.
+        items = [{"plan": make_plan(beta=args.beta, noise_mode="orth",
+                                    noise_alpha=args.alpha, **common)}]
+        return items, "the proposed method only (steering + constraint-free noise)"
+
     if name == "core":
         items += [
             "baseline",
@@ -157,7 +166,7 @@ def main() -> None:
     ap.add_argument("--vectors", help="path to the .pt from build_steering_vectors.py")
     ap.add_argument("--layers", nargs=2, type=int, metavar=("LO", "HI"))
     ap.add_argument("--suite", nargs="+", default=["core"],
-                    choices=["core", "ortho", "beta", "loo", "all"])
+                    choices=["method", "core", "ortho", "beta", "loo", "all"])
     ap.add_argument("--constraints", nargs="*", default=DEFAULT_CONSTRAINTS)
     ap.add_argument("--beta", type=float, default=1.0,
                     help="steering strength as a multiple of median block RMS (default 1.0)")

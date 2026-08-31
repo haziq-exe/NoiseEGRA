@@ -106,7 +106,7 @@ def main() -> None:
                     help="auto lets each model wrapper choose (Jais requires bfloat16; "
                          "the rest default to float16). Only override deliberately.")
     ap.add_argument("--suite", nargs="+", default=["core"],
-                    choices=["core", "ortho", "beta", "loo", "all"])
+                    choices=["method", "core", "ortho", "beta", "loo", "all"])
     ap.add_argument("--num-stories", type=int, default=50)
     ap.add_argument("--out", default="/kaggle/working/orthosteer")
     ap.add_argument("--constraints", nargs="*", default=DEFAULT_CONSTRAINTS)
