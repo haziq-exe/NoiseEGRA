@@ -11,6 +11,9 @@ Suites
 ------
 ``method`` just the proposed method, a single condition -- for a quick test run
            that does not regenerate the Baseline and L-Res references.
+``noise``  the four steering variants only -- no noise, noise with the constraint
+           directions removed, ordinary noise, and noise confined to the constraint
+           directions. This is the ablation itself, without regenerating references.
 ``core``   the main comparison: Baseline, published L-Res (isotropic noise),
            steering with no noise, and steering + {orth, iso, para} noise.
            ``para`` is the destructive control that confines all the noise energy
@@ -111,6 +114,18 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                                     noise_alpha=args.alpha, **common)}]
         return items, "the proposed method only (steering + constraint-free noise)"
 
+    # The four steering variants, differing only in where the noise is allowed to sit.
+    noise_arms = [
+        {"plan": make_plan(beta=args.beta, noise_mode=mode,
+                           noise_alpha=0.0 if mode == "none" else args.alpha, **common)}
+        for mode in ("none", "orth", "iso", "para")
+    ]
+
+    if name == "noise":
+        return noise_arms, ("the four steering variants: no noise / noise with constraint "
+                            "directions removed / ordinary noise / noise confined to the "
+                            "constraint directions")
+
     if name == "core":
         items += [
             "baseline",
@@ -121,13 +136,8 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                 "disable_residual_noise_decay": True,
             },
         ]
-        items += [
-            {"plan": make_plan(beta=args.beta, noise_mode="none", noise_alpha=0.0, **common)},
-            {"plan": make_plan(beta=args.beta, noise_mode="orth", noise_alpha=args.alpha, **common)},
-            {"plan": make_plan(beta=args.beta, noise_mode="iso", noise_alpha=args.alpha, **common)},
-            {"plan": make_plan(beta=args.beta, noise_mode="para", noise_alpha=args.alpha, **common)},
-        ]
-        return items, "Baseline / L-Res / steer-only / steer+{orth,iso,para}"
+        items += noise_arms
+        return items, "Baseline / L-Res / the four steering variants"
 
     if name == "ortho":
         items = [
@@ -166,7 +176,7 @@ def main() -> None:
     ap.add_argument("--vectors", help="path to the .pt from build_steering_vectors.py")
     ap.add_argument("--layers", nargs=2, type=int, metavar=("LO", "HI"))
     ap.add_argument("--suite", nargs="+", default=["core"],
-                    choices=["method", "core", "ortho", "beta", "loo", "all"])
+                    choices=["method", "noise", "core", "ortho", "beta", "loo", "all"])
     ap.add_argument("--constraints", nargs="*", default=DEFAULT_CONSTRAINTS)
     ap.add_argument("--beta", type=float, default=1.0,
                     help="steering strength as a multiple of median block RMS (default 1.0)")
