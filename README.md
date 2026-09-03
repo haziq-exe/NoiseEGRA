@@ -411,3 +411,84 @@ minimum-change.
 python tests/test_subspace.py          # geometry, schedules, exact metrics
 python tests/test_orthosteer_smoke.py  # extraction + hook + plumbing, tiny CPU model
 ```
+
+---
+
+## English generalisation: constrained creative writing on WritingPrompts
+
+The same method, moved off Arabic EGRA and onto an English creative-writing task
+with a stronger model, to test whether it generalises.
+
+### Task
+
+Prompts come from **WritingPrompts** (Fan et al., 2018; `euclaise/writingprompts`),
+the r/WritingPrompts corpus that the CS4 creativity benchmark also builds on. Each
+prompt is paired with a fixed set of four verifiable constraints:
+
+| Constraint | Steering direction | Exact check |
+|---|---|---|
+| `length` | `closure` — resolution vs. plot escalation | word count ≤ 150 |
+| `present_tense` | present vs. past minimal pairs | present finite verbs ÷ all finite verbs ≥ 0.8 |
+| `simple_register` | plain prose vs. literary register | Flesch–Kincaid grade ≤ 6.0 |
+| `dialogue` | quoted speech vs. reported speech | ≥ 1 quoted utterance |
+
+Three mirror the Arabic constraints, so the cross-lingual claim is about the same
+constraint *types*. `dialogue` is added because it asks for something to be
+**present** rather than limiting something, which tests whether steering works in
+both directions.
+
+Two design choices worth stating:
+
+**Why not CS4's own constraints.** CS4 scores constraint satisfaction with a
+GPT-3.5 judge, and its constraints are instance-specific ("must be set in a small
+coastal town"). A steering direction has to mean the same thing on every prompt —
+there is no single direction for a coastal town, but there is one for present
+tense. So we take the prompts and supply generic, programmatically checkable
+constraints instead.
+
+**Diversity is measured within a prompt.** Stories written from different prompts
+are trivially dissimilar, so a diversity score pooled across prompts would mostly
+measure the prompt set. The runner generates K stories per prompt and the scorer
+computes Vendi and Self-BLEU per prompt group before averaging. This is a stronger
+design than the Arabic study, which used a single fixed prompt.
+
+### Models
+
+Standard dense, text-only causal LMs that run in float16 on two T4s. No hybrid,
+mixture-of-experts or multimodal models: the method is defined on the residual
+stream of a standard transformer, and changing the architecture at the same time as
+the language and the task would make any result impossible to attribute.
+
+| Key | Model | Blocks | Steered layers | float16 size | Licence |
+|---|---|---|---|---|---|
+| `Qwen3-8B` (default) | `Qwen/Qwen3-8B` | 36 | 14–22 | ~16 GB | Apache 2.0 |
+| `Llama-3.1-8B` | `meta-llama/Llama-3.1-8B-Instruct` | 32 | 12–20 | ~16 GB | gated |
+| `Mistral-Nemo-12B` | `mistralai/Mistral-Nemo-Instruct-2407` | 40 | 15–23 | ~24 GB | Apache 2.0 |
+
+Each layer band covers the same relative depth as the paper's (37%–62%). Qwen3's
+reasoning mode is disabled — a visible chain of thought would contaminate the story
+text and every constraint measured on it.
+
+### Running it
+
+```bash
+# baseline vs. the method
+python scripts/run_english_experiment.py --model Qwen3-8B --suite compare \
+    --num-prompts 10 --stories-per-prompt 5
+
+# the full noise ablation
+python scripts/run_english_experiment.py --model Qwen3-8B --suite noise
+
+python scripts/score_english.py --input-dir <out>/Qwen3-8B --diversity
+```
+
+`compare` is baseline against the proposed method and nothing else. `noise`,
+`core`, `ortho`, `beta`, `loo` and `all` behave as in the Arabic pipeline. Runs are
+checkpointed per story and resume on re-invocation.
+
+Install `spacy` and `en_core_web_sm` for the tense check — English irregular verbs
+make the no-model fallback genuinely approximate, and it says so at startup.
+
+```bash
+python tests/test_english_smoke.py   # task setup, checks, extraction, runner, scorer
+```

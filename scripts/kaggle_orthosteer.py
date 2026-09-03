@@ -123,7 +123,7 @@ def _parser() -> argparse.ArgumentParser:
                     help="auto lets each model wrapper choose (Jais requires bfloat16; "
                          "the rest default to float16). Only override deliberately.")
     ap.add_argument("--suite", nargs="+", default=["core"],
-                    choices=["method", "noise", "core", "ortho", "beta", "loo", "all"])
+                    choices=["compare", "method", "noise", "core", "ortho", "beta", "loo", "all"])
     ap.add_argument("--num-stories", type=int, default=50)
     ap.add_argument("--out", default="/kaggle/working/orthosteer")
     ap.add_argument("--constraints", nargs="*", default=DEFAULT_CONSTRAINTS)

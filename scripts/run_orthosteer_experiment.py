@@ -121,6 +121,11 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         for mode in ("none", "orth", "iso", "para")
     ]
 
+    if name == "compare":
+        # The minimal head-to-head: unmodified generation vs. the proposed method.
+        return ([ "baseline", noise_arms[1] ],
+                "Baseline vs. the proposed method")
+
     if name == "noise":
         return noise_arms, ("the four steering variants: no noise / noise with constraint "
                             "directions removed / ordinary noise / noise confined to the "
@@ -176,7 +181,7 @@ def main() -> None:
     ap.add_argument("--vectors", help="path to the .pt from build_steering_vectors.py")
     ap.add_argument("--layers", nargs=2, type=int, metavar=("LO", "HI"))
     ap.add_argument("--suite", nargs="+", default=["core"],
-                    choices=["method", "noise", "core", "ortho", "beta", "loo", "all"])
+                    choices=["compare", "method", "noise", "core", "ortho", "beta", "loo", "all"])
     ap.add_argument("--constraints", nargs="*", default=DEFAULT_CONSTRAINTS)
     ap.add_argument("--beta", type=float, default=1.0,
                     help="steering strength as a multiple of median block RMS (default 1.0)")

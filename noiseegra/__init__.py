@@ -17,6 +17,8 @@ from .creativity_metrics import (
     CreativityScorer,
 )
 from .constraint_metrics import ExactConstraintChecker, StoryMetrics
+from .constraint_metrics_en import EnglishConstraintChecker
+from . import writingprompts
 from .subspace import ConstraintSpec, SteeringPlan
 from .steering_vectors import (
     SteeringVectorExtractor,
@@ -38,6 +40,8 @@ __all__ = [
     "LexicalDiversityResult",
     "CreativityScorer",
     "ExactConstraintChecker",
+    "EnglishConstraintChecker",
+    "writingprompts",
     "StoryMetrics",
     "ConstraintSpec",
     "SteeringPlan",

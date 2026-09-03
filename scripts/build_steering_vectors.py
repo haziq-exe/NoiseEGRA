@@ -33,6 +33,9 @@ WRAPPERS = {
     "FreedomIntelligence/AceGPT-v2-8B-Chat": ("noiseegra.models.AceGPT", "AceGPT"),
     "humain-ai/ALLaM-7B-Instruct-preview": ("noiseegra.models.Allam", "Allam"),
     "QCRI/Fanar-1-9B-Instruct": ("noiseegra.models.Fanar", "Fanar"),
+    "Qwen/Qwen3-8B": ("noiseegra.models.Qwen3", "Qwen3"),
+    "meta-llama/Llama-3.1-8B-Instruct": ("noiseegra.models.Llama31", "Llama31"),
+    "mistralai/Mistral-Nemo-Instruct-2407": ("noiseegra.models.MistralNemo", "MistralNemo"),
 }
 
 
