@@ -85,7 +85,7 @@ def main() -> None:
     ap.add_argument("--layers", nargs=2, type=int, metavar=("LO", "HI"))
     ap.add_argument("--dtype", default="auto", choices=["auto", "float16", "bfloat16"])
     ap.add_argument("--suite", nargs="+", default=["compare"],
-                    choices=["compare", "method", "noise", "core", "ortho", "beta", "loo", "all"])
+                    choices=["compare", "method", "noise", "core", "ortho", "alpha", "beta", "loo", "all"])
     ap.add_argument("--constraints", nargs="*", default=list(EN_CONSTRAINTS))
     ap.add_argument("--num-prompts", type=int, default=10)
     ap.add_argument("--stories-per-prompt", type=int, default=5)
@@ -95,6 +95,9 @@ def main() -> None:
     ap.add_argument("--max-grade", type=float, default=EN_MAX_GRADE_LEVEL)
     ap.add_argument("--beta", type=float, default=1.0)
     ap.add_argument("--beta-sweep", nargs="*", type=float, default=[0.25, 0.5, 1.0, 2.0, 4.0])
+    ap.add_argument("--alpha-sweep", nargs="*", type=float,
+                    default=[0.0, 0.0875, 0.175, 0.35, 0.7],
+                    help="noise strengths used by --suite alpha")
     ap.add_argument("--alpha", type=float, default=RMS_ALPHA)
     ap.add_argument("--protect-rank", type=int, default=8)
     ap.add_argument("--horizon", type=int, default=200)
@@ -177,7 +180,7 @@ def main() -> None:
           f"(noise {args.alpha * rms_scale:.4g}, steering {args.beta * rms_scale:.4g})")
 
     # ---- conditions -------------------------------------------------------- #
-    suites = ["core", "ortho", "beta", "loo"] if "all" in args.suite else args.suite
+    suites = ["core", "ortho", "alpha", "beta", "loo"] if "all" in args.suite else args.suite
     items = []
     for suite in suites:
         built, desc = build_suite(suite, vectors, layers, args.constraints, rms_scale, args)

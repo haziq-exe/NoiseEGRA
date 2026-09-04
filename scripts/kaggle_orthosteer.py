@@ -123,12 +123,15 @@ def _parser() -> argparse.ArgumentParser:
                     help="auto lets each model wrapper choose (Jais requires bfloat16; "
                          "the rest default to float16). Only override deliberately.")
     ap.add_argument("--suite", nargs="+", default=["core"],
-                    choices=["compare", "method", "noise", "core", "ortho", "beta", "loo", "all"])
+                    choices=["compare", "method", "noise", "core", "ortho", "alpha", "beta", "loo", "all"])
     ap.add_argument("--num-stories", type=int, default=50)
     ap.add_argument("--out", default="/kaggle/working/orthosteer")
     ap.add_argument("--constraints", nargs="*", default=DEFAULT_CONSTRAINTS)
     ap.add_argument("--beta", type=float, default=1.0)
     ap.add_argument("--beta-sweep", nargs="*", type=float, default=[0.25, 0.5, 1.0, 2.0, 4.0])
+    ap.add_argument("--alpha-sweep", nargs="*", type=float,
+                    default=[0.0, 0.0875, 0.175, 0.35, 0.7],
+                    help="noise strengths used by --suite alpha")
     ap.add_argument("--alpha", type=float, default=RMS_ALPHA)
     ap.add_argument("--protect-rank", type=int, default=8)
     ap.add_argument("--horizon", type=int, default=200)
@@ -235,7 +238,7 @@ def run(model, args: argparse.Namespace) -> Path:
               f"so use one folder per model if you want clean tables.")
 
     # ---- conditions ------------------------------------------------------ #
-    suites = ["core", "ortho", "beta", "loo"] if "all" in args.suite else args.suite
+    suites = ["core", "ortho", "alpha", "beta", "loo"] if "all" in args.suite else args.suite
     items = []
     for suite in suites:
         built, _ = build_suite(suite, vectors, layers, args.constraints, rms_scale, args)

@@ -20,6 +20,7 @@ Suites
            to the constraint subspace.
 ``ortho``  steering + orthogonal noise under each orthogonalisation of the
            steering vectors: none (naive sum), Gram-Schmidt, Loewdin.
+``alpha``  noise-strength sweep at fixed steering strength.
 ``beta``   systematically relax the constraint pressure: a sweep over beta.
 ``loo``    leave-one-out over the constraints, to see which one carries the effect
            and whether they interfere.
@@ -152,6 +153,16 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         ]
         return items, "orthogonalisation of the steering vectors: none / GS / Loewdin"
 
+    if name == "alpha":
+        # Noise-strength sweep at fixed steering strength. alpha is a multiple of
+        # the model's own activation scale, so it means the same thing on every
+        # model; 0.175 is the value used throughout the paper.
+        items = [
+            {"plan": make_plan(beta=args.beta, noise_mode="orth", noise_alpha=a, **common)}
+            for a in args.alpha_sweep
+        ]
+        return items, f"noise-strength sweep {args.alpha_sweep}"
+
     if name == "beta":
         items = [
             {"plan": make_plan(beta=b, noise_mode="orth", noise_alpha=args.alpha, **common)}
@@ -181,13 +192,17 @@ def main() -> None:
     ap.add_argument("--vectors", help="path to the .pt from build_steering_vectors.py")
     ap.add_argument("--layers", nargs=2, type=int, metavar=("LO", "HI"))
     ap.add_argument("--suite", nargs="+", default=["core"],
-                    choices=["compare", "method", "noise", "core", "ortho", "beta", "loo", "all"])
+                    choices=["compare", "method", "noise", "core", "ortho", "alpha", "beta", "loo", "all"])
     ap.add_argument("--constraints", nargs="*", default=DEFAULT_CONSTRAINTS)
     ap.add_argument("--beta", type=float, default=1.0,
                     help="steering strength as a multiple of median block RMS (default 1.0)")
     ap.add_argument("--beta-sweep", nargs="*", type=float, default=[0.25, 0.5, 1.0, 2.0, 4.0])
     ap.add_argument("--alpha", type=float, default=RMS_ALPHA,
-                    help=f"noise strength, paper default {RMS_ALPHA}")
+                    help=f"noise strength as a multiple of the model's activation "
+                         f"scale (paper default {RMS_ALPHA}); 0 disables noise")
+    ap.add_argument("--alpha-sweep", nargs="*", type=float,
+                    default=[0.0, 0.0875, 0.175, 0.35, 0.7],
+                    help="values used by --suite alpha")
     ap.add_argument("--protect-rank", type=int, default=8,
                     help="principal components protected per constraint on top of the mean "
                          "direction. 0 protects only the C mean directions, which in a "
@@ -254,7 +269,7 @@ def main() -> None:
           f"-> noise sigma = {args.alpha * rms_scale:.6g}, "
           f"steering magnitude = {args.beta * rms_scale:.6g} per constraint")
 
-    suites = ["core", "ortho", "beta", "loo"] if "all" in args.suite else args.suite
+    suites = ["core", "ortho", "alpha", "beta", "loo"] if "all" in args.suite else args.suite
     items, descriptions = [], []
     for suite in suites:
         built, desc = build_suite(suite, vectors, layers, args.constraints, rms_scale, args)
