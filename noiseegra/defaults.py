@@ -50,17 +50,45 @@ DEFAULT_EXPERIMENT_INPUT_FOLDERS = [
 # residual stream of a standard transformer, and the original study used
 # standard transformers, so changing architecture would confound the result.
 EN_MODEL_HF_IDS: Dict[str, str] = {
+    # Apache 2.0, ungated
     "Qwen3-8B": "Qwen/Qwen3-8B",
-    "Llama-3.1-8B": "meta-llama/Llama-3.1-8B-Instruct",
+    "Qwen2.5-7B": "Qwen/Qwen2.5-7B-Instruct",
+    "OLMo-2-7B": "allenai/OLMo-2-1124-7B-Instruct",
+    "Granite-3.1-8B": "ibm-granite/granite-3.1-8b-instruct",
     "Mistral-Nemo-12B": "mistralai/Mistral-Nemo-Instruct-2407",
+    # Own licences, still ungated
+    "Falcon3-7B": "tiiuae/Falcon3-7B-Instruct",
+    # Gated: accept the licence on the model page first
+    "Llama-3.1-8B": "meta-llama/Llama-3.1-8B-Instruct",
 }
 
-# The paper injects into layers 12-20 of 32, i.e. the band from 37% to 62% of
-# depth. These ranges put each model in the same relative band, 9 layers wide.
+# Block count per model, used to place the steering band.
+EN_MODEL_DEPTHS: Dict[str, int] = {
+    "Qwen3-8B": 36,
+    "Qwen2.5-7B": 28,
+    "OLMo-2-7B": 32,
+    "Granite-3.1-8B": 40,
+    "Mistral-Nemo-12B": 40,
+    "Falcon3-7B": 28,
+    "Llama-3.1-8B": 32,
+}
+
+
+def layer_band(n_layers: int, width: int = 9, end_frac: float = 0.625) -> Tuple[int, int]:
+    """The paper's injection band, transferred to a model of any depth.
+
+    The published runs use a 9-block band ending at roughly 62% of depth: blocks
+    12-20 of 32 for the four 32-block models, and 18-26 of 42 for Fanar. This
+    reproduces both exactly and extends the same rule to other depths. Returns a
+    half-open (lo, hi) suitable for ``range``.
+    """
+    hi = int(round(end_frac * n_layers))
+    lo = max(0, hi - width + 1)
+    return lo, min(hi + 1, n_layers)
+
+
 EN_MODEL_LAYER_RANGES: Dict[str, Tuple[int, int]] = {
-    "Qwen3-8B": (14, 23),          # 36 blocks
-    "Llama-3.1-8B": (12, 21),      # 32 blocks, identical to the paper
-    "Mistral-Nemo-12B": (15, 24),  # 40 blocks
+    name: layer_band(depth) for name, depth in EN_MODEL_DEPTHS.items()
 }
 
 EN_CONSTRAINTS = ("closure", "present_tense", "simple_register", "dialogue")

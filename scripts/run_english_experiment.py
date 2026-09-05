@@ -176,8 +176,18 @@ def main() -> None:
         state["rms_scale"][cal_key] = float(np.median(list(rms.values())))
         save_state(state_path, state)
     rms_scale = state["rms_scale"][cal_key]
+    if not (rms_scale > 0) or rms_scale != rms_scale:
+        raise SystemExit(
+            f"calibration returned {rms_scale}; the forward pass produced non-finite "
+            "activations. This model probably cannot run in float16 -- retry with "
+            "--dtype bfloat16 (slower on a T4, but correct)."
+        )
     print(f"activation scale [{cal_key}] = {rms_scale:.4g}  "
           f"(noise {args.alpha * rms_scale:.4g}, steering {args.beta * rms_scale:.4g})")
+    if dtype == torch.float16 and rms_scale > 100:
+        print(f"[warn] activation scale {rms_scale:.4g} is large for float16 "
+              "(max representable 65504). If the stories come out empty or garbled, "
+              "rerun with --dtype bfloat16.")
 
     # ---- conditions -------------------------------------------------------- #
     suites = ["core", "ortho", "alpha", "beta", "loo"] if "all" in args.suite else args.suite
