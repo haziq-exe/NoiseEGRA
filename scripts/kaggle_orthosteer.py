@@ -126,6 +126,9 @@ def _parser() -> argparse.ArgumentParser:
                     choices=["compare", "method", "noise", "core", "ortho", "alpha", "beta", "loo", "all"])
     ap.add_argument("--num-stories", type=int, default=50)
     ap.add_argument("--out", default="/kaggle/working/orthosteer")
+    ap.add_argument("--with-baseline", action="store_true",
+                    help="prepend an unsteered baseline condition to whichever suite is run "
+                         "(already included in `compare` and `noise`)")
     ap.add_argument("--constraints", nargs="*", default=DEFAULT_CONSTRAINTS)
     ap.add_argument("--beta", type=float, default=1.0)
     ap.add_argument("--beta-sweep", nargs="*", type=float, default=[0.25, 0.5, 1.0, 2.0, 4.0])
@@ -239,7 +242,7 @@ def run(model, args: argparse.Namespace) -> Path:
 
     # ---- conditions ------------------------------------------------------ #
     suites = ["core", "ortho", "alpha", "beta", "loo"] if "all" in args.suite else args.suite
-    items = []
+    items = ["baseline"] if args.with_baseline else []
     for suite in suites:
         built, _ = build_suite(suite, vectors, layers, args.constraints, rms_scale, args)
         items.extend(built)

@@ -11,9 +11,9 @@ Suites
 ------
 ``method`` just the proposed method, a single condition -- for a quick test run
            that does not regenerate the Baseline and L-Res references.
-``noise``  the four steering variants only -- no noise, noise with the constraint
-           directions removed, ordinary noise, and noise confined to the constraint
-           directions. This is the ablation itself, without regenerating references.
+``noise``  Baseline plus the four steering variants -- no noise, noise with the
+           constraint directions removed, ordinary noise, and noise confined to the
+           constraint directions. This is the ablation itself.
 ``core``   the main comparison: Baseline, published L-Res (isotropic noise),
            steering with no noise, and steering + {orth, iso, para} noise.
            ``para`` is the destructive control that confines all the noise energy
@@ -128,9 +128,12 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                 "Baseline vs. the proposed method")
 
     if name == "noise":
-        return noise_arms, ("the four steering variants: no noise / noise with constraint "
-                            "directions removed / ordinary noise / noise confined to the "
-                            "constraint directions")
+        # Baseline first: without an unsteered reference the four arms can only be
+        # compared to each other, not to doing nothing at all.
+        return (["baseline"] + noise_arms,
+                "Baseline + the four steering variants: no noise / noise with constraint "
+                "directions removed / ordinary noise / noise confined to the constraint "
+                "directions")
 
     if name == "core":
         items += [
@@ -193,6 +196,9 @@ def main() -> None:
     ap.add_argument("--layers", nargs=2, type=int, metavar=("LO", "HI"))
     ap.add_argument("--suite", nargs="+", default=["core"],
                     choices=["compare", "method", "noise", "core", "ortho", "alpha", "beta", "loo", "all"])
+    ap.add_argument("--with-baseline", action="store_true",
+                    help="prepend an unsteered baseline condition to whichever suite is run "
+                         "(already included in `compare` and `noise`)")
     ap.add_argument("--constraints", nargs="*", default=DEFAULT_CONSTRAINTS)
     ap.add_argument("--beta", type=float, default=1.0,
                     help="steering strength as a multiple of median block RMS (default 1.0)")
@@ -270,7 +276,8 @@ def main() -> None:
           f"steering magnitude = {args.beta * rms_scale:.6g} per constraint")
 
     suites = ["core", "ortho", "alpha", "beta", "loo"] if "all" in args.suite else args.suite
-    items, descriptions = [], []
+    items = ["baseline"] if args.with_baseline else []
+    descriptions = []
     for suite in suites:
         built, desc = build_suite(suite, vectors, layers, args.constraints, rms_scale, args)
         items.extend(built)

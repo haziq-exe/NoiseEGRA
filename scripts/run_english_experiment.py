@@ -86,6 +86,12 @@ def main() -> None:
     ap.add_argument("--dtype", default="auto", choices=["auto", "float16", "bfloat16"])
     ap.add_argument("--suite", nargs="+", default=["compare"],
                     choices=["compare", "method", "noise", "core", "ortho", "alpha", "beta", "loo", "all"])
+    ap.add_argument("--allow-task-change", action="store_true",
+                    help="proceed even though the checkpoint was written under different "
+                         "constraint thresholds or a different prompt selection")
+    ap.add_argument("--with-baseline", action="store_true",
+                    help="prepend an unsteered baseline condition to whichever suite is run "
+                         "(already included in `compare` and `noise`)")
     ap.add_argument("--constraints", nargs="*", default=list(EN_CONSTRAINTS))
     ap.add_argument("--num-prompts", type=int, default=10)
     ap.add_argument("--stories-per-prompt", type=int, default=5)
@@ -119,6 +125,35 @@ def main() -> None:
     layers = list(range(lo, hi))
     dtype_arg = None if args.dtype == "auto" else getattr(torch, args.dtype)
 
+    # The constraint thresholds and the prompt selection are baked into the text
+    # the model is given, but not into the run id. Reusing a checkpoint under
+    # different values would silently mix stories written to different
+    # instructions, so the task setup is pinned on first write.
+    task = {
+        "constraints": list(args.constraints),
+        "max_words": args.max_words,
+        "max_grade": args.max_grade,
+        "num_prompts": args.num_prompts,
+        "prompt_seed": args.prompt_seed,
+        "prompt_split": args.prompt_split,
+        "max_new_tokens": args.max_new_tokens,
+        "temperature": args.temperature,
+    }
+    prev = state.get("task")
+    if prev is None:
+        state["task"] = task
+        save_state(state_path, state)
+    elif prev != task and not args.allow_task_change:
+        changed = [f"    {k}: {prev.get(k)!r} -> {task[k]!r}"
+                   for k in task if prev.get(k) != task[k]]
+        raise SystemExit(
+            f"{state_path} holds stories generated under a different task setup:\n"
+            + "\n".join(changed)
+            + "\n\n  These values go into the prompt itself, so old and new stories are not\n"
+              "  comparable. Either point --out at a fresh directory, or pass\n"
+              "  --allow-task-change if you are certain you want them mixed."
+        )
+
     print(f"model       : {model_id}")
     print(f"layers      : {layers}")
     print(f"constraints : {args.constraints}")
@@ -138,12 +173,20 @@ def main() -> None:
     for t in prompts[:3]:
         print(f"   - {t[:110]}{'...' if len(t) > 110 else ''}")
 
-    print("\nloading model ...")
-    model = build_model(model_id, dtype=dtype_arg, wrapper_for=hf_id)
-    dtype = next(model.model.parameters()).dtype
-    if torch.cuda.is_available() and dtype not in (torch.float16, torch.bfloat16):
-        raise SystemExit(f"model loaded in {dtype}; upgrade transformers (>=4.56).")
-    print(f"  dtype={dtype}")
+    # Loading is deferred: with the steering vectors and the activation scale both
+    # cached, a fully generated model needs no weights at all and exits in seconds.
+    holder = {"model": None, "dtype": None}
+
+    def get_model():
+        if holder["model"] is None:
+            print("\nloading model ...", flush=True)
+            m = build_model(model_id, dtype=dtype_arg, wrapper_for=hf_id)
+            d = next(m.model.parameters()).dtype
+            if torch.cuda.is_available() and d not in (torch.float16, torch.bfloat16):
+                raise SystemExit(f"model loaded in {d}; upgrade transformers (>=4.56).")
+            print(f"  dtype={d}")
+            holder["model"], holder["dtype"] = m, d
+        return holder["model"]
 
     # ---- steering vectors ------------------------------------------------- #
     vec_path = out / f"steering_{args.model}.pt"
@@ -152,7 +195,7 @@ def main() -> None:
         print(f"steering vectors: loaded from {vec_path.name}")
     else:
         print("steering vectors: extracting (once) ...")
-        vectors = SteeringVectorExtractor(model).extract(
+        vectors = SteeringVectorExtractor(get_model()).extract(
             load_pairs(EN_PAIRS), layers,
             system=wp.SYSTEM_PROMPT, user=wp.EXTRACTION_PROMPT,
             pca_rank=args.pca_rank, only=args.constraints, verbose=False,
@@ -168,7 +211,7 @@ def main() -> None:
     cal_key = f"{args.model}|{lo}-{hi}"
     if cal_key not in state["rms_scale"]:
         print("\ncalibrating activation scale ...")
-        rms = RMSCalibrator(model).collect_block_rms(
+        rms = RMSCalibrator(get_model()).collect_block_rms(
             wp.build_messages(prompts[0], args.constraints,
                               max_words=args.max_words, max_grade=args.max_grade),
             layers=layers,
@@ -184,14 +227,14 @@ def main() -> None:
         )
     print(f"activation scale [{cal_key}] = {rms_scale:.4g}  "
           f"(noise {args.alpha * rms_scale:.4g}, steering {args.beta * rms_scale:.4g})")
-    if dtype == torch.float16 and rms_scale > 100:
+    if holder["dtype"] == torch.float16 and rms_scale > 100:
         print(f"[warn] activation scale {rms_scale:.4g} is large for float16 "
               "(max representable 65504). If the stories come out empty or garbled, "
               "rerun with --dtype bfloat16.")
 
     # ---- conditions -------------------------------------------------------- #
     suites = ["core", "ortho", "alpha", "beta", "loo"] if "all" in args.suite else args.suite
-    items = []
+    items = ["baseline"] if args.with_baseline else []
     for suite in suites:
         built, desc = build_suite(suite, vectors, layers, args.constraints, rms_scale, args)
         items.extend(built)
@@ -226,7 +269,24 @@ def main() -> None:
         for t in prompts
     ]
 
-    done = sum(len(v) for v in state["runs"].values())
+    todo = [
+        (k, p_idx, rid)
+        for k in range(K)
+        for p_idx in range(P)
+        for rid in run_ids
+        if f"{p_idx}:{k}" not in state["runs"][rid]
+    ]
+    if not todo:
+        write_csvs(out, state)
+        print(f"\nnothing to generate: all {total} stories are already in "
+              f"{state_path.name}. CSVs refreshed.")
+        print(f"score with:\n  python scripts/score_english.py --input-dir {out}")
+        return
+
+    print(f"\n{len(todo)} of {total} still to generate.")
+    model = get_model()
+
+    done = total - len(todo)
     started, t0 = done, time.time()
     print()
 

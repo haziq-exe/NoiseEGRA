@@ -144,8 +144,7 @@ def counting(*a, **kw):
     return orig(*a, **kw)
 R.generate_one = counting
 sys.argv = ["x"] + BASE
-buf = io.StringIO()
-with contextlib.redirect_stdout(buf):
+with contextlib.redirect_stdout(io.StringIO()):
     R.main()
 s2 = json.loads((OUT / "Qwen3-8B" / "state.json").read_text())
 total = sum(len(v) for v in s2["runs"].values())
@@ -161,6 +160,56 @@ check("both conditions are baseline and the steered method",
 keys = next(iter(s2["runs"].values()))
 check("every prompt x story cell is filled",
       sorted(keys) == sorted(f"{p}:{k}" for p in range(3) for k in range(2)))
+
+# --- caching, adding a condition, and the task guard --------------------- #
+loads = {"n": 0}
+def counting_build(mid, **kw):
+    loads["n"] += 1
+    return Tiny()
+R.build_model = counting_build
+
+sys.argv = ["x"] + BASE
+before = loads["n"]
+with contextlib.redirect_stdout(io.StringIO()) as b3:
+    R.main()
+check("a fully cached model is not loaded at all", loads["n"] == before,
+      f"loaded {loads['n'] - before} times")
+check("and it says so", "nothing to generate" in b3.getvalue())
+
+# A run id depends only on the steering plan, never on which suite asked for it,
+# so switching suites reuses everything already generated.
+before = loads["n"]
+sys.argv = ["x"] + BASE + ["--with-baseline"]
+with contextlib.redirect_stdout(io.StringIO()):
+    R.main()
+s3 = json.loads((OUT / "Qwen3-8B" / "state.json").read_text())
+check("--with-baseline is a no-op when the suite already has one",
+      set(s3["runs"]) == set(s2["runs"]) and loads["n"] == before,
+      f"new={sorted(set(s3['runs']) - set(s2['runs']))}")
+
+sys.argv = ["x"] + BASE[:BASE.index("compare")] + ["method"] + BASE[BASE.index("compare") + 1:]
+with contextlib.redirect_stdout(io.StringIO()) as b5:
+    R.main()
+s4 = json.loads((OUT / "Qwen3-8B" / "state.json").read_text())
+check("switching suite regenerates nothing already present",
+      all(s4["runs"][r] == s2["runs"][r] for r in s2["runs"])
+      and "nothing to generate" in b5.getvalue())
+
+sys.argv = ["x"] + BASE + ["--max-words", "60"]
+try:
+    with contextlib.redirect_stdout(io.StringIO()):
+        R.main()
+    check("changing a constraint threshold is rejected", False)
+except SystemExit as exc:
+    check("changing a constraint threshold is rejected", "max_words" in str(exc))
+
+sys.argv = ["x"] + BASE + ["--max-words", "60", "--allow-task-change"]
+try:
+    with contextlib.redirect_stdout(io.StringIO()):
+        R.main()
+    check("--allow-task-change overrides the guard", True)
+except SystemExit:
+    check("--allow-task-change overrides the guard", False)
 
 csvs = sorted((OUT / "Qwen3-8B").glob("*.csv"))
 check("one CSV per condition with prompt/story columns",
