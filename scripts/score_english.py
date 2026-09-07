@@ -42,6 +42,52 @@ COLUMNS = [
 ]
 
 
+def score_condition(stories, prompt_idx, checker, scorer=None, min_group=2):
+    """Constraint pass rates plus within-prompt diversity for one condition."""
+    res = checker.evaluate_all(stories, prompt_idx)
+    vendi = lexdiv = float("nan")
+    if scorer is not None:
+        groups = defaultdict(list)
+        for text, p in zip(stories, prompt_idx):
+            groups[p].append(text)
+        usable = [g for g in groups.values() if len(g) >= min_group]
+        if usable:
+            vs, ls = [], []
+            for g in usable:
+                scorer.change_text(g)
+                vs.append(scorer.semantic_diversity().vendi_score)
+                ls.append(scorer.lexical_diversity().lexical_score_mean)
+            vendi, lexdiv = statistics.mean(vs), statistics.mean(ls)
+    return {
+        "n": res["n_stories"],
+        "length_pass": res["pass_rate"]["length"],
+        "tense_pass": res["pass_rate"]["present_tense"],
+        "register_pass": res["pass_rate"]["simple_register"],
+        "dialogue_pass": res["pass_rate"]["dialogue"],
+        "mean_violations": res["mean_violations"],
+        "mean_words": res["mean_word_count"],
+        "mean_grade": res["mean_grade_level"],
+        "vendi": vendi,
+        "lexdiv": lexdiv,
+    }
+
+
+LIVE_HEADER = (f"{'condition':<32}{'N':>5}{'Len':>7}{'Tense':>7}{'Reg':>7}{'Dlg':>7}"
+               f"{'Viol':>7}{'Words':>7}{'Grade':>7}{'Vendi':>8}{'LexDiv':>8}")
+
+
+def live_row(label: str, r: dict) -> str:
+    def pct(x):
+        return "  --  " if x != x else f"{x:6.0%}"
+    def num(x, f):
+        return "   -- " if x != x else format(x, f)
+    return (f"{label:<32}{r['n']:>5}{pct(r['length_pass'])}{pct(r['tense_pass'])}"
+            f"{pct(r['register_pass'])}{pct(r['dialogue_pass'])}"
+            f"{num(r['mean_violations'], '>7.2f')}{num(r['mean_words'], '>7.0f')}"
+            f"{num(r['mean_grade'], '>7.1f')}{num(r['vendi'], '>8.2f')}"
+            f"{num(r['lexdiv'], '>8.3f')}")
+
+
 def read_run(path: Path):
     """Return (stories, prompt_indices) from a runner CSV."""
     stories, prompts = [], []

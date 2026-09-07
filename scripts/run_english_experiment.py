@@ -29,6 +29,8 @@ import torch  # noqa: E402
 
 from noiseegra import writingprompts as wp  # noqa: E402
 from noiseegra.activation_basis import collect_block_pcs  # noqa: E402
+from noiseegra.constraint_metrics_en import EnglishConstraintChecker  # noqa: E402
+from noiseegra.writingprompts import as_constraint  # noqa: E402
 from noiseegra.defaults import (  # noqa: E402
     EN_CONSTRAINTS,
     EN_MAX_GRADE_LEVEL,
@@ -48,6 +50,7 @@ from noiseegra.steering_vectors import (  # noqa: E402
 from build_steering_vectors import build_model  # noqa: E402
 from kaggle_orthosteer import generate_one, load_state, save_state  # noqa: E402
 from run_orthosteer_experiment import build_suite  # noqa: E402
+from score_english import LIVE_HEADER, live_row, score_condition  # noqa: E402
 
 EN_PAIRS = Path(__file__).resolve().parents[1] / "noiseegra" / "data" / "steering_pairs_en.json"
 
@@ -72,6 +75,18 @@ EN_SCHEDULES = {
     "simple_register": "constant",
     "dialogue": "constant",
 }
+
+
+def condition_label(spec) -> str:
+    """Short human-readable name for a condition, for the live table."""
+    plan = getattr(spec, "steering_plan", None)
+    if plan is None:
+        return "baseline"
+    if plan.noise_alpha > 0 and plan.noise_mode != "none":
+        return f"per-token noise a={plan.noise_alpha:g}"
+    if plan.offset_gamma > 0 and plan.offset_mode != "none":
+        return f"per-story offset g={plan.offset_gamma:g} ({plan.offset_mode})"
+    return "steer only"
 
 
 def seed_for(prompt_idx: int, story_idx: int) -> int:
@@ -104,6 +119,9 @@ def main() -> None:
     ap.add_argument("--allow-task-change", action="store_true",
                     help="proceed even though the checkpoint was written under different "
                          "constraint thresholds or a different prompt selection")
+    ap.add_argument("--no-diversity", dest="diversity", action="store_false",
+                    help="skip Vendi/Self-BLEU while scoring conditions as they finish "
+                         "(avoids downloading the embedding model)")
     ap.add_argument("--with-baseline", action="store_true",
                     help="prepend an unsteered baseline condition to whichever suite is run "
                          "(already included in `compare` and `noise`)")
@@ -321,49 +339,74 @@ def main() -> None:
         for t in prompts
     ]
 
-    todo = [
-        (k, p_idx, rid)
-        for k in range(K)
-        for p_idx in range(P)
-        for rid in run_ids
+    remaining = sum(
+        1 for rid in run_ids for k in range(K) for p_idx in range(P)
         if f"{p_idx}:{k}" not in state["runs"][rid]
-    ]
-    if not todo:
-        write_csvs(out, state)
-        print(f"\nnothing to generate: all {total} stories are already in "
-              f"{state_path.name}. CSVs refreshed.")
-        print(f"score with:\n  python scripts/score_english.py --input-dir {out}")
-        return
+    )
+    print(f"\n{remaining} of {total} still to generate.")
 
-    print(f"\n{len(todo)} of {total} still to generate.")
-    model = get_model()
+    # Conditions run one at a time and are scored the moment they finish, so the
+    # sweep produces readable results as it goes instead of only at the end.
+    checker = EnglishConstraintChecker(
+        max_words=args.max_words, max_grade_level=args.max_grade,
+        constraints=[as_constraint(c) for c in args.constraints],
+    )
+    scorer = None
+    if args.diversity:
+        from noiseegra.creativity_metrics import CreativityScorer
+        print("loading the embedding model for diversity scoring ...", flush=True)
+        scorer = CreativityScorer(["placeholder one", "placeholder two"])
 
-    done = total - len(todo)
-    started, t0 = done, time.time()
-    print()
+    done, t0 = total - remaining, time.time()
+    started = done
+    rows = []
 
-    for k in range(K):
-        for p_idx in range(P):
-            key = f"{p_idx}:{k}"
-            seed = seed_for(p_idx, k)
-            for spec, rid in zip(specs, run_ids):
-                if key in state["runs"][rid]:
-                    continue
-                text = generate_one(
-                    model, spec, _spec_mode(spec), messages[p_idx], seed, args.max_new_tokens
-                )
-                state["runs"][rid][key] = text
+    print("\n" + LIVE_HEADER)
+    print("-" * len(LIVE_HEADER), flush=True)
+
+    for spec, rid in zip(specs, run_ids):
+        missing = [(p_idx, k) for k in range(K) for p_idx in range(P)
+                   if f"{p_idx}:{k}" not in state["runs"][rid]]
+        if missing:
+            model = get_model()
+            mode = _spec_mode(spec)
+            for p_idx, k in missing:
+                text = generate_one(model, spec, mode, messages[p_idx],
+                                    seed_for(p_idx, k), args.max_new_tokens)
+                state["runs"][rid][f"{p_idx}:{k}"] = text
                 save_state(state_path, state)
-
                 done += 1
                 rate = (time.time() - t0) / max(done - started, 1)
-                print(f"[{done:>4}/{total}] prompt {p_idx:>2} story {k:>2} | {rid[:52]:<52} "
-                      f"| {rate:5.1f}s | ETA {(total - done) * rate / 60:6.1f} min", flush=True)
-        torch.cuda.empty_cache()
+                print(f"  [{done:>4}/{total}] {rid[-34:]:<34} prompt {p_idx:>2} story {k:>2}"
+                      f" | {rate:5.1f}s | ETA {(total - done) * rate / 60:6.1f} min", flush=True)
+            torch.cuda.empty_cache()
 
-    write_csvs(out, state)
-    print(f"\ndone. {done}/{total} -> {out}")
-    print(f"score with:\n  python scripts/score_english.py --input-dir {out}")
+        cells = state["runs"][rid]
+        keys = sorted(cells, key=lambda x: tuple(int(i) for i in x.split(":")))
+        stories = [cells[key] for key in keys]
+        pidx = [int(key.split(":")[0]) for key in keys]
+        row = score_condition(stories, pidx, checker, scorer)
+        row["run"] = rid
+        rows.append(row)
+        write_csvs(out, state)
+        print(live_row(condition_label(spec), row), flush=True)
+
+    print("\n" + "=" * len(LIVE_HEADER))
+    print(f"{args.model}  —  {P} prompts x {K} stories, magnitudes are multiples of the "
+          f"model's activation scale")
+    print("=" * len(LIVE_HEADER))
+    print(LIVE_HEADER)
+    print("-" * len(LIVE_HEADER))
+    for spec, row in zip(specs, rows):
+        print(live_row(condition_label(spec), row))
+
+    summary = out / "live_scores.csv"
+    with summary.open("w", newline="", encoding="utf-8") as fh:
+        w = csv.DictWriter(fh, fieldnames=["run", "label"] + [k for k in rows[0] if k != "run"])
+        w.writeheader()
+        for spec, row in zip(specs, rows):
+            w.writerow({**row, "label": condition_label(spec)})
+    print(f"\nwrote {summary}")
 
 
 if __name__ == "__main__":

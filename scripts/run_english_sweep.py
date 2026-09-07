@@ -37,6 +37,8 @@ PASSTHROUGH = [
     ("--max-grade", "max_grade", False), ("--alpha", "alpha", False), ("--beta", "beta", False),
     ("--protect-rank", "protect_rank", False), ("--max-new-tokens", "max_new_tokens", False),
     ("--temperature", "temperature", False), ("--out", "out", False),
+    ("--alpha-sweep", "alpha_sweep", True), ("--gamma-sweep", "gamma_sweep", True),
+    ("--offset-rank", "offset_rank", False),
 ]
 
 
@@ -67,6 +69,10 @@ def main() -> None:
     ap.add_argument("--protect-rank", type=int, default=None)
     ap.add_argument("--max-new-tokens", type=int, default=None)
     ap.add_argument("--temperature", type=float, default=None)
+    ap.add_argument("--alpha-sweep", nargs="*", type=float, default=None)
+    ap.add_argument("--gamma-sweep", nargs="*", type=float, default=None)
+    ap.add_argument("--offset-rank", type=int, default=None)
+    ap.add_argument("--no-diversity", dest="diversity", action="store_false")
     ap.add_argument("--out", default="/kaggle/working/english")
     ap.add_argument("--max-hours", type=float, default=None,
                     help="stop launching new models once this much wall time has passed; "
@@ -97,6 +103,8 @@ def main() -> None:
             continue
 
         cmd = [sys.executable, "-u", runner, "--model", model]
+        if not args.diversity:
+            cmd.append("--no-diversity")
         for flag, attr, is_list in PASSTHROUGH:
             val = getattr(args, attr)
             if val is None:

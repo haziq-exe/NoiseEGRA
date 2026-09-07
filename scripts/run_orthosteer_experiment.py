@@ -78,6 +78,7 @@ def make_plan(
     horizon=200,
     steer_prefill=False,
     noise_norm_match="energy",
+    noise_schedule="constant",
     offset_gamma=0.0,
     offset_mode="none",
     offset_basis=None,
@@ -98,6 +99,7 @@ def make_plan(
         noise_mode=noise_mode,
         noise_alpha=noise_alpha,
         noise_norm_match=noise_norm_match,
+        noise_schedule=noise_schedule,
         horizon=horizon,
         steer_prefill=steer_prefill,
         protect_extra=extra,
@@ -139,7 +141,8 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         # is what makes the projection load-bearing.
         arms = [
             {"plan": make_plan(beta=args.beta, noise_mode="none", noise_alpha=0.0,
-                               offset_gamma=0.0, offset_mode="none", **common)},
+                               noise_schedule="constant", offset_gamma=0.0,
+                               offset_mode="none", **common)},
         ]
         for g in args.gamma_sweep:
             for mode in ("orth", "free"):
@@ -184,14 +187,29 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         return items, "orthogonalisation of the steering vectors: none / GS / Loewdin"
 
     if name == "alpha":
-        # Noise-strength sweep at fixed steering strength. alpha is a multiple of
-        # the model's own activation scale, so it means the same thing on every
-        # model; 0.175 is the value used throughout the paper.
+        # Perturbation-magnitude sweep at fixed steering strength, run twice: once
+        # with the perturbation redrawn every token, once with a single draw held
+        # for the whole story. The magnitude means the same thing in both cases (a
+        # multiple of the model's own activation scale), so the comparison isolates
+        # how often the perturbation is drawn.
+        #
+        # No decay schedule on either. The published method decays noise over a
+        # cosine horizon; that is left out here so magnitude is the only variable.
+        mags = [m for m in args.alpha_sweep if m > 0]
         items = [
-            {"plan": make_plan(beta=args.beta, noise_mode="orth", noise_alpha=a, **common)}
-            for a in args.alpha_sweep
+            {"plan": make_plan(beta=args.beta, noise_mode="none", noise_alpha=0.0,
+                               noise_schedule="constant", **common)},
         ]
-        return items, f"noise-strength sweep {args.alpha_sweep}"
+        for m in mags:
+            items.append({"plan": make_plan(
+                beta=args.beta, noise_mode="orth", noise_alpha=m,
+                noise_schedule="constant", **common)})
+        for m in mags:
+            items.append({"plan": make_plan(
+                beta=args.beta, noise_mode="none", noise_alpha=0.0,
+                offset_gamma=m, offset_mode="orth", offset_basis=offset_basis, **common)})
+        return items, (f"magnitude sweep {mags}, drawn per token and per story, "
+                       "no decay schedule")
 
     if name == "beta":
         items = [

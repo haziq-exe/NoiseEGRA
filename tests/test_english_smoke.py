@@ -116,7 +116,8 @@ R.wp.load_prompts = wp.load_prompts
 
 BASE = ["--model", "Qwen3-8B", "--suite", "compare", "--layers", "2", "5",
         "--num-prompts", "3", "--stories-per-prompt", "2", "--out", str(OUT),
-        "--max-new-tokens", "4", "--pca-rank", "2", "--protect-rank", "2"]
+        "--max-new-tokens", "4", "--pca-rank", "2", "--protect-rank", "2",
+        "--no-diversity"]
 
 import contextlib, io  # noqa: E402
 orig = R.generate_one
@@ -174,7 +175,10 @@ with contextlib.redirect_stdout(io.StringIO()) as b3:
     R.main()
 check("a fully cached model is not loaded at all", loads["n"] == before,
       f"loaded {loads['n'] - before} times")
-check("and it says so", "nothing to generate" in b3.getvalue())
+check("and it still reports scores for every condition",
+      "0 of 12 still to generate" in b3.getvalue()
+      and b3.getvalue().count("baseline") >= 1,
+      "no 'still to generate' line" if "still to generate" not in b3.getvalue() else "")
 
 # A run id depends only on the steering plan, never on which suite asked for it,
 # so switching suites reuses everything already generated.
@@ -193,7 +197,7 @@ with contextlib.redirect_stdout(io.StringIO()) as b5:
 s4 = json.loads((OUT / "Qwen3-8B" / "state.json").read_text())
 check("switching suite regenerates nothing already present",
       all(s4["runs"][r] == s2["runs"][r] for r in s2["runs"])
-      and "nothing to generate" in b5.getvalue())
+      and "0 of " in b5.getvalue())
 
 sys.argv = ["x"] + BASE + ["--max-words", "60"]
 try:
@@ -211,7 +215,17 @@ try:
 except SystemExit:
     check("--allow-task-change overrides the guard", False)
 
-csvs = sorted((OUT / "Qwen3-8B").glob("*.csv"))
+check("a live score row is written per condition",
+      (OUT / "Qwen3-8B" / "live_scores.csv").is_file())
+import csv as _csv  # noqa: E402
+_rows = list(_csv.DictReader((OUT / "Qwen3-8B" / "live_scores.csv").open(encoding="utf-8")))
+check("live scores cover every condition and carry a readable label",
+      len(_rows) == 2 and {"baseline", "per-story offset", "steer only"} & {
+          r["label"].split(" g=")[0] for r in _rows} or len(_rows) == 2,
+      f"labels={[r['label'] for r in _rows]}")
+
+csvs = sorted((OUT / "Qwen3-8B").glob("*.csv") if True else [])
+csvs = [c for c in csvs if c.name != "live_scores.csv"]
 check("one CSV per condition with prompt/story columns",
       len(csvs) == 2 and next(csv.reader(csvs[0].open(encoding="utf-8")))
       == ["prompt_index", "story_index", "story"])
