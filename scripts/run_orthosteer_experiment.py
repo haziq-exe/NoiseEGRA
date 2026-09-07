@@ -20,6 +20,9 @@ Suites
            to the constraint subspace.
 ``ortho``  steering + orthogonal noise under each orthogonalisation of the
            steering vectors: none (naive sum), Gram-Schmidt, Loewdin.
+``offset`` steering plus a per-story constant offset, swept over gamma, drawn both
+           with and without the constraint subspace removed. This is the arm where
+           the projection is expected to matter.
 ``alpha``  noise-strength sweep at fixed steering strength.
 ``beta``   systematically relax the constraint pressure: a sweep over beta.
 ``loo``    leave-one-out over the constraints, to see which one carries the effect
@@ -75,6 +78,9 @@ def make_plan(
     horizon=200,
     steer_prefill=False,
     noise_norm_match="energy",
+    offset_gamma=0.0,
+    offset_mode="none",
+    offset_basis=None,
 ) -> SteeringPlan:
     schedules = schedules or DEFAULT_SCHEDULES
     betas = beta if isinstance(beta, dict) else {n: float(beta) for n in names}
@@ -95,6 +101,9 @@ def make_plan(
         horizon=horizon,
         steer_prefill=steer_prefill,
         protect_extra=extra,
+        offset_gamma=offset_gamma,
+        offset_mode=offset_mode,
+        offset_basis=offset_basis,
     )
 
 
@@ -105,6 +114,7 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         protect_rank=args.protect_rank, horizon=args.horizon,
         steer_prefill=args.steer_prefill,
     )
+    offset_basis = getattr(args, "offset_basis", None)
     resid_std = args.alpha * rms_scale
     items = []
 
@@ -121,6 +131,23 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                            noise_alpha=0.0 if mode == "none" else args.alpha, **common)}
         for mode in ("none", "orth", "iso", "para")
     ]
+
+    if name == "offset":
+        # Per-story constant offsets. Unlike per-token noise these accumulate
+        # linearly, so they actually change the story -- and a leak onto a
+        # constraint direction biases that constraint for the whole story, which
+        # is what makes the projection load-bearing.
+        arms = [
+            {"plan": make_plan(beta=args.beta, noise_mode="none", noise_alpha=0.0,
+                               offset_gamma=0.0, offset_mode="none", **common)},
+        ]
+        for g in args.gamma_sweep:
+            for mode in ("orth", "free"):
+                arms.append({"plan": make_plan(
+                    beta=args.beta, noise_mode="none", noise_alpha=0.0,
+                    offset_gamma=g, offset_mode=mode, offset_basis=offset_basis, **common)})
+        return arms, (f"steering + per-story constant offsets at gamma {list(args.gamma_sweep)}, "
+                      "each drawn with and without the constraint subspace removed")
 
     if name == "compare":
         # The minimal head-to-head: unmodified generation vs. the proposed method.
@@ -195,7 +222,8 @@ def main() -> None:
     ap.add_argument("--vectors", help="path to the .pt from build_steering_vectors.py")
     ap.add_argument("--layers", nargs=2, type=int, metavar=("LO", "HI"))
     ap.add_argument("--suite", nargs="+", default=["core"],
-                    choices=["compare", "method", "noise", "core", "ortho", "alpha", "beta", "loo", "all"])
+                    choices=["compare", "method", "noise", "offset", "core", "ortho", "alpha", "beta",
+                             "loo", "all"])
     ap.add_argument("--with-baseline", action="store_true",
                     help="prepend an unsteered baseline condition to whichever suite is run "
                          "(already included in `compare` and `noise`)")

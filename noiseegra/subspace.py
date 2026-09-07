@@ -48,6 +48,7 @@ from .EGRA_functions import _cosine_noise_decay
 
 ORTHOGONALIZE_METHODS = ("none", "gram_schmidt", "lowdin")
 NOISE_MODES = ("none", "iso", "orth", "para")
+OFFSET_MODES = ("none", "orth", "free")
 NORM_MATCH_MODES = ("energy", "none")
 SCHEDULES = ("constant", "cosine_decay", "ramp", "linear_decay")
 
@@ -163,12 +164,32 @@ def orthonormalize(
     return basis, report
 
 
-def orthonormal_basis(mat: torch.Tensor, tol: float = 1e-6) -> torch.Tensor:
-    """Orthonormal basis for the column span of ``mat``, dropping rank-deficient columns."""
+def orthonormal_basis(mat: torch.Tensor, tol: float = 1e-4) -> torch.Tensor:
+    """Orthonormal basis for the column span of ``mat``, dropping rank-deficient columns.
+
+    The tolerance has to sit well above float32 SVD noise. After projecting a
+    subspace out of another, the removed directions come back with singular values
+    around 1e-6 relative; at a 1e-6 cutoff one of them survives, and its left
+    singular vector is arbitrary -- in practice it lands almost entirely inside the
+    subspace that was just removed.
+    """
     a = mat.float()
     u, s, _ = torch.linalg.svd(a, full_matrices=False)
     keep = s > (tol * s.max().clamp_min(1e-30))
     return u[:, keep].contiguous()
+
+
+def complement_basis(mat: torch.Tensor, protect: torch.Tensor) -> torch.Tensor:
+    """Orthonormal basis for span(mat) with span(protect) removed.
+
+    Projects, orthonormalises, then projects and orthonormalises again. One pass
+    leaves float32 residue that the second removes -- the same reason classical
+    Gram-Schmidt is run twice.
+    """
+    out = mat
+    for _ in range(2):
+        out = orthonormal_basis(out - protect @ (protect.t() @ out))
+    return out
 
 
 # --------------------------------------------------------------------------- #
@@ -253,6 +274,8 @@ class LayerPlan:
     basis: torch.Tensor                    # (dim, C) unit steering directions
     protect: Optional[torch.Tensor]        # (dim, k) orthonormal protected basis
     report: Dict[str, object] = field(default_factory=dict)
+    offset_basis: Optional[torch.Tensor] = None   # (dim, M) directions offsets may use
+    offset: Optional[torch.Tensor] = None         # (dim,) this generation's offset
 
     def steering_delta(
         self,
@@ -288,6 +311,8 @@ class SteeringPlan:
     noise_alpha: float
     noise_norm_match: str
     noise_schedule: str
+    offset_gamma: float = 0.0
+    offset_mode: str = "none"
     horizon: int = 200
     steer_prefill: bool = False
     protect_rank: int = 0
@@ -307,6 +332,9 @@ class SteeringPlan:
         noise_alpha: float = 0.175,
         noise_norm_match: str = "energy",
         noise_schedule: str = "constant",
+        offset_gamma: float = 0.0,
+        offset_mode: str = "none",
+        offset_basis: Optional[Mapping[int, torch.Tensor]] = None,
         horizon: int = 200,
         steer_prefill: bool = False,
         protect_extra: Optional[Mapping[int, torch.Tensor]] = None,
@@ -365,8 +393,23 @@ class SteeringPlan:
             protect_rank = protect.shape[1]
 
             report["protect_rank"] = protect_rank
+
+            ob = None
+            if offset_mode != "none" and offset_gamma > 0:
+                if offset_basis is not None and layer in offset_basis:
+                    ob = offset_basis[layer].detach().to(torch.float32)
+                    if device is not None:
+                        ob = ob.to(device)
+                    if offset_mode == "orth":
+                        # Strip the constraint subspace out of the directions the
+                        # offset is allowed to use, once, at build time.
+                        ob = complement_basis(ob, protect)
+                elif offset_mode == "orth":
+                    ob = None      # no basis: draw isotropically and project at draw time
+                report["offset_rank"] = 0 if ob is None else ob.shape[1]
+
             layer_plans[layer] = LayerPlan(
-                layer=layer, basis=basis, protect=protect, report=report
+                layer=layer, basis=basis, protect=protect, report=report, offset_basis=ob
             )
 
         return cls(
@@ -380,6 +423,9 @@ class SteeringPlan:
             noise_alpha=float(noise_alpha),
             noise_norm_match=noise_norm_match,
             noise_schedule=noise_schedule,
+            offset_gamma=float(offset_gamma),
+            offset_mode=offset_mode,
+            horizon=int(horizon),
             steer_prefill=bool(steer_prefill),
             protect_rank=protect_rank,
         )
@@ -396,7 +442,34 @@ class SteeringPlan:
             lp.basis = lp.basis.to(device=device, dtype=dtype)
             if lp.protect is not None:
                 lp.protect = lp.protect.to(device=device, dtype=dtype)
+            if lp.offset_basis is not None:
+                lp.offset_basis = lp.offset_basis.to(device=device, dtype=dtype)
         return self
+
+    def resample_offset(self) -> None:
+        """Draw a fresh constant offset for the next generation.
+
+        Call once per story, after seeding. Unlike per-token noise this is held
+        fixed for the whole generation, so it accumulates linearly the way the
+        steering bias does and actually changes the story. That is also why it has
+        to be kept out of the constraint subspace: a constant leak onto a
+        constraint direction biases that constraint for the entire story.
+        """
+        if self.offset_mode == "none" or self.offset_gamma <= 0:
+            for lp in self.layer_plans.values():
+                lp.offset = None
+            return
+
+        for lp in self.layer_plans.values():
+            dev, dt = lp.basis.device, lp.basis.dtype
+            if lp.offset_basis is not None:
+                coeff = torch.randn(lp.offset_basis.shape[1], dtype=dt, device=dev)
+                vec = lp.offset_basis @ coeff
+            else:
+                vec = torch.randn(self.dim, dtype=dt, device=dev)
+                if self.offset_mode == "orth" and lp.protect is not None:
+                    vec = vec - lp.protect @ (lp.protect.t() @ vec)
+            lp.offset = vec * (self.offset_gamma * self.rms_scale)
 
     def delta_for(
         self,
@@ -422,9 +495,16 @@ class SteeringPlan:
             lp.basis = lp.basis.to(device)
             if lp.protect is not None:
                 lp.protect = lp.protect.to(device)
+            if lp.offset_basis is not None:
+                lp.offset_basis = lp.offset_basis.to(device)
+            if lp.offset is not None:
+                lp.offset = lp.offset.to(device)
 
         h = self.horizon if horizon is None else horizon
         delta = lp.steering_delta(t, h, self.specs, self.rms_scale)
+
+        if lp.offset is not None:
+            delta = lp.offset if delta is None else delta + lp.offset
 
         if with_noise and self.noise_mode != "none" and self.noise_alpha > 0:
             sigma = self.sigma * schedule_factor(self.noise_schedule, t, h)
@@ -467,6 +547,9 @@ class SteeringPlan:
             "noise_sigma": self.sigma,
             "noise_norm_match": self.noise_norm_match,
             "noise_schedule": self.noise_schedule,
+            "offset_gamma": self.offset_gamma,
+            "offset_mode": self.offset_mode,
+            "offset_rank": self.layer_plans[self.layers[0]].report.get("offset_rank"),
             "horizon": self.horizon,
             "steer_prefill": self.steer_prefill,
             "protect_rank": self.protect_rank,
@@ -489,6 +572,9 @@ class SteeringPlan:
             f"sigma={info['noise_sigma']:.6g} norm_match={info['noise_norm_match']} "
             f"schedule={info['noise_schedule']} horizon={info['horizon']}"
         )
+        if info["offset_mode"] != "none" and info["offset_gamma"]:
+            print(f"per-story offset : gamma={info['offset_gamma']:.6g} mode={info['offset_mode']} "
+                  f"rank={info['offset_rank']}")
         print(f"protected rank   : {info['protect_rank']} of {info['dim']} "
               f"({100.0 * info['protect_rank'] / max(info['dim'], 1):.3f}% of the stream)")
         print(f"steer at prefill : {info['steer_prefill']}")

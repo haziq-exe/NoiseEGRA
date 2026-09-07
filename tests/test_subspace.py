@@ -230,6 +230,71 @@ try:
 except KeyError:
     check("missing layer raises", True)
 
+# Every constructor parameter must actually reach the object. A build() argument
+# that is quietly dropped falls back to its default and is invisible until a run
+# behaves wrong.
+import inspect  # noqa: E402
+sig = inspect.signature(SteeringPlan.build).parameters
+probe = SteeringPlan.build(
+    vectors, layers, specs, rms_scale=3.0, orthogonalize="gram_schmidt",
+    noise_mode="para", noise_alpha=0.4, noise_norm_match="none",
+    noise_schedule="cosine_decay", horizon=77, steer_prefill=True,
+    offset_gamma=0.2, offset_mode="free",
+)
+for attr, want in [("rms_scale", 3.0), ("orthogonalize", "gram_schmidt"),
+                   ("noise_mode", "para"), ("noise_alpha", 0.4),
+                   ("noise_norm_match", "none"), ("noise_schedule", "cosine_decay"),
+                   ("horizon", 77), ("steer_prefill", True),
+                   ("offset_gamma", 0.2), ("offset_mode", "free")]:
+    check(f"build() forwards {attr}", getattr(probe, attr) == want,
+          f"got {getattr(probe, attr)!r}, wanted {want!r}")
+
+print("\n== per-story offsets ==")
+flat = [ConstraintSpec(n, beta=1.0, schedule="constant") for n in names]
+op = SteeringPlan.build(vectors, layers, flat, rms_scale=2.0, noise_mode="none",
+                        noise_alpha=0.0, offset_gamma=0.15, offset_mode="orth")
+torch.manual_seed(0); op.resample_offset()
+d_early, d_late = op.delta_for(4, 0), op.delta_for(4, 60)
+off_a = op.layer_plans[4].offset.clone()
+torch.manual_seed(1); op.resample_offset()
+off_b = op.layer_plans[4].offset.clone()
+check("offset is constant across steps within a story", torch.allclose(d_early, d_late))
+check("offset differs between stories", not torch.allclose(off_a, off_b))
+check("orth offset has no component in the constraint subspace",
+      float((off_a @ op.layer_plans[4].protect).norm()) < 1e-4)
+
+fp = SteeringPlan.build(vectors, layers, flat, rms_scale=2.0, noise_mode="none",
+                        noise_alpha=0.0, offset_gamma=0.15, offset_mode="free")
+torch.manual_seed(0); fp.resample_offset()
+free_off = fp.layer_plans[4].offset
+check("free offset does leak into the constraint subspace",
+      float((free_off @ fp.layer_plans[4].protect).norm()) > 1e-3,
+      f"leak={float((free_off @ fp.layer_plans[4].protect).norm()):.4f}")
+
+# With a supplied activation basis the constraint directions sit inside it, which
+# is the realistic case and the one where the projection has to be exact.
+pcs = {l: torch.linalg.qr(torch.cat(
+    [torch.stack([vectors[n][l] for n in names], 1), torch.randn(dim, 40, generator=gg)], 1))[0]
+    for l in layers}
+bp = SteeringPlan.build(vectors, layers, flat, rms_scale=2.0, noise_mode="none",
+                        noise_alpha=0.0, offset_gamma=0.15, offset_mode="orth",
+                        offset_basis=pcs)
+lp_b = bp.layer_plans[4]
+check("offset basis drops exactly the constraint directions",
+      lp_b.offset_basis.shape[1] == pcs[4].shape[1] - len(names),
+      f"{lp_b.offset_basis.shape[1]} of {pcs[4].shape[1]}")
+worst = 0.0
+for sd in range(50):
+    torch.manual_seed(sd); bp.resample_offset()
+    worst = max(worst, float((lp_b.offset @ lp_b.basis).abs().max()))
+check("offset from that basis never touches a constraint direction", worst < 1e-4,
+      f"worst leak {worst:.2e}")
+
+none_p = SteeringPlan.build(vectors, layers, flat, rms_scale=2.0, noise_mode="none",
+                            noise_alpha=0.0)
+none_p.resample_offset()
+check("offset_mode='none' leaves no offset", none_p.layer_plans[4].offset is None)
+
 plan.print_report()
 
 

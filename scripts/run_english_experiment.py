@@ -28,6 +28,7 @@ import numpy as np  # noqa: E402
 import torch  # noqa: E402
 
 from noiseegra import writingprompts as wp  # noqa: E402
+from noiseegra.activation_basis import collect_block_pcs  # noqa: E402
 from noiseegra.defaults import (  # noqa: E402
     EN_CONSTRAINTS,
     EN_MAX_GRADE_LEVEL,
@@ -98,7 +99,8 @@ def main() -> None:
     ap.add_argument("--layers", nargs=2, type=int, metavar=("LO", "HI"))
     ap.add_argument("--dtype", default="auto", choices=["auto", "float16", "bfloat16"])
     ap.add_argument("--suite", nargs="+", default=["compare"],
-                    choices=["compare", "method", "noise", "core", "ortho", "alpha", "beta", "loo", "all"])
+                    choices=["compare", "method", "noise", "offset", "core", "ortho",
+                             "alpha", "beta", "loo", "all"])
     ap.add_argument("--allow-task-change", action="store_true",
                     help="proceed even though the checkpoint was written under different "
                          "constraint thresholds or a different prompt selection")
@@ -114,6 +116,10 @@ def main() -> None:
     ap.add_argument("--max-grade", type=float, default=EN_MAX_GRADE_LEVEL)
     ap.add_argument("--beta", type=float, default=1.0)
     ap.add_argument("--beta-sweep", nargs="*", type=float, default=[0.25, 0.5, 1.0, 2.0, 4.0])
+    ap.add_argument("--gamma-sweep", nargs="*", type=float, default=[0.05, 0.15, 0.4],
+                    help="per-story offset magnitudes used by --suite offset")
+    ap.add_argument("--offset-rank", type=int, default=64,
+                    help="how many activation principal components offsets may use")
     ap.add_argument("--alpha-sweep", nargs="*", type=float,
                     default=[0.0, 0.0875, 0.175, 0.35, 0.7],
                     help="noise strengths used by --suite alpha")
@@ -259,8 +265,27 @@ def main() -> None:
               "(max representable 65504). If the stories come out empty or garbled, "
               "rerun with --dtype bfloat16.")
 
+    # ---- directions a per-story offset is allowed to use -------------------- #
+    args.offset_basis = None
+    suites_req = ["core", "ortho", "alpha", "beta", "loo"] if "all" in args.suite else args.suite
+    if "offset" in suites_req:
+        pc_path = out / f"actpcs_{args.model}.pt"
+        if pc_path.is_file():
+            args.offset_basis = torch.load(pc_path, map_location="cpu", weights_only=False)
+            print(f"activation basis: loaded from {pc_path.name}")
+        else:
+            print("activation basis: estimating principal components (once) ...")
+            args.offset_basis = collect_block_pcs(
+                get_model(),
+                [wp.build_messages(t, args.constraints, max_words=args.max_words,
+                                   max_grade=args.max_grade) for t in prompts[:4]],
+                layers, rank=args.offset_rank,
+            )
+            torch.save(args.offset_basis, pc_path)
+            print(f"activation basis: saved to {pc_path.name}")
+
     # ---- conditions -------------------------------------------------------- #
-    suites = ["core", "ortho", "alpha", "beta", "loo"] if "all" in args.suite else args.suite
+    suites = suites_req
     items = ["baseline"] if args.with_baseline else []
     for suite in suites:
         built, desc = build_suite(suite, vectors, layers, args.constraints, rms_scale, args)

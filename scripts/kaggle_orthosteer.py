@@ -123,7 +123,8 @@ def _parser() -> argparse.ArgumentParser:
                     help="auto lets each model wrapper choose (Jais requires bfloat16; "
                          "the rest default to float16). Only override deliberately.")
     ap.add_argument("--suite", nargs="+", default=["core"],
-                    choices=["compare", "method", "noise", "core", "ortho", "alpha", "beta", "loo", "all"])
+                    choices=["compare", "method", "noise", "offset", "core", "ortho",
+                             "alpha", "beta", "loo", "all"])
     ap.add_argument("--num-stories", type=int, default=50)
     ap.add_argument("--out", default="/kaggle/working/orthosteer")
     ap.add_argument("--with-baseline", action="store_true",
@@ -132,6 +133,10 @@ def _parser() -> argparse.ArgumentParser:
     ap.add_argument("--constraints", nargs="*", default=DEFAULT_CONSTRAINTS)
     ap.add_argument("--beta", type=float, default=1.0)
     ap.add_argument("--beta-sweep", nargs="*", type=float, default=[0.25, 0.5, 1.0, 2.0, 4.0])
+    ap.add_argument("--gamma-sweep", nargs="*", type=float, default=[0.05, 0.15, 0.4],
+                    help="per-story offset magnitudes used by --suite offset")
+    ap.add_argument("--offset-rank", type=int, default=64,
+                    help="how many activation principal components offsets may use")
     ap.add_argument("--alpha-sweep", nargs="*", type=float,
                     default=[0.0, 0.0875, 0.175, 0.35, 0.7],
                     help="noise strengths used by --suite alpha")

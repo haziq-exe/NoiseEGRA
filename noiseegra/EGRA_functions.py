@@ -607,6 +607,11 @@ class EGRA:
             if torch.cuda.is_available():
                 torch.cuda.manual_seed_all(seed)
 
+        # A fresh constant offset per story: drawn after seeding, so it is
+        # reproducible, and held fixed for the whole generation.
+        if hasattr(plan, "resample_offset"):
+            plan.resample_offset()
+
         chat_text = self.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
         device = self._input_device()
         inputs = self.tokenizer(chat_text, return_tensors="pt").to(device)
