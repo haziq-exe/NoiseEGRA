@@ -50,6 +50,19 @@ from run_orthosteer_experiment import build_suite  # noqa: E402
 
 EN_PAIRS = Path(__file__).resolve().parents[1] / "noiseegra" / "data" / "steering_pairs_en.json"
 
+
+def weights_are_cached(model_id: str) -> bool:
+    """True if the full snapshot is already on local disk."""
+    if Path(model_id).is_dir():
+        return True
+    try:
+        from huggingface_hub import snapshot_download
+
+        snapshot_download(model_id, local_files_only=True)
+        return True
+    except Exception:
+        return False
+
 # closure ramps up so the pressure to wrap up grows as the story runs long;
 # the others are properties of every sentence and stay flat.
 EN_SCHEDULES = {
@@ -179,7 +192,21 @@ def main() -> None:
 
     def get_model():
         if holder["model"] is None:
-            print("\nloading model ...", flush=True)
+            if weights_are_cached(model_id):
+                print("\nloading model from local cache ...", flush=True)
+            else:
+                # Kaggle wipes ~/.cache between sessions even when /kaggle/working is
+                # restored, so a resumed run re-downloads the weights. Say so, because
+                # otherwise this looks like a hang.
+                print(
+                    f"\n{model_id} is not in the local cache. Downloading the weights "
+                    "(~14-24 GB) before anything can run.\n"
+                    "  This is a download, not a hang. Progress appears below; if it "
+                    "falls under ~1 MB/s, interrupt and re-run -- it restarts at full "
+                    "speed and no generated stories are lost.",
+                    flush=True,
+                )
+            print("", flush=True)
             m = build_model(model_id, dtype=dtype_arg, wrapper_for=hf_id)
             d = next(m.model.parameters()).dtype
             if torch.cuda.is_available() and d not in (torch.float16, torch.bfloat16):
