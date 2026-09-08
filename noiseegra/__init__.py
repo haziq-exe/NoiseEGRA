@@ -16,6 +16,21 @@ from .creativity_metrics import (
     LexicalDiversityResult,
     CreativityScorer,
 )
+from .diversity import (
+    ConditionDiversity,
+    DiversityScorer,
+    calibrate_threshold,
+    distinct_k,
+    read_run_csv,
+    truncate_words,
+    vendi_from_embeddings,
+)
+from .embeddings import (
+    DEFAULT_EMBEDDING_MODEL,
+    EMBEDDING_MODELS,
+    PAPER_EMBEDDING_MODEL,
+    resolve_embedding_model,
+)
 from .constraint_metrics import ExactConstraintChecker, StoryMetrics
 from .constraint_metrics_en import EnglishConstraintChecker
 from . import writingprompts
@@ -39,6 +54,17 @@ __all__ = [
     "SemanticDiversityResult",
     "LexicalDiversityResult",
     "CreativityScorer",
+    "ConditionDiversity",
+    "DiversityScorer",
+    "calibrate_threshold",
+    "distinct_k",
+    "read_run_csv",
+    "truncate_words",
+    "vendi_from_embeddings",
+    "DEFAULT_EMBEDDING_MODEL",
+    "PAPER_EMBEDDING_MODEL",
+    "EMBEDDING_MODELS",
+    "resolve_embedding_model",
     "ExactConstraintChecker",
     "EnglishConstraintChecker",
     "writingprompts",

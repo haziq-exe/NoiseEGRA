@@ -25,6 +25,8 @@ from noiseegra.constraint_metrics_en import (  # noqa: E402
     CONSTRAINT_NAMES,
     EnglishConstraintChecker,
 )
+from noiseegra.diversity import read_run_csv  # noqa: E402
+from noiseegra.embeddings import DEFAULT_EMBEDDING_MODEL, EMBEDDING_MODELS  # noqa: E402
 from noiseegra.writingprompts import as_constraint  # noqa: E402
 
 COLUMNS = [
@@ -90,22 +92,7 @@ def live_row(label: str, r: dict) -> str:
 
 def read_run(path: Path):
     """Return (stories, prompt_indices) from a runner CSV."""
-    stories, prompts = [], []
-    with path.open(encoding="utf-8") as fh:
-        reader = csv.DictReader(fh)
-        if reader.fieldnames and "story" in reader.fieldnames:
-            for row in reader:
-                if row["story"] and row["story"].strip():
-                    stories.append(row["story"])
-                    prompts.append(int(row["prompt_index"]))
-            return stories, prompts
-    # Fall back to the headerless one-story-per-row format.
-    with path.open(encoding="utf-8") as fh:
-        for row in csv.reader(fh):
-            if row and row[0].strip():
-                stories.append(row[0])
-                prompts.append(0)
-    return stories, prompts
+    return read_run_csv(path)
 
 
 def main() -> None:
@@ -118,6 +105,12 @@ def main() -> None:
     ap.add_argument("--max-words", type=int, default=150)
     ap.add_argument("--present-ratio", type=float, default=0.8)
     ap.add_argument("--max-grade", type=float, default=6.0)
+    ap.add_argument("--embedding-model", default=DEFAULT_EMBEDDING_MODEL,
+                    help=f"registry key or HF id. keys: {', '.join(EMBEDDING_MODELS)}. "
+                         "use bge-m3 to match the published Arabic runs")
+    ap.add_argument("--truncate-words", type=int, default=None,
+                    help="cut every story to its first N words before scoring diversity, "
+                         "so the score does not partly measure output length")
     ap.add_argument("--min-group", type=int, default=2,
                     help="prompt groups smaller than this are skipped for diversity")
     args = ap.parse_args()
@@ -141,7 +134,11 @@ def main() -> None:
     if args.diversity:
         from noiseegra.creativity_metrics import CreativityScorer
         # Built once: constructing it downloads and loads the embedding model.
-        scorer = CreativityScorer(["placeholder text one", "placeholder text two"])
+        scorer = CreativityScorer(
+            ["placeholder text one", "placeholder text two"],
+            embedding_model=args.embedding_model,
+            truncate_words=args.truncate_words,
+        )
 
     csvs = sorted(p for p in in_dir.glob("*.csv") if p.name != "prompts.json")
     if not csvs:

@@ -148,6 +148,11 @@ def main() -> None:
     ap.add_argument("--max-new-tokens", type=int, default=400)
     ap.add_argument("--temperature", type=float, default=1.0)
     ap.add_argument("--pca-rank", type=int, default=8)
+    ap.add_argument("--embedding-model", default=None,
+                    help="diversity embedding model: registry key or HF id "
+                         "(default qwen3-0.6b; use bge-m3 for the published Arabic setup)")
+    ap.add_argument("--truncate-words", type=int, default=None,
+                    help="cut every story to its first N words before scoring diversity")
     ap.add_argument("--out", default="/kaggle/working/english")
     args = ap.parse_args()
 
@@ -355,7 +360,11 @@ def main() -> None:
     if args.diversity:
         from noiseegra.creativity_metrics import CreativityScorer
         print("loading the embedding model for diversity scoring ...", flush=True)
-        scorer = CreativityScorer(["placeholder one", "placeholder two"])
+        scorer = CreativityScorer(
+            ["placeholder one", "placeholder two"],
+            embedding_model=args.embedding_model,
+            truncate_words=args.truncate_words,
+        )
 
     done, t0 = total - remaining, time.time()
     started = done

@@ -4,6 +4,8 @@ transformers
 accelerate
 
 # Diversity / creativity metrics (Vendi score, Self-BLEU, embeddings)
+# The default embedding model is Qwen/Qwen3-Embedding-0.6B; scripts/score_diversity.py
+# --embedding-model bge-m3 switches back to what the published Arabic runs used.
 sentence-transformers
 vendi-score
 numpy
@@ -17,7 +19,9 @@ python-dotenv
 huggingface_hub
 
 # Optional: spaCy PERSON NER for the EGRA name-based constraint checks
-# (C14/C17/C18 are skipped unless a name extractor or spaCy model is provided)
+# (C14/C17/C18 are skipped unless a name extractor or spaCy model is provided),
+# and for scripts/score_diversity.py --plot-backend spacy:
+#   pip install spacy && python -m spacy download en_core_web_sm
 # spacy
 
 # NOTE: The newest Arabic models (e.g. Jais-2) may require transformers built

@@ -35,6 +35,16 @@ class CreativityScorer:
 
     Lexical diversity:
     - Self-BLEU (lower is more diverse), converted to lexical score as 1 - self_bleu, with stds.
+
+    Both are sensitive to text length: longer texts embed further apart and share
+    fewer n-grams, so a set of long stories scores as more diverse than a set of
+    short ones even when nothing else differs. Pass ``truncate_words=N`` to cut
+    every text to its first N words first, which removes the effect.
+
+    ``embedding_model`` accepts a registry key from ``noiseegra.embeddings``
+    (default ``qwen3-0.6b``) or a raw Hugging Face id. Use ``"bge-m3"`` to
+    reproduce the published Arabic numbers. Scores from different embedding
+    models are not comparable and must not share a table.
     """
 
     _PAPER_MODAL_COLLAPSE_PATH = Path(__file__).resolve().parent / "data" / "paper_modal_collapse_indices.json"
@@ -50,25 +60,36 @@ class CreativityScorer:
     def __init__(
         self,
         texts: Sequence[str],
-        embedding_model: str = "BAAI/bge-m3",
+        embedding_model: Optional[str] = None,
         max_k: int = 10,
         random_state: int = 42,
+        truncate_words: Optional[int] = None,
     ):
         # Imported lazily: `import noiseegra` should not pull in sentence-transformers
         # (and its model download) for callers that only generate or score constraints.
-        from sentence_transformers import SentenceTransformer
+        from .embeddings import load_embedder, resolve_embedding_model
 
         self.texts = [t.strip() for t in texts if isinstance(t, str) and t.strip()]
-        self.model = SentenceTransformer(embedding_model, trust_remote_code=True)
+        self.embedding_model = resolve_embedding_model(embedding_model)
+        self.model = load_embedder(embedding_model)
         self.max_k = max_k
         self.random_state = random_state
+        # Cut every story to the same number of words before embedding. Longer
+        # stories embed further apart regardless of content, so without this the
+        # diversity scores partly measure output length. `None` keeps full texts.
+        self.truncate_words = truncate_words
         self.total_modal_collapse_indices_by_run = self.load_paper_modal_collapse_indices()
+
+    def _prepared(self) -> List[str]:
+        if not self.truncate_words or self.truncate_words <= 0:
+            return list(self.texts)
+        return [" ".join(t.split()[: self.truncate_words]) for t in self.texts]
 
     def _encode(self) -> np.ndarray:
         if not self.texts:
             raise ValueError("No valid texts were provided.")
         return self.model.encode(
-            self.texts,
+            self._prepared(),
             convert_to_numpy=True,
             normalize_embeddings=True,
             batch_size=32,
@@ -173,7 +194,7 @@ class CreativityScorer:
                 lexical_score_std=0.0,
             )
 
-        tokenized = [t.split() for t in self.texts]
+        tokenized = [t.split() for t in self._prepared()]
         bleu_scores: List[float] = []
 
         for i, candidate in enumerate(tokenized):

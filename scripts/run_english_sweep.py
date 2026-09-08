@@ -39,6 +39,8 @@ PASSTHROUGH = [
     ("--temperature", "temperature", False), ("--out", "out", False),
     ("--alpha-sweep", "alpha_sweep", True), ("--gamma-sweep", "gamma_sweep", True),
     ("--offset-rank", "offset_rank", False),
+    ("--embedding-model", "embedding_model", False),
+    ("--truncate-words", "truncate_words", False),
 ]
 
 
@@ -72,6 +74,8 @@ def main() -> None:
     ap.add_argument("--alpha-sweep", nargs="*", type=float, default=None)
     ap.add_argument("--gamma-sweep", nargs="*", type=float, default=None)
     ap.add_argument("--offset-rank", type=int, default=None)
+    ap.add_argument("--embedding-model", default=None)
+    ap.add_argument("--truncate-words", type=int, default=None)
     ap.add_argument("--no-diversity", dest="diversity", action="store_false")
     ap.add_argument("--out", default="/kaggle/working/english")
     ap.add_argument("--max-hours", type=float, default=None,
