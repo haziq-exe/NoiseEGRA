@@ -16,6 +16,14 @@ from .creativity_metrics import (
     LexicalDiversityResult,
     CreativityScorer,
 )
+from .coherence import (
+    CoherenceFilter,
+    CoherenceReport,
+    CoherenceThresholds,
+    PerplexityScorer,
+    sentence_coherence,
+    trim_tail,
+)
 from .diversity import (
     ConditionDiversity,
     DiversityScorer,
@@ -54,6 +62,11 @@ __all__ = [
     "SemanticDiversityResult",
     "LexicalDiversityResult",
     "CreativityScorer",
+    "CoherenceFilter",
+    "CoherenceReport",
+    "CoherenceThresholds",
+    "PerplexityScorer",
+    "sentence_coherence",
     "ConditionDiversity",
     "DiversityScorer",
     "calibrate_threshold",

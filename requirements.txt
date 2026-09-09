@@ -3,6 +3,10 @@ torch
 transformers
 accelerate
 
+# Coherence checks: the heuristics need nothing, the sentence-coherence check
+# reuses the embedding model below, and the perplexity checks want a small causal
+# LM (scripts/score_diversity.py --coherence-model Qwen/Qwen2.5-0.5B).
+
 # Diversity / creativity metrics (Vendi score, Self-BLEU, embeddings)
 # The default embedding model is Qwen/Qwen3-Embedding-0.6B; scripts/score_diversity.py
 # --embedding-model bge-m3 switches back to what the published Arabic runs used.

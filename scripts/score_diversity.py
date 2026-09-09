@@ -14,6 +14,10 @@ It does not generate anything.
     python scripts/score_diversity.py --input-dir experiment_results/ResidNoise \\
         --embedding-model bge-m3
 
+    # report coherence, and score diversity only over the stories that pass
+    python scripts/score_diversity.py --input-dir ... --drop-incoherent \\
+        --coherence-model Qwen/Qwen2.5-0.5B --coherence-reference "steer only"
+
 Three metrics, all computed within a prompt group and then averaged:
 
 Vendi           the existing score, on the full stories. Reported for continuity,
@@ -27,6 +31,14 @@ Distinct        how many genuinely different stories are in each group of k, fro
                 allow.
 PlotVendi       Vendi over six-slot plot skeletons instead of prose (--plot).
 PlotDist        Distinct over the same skeletons.
+Coh             fraction of stories that pass the coherence checks (--coherence).
+
+Diversity over broken text is not diversity: a story that degenerates embeds far
+from its neighbours and every spread-based score rewards that. --coherence adds a
+pass-rate column; --drop-incoherent also removes the failures from the diversity
+scores. Read the drop rates before the diversity columns -- conditions that lose
+different numbers of stories are no longer a like-for-like comparison, and the
+pass rate is then the more honest headline.
 """
 
 from __future__ import annotations
@@ -57,6 +69,7 @@ COLUMNS = [
     ("run", "Run", "{}"),
     ("n", "N", "{}"),
     ("groups", "Grp", "{}"),
+    ("coherent", "Coh", "{:.0%}"),
     ("mean_words", "Words", "{:.0f}"),
     ("vendi_raw", "Vendi", "{:.2f}"),
     ("vendi_matched", "Vendi@N", "{:.2f}"),
@@ -80,6 +93,120 @@ def pearson(a, b):
     return num / den if den else float("nan")
 
 
+
+
+
+def _apply_coherence(runs, args, scorer=None):
+    """Check every story, trim its tail, and optionally drop the failures.
+
+    Returns the (possibly filtered) runs and a per-condition summary. Trimming
+    happens whether or not stories are dropped, so the word counts and diversity
+    scores downstream are over story text rather than trailing markup.
+    """
+    from noiseegra.coherence import (
+        CoherenceFilter, CoherenceThresholds, PerplexityScorer,
+        apply_sentence_coherence, nll_reference, sentence_coherence, summarise,
+    )
+
+    thresholds = CoherenceThresholds(
+        min_words=args.coherence_min_words,
+        max_ppl_z=args.coherence_ppl_z,
+        max_tail_nll_gap=args.coherence_tail_gap,
+    )
+    ppl = None
+    if args.coherence_model:
+        print(f"loading {args.coherence_model} for the perplexity checks ...", flush=True)
+        ppl = PerplexityScorer(args.coherence_model)
+    filt = CoherenceFilter(thresholds, trim=args.trim_tail, ppl_scorer=ppl)
+
+    reports = {name: [filt.check(t) for t in stories] for name, stories, _ in runs}
+
+    def pick_reference(values_by_run, label):
+        """Judge every condition against a shared reference, not against its own
+        median: a condition where most stories are broken has a broken median and
+        nothing in it stands out.
+
+        Default is the pooled distribution over all conditions, which works as long
+        as most stories overall are fine. When a clean condition exists, naming it
+        with --coherence-reference is stricter and better -- and note that picking
+        the "most coherent" condition automatically would not work, because a
+        condition stuck in a repetition loop has near-perfect sentence-to-sentence
+        similarity.
+        """
+        if args.coherence_reference:
+            picks = [n for n in values_by_run
+                     if args.coherence_reference.lower() in n.lower()]
+            if not picks:
+                raise SystemExit(f"--coherence-reference {args.coherence_reference!r} "
+                                 f"matches no condition")
+            name = f"{args.coherence_reference} ({len(picks)} conditions)"
+            pool = [v for n in picks for v in values_by_run[n]]
+        else:
+            name = f"all {len(values_by_run)} conditions pooled"
+            pool = [v for vs in values_by_run.values() for v in vs]
+        ref = nll_reference(pool)
+        print(f"  {label} reference: {name}, median {ref[0]:.3f}, scale {ref[1]:.3f}")
+        if ref[1] <= 1e-9:
+            print(f"  WARNING: the {label} reference has no spread, so that check is "
+                  "disabled.")
+        return ref
+
+    if scorer is not None:
+        print("  sentence-to-sentence coherence ...", flush=True)
+        sims = {name: sentence_coherence(
+                    [r.text or " " for r in reports[name]],
+                    lambda t: scorer.encode(t, truncate=None))
+                for name, _, _ in runs}
+        ref = pick_reference({n: [v for v in vs if v == v] for n, vs in sims.items()},
+                             "coherence")
+        for name, _, _ in runs:
+            apply_sentence_coherence(reports[name], sims[name], thresholds, ref)
+
+    if ppl is not None:
+        triples = {}
+        for name, _, _ in runs:
+            print(f"  perplexity: {name}", flush=True)
+            triples[name] = ppl.score([r.text or " " for r in reports[name]],
+                                      thresholds.tail_fraction)
+        reference = pick_reference({n: [o for o, _, _ in v] for n, v in triples.items()},
+                                   "perplexity")
+        for name, _, _ in runs:
+            filt.apply_perplexity(reports[name], triples[name], reference)
+
+    out_runs, summary = [], {}
+    for name, stories, pidx in runs:
+        reps = reports[name]
+        summary[name] = summarise(reps)
+        summary[name]["trimmed"] = float(sum(1 for r in reps if r.trimmed_words > 0))
+        summary[name]["trimmed_words"] = float(sum(r.trimmed_words for r in reps))
+        keep = [(r.text, p) for r, p in zip(reps, pidx)
+                if r.ok or not args.drop_incoherent]
+        if keep:
+            texts, ps = zip(*keep)
+            out_runs.append((name, list(texts), list(ps)))
+        else:
+            print(f"  [warn] {name}: every story failed the coherence checks, "
+                  "dropping the condition")
+
+    reasons = sorted({k for v in summary.values() for k in v
+                      if k not in ("n", "kept", "pass_rate", "trimmed", "trimmed_words")})
+    width = max(len(n) for n in summary)
+    print("\ncoherence:")
+    print("  " + f"{'condition':<{width}}{'N':>6}{'kept':>6}{'trim':>6}"
+          + "".join(f"{r:>18}" for r in reasons))
+    for name, v in summary.items():
+        print("  " + f"{name:<{width}}{v['n']:>6.0f}{v['kept']:>6.0f}{v['trimmed']:>6.0f}"
+              + "".join(f"{v.get(r, 0.0):>18.0f}" for r in reasons))
+
+    rates = [v["pass_rate"] for v in summary.values()]
+    if args.drop_incoherent and rates and (max(rates) - min(rates)) > 0.1:
+        print(f"  WARNING: coherence pass rates range from {min(rates):.0%} to "
+              f"{max(rates):.0%}. Dropping stories leaves the conditions with "
+              "different sample sizes and different selection, so the diversity "
+              "columns below are not a like-for-like comparison. The pass rate "
+              "itself is the more honest headline here.")
+    print()
+    return out_runs, summary
 
 
 def _calibrate(scorer, runs, percentile, truncate):
@@ -166,6 +293,40 @@ def main() -> None:
                     help="prompt groups smaller than this are skipped")
     ap.add_argument("--batch-size", type=int, default=32)
     ap.add_argument("--device", default=None)
+    # coherence
+    ap.add_argument("--coherence", action="store_true",
+                    help="check every story for repetition loops, junk characters, "
+                         "collapsed function-word ratio, run-on text and trailing "
+                         "markup; report the pass rate as a column")
+    ap.add_argument("--drop-incoherent", action="store_true",
+                    help="also exclude the failing stories from the diversity scores. "
+                         "implies --coherence. the drop rate per condition is printed: "
+                         "read it, because conditions that lose different numbers of "
+                         "stories are no longer being compared on equal footing")
+    ap.add_argument("--no-trim-tail", dest="trim_tail", action="store_false",
+                    help="keep trailing markup and post-story commentary instead of "
+                         "stripping it. trimming is on by default because it saves a "
+                         "story that would otherwise be dropped, which avoids "
+                         "selection bias")
+    ap.add_argument("--coherence-model", default=None,
+                    help="small LM for the perplexity checks, e.g. Qwen/Qwen2.5-0.5B. "
+                         "off by default; the heuristics need no model")
+    ap.add_argument("--coherence-ppl-z", type=float, default=3.5,
+                    help="reject a story whose perplexity is this many robust "
+                         "deviations above its condition's median")
+    ap.add_argument("--coherence-tail-gap", type=float, default=1.5,
+                    help="reject a story whose last fifth is this many nats per token "
+                         "more surprising than the rest (1.5 is about 4.5x perplexity)")
+    ap.add_argument("--coherence-reference", default=None,
+                    help="condition name (substring) whose perplexity distribution the "
+                         "other conditions are judged against. default: whichever "
+                         "condition the small model finds least surprising")
+    ap.add_argument("--no-semantic-coherence", action="store_true",
+                    help="skip the sentence-to-sentence coherence check. it reuses the "
+                         "embedding model already loaded, so it is close to free, and it "
+                         "is the only check that sees fluent word salad without a "
+                         "second model")
+    ap.add_argument("--coherence-min-words", type=int, default=15)
     # plot-level
     ap.add_argument("--plot", action="store_true", help="also score plot skeletons")
     ap.add_argument("--plot-backend", default="hf", choices=["hf", "spacy"])
@@ -201,6 +362,8 @@ def main() -> None:
     print(f"embedding model: {describe(args.embedding_model)}")
     print(f"{len(runs)} conditions, {sum(len(s) for _, s, _ in runs)} stories\n")
 
+    coherence: dict = {}
+
     # ---- word budget for the length-matched score --------------------------- #
     mean_words = {name: statistics.mean(word_count(s) for s in st) for name, st, _ in runs}
     if str(args.truncate_words).lower() in ("none", "0", "off"):
@@ -216,6 +379,24 @@ def main() -> None:
     scorer = DiversityScorer(
         args.embedding_model, truncate_to=budget, device=args.device, batch_size=args.batch_size
     )
+
+    if args.coherence or args.drop_incoherent:
+        runs, coherence = _apply_coherence(
+            runs, args, scorer=None if args.no_semantic_coherence else scorer
+        )
+        if not runs:
+            raise SystemExit(
+                "every condition lost all of its stories to the coherence checks. "
+                "That is a threshold problem, not a result: look at the reason "
+                "columns above and relax the check that fired, or run without "
+                "--drop-incoherent to see the pass rates alone."
+            )
+        # Trimming changes word counts, so the length budget is recomputed.
+        if budget and str(args.truncate_words).lower() == "auto":
+            budget = int(round(min(statistics.mean(word_count(s) for s in st)
+                                   for _, st, _ in runs)))
+            scorer.truncate_to = budget
+            print(f"length-matched budget after trimming: N = {budget} words\n")
 
     # ---- distinct-k threshold, calibrated once and shared ------------------- #
     if str(args.distinct_threshold).lower() == "auto":
@@ -275,6 +456,7 @@ def main() -> None:
         res = scorer.score(stories, pidx, threshold=threshold, min_group=args.min_group)
         row = {
             "run": name, "n": res.n, "groups": res.n_groups,
+            "coherent": coherence.get(name, {}).get("pass_rate", float("nan")),
             "mean_words": res.mean_words,
             "vendi_raw": res.vendi_raw, "vendi_matched": res.vendi_matched,
             "distinct_mean": res.distinct_mean, "distinct_frac": res.distinct_frac,
@@ -304,8 +486,9 @@ def main() -> None:
     ]]
     checks = [(l, v) for l, v in checks if not math.isnan(v)]
 
-    keys = [k for k, _, _ in COLUMNS if not (
-        k in ("plot_vendi", "plot_distinct") and not skeletons)]
+    keys = [k for k, _, _ in COLUMNS
+            if not (k in ("plot_vendi", "plot_distinct") and not skeletons)
+            and not (k == "coherent" and not coherence)]
     headers = {k: h for k, h, _ in COLUMNS}
     fmts = {k: f for k, _, f in COLUMNS}
 
