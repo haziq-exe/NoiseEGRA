@@ -46,9 +46,11 @@ from __future__ import annotations
 import argparse
 import csv
 import math
+import re
 import statistics
 import sys
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 
@@ -96,13 +98,46 @@ def pearson(a, b):
 
 
 
+_A_TAG = re.compile(r"__nz(?P<mode>[a-z]+)__a(?P<val>[0-9pm]+)")
+_G_TAG = re.compile(r"__g(?P<val>[0-9pm]+)(?P<mode>[a-z]+)")
+
+
+def _untag_float(tag: str) -> float:
+    """Inverse of the run id float encoding: '0p4' -> 0.4, 'm1' -> -1.0."""
+    try:
+        return float(tag.replace("p", ".").replace("m", "-"))
+    except ValueError:
+        return 0.0
+
+
+def label_from_run_id(run_id: str) -> Optional[str]:
+    """Recover a readable condition name from a run id.
+
+    The run id encodes the whole plan, so the label the runner would have printed
+    can be read back out of it. This is the fallback for a directory with no
+    ``live_scores.csv`` -- an interrupted run, or one scored before it finished.
+    Kept in step with ``condition_label`` in ``run_english_experiment.py``.
+    """
+    if "__ORTHO" not in run_id:
+        return "baseline" if "BASELINE" in run_id.upper() else None
+    g = _G_TAG.search(run_id)
+    if g and g.group("mode") != "none" and _untag_float(g.group("val")) > 0:
+        return f"per-story offset g={_untag_float(g.group('val')):g} ({g.group('mode')})"
+    a = _A_TAG.search(run_id)
+    if a and a.group("mode") != "none" and _untag_float(a.group("val")) > 0:
+        return f"per-token noise a={_untag_float(a.group('val')):g}"
+    return "steer only"
+
+
 def _load_labels(paths) -> dict:
-    """Map run id to the human-readable condition label the runner recorded.
+    """Map run id to a human-readable condition name.
 
     ``run_english_experiment.py`` writes ``live_scores.csv`` next to the story
-    CSVs with a ``run,label`` pair per condition. Without it the only name a
-    condition has is its run id, which is a hyperparameter string nobody can read
-    and nothing can match ``--coherence-reference`` against.
+    CSVs with a ``run,label`` pair per condition, but only once the whole sweep
+    finishes, so a resumed or interrupted run has none. Anything the file does not
+    cover is recovered from the run id itself. Without either, the only name a
+    condition has is a hyperparameter string nobody can read and nothing can match
+    ``--coherence-reference`` against.
     """
     labels: dict = {}
     for d in {p.parent for p in paths}:
@@ -113,6 +148,11 @@ def _load_labels(paths) -> dict:
             for row in csv.DictReader(fh):
                 if row.get("run") and row.get("label"):
                     labels[row["run"]] = row["label"]
+    for p in paths:
+        if p.stem not in labels:
+            parsed = label_from_run_id(p.stem)
+            if parsed:
+                labels[p.stem] = parsed
     return labels
 
 
@@ -397,8 +437,20 @@ def main() -> None:
 
     print(f"embedding model: {describe(args.embedding_model)}")
     if labels:
-        print(f"condition names from live_scores.csv ({len(labels)} labels)")
+        print(f"condition names resolved for {len(labels)} of {len(paths)} runs")
     print(f"{len(runs)} conditions, {sum(len(s) for _, s, _ in runs)} stories\n")
+
+    # Checked before anything downloads a model: this run takes minutes to reach
+    # the point where the reference is used, and failing there wastes all of it.
+    if args.coherence_reference:
+        matched = [n for n, _, _ in runs if args.coherence_reference.lower() in n.lower()]
+        if not matched:
+            raise SystemExit(
+                f"--coherence-reference {args.coherence_reference!r} matches no "
+                "condition. Available:\n  "
+                + "\n  ".join(n for n, _, _ in runs)
+            )
+        print(f"coherence reference will be: {', '.join(matched)}\n")
 
     coherence: dict = {}
 
