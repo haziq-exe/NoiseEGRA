@@ -96,6 +96,26 @@ def pearson(a, b):
 
 
 
+def _load_labels(paths) -> dict:
+    """Map run id to the human-readable condition label the runner recorded.
+
+    ``run_english_experiment.py`` writes ``live_scores.csv`` next to the story
+    CSVs with a ``run,label`` pair per condition. Without it the only name a
+    condition has is its run id, which is a hyperparameter string nobody can read
+    and nothing can match ``--coherence-reference`` against.
+    """
+    labels: dict = {}
+    for d in {p.parent for p in paths}:
+        f = d / "live_scores.csv"
+        if not f.is_file():
+            continue
+        with f.open(encoding="utf-8") as fh:
+            for row in csv.DictReader(fh):
+                if row.get("run") and row.get("label"):
+                    labels[row["run"]] = row["label"]
+    return labels
+
+
 def _apply_coherence(runs, args, scorer=None):
     """Check every story, trim its tail, and optionally drop the failures.
 
@@ -137,8 +157,10 @@ def _apply_coherence(runs, args, scorer=None):
             picks = [n for n in values_by_run
                      if args.coherence_reference.lower() in n.lower()]
             if not picks:
-                raise SystemExit(f"--coherence-reference {args.coherence_reference!r} "
-                                 f"matches no condition")
+                raise SystemExit(
+                    f"--coherence-reference {args.coherence_reference!r} matches no "
+                    f"condition. Available: {', '.join(sorted(values_by_run))}"
+                )
             name = f"{args.coherence_reference} ({len(picks)} conditions)"
             pool = [v for n in picks for v in values_by_run[n]]
         else:
@@ -337,6 +359,14 @@ def main() -> None:
     ap.add_argument("--plot-cache", help="default: <out-dir>/plot_skeletons.json")
     args = ap.parse_args()
 
+    # A notebook runs this through a pipe, and a piped Python block-buffers
+    # stdout, so a long run looks like it has hung until it finishes. Line
+    # buffering makes progress visible without needing `python -u`.
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+    except AttributeError:  # pragma: no cover
+        pass
+
     paths = [Path(p) for p in args.inputs]
     if args.input_dir:
         d = Path(args.input_dir)
@@ -351,15 +381,23 @@ def main() -> None:
     )
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    runs = []
-    for p in paths:
-        stories, pidx = read_run_csv(p)
-        if len(stories) >= args.min_group:
-            runs.append((p.stem, stories, pidx))
+    labels = _load_labels(paths)
+    runs, seen = [], {}
+    for path in paths:
+        stories, pidx = read_run_csv(path)
+        if len(stories) < args.min_group:
+            continue
+        name = labels.get(path.stem, path.stem)
+        if name in seen:  # two conditions sharing a label: keep them apart
+            name = f"{name} [{path.stem[-12:]}]"
+        seen[name] = path.stem
+        runs.append((name, stories, pidx))
     if not runs:
         raise SystemExit("no run CSVs with enough stories")
 
     print(f"embedding model: {describe(args.embedding_model)}")
+    if labels:
+        print(f"condition names from live_scores.csv ({len(labels)} labels)")
     print(f"{len(runs)} conditions, {sum(len(s) for _, s, _ in runs)} stories\n")
 
     coherence: dict = {}
