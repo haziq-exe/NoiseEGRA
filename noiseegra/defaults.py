@@ -91,6 +91,22 @@ EN_MODEL_LAYER_RANGES: Dict[str, Tuple[int, int]] = {
     name: layer_band(depth) for name, depth in EN_MODEL_DEPTHS.items()
 }
 
-EN_CONSTRAINTS = ("closure", "present_tense", "simple_register", "dialogue")
-EN_MAX_WORDS = 150
-EN_MAX_GRADE_LEVEL = 6.0
+# The directions steering is applied along. Only four, because a steering vector
+# has to be extractable from minimal pairs: "wrap the story up" is a direction,
+# "use no digits" is not.
+EN_STEER_VECTORS = ("closure", "present_tense", "simple_register", "dialogue")
+
+# What the prompt asks for and the scorer checks. Twelve, matching the pressure
+# the original EGRA prompt put on the model, and every one of them decidable
+# without a judge. See noiseegra.constraint_metrics_en.
+EN_TASK_CONSTRAINTS = (
+    "length", "present_tense", "simple_register", "dialogue",
+    "easy_opening", "short_sentences", "sentence_count", "short_words",
+    "no_digits", "one_name", "varied_openers", "single_paragraph",
+)
+
+# Back-compatible alias: older callers used this for the steering names.
+EN_CONSTRAINTS = EN_STEER_VECTORS
+
+EN_MAX_WORDS = 60
+EN_MAX_GRADE_LEVEL = 3.0

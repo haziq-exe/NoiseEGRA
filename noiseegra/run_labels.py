@@ -55,6 +55,7 @@ _TOPP = re.compile(rf"topp(?P<val>m?{_FLOAT})")
 _BETAS = re.compile(r"__b([0-9pm-]+)__")
 _CONSTR = re.compile(r"__C([a-z-]+)__")
 _PROTECT = re.compile(r"__k(\d+)")
+_GATE = re.compile(r"__gate([a-z]+)")
 _ORTHONORM = re.compile(r"__(lowdin|gram_schmidt|none)__")
 
 
@@ -76,11 +77,42 @@ class RunLabel:
     family: str
     magnitude: float = 0.0
     run_id: str = ""
+    short: str = ""
+
+    def __post_init__(self):
+        if not self.short:
+            self.short = _shorten(self.text)
 
     @property
     def sort_key(self):
         order = FAMILY_ORDER.index(self.family) if self.family in FAMILY_ORDER else 99
         return (order, self.magnitude, self.text)
+
+
+_SHORTEN = [
+    ("steering only, no perturbation", "steer"),
+    ("per-token noise a=", "tok "),
+    ("per-story offset g=", "sto "),
+    (" (orthogonal)", ""), (" (unrestricted)", " iso"), (" (in-subspace)", " para"),
+    (", gated to the most uncertain steps", " g-hi"),
+    (", gated to uncertain steps", " g-med"),
+    ("residual-stream noise", "resid"), ("attention-logit noise", "attn"),
+    ("embedding noise", "embed"), ("AENI entropy-scaled noise", "aeni"),
+    ("residual noise at two sites", "resid2"),
+    ("two-stage plan then write, residual noise", "2stage+n"),
+    ("two-stage plan then write, no noise", "2stage"),
+    ("baseline (temperature ", "T"), ("baseline", "base"),
+    (", top-k ", "/k"), (", top-p ", "/p"),
+]
+
+
+def _shorten(text: str) -> str:
+    """A few characters for a column header in a transposed table."""
+    out = text
+    for long, short in _SHORTEN:
+        out = out.replace(long, short)
+    out = re.sub(r"\s*\([^)]*\)", "", out).strip(" ,;()")
+    return re.sub(r"\s+", " ", out)[:14].strip(" ,;()")
 
 
 def _sampling_suffix(run_id: str) -> str:
@@ -113,17 +145,21 @@ def label_run(run_id: str) -> RunLabel:
     up = rid.upper()
 
     if "__ORTHO" in up:
+        gate = _GATE.search(rid)
+        gate_txt = ({"median": ", gated to uncertain steps",
+                     "high": ", gated to the most uncertain steps"}
+                    .get(gate.group(1), f", gate {gate.group(1)}") if gate else "")
         g = _G.search(rid)
         if g and g.group("mode") != "none" and untag_float(g.group("val")) > 0:
             v = untag_float(g.group("val"))
             mode = SUBSPACE_MODES.get(g.group("mode"), g.group("mode"))
-            return RunLabel(f"per-story offset g={_fmt(v)} ({mode})",
+            return RunLabel(f"per-story offset g={_fmt(v)} ({mode}){gate_txt}",
                             "per-story", v, rid)
         a = _NZ.search(rid)
         if a and a.group("mode") != "none" and untag_float(a.group("val")) > 0:
             v = untag_float(a.group("val"))
             mode = SUBSPACE_MODES.get(a.group("mode"), a.group("mode"))
-            return RunLabel(f"per-token noise a={_fmt(v)} ({mode})",
+            return RunLabel(f"per-token noise a={_fmt(v)} ({mode}){gate_txt}",
                             "per-token", v, rid)
         return RunLabel("steering only, no perturbation", "steer", 0.0, rid)
 
@@ -218,6 +254,10 @@ def plan_summary(run_ids: Sequence[str]) -> List[str]:
     if k:
         out.append(f"protected subspace: {k.group(1)} dimensions "
                    "(perturbation is kept out of these)")
+
+    gates = {m.group(1) for m in map(_GATE.search, run_ids) if m}
+    if not gates and all("__gate" not in r for r in run_ids):
+        out.append("perturbation is applied at every decode step (no entropy gate)")
 
     modes = {m.group("mode") for m in map(_NZ.search, run_ids) if m}
     modes |= {m.group("mode") for m in map(_G.search, run_ids) if m}

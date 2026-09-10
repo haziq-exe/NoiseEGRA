@@ -167,6 +167,30 @@ def distinct_k(emb: np.ndarray, threshold: float) -> int:
     return int(_average_linkage_labels(sim, threshold).max() + 1)
 
 
+def rarefied_distinct(
+    emb: np.ndarray, threshold: float, m: int, draws: int = 60, seed: int = 0
+) -> float:
+    """Expected distinct classes when only ``m`` of the rows are kept.
+
+    Rarefaction, from the ecology literature Vendi's Hill numbers come from. It
+    exists because distinct-k is bounded by the group size, so a condition that
+    loses stories to a coherence filter gets a higher distinct *fraction* for free:
+    subsample a fixed set of ten stories in three classes down to five and the
+    fraction rises from 0.30 to about 0.56 with nothing having changed. Comparing
+    every condition at the same ``m`` removes that.
+    """
+    n = emb.shape[0]
+    if n == 0:
+        return float("nan")
+    if m >= n:
+        return float(distinct_k(emb, threshold))
+    rng = np.random.RandomState(seed)
+    return float(np.mean([
+        distinct_k(emb[rng.choice(n, size=m, replace=False)], threshold)
+        for _ in range(draws)
+    ]))
+
+
 def calibrate_threshold(
     emb: np.ndarray, prompt_idx: Sequence[int], percentile: float = 99.0
 ) -> float:
@@ -205,7 +229,9 @@ class ConditionDiversity:
     vendi_matched: float
     distinct_mean: float
     distinct_frac: float
+    distinct_rarefied: float
     group_size: float
+    min_group_size: int = 0
     plot_vendi: float = float("nan")
     plot_distinct: float = float("nan")
     extra: Dict[str, float] = field(default_factory=dict)
@@ -270,6 +296,8 @@ class DiversityScorer:
         *,
         threshold: float,
         min_group: int = 2,
+        rarefy_to: Optional[int] = None,
+        draws: int = 60,
         truncate_to: Optional[int] = "unset",  # type: ignore[assignment]
     ) -> ConditionDiversity:
         """Per-prompt diversity for one condition, averaged over prompt groups.
@@ -286,13 +314,14 @@ class DiversityScorer:
             return ConditionDiversity(
                 n=len(stories), n_groups=0, mean_words=mean_words,
                 vendi_raw=float("nan"), vendi_matched=float("nan"),
-                distinct_mean=float("nan"), distinct_frac=float("nan"), group_size=float("nan"),
+                distinct_mean=float("nan"), distinct_frac=float("nan"),
+                distinct_rarefied=float("nan"), group_size=float("nan"),
             )
 
         emb_raw = self.encode(stories, truncate=None)
         emb_cut = self.encode(stories, truncate=truncate_to) if truncate_to else emb_raw
 
-        raws, matched, dists, fracs, sizes = [], [], [], [], []
+        raws, matched, dists, fracs, rare, sizes = [], [], [], [], [], []
         for ix in groups:
             raws.append(vendi_from_embeddings(emb_raw[ix]))
             matched.append(vendi_from_embeddings(emb_cut[ix]))
@@ -300,6 +329,8 @@ class DiversityScorer:
                 d = distinct_k(emb_cut[ix], threshold)
                 dists.append(d)
                 fracs.append(d / len(ix))
+                if rarefy_to:
+                    rare.append(rarefied_distinct(emb_cut[ix], threshold, rarefy_to, draws))
             sizes.append(len(ix))
 
         return ConditionDiversity(
@@ -310,5 +341,7 @@ class DiversityScorer:
             vendi_matched=float(np.mean(matched)),
             distinct_mean=float(np.mean(dists)) if dists else float("nan"),
             distinct_frac=float(np.mean(fracs)) if fracs else float("nan"),
+            distinct_rarefied=float(np.mean(rare)) if rare else float("nan"),
             group_size=float(np.mean(sizes)),
+            min_group_size=int(min(sizes)),
         )

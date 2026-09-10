@@ -39,6 +39,11 @@ PASSTHROUGH = [
     ("--temperature", "temperature", False), ("--out", "out", False),
     ("--alpha-sweep", "alpha_sweep", True), ("--gamma-sweep", "gamma_sweep", True),
     ("--offset-rank", "offset_rank", False),
+    ("--task", "task", False),
+    ("--stories", "stories", False),
+    ("--gate", "gate", False),
+    ("--gate-samples", "gate_samples", False),
+    ("--steer-vectors", "steer_vectors", True),
     ("--embedding-model", "embedding_model", False),
     ("--truncate-words", "truncate_words", False),
 ]
@@ -74,6 +79,11 @@ def main() -> None:
     ap.add_argument("--alpha-sweep", nargs="*", type=float, default=None)
     ap.add_argument("--gamma-sweep", nargs="*", type=float, default=None)
     ap.add_argument("--offset-rank", type=int, default=None)
+    ap.add_argument("--task", default=None, choices=[None, "generic", "scenario"])
+    ap.add_argument("--stories", type=int, default=None)
+    ap.add_argument("--gate", default=None)
+    ap.add_argument("--gate-samples", type=int, default=None)
+    ap.add_argument("--steer-vectors", nargs="*", default=None)
     ap.add_argument("--embedding-model", default=None)
     ap.add_argument("--truncate-words", type=int, default=None)
     ap.add_argument("--no-diversity", dest="diversity", action="store_false")

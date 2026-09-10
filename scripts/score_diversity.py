@@ -56,6 +56,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from noiseegra.diversity import (  # noqa: E402
     DiversityScorer,
+    group_by_prompt as _group_by_prompt,
     calibrate_threshold,
     distinct_k,
     group_by_prompt,
@@ -81,7 +82,12 @@ COLUMNS = [
      "the same, after cutting every story to the same first N words"),
     ("distinct_mean", "distinct", "{:.2f}",
      "how many genuinely different stories are in each group, out of the group size"),
-    ("distinct_frac", "of group", "{:.2f}", "the same, as a fraction of the group size"),
+    ("distinct_frac", "of group", "{:.2f}",
+     "the same, as a fraction of the group size -- read it only when the conditions "
+     "kept the same number of stories"),
+    ("distinct_rarefied", "distinct@m", "{:.2f}",
+     "distinct stories when every condition is cut to the same group size, so a "
+     "condition that lost stories is not flattered by having a smaller group"),
     ("plot_vendi", "plot Vendi", "{:.2f}",
      "Vendi over six-slot plot skeletons instead of prose: does the story differ, "
      "not just the wording"),
@@ -376,6 +382,12 @@ def main() -> None:
                          "by --distinct-threshold auto")
     ap.add_argument("--min-group", type=int, default=2,
                     help="prompt groups smaller than this are skipped")
+    ap.add_argument("--rarefy", default="auto",
+                    help="group size every condition is subsampled to for the "
+                         "distinct@m column: 'auto' (the smallest group any condition "
+                         "has left), an integer, or 'off'")
+    ap.add_argument("--rarefy-draws", type=int, default=60,
+                    help="subsamples averaged for distinct@m")
     ap.add_argument("--batch-size", type=int, default=32)
     ap.add_argument("--device", default=None)
     # coherence
@@ -581,17 +593,33 @@ def main() -> None:
             plot_threshold = threshold
         print()
 
+    # ---- rarefaction size, shared by every condition ------------------------ #
+    sizes = [len(ix) for _, st, pi in runs
+             for ix in _group_by_prompt(st, pi, args.min_group)]
+    if str(args.rarefy).lower() in ("off", "none", "0"):
+        rarefy_to = None
+    elif str(args.rarefy).lower() == "auto":
+        rarefy_to = max(2, min(sizes)) if sizes else None
+    else:
+        rarefy_to = int(args.rarefy)
+    if rarefy_to:
+        print(f"distinct@m compares every condition at m = {rarefy_to} stories per "
+              "prompt,\n  the smallest any condition has left, averaged over "
+              f"{args.rarefy_draws} subsamples.\n")
+
     # ---- score every condition ---------------------------------------------- #
     print(rule(" scoring "))
     rows = []
     for name, stories, pidx in runs:
-        res = scorer.score(stories, pidx, threshold=threshold, min_group=args.min_group)
+        res = scorer.score(stories, pidx, threshold=threshold, min_group=args.min_group,
+                           rarefy_to=rarefy_to, draws=args.rarefy_draws)
         row = {
             "run": name, "n": res.n, "groups": res.n_groups,
             "coherent": coherence.get(name, {}).get("pass_rate", float("nan")),
             "mean_words": res.mean_words,
             "vendi_raw": res.vendi_raw, "vendi_matched": res.vendi_matched,
             "distinct_mean": res.distinct_mean, "distinct_frac": res.distinct_frac,
+            "distinct_rarefied": res.distinct_rarefied,
             "plot_vendi": float("nan"), "plot_distinct": float("nan"),
         }
         if name in skeletons:
@@ -613,15 +641,22 @@ def main() -> None:
     checks = [(label, pearson(w, [r[k] for r in rows])) for label, k in [
         ("Vendi", "vendi_raw"), (f"Vendi@{budget}" if budget else "Vendi@N", "vendi_matched"),
         ("distinct", "distinct_mean"), ("of group", "distinct_frac"),
+        (f"distinct@{rarefy_to}" if rarefy_to else "distinct@m", "distinct_rarefied"),
         ("plot Vendi", "plot_vendi"), ("plot distinct", "plot_distinct"),
     ]]
     checks = [(l, v) for l, v in checks if not math.isnan(v)]
 
     keys = [k for k, _, _, _ in COLUMNS
             if not (k in ("plot_vendi", "plot_distinct") and not skeletons)
-            and not (k == "coherent" and not coherence)]
-    headers = {k: (f"Vendi@{budget}" if k == "vendi_matched" and budget else h)
-               for k, h, _, _ in COLUMNS}
+            and not (k == "coherent" and not coherence)
+            and not (k == "distinct_rarefied" and not rarefy_to)]
+    headers = {}
+    for k, h, _, _ in COLUMNS:
+        if k == "vendi_matched" and budget:
+            h = f"Vendi@{budget}"
+        elif k == "distinct_rarefied" and rarefy_to:
+            h = f"distinct@{rarefy_to}"
+        headers[k] = h
     fmts = {k: f for k, _, f, _ in COLUMNS}
     notes = {k: n for k, _, _, n in COLUMNS}
 

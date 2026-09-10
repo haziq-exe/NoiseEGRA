@@ -30,9 +30,9 @@ import torch  # noqa: E402
 from noiseegra import writingprompts as wp  # noqa: E402
 from noiseegra.activation_basis import collect_block_pcs  # noqa: E402
 from noiseegra.constraint_metrics_en import EnglishConstraintChecker  # noqa: E402
-from noiseegra.writingprompts import as_constraint  # noqa: E402
 from noiseegra.defaults import (  # noqa: E402
-    EN_CONSTRAINTS,
+    EN_STEER_VECTORS,
+    EN_TASK_CONSTRAINTS,
     EN_MAX_GRADE_LEVEL,
     EN_MAX_WORDS,
     EN_MODEL_HF_IDS,
@@ -51,10 +51,17 @@ from build_steering_vectors import build_model  # noqa: E402
 from kaggle_orthosteer import generate_one, load_state, save_state  # noqa: E402
 from run_orthosteer_experiment import build_suite  # noqa: E402
 from score_english import (  # noqa: E402
-    LIVE_HEADER, constraint_legend, live_row, score_condition,
+    constraint_legend, live_table, score_condition,
 )
 
 from noiseegra.run_labels import SUBSPACE_MODES, plan_summary  # noqa: E402
+from noiseegra.constraint_metrics_en import (  # noqa: E402
+    DEFAULT_MAX_OPENING_WORDS, DEFAULT_MAX_SENTENCE_WORDS, DEFAULT_MAX_SYLLABLES,
+    DEFAULT_MIN_NAME_USES, DEFAULT_SENTENCE_RANGE,
+)
+from noiseegra.entropy_gate import (  # noqa: E402
+    GATE_LEVELS, collect_decode_entropies, describe as describe_gate, gate_threshold,
+)
 
 EN_PAIRS = Path(__file__).resolve().parents[1] / "noiseegra" / "data" / "steering_pairs_en.json"
 
@@ -125,7 +132,22 @@ def main() -> None:
     ap.add_argument("--dtype", default="auto", choices=["auto", "float16", "bfloat16"])
     ap.add_argument("--suite", nargs="+", default=["compare"],
                     choices=["compare", "method", "noise", "offset", "core", "ortho",
-                             "alpha", "beta", "loo", "all"])
+                             "alpha", "gate", "beta", "loo", "all"])
+    ap.add_argument("--task", default="generic", choices=["generic", "scenario"],
+                    help="'generic' is the published design: one instruction with no "
+                         "scenario, many requirements, and every story in one group, so "
+                         "the measure is how many different stories the model invents. "
+                         "'scenario' draws WritingPrompts scenarios, which supply the "
+                         "content and cap how different the stories can be")
+    ap.add_argument("--stories", type=int, default=100,
+                    help="stories for the generic task, all in one group")
+    ap.add_argument("--gate", default="none", choices=sorted(GATE_LEVELS),
+                    help="entropy gate for every perturbed condition outside --suite "
+                         "gate: 'none' perturbs every decode step, 'median' the more "
+                         "uncertain half, 'high' the most uncertain tenth")
+    ap.add_argument("--gate-samples", type=int, default=6,
+                    help="unsteered generations used to measure the model's own entropy "
+                         "distribution before setting the gate threshold")
     ap.add_argument("--allow-task-change", action="store_true",
                     help="proceed even though the checkpoint was written under different "
                          "constraint thresholds or a different prompt selection")
@@ -135,7 +157,11 @@ def main() -> None:
     ap.add_argument("--with-baseline", action="store_true",
                     help="prepend an unsteered baseline condition to whichever suite is run "
                          "(already included in `compare` and `noise`)")
-    ap.add_argument("--constraints", nargs="*", default=list(EN_CONSTRAINTS))
+    ap.add_argument("--constraints", nargs="*", default=list(EN_TASK_CONSTRAINTS),
+                    help="what the prompt asks for and the scorer checks")
+    ap.add_argument("--steer-vectors", nargs="*", default=list(EN_STEER_VECTORS),
+                    help="which of those steering is applied along; the rest are asked "
+                         "for in the prompt only")
     ap.add_argument("--num-prompts", type=int, default=10)
     ap.add_argument("--stories-per-prompt", type=int, default=5)
     ap.add_argument("--prompt-seed", type=int, default=0)
@@ -182,10 +208,13 @@ def main() -> None:
     # different values would silently mix stories written to different
     # instructions, so the task setup is pinned on first write.
     task = {
+        "task": args.task,
         "constraints": list(args.constraints),
+        "steer_vectors": list(args.steer_vectors),
         "max_words": args.max_words,
         "max_grade": args.max_grade,
-        "num_prompts": args.num_prompts,
+        "num_prompts": args.num_prompts if args.task == "scenario" else 1,
+        "stories": args.stories if args.task == "generic" else args.stories_per_prompt,
         "prompt_seed": args.prompt_seed,
         "prompt_split": args.prompt_split,
         "max_new_tokens": args.max_new_tokens,
@@ -212,18 +241,41 @@ def main() -> None:
     print(f"out         : {out}")
     print(f"resuming    : {sum(len(v) for v in state['runs'].values())} stories already saved\n")
 
-    # ---- prompts (fixed and cached, so a resume reuses exactly the same set) --
-    prompts = state.get("prompts")
-    if not prompts or len(prompts) != args.num_prompts:
-        prompts = wp.load_prompts(
-            args.num_prompts, seed=args.prompt_seed, split=args.prompt_split,
-            cache=out / "prompts.json",
-        )
-        state["prompts"] = prompts
-        save_state(state_path, state)
-    print(f"{len(prompts)} WritingPrompts prompts, e.g.:")
-    for t in prompts[:3]:
-        print(f"   - {t[:110]}{'...' if len(t) > 110 else ''}")
+    # ---- the task -------------------------------------------------------- #
+    # The checker is built first and the prompt is generated from its
+    # `requirements()`, so the sentence the model is given and the rule it is
+    # scored against are the same object. A threshold cannot change in one place
+    # and not the other.
+    checker = EnglishConstraintChecker(
+        max_words=args.max_words, max_grade_level=args.max_grade,
+        constraints=list(args.constraints),
+    )
+
+    if args.task == "generic":
+        prompts = ["<generic instruction>"]
+        messages = [wp.build_generic_messages(checker.requirements(), args.constraints)]
+        stories_per_prompt = args.stories
+        print(f"task: one generic instruction, {len(args.constraints)} requirements, "
+              f"{stories_per_prompt} stories in a single group")
+        print("\n" + messages[0][1]["content"] + "\n")
+    else:
+        prompts = state.get("prompts")
+        if not prompts or len(prompts) != args.num_prompts:
+            prompts = wp.load_prompts(
+                args.num_prompts, seed=args.prompt_seed, split=args.prompt_split,
+                cache=out / "prompts.json",
+            )
+            state["prompts"] = prompts
+            save_state(state_path, state)
+        messages = [
+            wp.build_messages(t, args.constraints,
+                              requirements=checker.requirements())
+            for t in prompts
+        ]
+        stories_per_prompt = args.stories_per_prompt
+        print(f"task: {len(prompts)} WritingPrompts scenarios, e.g.:")
+        for t in prompts[:3]:
+            print(f"   - {t[:110]}{'...' if len(t) > 110 else ''}")
 
     # Loading is deferred: with the steering vectors and the activation scale both
     # cached, a fully generated model needs no weights at all and exits in seconds.
@@ -264,11 +316,11 @@ def main() -> None:
         vectors = SteeringVectorExtractor(get_model()).extract(
             load_pairs(EN_PAIRS), layers,
             system=wp.SYSTEM_PROMPT, user=wp.EXTRACTION_PROMPT,
-            pca_rank=args.pca_rank, only=args.constraints, verbose=False,
+            pca_rank=args.pca_rank, only=args.steer_vectors, verbose=False,
         )
         vectors.save(vec_path)
         print(f"steering vectors: saved to {vec_path.name}")
-    for name in args.constraints:
+    for name in args.steer_vectors:
         cons = [vectors.diagnostics[name][l]["consistency"] for l in layers]
         flag = "" if min(cons) > 0.3 else "   <-- weak, direction may be mostly noise"
         print(f"  {name:<16} agreement across pairs: {min(cons):.2f}-{max(cons):.2f}{flag}")
@@ -277,11 +329,7 @@ def main() -> None:
     cal_key = f"{args.model}|{lo}-{hi}"
     if cal_key not in state["rms_scale"]:
         print("\ncalibrating activation scale ...")
-        rms = RMSCalibrator(get_model()).collect_block_rms(
-            wp.build_messages(prompts[0], args.constraints,
-                              max_words=args.max_words, max_grade=args.max_grade),
-            layers=layers,
-        )
+        rms = RMSCalibrator(get_model()).collect_block_rms(messages[0], layers=layers)
         state["rms_scale"][cal_key] = float(np.median(list(rms.values())))
         save_state(state_path, state)
     rms_scale = state["rms_scale"][cal_key]
@@ -300,7 +348,8 @@ def main() -> None:
 
     # ---- directions a per-story offset is allowed to use -------------------- #
     args.offset_basis = None
-    suites_req = ["core", "ortho", "alpha", "beta", "loo"] if "all" in args.suite else args.suite
+    suites_req = (["core", "ortho", "alpha", "gate", "beta", "loo"]
+                  if "all" in args.suite else args.suite)
     if "offset" in suites_req:
         pc_path = out / f"actpcs_{args.model}.pt"
         if pc_path.is_file():
@@ -310,20 +359,56 @@ def main() -> None:
             print("activation basis: estimating principal components (once) ...")
             args.offset_basis = collect_block_pcs(
                 get_model(),
-                [wp.build_messages(t, args.constraints, max_words=args.max_words,
-                                   max_grade=args.max_grade) for t in prompts[:4]],
+                messages[:4],
                 layers, rank=args.offset_rank,
             )
             torch.save(args.offset_basis, pc_path)
             print(f"activation basis: saved to {pc_path.name}")
 
+    # ---- entropy gate threshold, measured once per model ------------------- #
+    # In nats, and nats are not comparable across models or tokenisers, so the
+    # threshold is a quantile of this model's own decode entropy -- the same
+    # reasoning as calibrating the noise scale to the model's own block RMS.
+    # Measured unsteered, so it describes the model and not the condition.
+    args.gate_thresholds = {"none": 0.0}
+    if "gate" in suites_req or args.gate != "none":
+        gate_key = f"{args.model}|{lo}-{hi}"
+        store = state.setdefault("entropy", {})
+        if gate_key not in store:
+            print("\nmeasuring the model's own decode entropy ...", flush=True)
+            ent = collect_decode_entropies(
+                get_model(), messages[0], n_samples=args.gate_samples,
+                max_new_tokens=args.max_new_tokens, temperature=args.temperature,
+            )
+            store[gate_key] = {
+                "n_steps": len(ent),
+                "quantiles": {lv: gate_threshold(ent, lv) for lv in GATE_LEVELS},
+            }
+            save_state(state_path, state)
+        rec = store[gate_key]
+        args.gate_thresholds.update(rec["quantiles"])
+        print(f"decode entropy over {rec['n_steps']} unsteered steps: "
+              + ", ".join(f"{lv} gate at {v:.3f} nats" for lv, v in
+                          sorted(rec["quantiles"].items()) if v))
+
     # ---- conditions -------------------------------------------------------- #
     suites = suites_req
     items = ["baseline"] if args.with_baseline else []
     for suite in suites:
-        built, desc = build_suite(suite, vectors, layers, args.constraints, rms_scale, args)
+        built, desc = build_suite(suite, vectors, layers, args.steer_vectors, rms_scale, args)
         items.extend(built)
         print(f"  suite {suite}: {desc} ({len(built)} runs)")
+
+    # A gate asked for on the command line applies to every condition that
+    # actually perturbs. --suite gate sets its own per-arm gates and is left alone.
+    if args.gate != "none":
+        thr = args.gate_thresholds.get(args.gate, 0.0)
+        for it in items:
+            plan = it.get("plan") if isinstance(it, dict) else None
+            if plan is not None and (plan.noise_alpha > 0 or plan.offset_gamma > 0):
+                plan.gate_threshold = thr
+                plan.gate_level = args.gate
+        print(f"  {describe_gate(args.gate, thr)}")
 
     normalised = []
     for it in items:
@@ -343,16 +428,11 @@ def main() -> None:
         run_ids.append(rid)
         state["runs"].setdefault(rid, {})
 
-    P, K = len(prompts), args.stories_per_prompt
+    P, K = len(prompts), stories_per_prompt
     total = len(specs) * P * K
     print(f"\n{len(specs)} conditions x {P} prompts x {K} stories = {total} generations")
     for rid in run_ids:
         print(f"  [{len(state['runs'][rid]):>4}/{P * K}] {rid}")
-
-    messages = [
-        wp.build_messages(t, args.constraints, max_words=args.max_words, max_grade=args.max_grade)
-        for t in prompts
-    ]
 
     remaining = sum(
         1 for rid in run_ids for k in range(K) for p_idx in range(P)
@@ -362,10 +442,6 @@ def main() -> None:
 
     # Conditions run one at a time and are scored the moment they finish, so the
     # sweep produces readable results as it goes instead of only at the end.
-    checker = EnglishConstraintChecker(
-        max_words=args.max_words, max_grade_level=args.max_grade,
-        constraints=[as_constraint(c) for c in args.constraints],
-    )
     scorer = None
     if args.diversity:
         from noiseegra.creativity_metrics import CreativityScorer
@@ -380,8 +456,9 @@ def main() -> None:
     started = done
     rows = []
 
-    print("\n" + LIVE_HEADER)
-    print("-" * len(LIVE_HEADER), flush=True)
+    live_header, live_row = live_table(checker.constraints, args.diversity)
+    print("\n" + live_header)
+    print("-" * len(live_header), flush=True)
 
     for spec, rid in zip(specs, run_ids):
         missing = [(p_idx, k) for k in range(K) for p_idx in range(P)
@@ -410,18 +487,18 @@ def main() -> None:
         write_csvs(out, state)
         print(live_row(condition_label(spec), row), flush=True)
 
-    print("\n" + "=" * len(LIVE_HEADER))
-    print(f"  {args.model}: {P} prompts x {K} stories per condition")
+    print("\n" + "=" * len(live_header))
+    print(f"  {args.model}: {P} prompt{'s' if P != 1 else ''} x {K} stories per condition")
     for line in plan_summary([r["run"] for r in rows]):
         print(f"  {line}")
     print("  perturbation magnitudes are multiples of the model's own activation scale")
-    print("=" * len(LIVE_HEADER))
-    print(LIVE_HEADER)
-    print("-" * len(LIVE_HEADER))
+    print("=" * len(live_header))
+    print(live_header)
+    print("-" * len(live_header))
     for spec, row in zip(specs, rows):
         print(live_row(condition_label(spec), row))
-    print("\nwhat has to be true for a story to pass")
-    for line in constraint_legend(args.max_words, args.max_grade, 0.8):
+    print("\nwhat each requirement column means, and what a story has to do to pass it")
+    for line in constraint_legend(checker):
         print("  " + line)
 
     summary = out / "live_scores.csv"

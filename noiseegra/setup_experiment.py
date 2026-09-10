@@ -178,6 +178,8 @@ def _ortho_tag(model_name: str, spec: ExperimentSpec) -> str:
     ]
     if getattr(plan, "offset_gamma", 0) and plan.offset_mode != "none":
         parts.append(f"__g{_float_tag(plan.offset_gamma)}{plan.offset_mode}")
+    if getattr(plan, "gate_level", "none") not in ("none", None):
+        parts.append(f"__gate{plan.gate_level}")
     schedules = [s.schedule for s in plan.specs]
     if any(sc != "constant" for sc in schedules):
         parts.append("__sch" + "-".join(_SCHEDULE_CODE.get(sc, sc[:1]) for sc in schedules))

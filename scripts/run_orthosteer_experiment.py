@@ -82,6 +82,8 @@ def make_plan(
     offset_gamma=0.0,
     offset_mode="none",
     offset_basis=None,
+    gate_threshold=0.0,
+    gate_level="none",
 ) -> SteeringPlan:
     schedules = schedules or DEFAULT_SCHEDULES
     betas = beta if isinstance(beta, dict) else {n: float(beta) for n in names}
@@ -106,6 +108,8 @@ def make_plan(
         offset_gamma=offset_gamma,
         offset_mode=offset_mode,
         offset_basis=offset_basis,
+        gate_threshold=gate_threshold,
+        gate_level=gate_level,
     )
 
 
@@ -186,6 +190,29 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         ]
         return items, "orthogonalisation of the steering vectors: none / GS / Loewdin"
 
+    if name == "gate":
+        # Where the perturbation lands, at one fixed magnitude. The steering runs
+        # at every step in all three arms, so the only thing that changes is which
+        # decode steps the perturbation is allowed through at:
+        #
+        #   none    every step, which is what every run so far has done
+        #   median  the more uncertain half of steps
+        #   high    only the most uncertain tenth
+        #
+        # A low-entropy step is one where the model is finishing a word or
+        # agreeing a verb: perturbing there costs grammar and buys no variety.
+        gates = getattr(args, "gate_thresholds", {}) or {}
+        items = [{"plan": make_plan(beta=args.beta, noise_mode="none", noise_alpha=0.0,
+                                    noise_schedule="constant", **common)}]
+        for level in ("none", "median", "high"):
+            items.append({"plan": make_plan(
+                beta=args.beta, noise_mode="orth", noise_alpha=args.alpha,
+                noise_schedule="constant",
+                gate_threshold=gates.get(level, 0.0),
+                gate_level=level, **common)})
+        return items, (f"entropy-gate sweep at a={args.alpha:g}: no gate, the more "
+                       "uncertain half of steps, the most uncertain tenth")
+
     if name == "alpha":
         # Perturbation-magnitude sweep at fixed steering strength, run twice: once
         # with the perturbation redrawn every token, once with a single draw held
@@ -240,7 +267,7 @@ def main() -> None:
     ap.add_argument("--vectors", help="path to the .pt from build_steering_vectors.py")
     ap.add_argument("--layers", nargs=2, type=int, metavar=("LO", "HI"))
     ap.add_argument("--suite", nargs="+", default=["core"],
-                    choices=["compare", "method", "noise", "offset", "core", "ortho", "alpha", "beta",
+                    choices=["compare", "method", "noise", "offset", "core", "ortho", "alpha", "gate", "beta",
                              "loo", "all"])
     ap.add_argument("--with-baseline", action="store_true",
                     help="prepend an unsteered baseline condition to whichever suite is run "

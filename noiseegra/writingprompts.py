@@ -169,19 +169,75 @@ def build_messages(
     prompt: str,
     constraints: Sequence[str],
     *,
-    max_words: int = 150,
-    max_grade: float = 6.0,
+    requirements: Optional[Dict[str, str]] = None,
+    max_words: int = 60,
+    max_grade: float = 3.0,
     system: str = SYSTEM_PROMPT,
+) -> List[Dict[str, str]]:
+    """A scenario prompt with its requirement list.
+
+    Pass ``requirements`` -- normally ``EnglishConstraintChecker.requirements()``
+    -- so the sentence the model is given comes from the same object that scores
+    it. Without it, the four original constraints are described from
+    ``CONSTRAINT_TEXT``, which is what the earlier four-constraint runs used.
+    """
+    if requirements is not None:
+        block = requirement_block(requirements, constraints)
+    else:
+        block = constraint_block(constraints, max_words=max_words, max_grade=max_grade)
+    return [
+        {"role": "system", "content": system},
+        {"role": "user",
+         "content": INSTRUCTION.format(prompt=prompt.strip(), constraints=block)},
+    ]
+
+
+# --------------------------------------------------------------------------- #
+#  Generic task: one prompt, no scenario                                       #
+# --------------------------------------------------------------------------- #
+#
+# The published Arabic study used a single generic instruction carrying a long
+# list of requirements, and measured how many different stories the model invents
+# from it. A WritingPrompts scenario is a different question: it supplies the
+# content, so the stories are anchored to it and the diversity ceiling is set by
+# the prompt rather than the model. It also caps the measurement -- distinct-k
+# cannot exceed the number of stories per prompt, so ten stories per scenario
+# leaves almost no room above a baseline of three.
+#
+# This task reproduces the original design in English: one instruction, no
+# scenario, many requirements, and as many stories as you care to generate in a
+# single group.
+
+GENERIC_SYSTEM = (
+    "You write short reading passages for young children learning to read."
+)
+
+GENERIC_INSTRUCTION = (
+    "Write one short story for a young child to read.\n\n"
+    "The story must satisfy every one of these requirements:\n"
+    "{constraints}\n\n"
+    "Write only the story itself: no title, heading, preamble or commentary."
+)
+
+
+def requirement_block(requirements: Dict[str, str], order: Sequence[str]) -> str:
+    """The requirement list exactly as the checker will score it.
+
+    Built from ``EnglishConstraintChecker.requirements()`` rather than written out
+    separately, so the prompt and the scorer cannot drift apart: if a threshold
+    changes, the sentence the model is given changes with it.
+    """
+    return "\n".join(f"- {requirements[name]}" for name in order if name in requirements)
+
+
+def build_generic_messages(
+    requirements: Dict[str, str],
+    order: Sequence[str],
+    *,
+    system: str = GENERIC_SYSTEM,
 ) -> List[Dict[str, str]]:
     return [
         {"role": "system", "content": system},
-        {
-            "role": "user",
-            "content": INSTRUCTION.format(
-                prompt=prompt.strip(),
-                constraints=constraint_block(
-                    constraints, max_words=max_words, max_grade=max_grade
-                ),
-            ),
-        },
+        {"role": "user", "content": GENERIC_INSTRUCTION.format(
+            constraints=requirement_block(requirements, order))},
     ]

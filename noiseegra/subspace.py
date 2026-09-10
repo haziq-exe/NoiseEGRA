@@ -313,6 +313,12 @@ class SteeringPlan:
     noise_schedule: str
     offset_gamma: float = 0.0
     offset_mode: str = "none"
+    # Entropy gate: the perturbation is applied only at decode steps where the
+    # model's own next-token distribution was at least this uncertain, in nats.
+    # 0.0 means every step, which is the ungated behaviour. ``gate_level`` is the
+    # name the threshold was derived from, kept for the run id.
+    gate_threshold: float = 0.0
+    gate_level: str = "none"
     horizon: int = 200
     steer_prefill: bool = False
     protect_rank: int = 0
@@ -335,6 +341,8 @@ class SteeringPlan:
         offset_gamma: float = 0.0,
         offset_mode: str = "none",
         offset_basis: Optional[Mapping[int, torch.Tensor]] = None,
+        gate_threshold: float = 0.0,
+        gate_level: str = "none",
         horizon: int = 200,
         steer_prefill: bool = False,
         protect_extra: Optional[Mapping[int, torch.Tensor]] = None,
@@ -425,6 +433,8 @@ class SteeringPlan:
             noise_schedule=noise_schedule,
             offset_gamma=float(offset_gamma),
             offset_mode=offset_mode,
+            gate_threshold=float(gate_threshold),
+            gate_level=gate_level,
             horizon=int(horizon),
             steer_prefill=bool(steer_prefill),
             protect_rank=protect_rank,
@@ -478,6 +488,7 @@ class SteeringPlan:
         *,
         horizon: Optional[int] = None,
         with_noise: bool = True,
+        with_offset: bool = True,
         device: Optional[torch.device] = None,
     ) -> Optional[torch.Tensor]:
         """Full (dim,) perturbation for ``layer`` at decode step ``t``.
@@ -503,7 +514,10 @@ class SteeringPlan:
         h = self.horizon if horizon is None else horizon
         delta = lp.steering_delta(t, h, self.specs, self.rms_scale)
 
-        if lp.offset is not None:
+        # The per-story offset is a perturbation, so it is gated with the noise
+        # rather than with the steering: prefill never sees it, and an entropy
+        # gate closes on both together.
+        if with_offset and lp.offset is not None:
             delta = lp.offset if delta is None else delta + lp.offset
 
         if with_noise and self.noise_mode != "none" and self.noise_alpha > 0:

@@ -636,6 +636,21 @@ class EGRA:
         # per model forward call, not per layer.
         shared = {"forward_calls": 0, "t": 0, "cur_t": 0, "is_prefill": True}
 
+        # Entropy gate. The probe records the entropy of each step's next-token
+        # distribution *after* the forward pass the hooks live in, so at step t the
+        # hooks read the value from step t-1: "was the model uncertain about the
+        # token it just emitted". Starts at +inf so the first steps are never
+        # blocked for want of a measurement.
+        gate_threshold = float(getattr(plan, "gate_threshold", 0.0) or 0.0)
+        entropy_state = {"entropy": float("inf"), "history": [], "open": 0, "steps": 0}
+        processors = None
+        if gate_threshold > 0:
+            from transformers import LogitsProcessorList
+
+            from .entropy_gate import EntropyProbe
+
+            processors = LogitsProcessorList([EntropyProbe(entropy_state)])
+
         try:
             def model_pre_hook(module, inp):
                 shared["forward_calls"] += 1
@@ -667,21 +682,32 @@ class EGRA:
 
                     with torch.no_grad():
                         if shared["is_prefill"]:
-                            # Noise never touches the prompt (paper convention).
-                            # Steering optionally does, CAA-style, across all
-                            # prompt positions.
+                            # Perturbation never touches the prompt (paper
+                            # convention). Steering optionally does, CAA-style,
+                            # across all prompt positions.
                             if not plan.steer_prefill:
                                 return None
                             delta = plan.delta_for(
-                                layer_idx, 0, with_noise=False, device=target.device
+                                layer_idx, 0, with_noise=False, with_offset=False,
+                                device=target.device,
                             )
                             if delta is None:
                                 return None
                             target.add_(delta.to(target.dtype).view(1, 1, -1))
                             return None
 
+                        # Gate the perturbation, never the steering: a gate sweep
+                        # has to change where the perturbation lands without
+                        # changing the constraint pressure.
+                        gate_open = (gate_threshold <= 0
+                                     or entropy_state["entropy"] >= gate_threshold)
+                        if layer_idx == normalized_layers[0]:
+                            entropy_state["steps"] += 1
+                            entropy_state["open"] += int(gate_open)
+
                         delta = plan.delta_for(
-                            layer_idx, shared["cur_t"], with_noise=True, device=target.device
+                            layer_idx, shared["cur_t"], with_noise=gate_open,
+                            with_offset=gate_open, device=target.device,
                         )
                         if delta is None:
                             return None
@@ -693,15 +719,13 @@ class EGRA:
             for layer_idx in normalized_layers:
                 handles.append(blocks[layer_idx].register_forward_hook(make_hook(layer_idx)))
 
+            gen_kwargs = self._sampling_kwargs(
+                do_sample=do_sample, temperature=temperature, top_p=top_p, top_k=top_k
+            )
+            if processors is not None:
+                gen_kwargs["logits_processor"] = processors
             outputs = self.model.generate(
-                **inputs,
-                max_new_tokens=max_new_tokens,
-                **self._sampling_kwargs(
-                    do_sample=do_sample,
-                    temperature=temperature,
-                    top_p=top_p,
-                    top_k=top_k,
-                ),
+                **inputs, max_new_tokens=max_new_tokens, **gen_kwargs
             )
 
         finally:
@@ -717,7 +741,12 @@ class EGRA:
                     pass
 
         generated_ids = outputs[0][input_ids.shape[-1]:]
-        return self.tokenizer.decode(generated_ids, skip_special_tokens=True)
+        text = self.tokenizer.decode(generated_ids, skip_special_tokens=True)
+        if gate_threshold > 0 and entropy_state["steps"]:
+            self.last_gate_rate = entropy_state["open"] / entropy_state["steps"]
+        else:
+            self.last_gate_rate = 1.0
+        return text
 
     @torch.no_grad()
     def generate_with_entropy_noise(
