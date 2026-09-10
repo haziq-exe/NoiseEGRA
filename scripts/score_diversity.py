@@ -46,11 +46,9 @@ from __future__ import annotations
 import argparse
 import csv
 import math
-import re
 import statistics
 import sys
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 
@@ -65,21 +63,68 @@ from noiseegra.diversity import (  # noqa: E402
     vendi_from_embeddings,
     word_count,
 )
-from noiseegra.embeddings import DEFAULT_EMBEDDING_MODEL, EMBEDDING_MODELS, describe  # noqa: E402
+from noiseegra.embeddings import (  # noqa: E402
+    DEFAULT_EMBEDDING_MODEL, EMBEDDING_MODELS, describe, resolve_embedding_model,
+)
+from noiseegra.run_labels import label_from_run_id, label_run, plan_summary  # noqa: E402
 
+# key, header, format, one-line explanation printed under the table
 COLUMNS = [
-    ("run", "Run", "{}"),
-    ("n", "N", "{}"),
-    ("groups", "Grp", "{}"),
-    ("coherent", "Coh", "{:.0%}"),
-    ("mean_words", "Words", "{:.0f}"),
-    ("vendi_raw", "Vendi", "{:.2f}"),
-    ("vendi_matched", "Vendi@N", "{:.2f}"),
-    ("distinct_mean", "Distinct", "{:.2f}"),
-    ("distinct_frac", "Dist/k", "{:.2f}"),
-    ("plot_vendi", "PlotVendi", "{:.2f}"),
-    ("plot_distinct", "PlotDist", "{:.2f}"),
+    ("run", "condition", "{}", ""),
+    ("n", "stories", "{}", "how many stories went into the scores on this row"),
+    ("groups", "prompts", "{}", "how many prompts they were spread over"),
+    ("coherent", "coherent", "{:.0%}", "share of stories that passed the coherence checks"),
+    ("mean_words", "words", "{:.0f}", "mean story length"),
+    ("vendi_raw", "Vendi", "{:.2f}",
+     "effective number of distinct stories per prompt, over the full text"),
+    ("vendi_matched", "Vendi@N", "{:.2f}",
+     "the same, after cutting every story to the same first N words"),
+    ("distinct_mean", "distinct", "{:.2f}",
+     "how many genuinely different stories are in each group, out of the group size"),
+    ("distinct_frac", "of group", "{:.2f}", "the same, as a fraction of the group size"),
+    ("plot_vendi", "plot Vendi", "{:.2f}",
+     "Vendi over six-slot plot skeletons instead of prose: does the story differ, "
+     "not just the wording"),
+    ("plot_distinct", "plot distinct", "{:.2f}", "distinct classes over those skeletons"),
 ]
+
+# Coherence reasons, spelled out for the table.
+REASON_TEXT = {
+    "too_short": "too short",
+    "repetition": "repetition loop",
+    "junk_chars": "junk characters",
+    "nonlexical": "non-words",
+    "no_function_words": "no function words",
+    "run_on": "no sentence breaks",
+    "dangling_end": "ends mid-sentence",
+    "incoherent": "unrelated sentences",
+    "high_perplexity": "high perplexity",
+    "garbage_tail": "garbage at the end",
+}
+
+
+def rule(text: str = "", width: int = 78) -> str:
+    return text.center(width, "=") if text else "=" * width
+
+
+def render_table(rows, keys, headers, fmts, sep="  ", left=("run", "condition", "why")):
+    """Plain aligned columns; text columns left-justified, numbers right."""
+    cells = [[headers[k] for k in keys]]
+    for r in rows:
+        line = []
+        for k in keys:
+            v = r[k]
+            line.append("--" if isinstance(v, float) and v != v else fmts[k].format(v))
+        cells.append(line)
+    widths = [max(len(row[i]) for row in cells) for i in range(len(keys))]
+    out = []
+    for n, row in enumerate(cells):
+        parts = [c.ljust(w) if k in left else c.rjust(w)
+                 for c, w, k in zip(row, widths, keys)]
+        out.append(sep.join(parts).rstrip())
+        if n == 0:
+            out.append("-" * len(out[0]))
+    return out
 
 
 def pearson(a, b):
@@ -98,46 +143,13 @@ def pearson(a, b):
 
 
 
-_A_TAG = re.compile(r"__nz(?P<mode>[a-z]+)__a(?P<val>[0-9pm]+)")
-_G_TAG = re.compile(r"__g(?P<val>[0-9pm]+)(?P<mode>[a-z]+)")
-
-
-def _untag_float(tag: str) -> float:
-    """Inverse of the run id float encoding: '0p4' -> 0.4, 'm1' -> -1.0."""
-    try:
-        return float(tag.replace("p", ".").replace("m", "-"))
-    except ValueError:
-        return 0.0
-
-
-def label_from_run_id(run_id: str) -> Optional[str]:
-    """Recover a readable condition name from a run id.
-
-    The run id encodes the whole plan, so the label the runner would have printed
-    can be read back out of it. This is the fallback for a directory with no
-    ``live_scores.csv`` -- an interrupted run, or one scored before it finished.
-    Kept in step with ``condition_label`` in ``run_english_experiment.py``.
-    """
-    if "__ORTHO" not in run_id:
-        return "baseline" if "BASELINE" in run_id.upper() else None
-    g = _G_TAG.search(run_id)
-    if g and g.group("mode") != "none" and _untag_float(g.group("val")) > 0:
-        return f"per-story offset g={_untag_float(g.group('val')):g} ({g.group('mode')})"
-    a = _A_TAG.search(run_id)
-    if a and a.group("mode") != "none" and _untag_float(a.group("val")) > 0:
-        return f"per-token noise a={_untag_float(a.group('val')):g}"
-    return "steer only"
-
-
 def _load_labels(paths) -> dict:
-    """Map run id to a human-readable condition name.
+    """Map run id to a readable condition name.
 
     ``run_english_experiment.py`` writes ``live_scores.csv`` next to the story
-    CSVs with a ``run,label`` pair per condition, but only once the whole sweep
-    finishes, so a resumed or interrupted run has none. Anything the file does not
-    cover is recovered from the run id itself. Without either, the only name a
-    condition has is a hyperparameter string nobody can read and nothing can match
-    ``--coherence-reference`` against.
+    CSVs with a ``run,label`` pair per condition, but only once a whole sweep
+    finishes, so a resumed or interrupted run has none. Anything that file does
+    not cover is read back out of the run id itself.
     """
     labels: dict = {}
     for d in {p.parent for p in paths}:
@@ -201,13 +213,15 @@ def _apply_coherence(runs, args, scorer=None):
                     f"--coherence-reference {args.coherence_reference!r} matches no "
                     f"condition. Available: {', '.join(sorted(values_by_run))}"
                 )
-            name = f"{args.coherence_reference} ({len(picks)} conditions)"
+            name = (picks[0] if len(picks) == 1
+                    else f"{len(picks)} conditions matching {args.coherence_reference!r}")
             pool = [v for n in picks for v in values_by_run[n]]
         else:
             name = f"all {len(values_by_run)} conditions pooled"
             pool = [v for vs in values_by_run.values() for v in vs]
         ref = nll_reference(pool)
-        print(f"  {label} reference: {name}, median {ref[0]:.3f}, scale {ref[1]:.3f}")
+        print(f"  {label} judged against: {name} (median {ref[0]:.3f}, "
+              f"spread {ref[1]:.3f})")
         if ref[1] <= 1e-9:
             print(f"  WARNING: the {label} reference has no spread, so that check is "
                   "disabled.")
@@ -250,23 +264,31 @@ def _apply_coherence(runs, args, scorer=None):
             print(f"  [warn] {name}: every story failed the coherence checks, "
                   "dropping the condition")
 
-    reasons = sorted({k for v in summary.values() for k in v
-                      if k not in ("n", "kept", "pass_rate", "trimmed", "trimmed_words")})
-    width = max(len(n) for n in summary)
-    print("\ncoherence:")
-    print("  " + f"{'condition':<{width}}{'N':>6}{'kept':>6}{'trim':>6}"
-          + "".join(f"{r:>18}" for r in reasons))
+    skip = ("n", "kept", "pass_rate", "trimmed", "trimmed_words")
+    rows = []
     for name, v in summary.items():
-        print("  " + f"{name:<{width}}{v['n']:>6.0f}{v['kept']:>6.0f}{v['trimmed']:>6.0f}"
-              + "".join(f"{v.get(r, 0.0):>18.0f}" for r in reasons))
+        why = ", ".join(f"{REASON_TEXT.get(k, k)} {int(v[k])}"
+                        for k in sorted(v, key=lambda k: -v[k]) if k not in skip)
+        rows.append({"condition": name, "stories": int(v["n"]), "kept": v["pass_rate"],
+                     "trimmed": int(v["trimmed"]), "why": why or "-"})
+    keys = ["condition", "stories", "kept", "trimmed", "why"]
+    heads = {"condition": "condition", "stories": "stories", "kept": "kept",
+             "trimmed": "tails trimmed", "why": "why the rest were rejected"}
+    fmts = {"condition": "{}", "stories": "{}", "kept": "{:.0%}", "trimmed": "{}",
+            "why": "{}"}
+    print("\n" + rule(" coherence "))
+    for line in render_table(rows, keys, heads, fmts):
+        print("  " + line)
+    print("    kept                       stories that passed every check")
+    print("    tails trimmed              stories whose trailing markup or "
+          "commentary was stripped, then kept")
 
     rates = [v["pass_rate"] for v in summary.values()]
     if args.drop_incoherent and rates and (max(rates) - min(rates)) > 0.1:
-        print(f"  WARNING: coherence pass rates range from {min(rates):.0%} to "
-              f"{max(rates):.0%}. Dropping stories leaves the conditions with "
-              "different sample sizes and different selection, so the diversity "
-              "columns below are not a like-for-like comparison. The pass rate "
-              "itself is the more honest headline here.")
+        print(f"\n  WARNING: pass rates range from {min(rates):.0%} to {max(rates):.0%}.")
+        print("  Dropping stories leaves the conditions with different sample sizes and")
+        print("  different selection, so the diversity table below is not a like-for-like")
+        print("  comparison. The pass rate itself is the more honest headline here.")
     print()
     return out_runs, summary
 
@@ -321,9 +343,10 @@ def _threshold_diagnostics(scorer, runs, budget, threshold, indent="  ") -> None
         return
     w = np.asarray(within)
     merged = float((w >= threshold).mean())
-    print(f"{indent}within-prompt similarity: median {np.median(w):.3f}, "
-          f"90th {np.percentile(w, 90):.3f}, max {w.max():.3f}")
-    print(f"{indent}{merged:.1%} of within-prompt pairs sit above the cut-off")
+    print(f"{indent}Stories answering the same prompt are {np.median(w):.3f} alike on "
+          f"average (90th percentile {np.percentile(w, 90):.3f}, most alike "
+          f"{w.max():.3f}).")
+    print(f"{indent}{merged:.1%} of them sit above the cut-off and will be merged.")
     if merged < 0.005:
         print(f"{indent}WARNING: almost nothing merges, so distinct-k will just report "
               "the group size. Lower --distinct-percentile or set --distinct-threshold.")
@@ -422,7 +445,7 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     labels = _load_labels(paths)
-    runs, seen = [], {}
+    runs, seen, order = [], {}, {}
     for path in paths:
         stories, pidx = read_run_csv(path)
         if len(stories) < args.min_group:
@@ -431,14 +454,18 @@ def main() -> None:
         if name in seen:  # two conditions sharing a label: keep them apart
             name = f"{name} [{path.stem[-12:]}]"
         seen[name] = path.stem
+        order[name] = label_run(path.stem).sort_key
         runs.append((name, stories, pidx))
     if not runs:
         raise SystemExit("no run CSVs with enough stories")
+    runs.sort(key=lambda r: order[r[0]])
 
-    print(f"embedding model: {describe(args.embedding_model)}")
-    if labels:
-        print(f"condition names resolved for {len(labels)} of {len(paths)} runs")
-    print(f"{len(runs)} conditions, {sum(len(s) for _, s, _ in runs)} stories\n")
+    print(rule())
+    print(f"  {len(runs)} conditions, {sum(len(s) for _, s, _ in runs)} stories")
+    for line in plan_summary([seen[n] for n, _, _ in runs]):
+        print(f"  {line}")
+    print(f"  embeddings: {resolve_embedding_model(args.embedding_model)}")
+    print(rule() + "\n")
 
     # Checked before anything downloads a model: this run takes minutes to reach
     # the point where the reference is used, and failing there wastes all of it.
@@ -464,7 +491,9 @@ def main() -> None:
         budget = int(args.truncate_words)
     if budget:
         short = min(mean_words, key=mean_words.get)
-        print(f"length-matched at N = {budget} words (mean of the shortest condition, {short})")
+        print(f"Length matching: every story cut to its first {budget} words for the "
+              f"Vendi@{budget} column.")
+        print(f"  {budget} is the mean length of the shortest condition, {short}.\n")
 
     scorer = DiversityScorer(
         args.embedding_model, truncate_to=budget, device=args.device, batch_size=args.batch_size
@@ -483,10 +512,14 @@ def main() -> None:
             )
         # Trimming changes word counts, so the length budget is recomputed.
         if budget and str(args.truncate_words).lower() == "auto":
-            budget = int(round(min(statistics.mean(word_count(s) for s in st)
-                                   for _, st, _ in runs)))
-            scorer.truncate_to = budget
-            print(f"length-matched budget after trimming: N = {budget} words\n")
+            after = int(round(min(statistics.mean(word_count(s) for s in st)
+                                  for _, st, _ in runs)))
+            if after != budget:
+                budget = after
+                scorer.truncate_to = budget
+                print(f"\n  Trimming changed the shortest condition, so the length-"
+                      f"matched budget is now {budget} words.")
+            print()
 
     # ---- distinct-k threshold, calibrated once and shared ------------------- #
     if str(args.distinct_threshold).lower() == "auto":
@@ -495,13 +528,18 @@ def main() -> None:
             print("cannot calibrate a distinct-k threshold from this input; "
                   "pass --distinct-threshold explicitly")
         else:
-            print(f"calibrated on {basis}")
-            print(f"distinct-k threshold = {threshold:.4f} "
-                  f"({args.distinct_percentile:.0f}th percentile of cross-prompt similarity)")
+            print(rule(" when are two stories the same story "))
+            print(f"  Two stories count as the same above cosine similarity "
+                  f"{threshold:.4f}.")
+            print(f"  That cut-off is the {args.distinct_percentile:.0f}th percentile of "
+                  f"{basis} -- pairs\n  that are known to be different stories, so a pair "
+                  "only merges if it is more\n  alike than almost every known-different "
+                  "pair.")
             _threshold_diagnostics(scorer, runs, budget, threshold)
     else:
         threshold = float(args.distinct_threshold)
-        print(f"distinct-k threshold = {threshold:.4f} (fixed)")
+        print(f"Two stories count as the same above cosine similarity {threshold:.4f} "
+              "(fixed).")
     print()
 
     # ---- plot skeletons ----------------------------------------------------- #
@@ -518,11 +556,14 @@ def main() -> None:
             extractor = SpacyPlotExtractor(args.plot_spacy_model)
         cache = PlotCache(Path(args.plot_cache) if args.plot_cache
                           else out_dir / "plot_skeletons.json")
-        print(f"extracting plot skeletons with {extractor.tag}")
+        print(rule(" plot skeletons "))
+        print(f"  Reducing each story to setting, protagonist, goal, obstacle, turning "
+              f"point\n  and resolution with {extractor.tag}, then measuring diversity "
+              "over those.")
         for name, st, _ in runs:
             skels = extract_skeletons(st, extractor, cache)
             skeletons[name] = [skeleton_text(s) for s in skels]
-            print(f"  [ok] {name}: {len(skels)} skeletons")
+            print(f"  {len(skels):>4} skeletons: {name}", flush=True)
         # Skeletons are short, uniform and share a field scaffold, so they sit in a
         # much narrower similarity range than prose. Reusing the prose cut-off here
         # would merge everything, so calibrate a second one on the skeletons.
@@ -532,8 +573,8 @@ def main() -> None:
                 scorer, plot_runs, args.distinct_percentile, None
             )
             if not math.isnan(plot_threshold):
-                print(f"plot distinct-k threshold = {plot_threshold:.4f} "
-                      f"(calibrated on {plot_basis})")
+                print(f"  Two skeletons count as the same above similarity "
+                      f"{plot_threshold:.4f}, calibrated on {plot_basis}.")
                 _threshold_diagnostics(scorer, plot_runs, None, plot_threshold,
                                        indent="  plot ")
         else:
@@ -541,6 +582,7 @@ def main() -> None:
         print()
 
     # ---- score every condition ---------------------------------------------- #
+    print(rule(" scoring "))
     rows = []
     for name, stories, pidx in runs:
         res = scorer.score(stories, pidx, threshold=threshold, min_group=args.min_group)
@@ -562,49 +604,72 @@ def main() -> None:
                 ds = [distinct_k(emb[ix], plot_threshold) for ix in groups]
                 row["plot_distinct"] = float(np.mean(ds)) if ds else float("nan")
         rows.append(row)
-        print(f"[ok] {name}: words={row['mean_words']:.0f} vendi={row['vendi_raw']:.2f} "
-              f"vendi@N={row['vendi_matched']:.2f} distinct={row['distinct_mean']:.2f}")
+        print(f"  scored {name}", flush=True)
 
-    rows.sort(key=lambda r: r["run"])
+    # already sorted by family and magnitude when the runs were read
 
     # ---- length-sensitivity check ------------------------------------------- #
     w = [r["mean_words"] for r in rows]
     checks = [(label, pearson(w, [r[k] for r in rows])) for label, k in [
-        ("Vendi", "vendi_raw"), ("Vendi@N", "vendi_matched"),
-        ("Distinct", "distinct_mean"), ("Dist/k", "distinct_frac"),
-        ("PlotVendi", "plot_vendi"), ("PlotDist", "plot_distinct"),
+        ("Vendi", "vendi_raw"), (f"Vendi@{budget}" if budget else "Vendi@N", "vendi_matched"),
+        ("distinct", "distinct_mean"), ("of group", "distinct_frac"),
+        ("plot Vendi", "plot_vendi"), ("plot distinct", "plot_distinct"),
     ]]
     checks = [(l, v) for l, v in checks if not math.isnan(v)]
 
-    keys = [k for k, _, _ in COLUMNS
+    keys = [k for k, _, _, _ in COLUMNS
             if not (k in ("plot_vendi", "plot_distinct") and not skeletons)
             and not (k == "coherent" and not coherence)]
-    headers = {k: h for k, h, _ in COLUMNS}
-    fmts = {k: f for k, _, f in COLUMNS}
+    headers = {k: (f"Vendi@{budget}" if k == "vendi_matched" and budget else h)
+               for k, h, _, _ in COLUMNS}
+    fmts = {k: f for k, _, f, _ in COLUMNS}
+    notes = {k: n for k, _, _, n in COLUMNS}
 
-    def cell(row, key):
-        v = row[key]
-        return "--" if isinstance(v, float) and v != v else fmts[key].format(v)
+    table = render_table(rows, keys, headers, fmts)
+    legend = [f"  {headers[k]:<14}{notes[k]}" for k in keys if notes[k]]
 
-    lines = ["| " + " | ".join(headers[k] for k in keys) + " |",
-             "|" + "|".join("---" for _ in keys) + "|"]
-    lines += ["| " + " | ".join(cell(r, k) for k in keys) + " |" for r in rows]
+    print("\n" + rule(" results "))
+    print("\n".join(table))
+    print("\nwhat the columns mean")
+    print("\n".join(legend))
 
-    check_lines = ["| Metric | r with mean word count |", "|---|---:|"]
-    check_lines += [f"| {l} | {v:+.3f} |" for l, v in checks]
+    print("\nDoes each score still just track story length?")
+    print("  Correlation across conditions between mean word count and each column.")
+    print("  A column that still tracks length is still reporting length.")
+    for label, v in checks:
+        print(f"    {label:<14}{v:+.3f}")
 
+    # ---- files -------------------------------------------------------------- #
+    def md_row(vals):
+        return "| " + " | ".join(vals) + " |"
+
+    md_lines = [md_row(headers[k] for k in keys),
+                "|" + "|".join("---" for _ in keys) + "|"]
+    for r in rows:
+        md_lines.append(md_row(
+            "--" if isinstance(r[k], float) and r[k] != r[k] else fmts[k].format(r[k])
+            for k in keys))
+
+    header_lines = plan_summary([seen[n] for n, _, _ in runs])
     md = out_dir / "Diversity_Table.md"
     md.write_text(
-        "# Length-matched diversity\n\n"
-        f"Embedding model: `{describe(args.embedding_model)}`. "
-        f"Length-matched column truncates every story to its first {budget} words. "
-        f"Distinct-k merges stories above cosine similarity {threshold:.4f}. "
-        "All scores are computed within a prompt group and averaged across groups.\n\n"
-        + "\n".join(lines)
-        + "\n\n## Length sensitivity\n\nCorrelation across conditions between mean "
-          "word count and each metric. A metric that still tracks length is still "
-          "reporting length.\n\n"
-        + "\n".join(check_lines) + "\n",
+        "# Diversity, length-matched\n\n"
+        + "".join(f"- {line}\n" for line in header_lines)
+        + f"- embeddings: {describe(args.embedding_model)}\n"
+        + (f"- every story cut to its first {budget} words for the Vendi@{budget} "
+           "column\n" if budget else "")
+        + f"- two stories count as the same when their similarity exceeds "
+          f"{threshold:.4f}\n"
+        + "- every score is computed within a prompt group and then averaged over "
+          "groups\n\n"
+        + "\n".join(md_lines)
+        + "\n\n## What the columns mean\n\n"
+        + "".join(f"- **{headers[k]}** {notes[k]}\n" for k in keys if notes[k])
+        + "\n## Does each score still just track story length?\n\n"
+          "Correlation across conditions between mean word count and each column. "
+          "A column that still tracks length is still reporting length.\n\n"
+        + "| column | r with mean word count |\n|---|---:|\n"
+        + "".join(f"| {l} | {v:+.3f} |\n" for l, v in checks),
         encoding="utf-8",
     )
     with (out_dir / "Diversity_Table.csv").open("w", newline="", encoding="utf-8") as fh:
@@ -613,10 +678,6 @@ def main() -> None:
         for r in rows:
             wr.writerow({k: r[k] for k in keys})
 
-    print("\n" + "\n".join(lines))
-    print("\nlength sensitivity (r with mean word count across conditions):")
-    for label, v in checks:
-        print(f"  {label:<10} {v:+.3f}")
     print(f"\nwrote {md}")
 
 

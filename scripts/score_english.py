@@ -27,21 +27,48 @@ from noiseegra.constraint_metrics_en import (  # noqa: E402
 )
 from noiseegra.diversity import read_run_csv  # noqa: E402
 from noiseegra.embeddings import DEFAULT_EMBEDDING_MODEL, EMBEDDING_MODELS  # noqa: E402
+from noiseegra.run_labels import label_run  # noqa: E402
 from noiseegra.writingprompts import as_constraint  # noqa: E402
 
+# key, header, format, one-line explanation printed under the table
 COLUMNS = [
-    ("run", "Run", "{}"),
-    ("n", "N", "{}"),
-    ("length_pass", "Len↑", "{:.0%}"),
-    ("tense_pass", "Tense↑", "{:.0%}"),
-    ("register_pass", "Reg↑", "{:.0%}"),
-    ("dialogue_pass", "Dlg↑", "{:.0%}"),
-    ("mean_violations", "Viol↓", "{:.2f}"),
-    ("mean_words", "Words", "{:.0f}"),
-    ("mean_grade", "Grade", "{:.1f}"),
-    ("vendi", "Vendi↑", "{:.2f}"),
-    ("lexdiv", "LexDiv↑", "{:.3f}"),
+    ("run", "condition", "{}", ""),
+    ("n", "stories", "{}", "how many stories were scored"),
+    ("length_pass", "length", "{:.0%}", "share within the word limit"),
+    ("tense_pass", "present tense", "{:.0%}", "share written entirely in the present tense"),
+    ("register_pass", "reading level", "{:.0%}", "share at or below the grade-level limit"),
+    ("dialogue_pass", "dialogue", "{:.0%}", "share containing at least one quoted line"),
+    ("mean_violations", "broken", "{:.2f}", "mean number of the four constraints broken per story"),
+    ("mean_words", "words", "{:.0f}", "mean story length"),
+    ("mean_grade", "grade", "{:.1f}", "mean Flesch-Kincaid grade level"),
+    ("vendi", "Vendi", "{:.2f}", "effective number of distinct stories per prompt"),
+    ("lexdiv", "lexical", "{:.3f}", "1 minus self-BLEU: how much the wording varies"),
 ]
+
+
+def render_table(rows, keys, headers, fmts, sep="  ", left=("run", "condition")):
+    """Plain aligned columns; text columns left-justified, numbers right."""
+    cells = [[headers[k] for k in keys]]
+    for r in rows:
+        cells.append(["--" if isinstance(r[k], float) and r[k] != r[k]
+                      else fmts[k].format(r[k]) for k in keys])
+    widths = [max(len(row[i]) for row in cells) for i in range(len(keys))]
+    out = []
+    for n, row in enumerate(cells):
+        out.append(sep.join(c.ljust(w) if k in left else c.rjust(w)
+                            for c, w, k in zip(row, widths, keys)).rstrip())
+        if n == 0:
+            out.append("-" * len(out[0]))
+    return out
+
+
+def constraint_legend(max_words, max_grade, present_ratio) -> list:
+    return [
+        f"length          at most {max_words} words",
+        f"present tense   at least {present_ratio:.0%} of finite verbs in the present",
+        f"reading level   Flesch-Kincaid grade at most {max_grade:g}",
+        "dialogue        at least one line inside quotation marks",
+    ]
 
 
 def score_condition(stories, prompt_idx, checker, scorer=None, min_group=2):
@@ -74,20 +101,28 @@ def score_condition(stories, prompt_idx, checker, scorer=None, min_group=2):
     }
 
 
-LIVE_HEADER = (f"{'condition':<32}{'N':>5}{'Len':>7}{'Tense':>7}{'Reg':>7}{'Dlg':>7}"
-               f"{'Viol':>7}{'Words':>7}{'Grade':>7}{'Vendi':>8}{'LexDiv':>8}")
+LIVE_KEYS = ["run", "n", "length_pass", "tense_pass", "register_pass", "dialogue_pass",
+             "mean_violations", "mean_words", "mean_grade", "vendi", "lexdiv"]
+_LIVE_HEAD = {k: h for k, h, _, _ in COLUMNS}
+_LIVE_FMT = {k: f for k, _, f, _ in COLUMNS}
+_LIVE_W = {"run": 36, "n": 8, "length_pass": 7, "tense_pass": 14, "register_pass": 14,
+           "dialogue_pass": 9, "mean_violations": 7, "mean_words": 6, "mean_grade": 6,
+           "vendi": 7, "lexdiv": 8}
+
+LIVE_HEADER = "".join(
+    _LIVE_HEAD[k].ljust(_LIVE_W[k]) if k == "run" else _LIVE_HEAD[k].rjust(_LIVE_W[k])
+    for k in LIVE_KEYS
+)
 
 
 def live_row(label: str, r: dict) -> str:
-    def pct(x):
-        return "  --  " if x != x else f"{x:6.0%}"
-    def num(x, f):
-        return "   -- " if x != x else format(x, f)
-    return (f"{label:<32}{r['n']:>5}{pct(r['length_pass'])}{pct(r['tense_pass'])}"
-            f"{pct(r['register_pass'])}{pct(r['dialogue_pass'])}"
-            f"{num(r['mean_violations'], '>7.2f')}{num(r['mean_words'], '>7.0f')}"
-            f"{num(r['mean_grade'], '>7.1f')}{num(r['vendi'], '>8.2f')}"
-            f"{num(r['lexdiv'], '>8.3f')}")
+    """One line of the table printed as each condition finishes generating."""
+    out = [label[: _LIVE_W["run"] - 1].ljust(_LIVE_W["run"])]
+    for k in LIVE_KEYS[1:]:
+        v = r[k]
+        cell = "--" if isinstance(v, float) and v != v else _LIVE_FMT[k].format(v)
+        out.append(cell.rjust(_LIVE_W[k]))
+    return "".join(out)
 
 
 def read_run(path: Path):
@@ -152,8 +187,10 @@ def main() -> None:
         res = checker.evaluate_all(stories, prompt_idx)
         checker.to_csv(stories, out_dir / path.name, prompt_idx)
 
+        label = label_run(path.stem)
         row = {
-            "run": path.stem,
+            "run": label.text,
+            "_order": label.sort_key,
             "n": res["n_stories"],
             "length_pass": res["pass_rate"]["length"],
             "tense_pass": res["pass_rate"]["present_tense"],
@@ -182,30 +219,46 @@ def main() -> None:
                 row["n_groups"] = len(usable)
 
         rows.append(row)
-        print(f"[ok] {path.stem}: viol={row['mean_violations']:.2f} "
-              f"len={row['length_pass']:.0%} tense={row['tense_pass']:.0%} "
-              f"reg={row['register_pass']:.0%} dlg={row['dialogue_pass']:.0%}")
+        print(f"  scored {label.text}", flush=True)
 
-    rows.sort(key=lambda r: (r["mean_violations"], r["run"]))
-    keys = [k for k, _, _ in COLUMNS if args.diversity or k not in ("vendi", "lexdiv")]
-    headers = {k: h for k, h, _ in COLUMNS}
-    fmts = {k: f for k, _, f in COLUMNS}
+    rows.sort(key=lambda r: r["_order"])
+    keys = [k for k, _, _, _ in COLUMNS if args.diversity or k not in ("vendi", "lexdiv")]
+    headers = {k: h for k, h, _, _ in COLUMNS}
+    fmts = {k: f for k, _, f, _ in COLUMNS}
+    notes = {k: n for k, _, _, n in COLUMNS}
 
-    def cell(row, key):
-        v = row[key]
-        return "--" if isinstance(v, float) and v != v else fmts[key].format(v)
+    legend = constraint_legend(args.max_words, args.max_grade, args.present_ratio)
+    table = render_table(rows, keys, headers, fmts)
 
-    lines = ["| " + " | ".join(headers[k] for k in keys) + " |",
-             "|" + "|".join("---" for _ in keys) + "|"]
-    lines += ["| " + " | ".join(cell(r, k) for k in keys) + " |" for r in rows]
+    print("\n" + "=" * max(len(line) for line in table))
+    print("\n".join(table))
+    print("\nwhat has to be true for a story to pass")
+    for line in legend:
+        print("  " + line)
+    print("\nwhat the columns mean")
+    for k in keys:
+        if notes[k]:
+            print(f"  {headers[k]:<15}{notes[k]}")
+    print(f"\ntense checked with the {checker.backend} backend. Diversity is computed "
+          "within a\nprompt group and averaged across groups.")
+
+    md_rows = ["| " + " | ".join(headers[k] for k in keys) + " |",
+               "|" + "|".join("---" for _ in keys) + "|"]
+    for r in rows:
+        md_rows.append("| " + " | ".join(
+            "--" if isinstance(r[k], float) and r[k] != r[k] else fmts[k].format(r[k])
+            for k in keys) + " |")
 
     md = out_dir / "English_Constraint_Table.md"
     md.write_text(
-        "# WritingPrompts: exact constraint adherence and within-prompt diversity\n\n"
-        f"Thresholds: words <= {args.max_words}, present-verb ratio >= {args.present_ratio}, "
-        f"Flesch-Kincaid grade <= {args.max_grade}, at least one quoted line. "
-        f"Tense backend: `{checker.backend}`. Diversity is averaged over per-prompt groups.\n\n"
-        + "\n".join(lines) + "\n",
+        "# WritingPrompts: constraint adherence and within-prompt diversity\n\n"
+        "## What has to be true for a story to pass\n\n"
+        + "".join(f"- `{line}`\n" for line in legend)
+        + f"\nTense checked with the `{checker.backend}` backend. Diversity is computed "
+          "within a prompt group and averaged across groups.\n\n"
+        + "\n".join(md_rows)
+        + "\n\n## What the columns mean\n\n"
+        + "".join(f"- **{headers[k]}** {notes[k]}\n" for k in keys if notes[k]),
         encoding="utf-8",
     )
     with (out_dir / "English_Constraint_Table.csv").open("w", newline="", encoding="utf-8") as fh:
@@ -214,7 +267,6 @@ def main() -> None:
         for r in rows:
             w.writerow({k: r[k] for k in keys})
 
-    print("\n" + "\n".join(lines))
     print(f"\nwrote {md}")
 
 

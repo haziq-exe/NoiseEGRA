@@ -50,7 +50,11 @@ from noiseegra.steering_vectors import (  # noqa: E402
 from build_steering_vectors import build_model  # noqa: E402
 from kaggle_orthosteer import generate_one, load_state, save_state  # noqa: E402
 from run_orthosteer_experiment import build_suite  # noqa: E402
-from score_english import LIVE_HEADER, live_row, score_condition  # noqa: E402
+from score_english import (  # noqa: E402
+    LIVE_HEADER, constraint_legend, live_row, score_condition,
+)
+
+from noiseegra.run_labels import SUBSPACE_MODES, plan_summary  # noqa: E402
 
 EN_PAIRS = Path(__file__).resolve().parents[1] / "noiseegra" / "data" / "steering_pairs_en.json"
 
@@ -78,15 +82,21 @@ EN_SCHEDULES = {
 
 
 def condition_label(spec) -> str:
-    """Short human-readable name for a condition, for the live table."""
+    """Readable name for a condition, for the live table.
+
+    Kept identical to what ``noiseegra.run_labels`` recovers from the run id, so
+    the live table and every later scoring pass name the same thing the same way.
+    """
     plan = getattr(spec, "steering_plan", None)
     if plan is None:
         return "baseline"
-    if plan.noise_alpha > 0 and plan.noise_mode != "none":
-        return f"per-token noise a={plan.noise_alpha:g}"
     if plan.offset_gamma > 0 and plan.offset_mode != "none":
-        return f"per-story offset g={plan.offset_gamma:g} ({plan.offset_mode})"
-    return "steer only"
+        mode = SUBSPACE_MODES.get(plan.offset_mode, plan.offset_mode)
+        return f"per-story offset g={plan.offset_gamma:g} ({mode})"
+    if plan.noise_alpha > 0 and plan.noise_mode != "none":
+        mode = SUBSPACE_MODES.get(plan.noise_mode, plan.noise_mode)
+        return f"per-token noise a={plan.noise_alpha:g} ({mode})"
+    return "steering only, no perturbation"
 
 
 def seed_for(prompt_idx: int, story_idx: int) -> int:
@@ -401,13 +411,18 @@ def main() -> None:
         print(live_row(condition_label(spec), row), flush=True)
 
     print("\n" + "=" * len(LIVE_HEADER))
-    print(f"{args.model}  —  {P} prompts x {K} stories, magnitudes are multiples of the "
-          f"model's activation scale")
+    print(f"  {args.model}: {P} prompts x {K} stories per condition")
+    for line in plan_summary([r["run"] for r in rows]):
+        print(f"  {line}")
+    print("  perturbation magnitudes are multiples of the model's own activation scale")
     print("=" * len(LIVE_HEADER))
     print(LIVE_HEADER)
     print("-" * len(LIVE_HEADER))
     for spec, row in zip(specs, rows):
         print(live_row(condition_label(spec), row))
+    print("\nwhat has to be true for a story to pass")
+    for line in constraint_legend(args.max_words, args.max_grade, 0.8):
+        print("  " + line)
 
     summary = out / "live_scores.csv"
     with summary.open("w", newline="", encoding="utf-8") as fh:

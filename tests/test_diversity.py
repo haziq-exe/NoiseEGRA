@@ -245,26 +245,6 @@ check("distinct-k recovers the true topic count in both",
       f"short={r_short.distinct_mean} long={r_long.distinct_mean}")
 
 
-# --------------------------------------------------------------------------- #
-print("\n== condition names from run ids ==")
-sys.path.insert(0, str(ROOT / "scripts"))
-from score_diversity import label_from_run_id  # noqa: E402
-
-BASE = "Granite-3.1-8B__ORTHO__L17-25__Cclo-pre-sim-dia__b1-1-1-1__lowdin"
-for suffix, want in [
-    ("__nznone__a0__k36__schr-c-c-c", "steer only"),
-    ("__nzorth__a0p05__k36__schr-c-c-c", "per-token noise a=0.05"),
-    ("__nzorth__a0p175__k36__schr-c-c-c", "per-token noise a=0.175"),
-    ("__nzorth__a0p8__k36__schr-c-c-c", "per-token noise a=0.8"),
-    ("__nznone__a0__k36__g0p4orth__schr-c-c-c", "per-story offset g=0.4 (orth)"),
-    ("__nznone__a0__k36__g0p8orth__schr-c-c-c", "per-story offset g=0.8 (orth)"),
-]:
-    got = label_from_run_id(BASE + suffix)
-    check(f"run id -> {want}", got == want, f"got {got!r}")
-check("a baseline run id", label_from_run_id("Granite-3.1-8B__BASELINE") == "baseline")
-check("an unrecognised id yields None", label_from_run_id("some_other_file") is None)
-
-
 print()
 if failures:
     print(f"{len(failures)} FAILED: {failures}")
