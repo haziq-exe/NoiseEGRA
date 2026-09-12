@@ -362,6 +362,80 @@ check("closing the gate keeps the steering",
 
 shutil.rmtree(GOUT, ignore_errors=True)
 
+
+# --------------------------------------------------------------------------- #
+print("\n== the embedding model does not evict the generator ==")
+
+from noiseegra import embeddings as E  # noqa: E402
+
+
+class FakeCuda:
+    """Stands in for torch.cuda with a controllable amount of free memory."""
+
+    def __init__(self, free_gb):
+        self.free_gb = list(free_gb)
+
+    def is_available(self):
+        return True
+
+    def device_count(self):
+        return len(self.free_gb)
+
+    def mem_get_info(self, i):
+        return int(self.free_gb[i] * 1024 ** 3), int(16 * 1024 ** 3)
+
+
+real_cuda = torch.cuda
+try:
+    torch.cuda = FakeCuda([0.3, 0.4])          # an 8B model on both cards
+    check("a full GPU sends the embedder to the CPU", E.pick_device() == "cpu",
+          E.pick_device())
+    torch.cuda = FakeCuda([0.3, 9.0])          # the second card is free
+    check("a card with room is used", E.pick_device() == "cuda:1", E.pick_device())
+    torch.cuda = FakeCuda([12.0, 9.0])
+    check("the emptiest card wins", E.pick_device() == "cuda:0", E.pick_device())
+finally:
+    torch.cuda = real_cuda
+
+check("no CUDA at all means the CPU",
+      E.pick_device() in ("cpu",) or torch.cuda.is_available())
+
+
+class OomThenFine:
+    """Raises an out-of-memory error once, then behaves."""
+
+    def __init__(self):
+        self.calls = 0
+        self.device = "cuda:0"
+
+    def to(self, device):
+        self.device = device
+        return self
+
+    def encode(self, texts, **kw):
+        self.calls += 1
+        if self.calls == 1:
+            # torch.OutOfMemoryError only exists in newer torch; it subclasses
+            # RuntimeError and carries this message either way, which is what the
+            # handler matches on.
+            raise RuntimeError("CUDA out of memory. Tried to allocate 80.00 MiB")
+        import numpy as np
+        v = np.eye(len(texts), 8)
+        return v / np.linalg.norm(v, axis=1, keepdims=True)
+
+
+from noiseegra.creativity_metrics import CreativityScorer  # noqa: E402
+
+stub = OomThenFine()
+sc = CreativityScorer.__new__(CreativityScorer)
+sc.texts = ["one story here", "another story here", "a third story"]
+sc.model, sc.batch_size, sc.truncate_words = stub, 16, None
+sc.total_modal_collapse_indices_by_run = {}
+emb = sc._encode()
+check("an out-of-memory error falls back to the CPU instead of killing the run",
+      stub.calls == 2 and stub.device == "cpu" and emb.shape[0] == 3,
+      f"calls={stub.calls} device={stub.device}")
+
 shutil.rmtree(OUT, ignore_errors=True)
 print()
 if FAILURES:

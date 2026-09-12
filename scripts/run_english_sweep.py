@@ -45,6 +45,7 @@ PASSTHROUGH = [
     ("--gate-samples", "gate_samples", False),
     ("--steer-vectors", "steer_vectors", True),
     ("--embedding-model", "embedding_model", False),
+    ("--embedding-device", "embedding_device", False),
     ("--truncate-words", "truncate_words", False),
 ]
 
@@ -85,6 +86,7 @@ def main() -> None:
     ap.add_argument("--gate-samples", type=int, default=None)
     ap.add_argument("--steer-vectors", nargs="*", default=None)
     ap.add_argument("--embedding-model", default=None)
+    ap.add_argument("--embedding-device", default=None)
     ap.add_argument("--truncate-words", type=int, default=None)
     ap.add_argument("--no-diversity", dest="diversity", action="store_false")
     ap.add_argument("--out", default="/kaggle/working/english")

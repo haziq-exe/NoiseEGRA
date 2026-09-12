@@ -389,7 +389,9 @@ def main() -> None:
     ap.add_argument("--rarefy-draws", type=int, default=60,
                     help="subsamples averaged for distinct@m")
     ap.add_argument("--batch-size", type=int, default=32)
-    ap.add_argument("--device", default=None)
+    ap.add_argument("--device", default="auto",
+                    help="where to put the embedding model: 'auto' picks a GPU with "
+                         "room and falls back to the CPU")
     # coherence
     ap.add_argument("--coherence", action="store_true",
                     help="check every story for repetition loops, junk characters, "

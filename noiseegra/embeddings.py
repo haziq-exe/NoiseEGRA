@@ -67,11 +67,45 @@ def resolve_embedding_model(name: Optional[str]) -> str:
     return entry.hf_id if entry is not None else name
 
 
+def pick_device(min_free_gb: float = 2.5) -> str:
+    """Somewhere the embedding model will fit without evicting the generator.
+
+    During a generation run the language model already holds most of the GPU --
+    an 8B model in float16 leaves well under a gigabyte on a 16 GB T4 -- so
+    loading the embedder onto the same card is what pushed a run over the edge at
+    story 300 of 400. This returns the CUDA device with the most free memory if it
+    has room to spare, and the CPU otherwise. Scoring a hundred short stories with
+    a 0.6B model on the CPU takes seconds, which is nothing next to generating
+    them.
+    """
+    try:
+        import torch
+
+        if not torch.cuda.is_available():
+            return "cpu"
+        best, best_free = None, 0.0
+        for i in range(torch.cuda.device_count()):
+            free, _ = torch.cuda.mem_get_info(i)
+            free_gb = free / 1024 ** 3
+            if free_gb > best_free:
+                best, best_free = i, free_gb
+        if best is not None and best_free >= min_free_gb:
+            return f"cuda:{best}"
+    except Exception:
+        pass
+    return "cpu"
+
+
 def load_embedder(name: Optional[str] = None, *, device: Optional[str] = None):
-    """Load a ``SentenceTransformer`` for ``name`` (registry key or HF id)."""
+    """Load a ``SentenceTransformer`` for ``name`` (registry key or HF id).
+
+    ``device="auto"`` (or ``None``) picks a device with room; see ``pick_device``.
+    """
     from sentence_transformers import SentenceTransformer
 
     hf_id = resolve_embedding_model(name)
+    if device in (None, "auto"):
+        device = pick_device()
     model = SentenceTransformer(hf_id, trust_remote_code=True, device=device)
     # Qwen3-Embedding pools the last token, which is only correct with left
     # padding. The repo config sets this, but not every version of

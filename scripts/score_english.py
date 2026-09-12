@@ -177,6 +177,9 @@ def main() -> None:
     ap.add_argument("--truncate-words", type=int, default=None,
                     help="cut every story to its first N words before scoring diversity, "
                          "so the score does not partly measure output length")
+    ap.add_argument("--embedding-device", default="auto",
+                    help="where to put the embedding model: 'auto' picks a GPU with "
+                         "room and falls back to the CPU")
     ap.add_argument("--min-group", type=int, default=2,
                     help="prompt groups smaller than this are skipped for diversity")
     args = ap.parse_args()
@@ -203,6 +206,7 @@ def main() -> None:
             ["placeholder text one", "placeholder text two"],
             embedding_model=args.embedding_model,
             truncate_words=args.truncate_words,
+            device=args.embedding_device,
         )
 
     csvs = sorted(p for p in in_dir.glob("*.csv") if p.name != "prompts.json")

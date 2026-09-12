@@ -189,6 +189,10 @@ def main() -> None:
                          "(default qwen3-0.6b; use bge-m3 for the published Arabic setup)")
     ap.add_argument("--truncate-words", type=int, default=None,
                     help="cut every story to its first N words before scoring diversity")
+    ap.add_argument("--embedding-device", default="auto",
+                    help="where to put the diversity embedding model: 'auto' picks a "
+                         "GPU with room and falls back to the CPU, which is what you "
+                         "want while an 8B model is holding the card")
     ap.add_argument("--out", default="/kaggle/working/english")
     args = ap.parse_args()
 
@@ -450,7 +454,9 @@ def main() -> None:
             ["placeholder one", "placeholder two"],
             embedding_model=args.embedding_model,
             truncate_words=args.truncate_words,
+            device=args.embedding_device,
         )
+        print(f"  embedding model on {scorer.model.device}", flush=True)
 
     done, t0 = total - remaining, time.time()
     started = done
@@ -481,7 +487,17 @@ def main() -> None:
         keys = sorted(cells, key=lambda x: tuple(int(i) for i in x.split(":")))
         stories = [cells[key] for key in keys]
         pidx = [int(key.split(":")[0]) for key in keys]
-        row = score_condition(stories, pidx, checker, scorer)
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        try:
+            row = score_condition(stories, pidx, checker, scorer)
+        except Exception as exc:
+            # Every story is already on disk. Losing the scores for one condition
+            # is an inconvenience; losing the run at story 300 of 400 is not.
+            print(f"  [warn] scoring {rid} failed ({type(exc).__name__}: {exc}); "
+                  "the stories are saved, score them later with "
+                  "scripts/score_english.py", flush=True)
+            row = score_condition(stories, pidx, checker, None)
         row["run"] = rid
         rows.append(row)
         write_csvs(out, state)

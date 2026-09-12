@@ -64,6 +64,8 @@ class CreativityScorer:
         max_k: int = 10,
         random_state: int = 42,
         truncate_words: Optional[int] = None,
+        device: Optional[str] = None,
+        batch_size: int = 16,
     ):
         # Imported lazily: `import noiseegra` should not pull in sentence-transformers
         # (and its model download) for callers that only generate or score constraints.
@@ -71,7 +73,11 @@ class CreativityScorer:
 
         self.texts = [t.strip() for t in texts if isinstance(t, str) and t.strip()]
         self.embedding_model = resolve_embedding_model(embedding_model)
-        self.model = load_embedder(embedding_model)
+        # `device=None` means "wherever there is room": during a generation run the
+        # language model holds most of the GPU, so this normally lands on the CPU
+        # or the second card rather than evicting the generator.
+        self.model = load_embedder(embedding_model, device=device)
+        self.batch_size = int(batch_size)
         self.max_k = max_k
         self.random_state = random_state
         # Cut every story to the same number of words before embedding. Longer
@@ -88,12 +94,32 @@ class CreativityScorer:
     def _encode(self) -> np.ndarray:
         if not self.texts:
             raise ValueError("No valid texts were provided.")
-        return self.model.encode(
-            self._prepared(),
-            convert_to_numpy=True,
-            normalize_embeddings=True,
-            batch_size=32,
-        )
+        texts = self._prepared()
+        try:
+            return self.model.encode(
+                texts, convert_to_numpy=True, normalize_embeddings=True,
+                batch_size=self.batch_size, show_progress_bar=False,
+            )
+        except Exception as exc:  # pragma: no cover - depends on GPU state
+            if "out of memory" not in str(exc).lower():
+                raise
+            # Scoring must never kill a generation run. Fall back to the CPU and
+            # stay there: whatever is holding the GPU is still holding it.
+            print("[creativity_metrics] the embedding model ran out of GPU memory; "
+                  "moving it to the CPU for the rest of the run.", flush=True)
+            try:
+                import torch
+
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except Exception:
+                pass
+            self.model = self.model.to("cpu")
+            self.batch_size = min(self.batch_size, 8)
+            return self.model.encode(
+                texts, convert_to_numpy=True, normalize_embeddings=True,
+                batch_size=self.batch_size, show_progress_bar=False,
+            )
 
     @staticmethod
     def _safe_clip(value: float, low: float = 0.0, high: float = 1.0) -> float:
