@@ -140,6 +140,108 @@ check("it writes the kernel to disk",
 check("it never reaches the network", "kaggle.com" not in res.stderr)
 shutil.rmtree(exp, ignore_errors=True)
 
+print("\n== live log streaming ==")
+
+import io as _io                                                  # noqa: E402
+import contextlib as _ctx                                         # noqa: E402
+
+
+class StreamStub:
+    """A Kaggle client whose log stream drops partway through, as the real one
+    does when the load balancer cuts an idle connection. On reconnect the server
+    replays from the beginning."""
+
+    def __init__(self, lines, drop_after=None, drops=1):
+        self.lines = lines
+        self.drop_after = drop_after
+        self.drops_left = drops
+        self.attach_count = 0
+
+    def kernels_logs_stream(self, kernel):
+        self.attach_count += 1
+        for i, line in enumerate(self.lines):
+            if (self.drop_after is not None and i == self.drop_after
+                    and self.drops_left > 0):
+                self.drops_left -= 1
+                raise ConnectionError("load balancer cut the connection")
+            yield {"data": line}
+
+
+H._LOG_RETRY_DELAY = 0
+LINES = [f"story {i}" for i in range(6)]
+
+with tempfile.TemporaryDirectory() as td:
+    log = Path(td) / "log.txt"
+    api = StreamStub(LINES)
+    buf = _io.StringIO()
+    with _ctx.redirect_stdout(buf):
+        H.follow_logs(api, "me/k", log)
+    check("every line is printed as it arrives",
+          buf.getvalue().splitlines() == LINES, repr(buf.getvalue()[:80]))
+    check("and mirrored to the log file", log.read_text().splitlines() == LINES)
+
+with tempfile.TemporaryDirectory() as td:
+    log = Path(td) / "log.txt"
+    api = StreamStub(LINES, drop_after=3, drops=1)
+    buf = _io.StringIO()
+    with _ctx.redirect_stdout(buf):
+        H.follow_logs(api, "me/k", log)
+    printed = [l for l in buf.getvalue().splitlines() if l.startswith("story")]
+    check("a dropped connection is reconnected", api.attach_count == 2,
+          str(api.attach_count))
+    check("the replay is not printed twice", printed == LINES, str(printed))
+    check("the log file has no duplicates either",
+          log.read_text().splitlines() == LINES)
+
+
+class AlwaysDrops:
+    attach_count = 0
+
+    def kernels_logs_stream(self, kernel):
+        AlwaysDrops.attach_count += 1
+        raise ConnectionError("nope")
+        yield  # pragma: no cover
+
+
+with tempfile.TemporaryDirectory() as td:
+    buf = _io.StringIO()
+    with _ctx.redirect_stdout(buf):
+        H.follow_logs(AlwaysDrops(), "me/k", Path(td) / "log.txt")
+    check("it gives up rather than reconnecting forever",
+          AlwaysDrops.attach_count == H._LOG_MAX_SILENT_FAILURES,
+          str(AlwaysDrops.attach_count))
+    check("and says why", "falling back to status polling" in buf.getvalue())
+
+
+class NoStreamSupport:
+    pass
+
+
+with tempfile.TemporaryDirectory() as td:
+    buf = _io.StringIO()
+    with _ctx.redirect_stdout(buf):
+        H.follow_logs(NoStreamSupport(), "me/k", Path(td) / "log.txt")
+    check("an older client degrades to quiet waiting",
+          "cannot stream logs" in buf.getvalue())
+
+
+class Unauthorised:
+    def kernels_logs_stream(self, kernel):
+        raise ValueError("Permission 'kernels.get' was denied")
+        yield  # pragma: no cover
+
+
+with tempfile.TemporaryDirectory() as td:
+    buf = _io.StringIO()
+    with _ctx.redirect_stdout(buf):
+        H.follow_logs(Unauthorised(), "me/k", Path(td) / "log.txt")
+    check("an unexpected error does not take the run down with it",
+          "log stream unavailable" in buf.getvalue(), buf.getvalue()[:90])
+
+check("terminal states cover what Kaggle reports",
+      {"complete", "error"} <= set(H.TERMINAL))
+
+
 print()
 if failures:
     print(f"{len(failures)} FAILED: {failures}")

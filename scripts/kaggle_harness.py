@@ -27,10 +27,13 @@ notebook.
 Credentials come from ``~/.kaggle/kaggle.json`` (Kaggle account page -> Settings
 -> API -> Create New Token), or ``KAGGLE_USERNAME`` and ``KAGGLE_KEY``.
 
-Two things Kaggle does not give us. There are no live logs: output is published
-when the run finishes, so a long run is opaque until it ends. And a session is
-capped at about nine hours on GPU, with a weekly quota, so a sweep that exceeds
-it has to be resumed -- which the checkpoint already handles.
+The kernel's stdout streams back live while it runs, so a long sweep is watchable
+rather than opaque, and every line is mirrored to ``log.txt`` as it arrives. Use
+``follow`` to reattach after closing the terminal.
+
+The one limit left is the session cap: about nine hours on GPU against a weekly
+quota, so a sweep that exceeds it has to be resumed -- which the checkpoint
+already handles.
 """
 
 from __future__ import annotations
@@ -423,10 +426,86 @@ def cmd_run(args) -> None:
     print(f"  command {command}")
     api.kernels_push(str(exp / "kernel"))
     if args.no_wait:
-        print("pushed. Poll it with:\n"
-              f"    python scripts/kaggle_harness.py status --name {name}")
+        print("pushed. Watch it with:\n"
+              f"    python scripts/kaggle_harness.py follow --name {name}")
         return
     _wait_and_pull(api, kernel_id, exp, out_dir, state_dir, args.timeout)
+
+
+TERMINAL = ("complete", "error", "cancelacknowledged", "cancelled", "cancelrequested")
+_LOG_RETRY_DELAY = 5
+_LOG_MAX_SILENT_FAILURES = 6
+
+
+def _stream_exceptions():
+    """Connection faults worth reconnecting through, as classes to catch.
+
+    OSError is in the list deliberately: requests wraps its connection errors in
+    an IOError subclass, the standard library raises OSError-family errors from
+    sockets, and both mean the same thing here -- the connection went away, try
+    again.
+    """
+    out = [OSError]
+    try:
+        import requests.exceptions as rex
+
+        out += [rex.ChunkedEncodingError, rex.ConnectionError, rex.Timeout]
+    except Exception:
+        pass
+    try:
+        from urllib3 import exceptions as uex
+
+        out.append(uex.ProtocolError)
+    except Exception:
+        pass
+    return tuple(out) or (OSError,)
+
+
+def follow_logs(api, kernel_id: str, log_path: Path) -> None:
+    """Print the kernel's stdout as it is produced, mirroring it to ``log_path``.
+
+    Kaggle proxies a running session's output as server-sent events and switches
+    to the persisted blob once the session ends, so the same call covers both. The
+    load balancer drops idle connections every few minutes; on reconnect the
+    server replays from the start, so events are counted and the ones already
+    printed are skipped.
+    """
+    if not hasattr(api, "kernels_logs_stream"):
+        print("  (this kaggle client cannot stream logs; waiting quietly)", flush=True)
+        return
+
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    seen, silent_failures = 0, 0
+    retryable = _stream_exceptions()
+    with log_path.open("w", encoding="utf-8") as fh:
+        while True:
+            before = seen
+            try:
+                for index, event in enumerate(api.kernels_logs_stream(kernel_id)):
+                    if index < seen:
+                        continue
+                    seen = index + 1
+                    data = event.get("data")
+                    if data is None:
+                        continue
+                    line = data.rstrip("\n")
+                    print(line, flush=True)
+                    fh.write(line + "\n")
+                    fh.flush()
+                return
+            except retryable:
+                silent_failures = 0 if seen > before else silent_failures + 1
+                if silent_failures >= _LOG_MAX_SILENT_FAILURES:
+                    print("  (log stream kept dropping with no new output; "
+                          "falling back to status polling)", flush=True)
+                    return
+                if silent_failures > 1:
+                    print("  (log stream dropped, reconnecting)", flush=True)
+                time.sleep(_LOG_RETRY_DELAY)
+            except Exception as exc:
+                print(f"  (log stream unavailable: {type(exc).__name__}: {exc}; "
+                      "falling back to status polling)", flush=True)
+                return
 
 
 def _status(api, kernel_id: str):
@@ -438,23 +517,41 @@ def _status(api, kernel_id: str):
 
 def _wait_and_pull(api, kernel_id, exp: Path, out_dir: Path, state_dir: Path,
                    timeout_min: int) -> None:
-    print(f"\nwaiting. Kaggle publishes output only when the run ends, so there is\n"
-          f"nothing to stream until then. Watch it at kaggle.com/{kernel_id}\n")
-    t0, last = time.time(), None
+    print(f"\nwatching kaggle.com/{kernel_id}\n")
+    t0 = time.time()
+
+    # Attach only once the session is actually running: a queued kernel has no
+    # stream yet, and attaching early would replay the previous run's log.
+    last = None
     while True:
         status, failure = _status(api, kernel_id)
-        mins = (time.time() - t0) / 60
-        if status != last:
-            print(f"  [{mins:5.1f} min] {status}", flush=True)
-            last = status
-        if str(status).lower() in ("complete", "error", "cancelacknowledged", "cancelled"):
+        key = str(status).lower()
+        if key != last:
+            print(f"  [{(time.time() - t0) / 60:5.1f} min] {status}", flush=True)
+            last = key
+        if key == "running" or key in TERMINAL:
             break
-        if mins > timeout_min:
+        if (time.time() - t0) / 60 > timeout_min:
+            raise SystemExit(f"still {status} after {timeout_min} min")
+        time.sleep(15)
+
+    if str(status).lower() not in TERMINAL:
+        print("-" * 70, flush=True)
+        follow_logs(api, kernel_id, exp / "log.txt")
+        print("-" * 70, flush=True)
+
+    # The stream ends slightly before the session is marked finished.
+    while True:
+        status, failure = _status(api, kernel_id)
+        if str(status).lower() in TERMINAL:
+            break
+        if (time.time() - t0) / 60 > timeout_min:
             raise SystemExit(f"still {status} after {timeout_min} min; "
                              f"pull it later with --name {exp.name}")
         time.sleep(POLL_SECONDS)
 
-    print(f"\nfinished: {status}" + (f"\n  {failure}" if failure else ""))
+    mins = (time.time() - t0) / 60
+    print(f"\n{status} after {mins:.1f} min" + (f"\n  {failure}" if failure else ""))
     _pull(api, kernel_id, exp, out_dir, state_dir)
 
 
@@ -463,6 +560,8 @@ def _pull(api, kernel_id: str, exp: Path, out_dir: Path, state_dir: Path) -> Non
     out_dir.mkdir(parents=True, exist_ok=True)
     api.kernels_output(kernel_id, path=str(out_dir), quiet=True)
 
+    streamed = exp / "log.txt"
+    streamed_len = len(streamed.read_text(encoding="utf-8")) if streamed.is_file() else 0
     logs = list(out_dir.glob("*.log"))
     if logs:
         text = logs[0].read_text(encoding="utf-8", errors="replace")
@@ -471,9 +570,10 @@ def _pull(api, kernel_id: str, exp: Path, out_dir: Path, state_dir: Path) -> Non
                              for r in json.loads(text) if isinstance(r, dict))
         except json.JSONDecodeError:
             pass
-        (exp / "log.txt").write_text(text, encoding="utf-8")
+        if len(text) >= streamed_len:
+            streamed.write_text(text, encoding="utf-8")
+            print(f"  log     -> {streamed} ({len(text.splitlines())} lines)")
         logs[0].unlink()
-        print(f"  log     -> {exp / 'log.txt'} ({len(text.splitlines())} lines)")
 
     # The results become the checkpoint for the next run.
     inner = out_dir / exp.name
@@ -508,6 +608,23 @@ def cmd_wait(args) -> None:
     api = _api()
     exp = EXPERIMENTS / args.name
     kernel_id = f"{_username(api)}/{KERNEL_PREFIX}-{args.name}"
+    _wait_and_pull(api, kernel_id, exp, exp / "output", exp / "state", args.timeout)
+
+
+def cmd_follow(args) -> None:
+    api = _api()
+    exp = EXPERIMENTS / args.name
+    kernel_id = f"{_username(api)}/{KERNEL_PREFIX}-{args.name}"
+    status, _ = _status(api, kernel_id)
+    print(f"{kernel_id}: {status}")
+    if str(status).lower() in TERMINAL:
+        print("that session has finished; showing the persisted log")
+        text = api.kernels_logs(kernel_id) if hasattr(api, "kernels_logs") else ""
+        if text:
+            (exp / "log.txt").parent.mkdir(parents=True, exist_ok=True)
+            (exp / "log.txt").write_text(text, encoding="utf-8")
+            print(text)
+        return
     _wait_and_pull(api, kernel_id, exp, exp / "output", exp / "state", args.timeout)
 
 
@@ -581,6 +698,11 @@ def main() -> None:
     w.add_argument("--name", required=True)
     w.add_argument("--timeout", type=int, default=600)
     w.set_defaults(func=cmd_wait)
+
+    f = sub.add_parser("follow", help="attach to a running kernel's live output")
+    f.add_argument("--name", required=True)
+    f.add_argument("--timeout", type=int, default=600)
+    f.set_defaults(func=cmd_follow)
 
     p = sub.add_parser("pull", help="download results and log")
     p.add_argument("--name", required=True)
