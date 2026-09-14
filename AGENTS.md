@@ -50,7 +50,9 @@ T4s and about 30 GPU-hours a week. The harness drives that from the command line
 
 ### Once
 
-Credentials, which only the human can create:
+Credentials, which only the human can create. Either form works; the client is
+asked whether it is authenticated rather than being checked for a filename, so
+an OAuth login and a legacy token are equally fine:
 
     ~/.cache/noiseegra-harness/venv/bin/python -m kaggle auth login
 
@@ -60,6 +62,16 @@ or a token from kaggle.com/settings/api saved to `~/.kaggle/kaggle.json`. Then:
 
 `check` prints the account, the branch and commit that would be used, and any
 existing harness kernels.
+
+Before trusting the loop after a change to the harness, run the end-to-end check.
+It needs no GPU and no model, takes about two minutes, and verifies the three
+things that matter: live output, the checkpoint round-trip, and the exit status.
+
+    python scripts/kaggle_harness.py run --name harness-check --no-gpu --no-spacy \
+        -- scripts/harness_selftest.py --seconds 40
+
+Run it twice. The "N run(s) recorded" count must grow, which is only possible if
+the checkpoint made the trip to Kaggle and back.
 
 ### Each experiment
 
