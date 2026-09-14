@@ -209,7 +209,9 @@ def main() -> None:
             device=args.embedding_device,
         )
 
-    csvs = sorted(p for p in in_dir.glob("*.csv") if p.name != "prompts.json")
+    # live_scores.csv is the runner's own summary, not a run of stories.
+    csvs = sorted(p for p in in_dir.glob("*.csv")
+                  if not p.name.startswith(("live_scores", "English_Constraint")))
     if not csvs:
         raise SystemExit(f"no run CSVs in {in_dir}")
 

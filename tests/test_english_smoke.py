@@ -95,6 +95,24 @@ check("grade level is higher for the literary passage", m2.grade_level > m1.grad
 sub = EnglishConstraintChecker(backend="regex", constraints=["length", "dialogue"])
 check("constraint subset changes the violation count", sub.evaluate(bad).violations == 2)
 
+print("\n== sentence splitting ==")
+from noiseegra.constraint_metrics_en import split_sentences  # noqa: E402
+
+# Terminal punctuation inside quotes is not a sentence boundary. Getting this
+# wrong inflated the sentence count on every story containing dialogue, which
+# shortened the mean sentence and so depressed the Flesch-Kincaid grade.
+for text, want in [
+    ('Lila runs. She sees a ball. "Look!" she says. The ball rolls away.', 4),
+    ('She walks out. "Are you coming?" she asks. He nods.', 3),
+    ('"Stop," he says. She stops.', 2),
+    ('One sentence only.', 1),
+    ('Line one.\nLine two.', 2),
+    ('He paid $3.50 for it. Then he left.', 2),
+]:
+    got = split_sentences(text)
+    check(f"{want} sentence(s) in {text[:34]!r}", len(got) == want,
+          f"got {len(got)}: {got}")
+
 print("\n== the twelve-requirement task ==")
 full = EnglishConstraintChecker(backend="regex")
 check("twelve requirements by default", len(full.constraints) == 12, str(len(full.constraints)))

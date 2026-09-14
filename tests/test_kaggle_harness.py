@@ -61,8 +61,10 @@ with tempfile.TemporaryDirectory() as td:
           next(l for l in script.splitlines() if l.startswith("COMMIT")))
     check("the command is carried through",
           "--model Qwen3-8B --stories 100" in script)
-    check("the output directory is forced, so results come back",
-          '--out {OUT}' in script or "--out" in script)
+    check("a command that does not mention the output directory gets --out appended",
+          'command += f" --out {OUT}"' in script)
+    check("and {OUT} is substituted for commands that place it themselves",
+          'COMMAND.replace("{OUT}", str(OUT))' in script)
     check("it unpacks the checkpoint archive", "state.tgz" in script
           and "tarfile" in script)
     check("it installs spaCy when asked", "spacy download en_core_web_sm" in script)
@@ -87,6 +89,22 @@ with tempfile.TemporaryDirectory() as td:
           or "SPACY     = False" in (folder / "run.py").read_text())
     check("the GPU can be turned off",
           json.loads((folder / "kernel-metadata.json").read_text())["enable_gpu"] is False)
+
+# A scorer takes --input-dir and --out-dir, not --out, so the harness has to be
+# able to run something other than the generator.
+with tempfile.TemporaryDirectory() as td:
+    folder = Path(td) / "k"
+    H.write_kernel(folder, kernel_id="a/b", title="t", repo="r", commit="c",
+                   state_dir="s", out_name="demo",
+                   command="scripts/score_diversity.py --input-dir {OUT}/Qwen3-8B "
+                           "--out-dir {OUT}/diversity",
+                   gpu=False, dataset_sources=[], spacy=False)
+    sc = (folder / "run.py").read_text()
+    ns = {}
+    exec(compile(ast.parse("\n".join(l for l in sc.splitlines()
+                                      if l.startswith("COMMAND"))), "<t>", "exec"), ns)
+    check("the placeholder survives into the kernel verbatim",
+          "{OUT}" in ns["COMMAND"] and "--out-dir" in ns["COMMAND"], ns["COMMAND"])
 
 print("\n== the state round-trip ==")
 with tempfile.TemporaryDirectory() as td:

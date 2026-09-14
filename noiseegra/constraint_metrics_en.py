@@ -74,7 +74,14 @@ CONSTRAINT_SHORT = {
 }
 
 _WORD = re.compile(r"[A-Za-z]+(?:'[A-Za-z]+)?")
-_SENT_SPLIT = re.compile(r"(?<=[.!?])[\s\"”’)]+|\n+")
+# A sentence ends at .!? only when what follows starts a new sentence. Without
+# that lookahead, `"Look!" she says.` splits into two, which inflates the
+# sentence count, shortens the mean sentence, and so depresses the
+# Flesch-Kincaid grade -- every story with a line of dialogue was mis-scored.
+_SENT_SPLIT = re.compile(
+    r"(?<=[.!?])[\"\u201d\u2019')\]]*\s+(?=[\"\u201c\u2018'(\[]*[A-Z0-9])"
+    r"|\n+"
+)
 # A quoted span of at least a couple of words, straight or curly quotes.
 _QUOTED = re.compile(r"[\"“][^\"“”]*?\b\w+\b[^\"“”]*?[\"”]")
 _VOWEL_GROUP = re.compile(r"[aeiouy]+")

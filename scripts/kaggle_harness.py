@@ -281,11 +281,17 @@ if SPACY:
     sh("python -m spacy download en_core_web_sm -q 2>&1 | tail -2", check=False)
 
 # ---- run --------------------------------------------------------------------
+# {{OUT}} anywhere in the command is replaced with the output directory. A command
+# that uses it is left alone; one that does not gets --out appended, which is what
+# the generator expects.
 # The session is killed at the wall-clock budget rather than left to run to
 # Kaggle's nine-hour cap. Every story is checkpointed as it is generated, so a
 # stopped run is resumed by reissuing the same command; a runaway that is not
 # stopped costs GPU quota that cannot be got back.
-cmd = f"cd {{repo}} && python -u " + COMMAND + f" --out {{OUT}}"
+command = COMMAND.replace("{{OUT}}", str(OUT))
+if "{{OUT}}" not in COMMAND:
+    command += f" --out {{OUT}}"
+cmd = f"cd {{repo}} && python -u " + command
 print("=" * 70, flush=True)
 budget = max(1.0, MAX_MIN * 60 - (time.time() - t0))
 proc = subprocess.Popen(cmd, shell=True, start_new_session=True)
@@ -524,7 +530,10 @@ def cmd_run(args) -> None:
     elif not args.dry_run:
         print("  no checkpoint to upload; the kernel starts fresh")
 
-    command = " ".join(shlex.quote(a) for a in args.command)
+    # shlex.quote would wrap {OUT} in single quotes, which is harmless, but the
+    # placeholder reads better unquoted and the paths it expands to have no spaces.
+    command = " ".join(a if a == "{OUT}" or "{OUT}" in a and " " not in a
+                       else shlex.quote(a) for a in args.command)
     write_kernel(exp / "kernel", kernel_id=kernel_id,
                  title=f"{KERNEL_PREFIX} {name}", repo=args.repo, commit=commit,
                  state_dir=dataset_slug, out_name=name, command=command,
@@ -840,7 +849,9 @@ def main() -> None:
                         "nine-hour cap; the checkpoint means you resume by reissuing "
                         "the same command")
     r.add_argument("command", nargs=argparse.REMAINDER,
-                   help="after --, the command to run inside the repo")
+                   help="after --, the command to run inside the repo. Write {OUT} "
+                        "for the output directory; a command that does not mention "
+                        "it gets --out appended")
     r.set_defaults(func=cmd_run)
 
     sess = sub.add_parser("sessions",
