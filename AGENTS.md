@@ -108,9 +108,21 @@ A run takes a few minutes to start (queueing, then a 16 GB model download), then
 roughly 10 seconds per story. One hundred stories per condition is about 17
 minutes, so a four-condition sweep is a little over an hour.
 
-A session is capped near nine hours. A sweep that exceeds it stops partway;
-reissuing the same command resumes from the checkpoint, because every story is
-saved as it is generated.
+A session is capped near nine hours, but the kernel stops itself at
+`--max-minutes` (default 240) well before that, because GPU quota is spent by a
+session being alive and cannot be got back. Either way, reissuing the same
+command resumes from the checkpoint: every story is saved as it is generated.
+
+**GPU time is only spent while a session is alive.** Watch for this:
+
+    python scripts/kaggle_harness.py sessions     # anything still running?
+    python scripts/kaggle_harness.py stop --name X
+
+Interrupting `run` stops the *watching*, not the kernel; it says so. Check
+`sessions` before finishing a piece of work, and again if a run was interrupted.
+Kaggle has no cancel endpoint, so `stop` deletes the kernel to end the session --
+results already checkpointed survive, but that run's output is not published. The
+gentler route is the Stop Session button on the kernel's page.
 
 ### If something goes wrong
 

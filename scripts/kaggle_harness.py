@@ -226,6 +226,7 @@ STATE_DIR = {state_dir!r}
 OUT_NAME  = {out_name!r}
 COMMAND   = {command!r}
 SPACY     = {spacy}
+MAX_MIN   = {max_minutes}
 
 WORK = Path("/kaggle/working")
 OUT  = WORK / OUT_NAME
@@ -280,11 +281,42 @@ if SPACY:
     sh("python -m spacy download en_core_web_sm -q 2>&1 | tail -2", check=False)
 
 # ---- run --------------------------------------------------------------------
+# The session is killed at the wall-clock budget rather than left to run to
+# Kaggle's nine-hour cap. Every story is checkpointed as it is generated, so a
+# stopped run is resumed by reissuing the same command; a runaway that is not
+# stopped costs GPU quota that cannot be got back.
 cmd = f"cd {{repo}} && python -u " + COMMAND + f" --out {{OUT}}"
 print("=" * 70, flush=True)
-rc = subprocess.run(cmd, shell=True).returncode
+budget = max(1.0, MAX_MIN * 60 - (time.time() - t0))
+proc = subprocess.Popen(cmd, shell=True, start_new_session=True)
+try:
+    rc = proc.wait(timeout=budget)
+    stopped = False
+except subprocess.TimeoutExpired:
+    import signal
+    print("", flush=True)
+    print("!" * 70, flush=True)
+    print(f"wall-clock budget of {{MAX_MIN}} min reached, so this run is stopping",
+          flush=True)
+    print("here rather than eating the GPU quota. Everything generated so far is",
+          flush=True)
+    print("checkpointed: reissue the same command to carry on from this point.",
+          flush=True)
+    print("!" * 70, flush=True)
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        proc.wait(timeout=90)
+    except Exception:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except Exception:
+            pass
+    (OUT / "BUDGET_REACHED").write_text(
+        f"stopped after {{MAX_MIN}} min; resume with the same command")
+    rc, stopped = 0, True
 print("=" * 70, flush=True)
-print(f"exit code {{rc}} after {{(time.time() - t0) / 60:.1f}} min", flush=True)
+print(f"exit code {{rc}} after {{(time.time() - t0) / 60:.1f}} min"
+      + ("  (stopped at the budget)" if stopped else ""), flush=True)
 
 # ---- leave only the results in /kaggle/working ------------------------------
 shutil.rmtree(repo, ignore_errors=True)
@@ -298,11 +330,13 @@ sys.exit(rc)
 
 def write_kernel(folder: Path, *, kernel_id: str, title: str, repo: str, commit: str,
                  state_dir: str, out_name: str, command: str, gpu: bool,
-                 dataset_sources: List[str], spacy: bool) -> None:
+                 dataset_sources: List[str], spacy: bool,
+                 max_minutes: int = 240) -> None:
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "run.py").write_text(
         KERNEL_TEMPLATE.format(repo=repo, commit=commit, state_dir=state_dir,
-                               out_name=out_name, command=command, spacy=spacy),
+                               out_name=out_name, command=command, spacy=spacy,
+                               max_minutes=int(max_minutes)),
         encoding="utf-8",
     )
     (folder / "kernel-metadata.json").write_text(json.dumps({
@@ -391,6 +425,55 @@ def sync_state_up(api, state_dir: Path, dataset_id: str, title: str) -> bool:
 #  Commands                                                                    #
 # --------------------------------------------------------------------------- #
 
+def running_sessions(api, quiet: bool = False) -> List[str]:
+    """Kernels of ours that are queued or running, i.e. burning GPU quota."""
+    live = []
+    for k in api.kernels_list(mine=True, search=KERNEL_PREFIX, page_size=50):
+        ref = str(getattr(k, "ref", k))
+        try:
+            status, _ = _status(api, ref)
+        except Exception:
+            continue
+        if status in ("running", "queued"):
+            live.append(ref)
+    if not quiet:
+        if live:
+            print("\nSTILL USING GPU TIME:")
+            for ref in live:
+                print(f"  {ref}   kaggle.com/{ref}")
+            print("  Stop one with:  python scripts/kaggle_harness.py stop --name <name>")
+        else:
+            print("\nno harness session is running; nothing is consuming GPU time")
+    return live
+
+
+def cmd_sessions(args) -> None:
+    running_sessions(_api())
+
+
+def cmd_stop(args) -> None:
+    api = _api()
+    kernel_id = f"{_username(api)}/{KERNEL_PREFIX}-{args.name}"
+    status, _ = _status(api, kernel_id)
+    print(f"{kernel_id}: {status}")
+    if status not in ("running", "queued"):
+        print("not running, so there is nothing to stop")
+        return
+    print("\nKaggle's API has no cancel endpoint. The only lever here is deleting the\n"
+          "kernel, which ends the session but also removes the kernel and its history.\n"
+          "The results already written are NOT lost -- they are in the checkpoint\n"
+          "dataset and in experiments/ -- but this run's output will not be published.\n"
+          "\nThe gentler alternative is the Stop Session button at\n"
+          f"  kaggle.com/{kernel_id}\n")
+    if not args.yes:
+        reply = input("delete the kernel to end the session? [y/N] ").strip().lower()
+        if reply != "y":
+            print("left it running")
+            return
+    api.kernels_delete(kernel_id)
+    print(f"deleted {kernel_id}")
+
+
 def cmd_check(args) -> None:
     api = _api()
     user = _username(api, args.user)
@@ -404,6 +487,7 @@ def cmd_check(args) -> None:
     print(f"{len(mine)} harness kernel(s) on the account:")
     for k in mine:
         print(f"  {getattr(k, 'ref', k)}")
+    running_sessions(api)
     print("\nGPU quota is not exposed by the API; check it at "
           "kaggle.com/settings -> Accelerators.")
 
@@ -444,7 +528,8 @@ def cmd_run(args) -> None:
     write_kernel(exp / "kernel", kernel_id=kernel_id,
                  title=f"{KERNEL_PREFIX} {name}", repo=args.repo, commit=commit,
                  state_dir=dataset_slug, out_name=name, command=command,
-                 gpu=not args.no_gpu, dataset_sources=sources, spacy=not args.no_spacy)
+                 gpu=not args.no_gpu, dataset_sources=sources, spacy=not args.no_spacy,
+                 max_minutes=args.max_minutes)
 
     if args.dry_run:
         print(f"would push {kernel_id}")
@@ -465,7 +550,15 @@ def cmd_run(args) -> None:
         print("pushed. Watch it with:\n"
               f"    python scripts/kaggle_harness.py follow --name {name}")
         return
-    _wait_and_pull(api, kernel_id, exp, out_dir, state_dir, args.timeout)
+    try:
+        _wait_and_pull(api, kernel_id, exp, out_dir, state_dir, args.timeout)
+    except KeyboardInterrupt:
+        raise SystemExit(
+            f"\nstopped watching. The kernel is STILL RUNNING and still using GPU "
+            f"time.\n  watch again:  python scripts/kaggle_harness.py follow --name {name}"
+            f"\n  end it:       python scripts/kaggle_harness.py stop --name {name}"
+            f"\n  it stops by itself after {args.max_minutes} min in any case."
+        )
 
 
 TERMINAL = ("complete", "error", "cancelacknowledged", "cancelled",
@@ -628,6 +721,9 @@ def _pull(api, kernel_id: str, exp: Path, out_dir: Path, state_dir: Path) -> Non
     # The results become the checkpoint for the next run.
     inner = out_dir / exp.name
     payload = inner if inner.is_dir() else out_dir
+    if (payload / "BUDGET_REACHED").is_file():
+        print("  NOTE: the kernel stopped at its wall-clock budget. The checkpoint is\n"
+              "        complete up to that point; reissue the same command to carry on.")
     files = [f for f in payload.rglob("*") if f.is_file()]
     if files:
         shutil.rmtree(state_dir, ignore_errors=True)
@@ -735,10 +831,26 @@ def main() -> None:
                    help="build the kernel and print it, without touching the network")
     r.add_argument("--allow-dirty", action="store_true",
                    help="run the last pushed commit even with local changes")
-    r.add_argument("--timeout", type=int, default=600, help="minutes before giving up")
+    r.add_argument("--timeout", type=int, default=600,
+                   help="minutes the harness waits before it stops watching; the "
+                        "kernel keeps running")
+    r.add_argument("--max-minutes", type=int, default=240,
+                   help="wall-clock budget the kernel enforces on itself. It stops "
+                        "cleanly at this point rather than running to Kaggle's "
+                        "nine-hour cap; the checkpoint means you resume by reissuing "
+                        "the same command")
     r.add_argument("command", nargs=argparse.REMAINDER,
                    help="after --, the command to run inside the repo")
     r.set_defaults(func=cmd_run)
+
+    sess = sub.add_parser("sessions",
+                          help="list harness kernels still consuming GPU time")
+    sess.set_defaults(func=cmd_sessions)
+
+    st = sub.add_parser("stop", help="end a running session (deletes the kernel)")
+    st.add_argument("--name", required=True)
+    st.add_argument("--yes", action="store_true", help="skip the confirmation")
+    st.set_defaults(func=cmd_stop)
 
     s = sub.add_parser("status", help="is it still running")
     s.add_argument("--name", required=True)

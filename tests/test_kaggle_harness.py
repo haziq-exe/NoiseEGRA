@@ -70,6 +70,15 @@ with tempfile.TemporaryDirectory() as td:
           "shutil.rmtree(repo" in script)
     check("it exits with the command's status", "sys.exit(rc)" in script)
 
+    # GPU quota is spent by a session being alive, so a runaway must not be able
+    # to run to Kaggle's nine-hour cap just because nobody was watching.
+    check("the kernel enforces a wall-clock budget on itself",
+          "MAX_MIN" in script and "TimeoutExpired" in script)
+    check("it kills the whole process group, not just the shell",
+          "start_new_session=True" in script and "killpg" in script)
+    check("it leaves a marker so a truncated run is not read as a finished one",
+          "BUDGET_REACHED" in script)
+
     H.write_kernel(folder, kernel_id="a/b", title="t", repo="r", commit="c",
                    state_dir="s", out_name="o", command="x", gpu=False,
                    dataset_sources=[], spacy=False)
@@ -247,6 +256,55 @@ with tempfile.TemporaryDirectory() as td:
 
 check("terminal states cover what Kaggle reports",
       {"complete", "error"} <= set(H.TERMINAL))
+
+
+print("\n== GPU time is not left running by accident ==")
+
+import inspect as _insp  # noqa: E402
+
+
+class FakeKernel:
+    def __init__(self, ref): self.ref = ref
+
+
+class SessionStub:
+    def __init__(self, states): self.states = states
+
+    def kernels_list(self, **kw):
+        return [FakeKernel(r) for r in self.states]
+
+    def kernels_status(self, ref):
+        return {"status": self.states[ref]}
+
+
+buf = _io.StringIO()
+with _ctx.redirect_stdout(buf):
+    live = H.running_sessions(SessionStub({
+        "me/noiseegra-a": "KernelWorkerStatus.COMPLETE",
+        "me/noiseegra-b": "KernelWorkerStatus.RUNNING",
+        "me/noiseegra-c": "KernelWorkerStatus.QUEUED",
+    }))
+check("running and queued sessions are both reported",
+      sorted(live) == ["me/noiseegra-b", "me/noiseegra-c"], str(live))
+check("and reported loudly", "STILL USING GPU TIME" in buf.getvalue())
+
+buf = _io.StringIO()
+with _ctx.redirect_stdout(buf):
+    live = H.running_sessions(SessionStub({"me/noiseegra-a": "KernelWorkerStatus.COMPLETE"}))
+check("a quiet account says so plainly",
+      live == [] and "nothing is consuming GPU time" in buf.getvalue())
+
+check("enum statuses are reduced to bare names",
+      H._norm_status("KernelWorkerStatus.COMPLETE") == "complete"
+      and H._norm_status("complete") == "complete"
+      and H._norm_status("KernelWorkerStatus.RUNNING") == "running")
+
+src = _insp.getsource(H.cmd_run)
+check("interrupting the watcher warns that the kernel is still running",
+      "STILL RUNNING" in src and "KeyboardInterrupt" in src)
+check("stop exists and says what it costs",
+      "kernels_delete" in _insp.getsource(H.cmd_stop)
+      and "no cancel endpoint" in _insp.getsource(H.cmd_stop))
 
 
 print()
