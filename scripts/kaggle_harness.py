@@ -520,6 +520,30 @@ def cmd_log(args) -> None:
         print(line)
 
 
+def _reexec_in_harness_venv() -> None:
+    """Re-run under the venv that has the kaggle client, if this one does not.
+
+    The client is a heavier dependency than the rest of the repo needs, so it
+    lives in its own venv. Rather than make the caller remember that path, hop
+    there once and carry on.
+    """
+    if os.environ.get("NOISEEGRA_HARNESS_REEXEC"):
+        return
+    try:
+        import kaggle  # noqa: F401
+        return
+    except Exception:
+        pass
+    if not VENV_PY.is_file():
+        raise SystemExit(
+            "the kaggle client is not installed. Create its venv once:\n"
+            f"    python3 -m venv {VENV_PY.parent}\n"
+            f"    {VENV_PY} -m pip install kaggle"
+        )
+    os.environ["NOISEEGRA_HARNESS_REEXEC"] = "1"
+    os.execv(str(VENV_PY), [str(VENV_PY), str(Path(__file__).resolve()), *sys.argv[1:]])
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -569,6 +593,8 @@ def main() -> None:
     l.set_defaults(func=cmd_log)
 
     args = ap.parse_args()
+    if not getattr(args, "dry_run", False):
+        _reexec_in_harness_venv()
     if getattr(args, "command", None) and args.command and args.command[0] == "--":
         args.command = args.command[1:]
     if getattr(args, "command", None) == []:
