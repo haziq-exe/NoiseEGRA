@@ -246,18 +246,19 @@ sh("nvidia-smi --query-gpu=name,memory.total --format=csv,noheader || true", che
 print("=" * 70, flush=True)
 
 # ---- restore the checkpoint -------------------------------------------------
-mounted = sorted(p.name for p in Path("/kaggle/input").glob("*")) \
-    if Path("/kaggle/input").is_dir() else []
-print(f"mounted inputs: {{mounted or 'none'}}", flush=True)
-src = Path("/kaggle/input") / STATE_DIR
+# Where Kaggle mounts a dataset is not simply /kaggle/input/<slug>: it has been
+# seen nested under /kaggle/input/datasets/<owner>/<slug>. Rather than encode a
+# layout that changes, look for the archive by name.
+root = Path("/kaggle/input")
+tree = sorted(str(p.relative_to(root)) for p in root.rglob("*"))[:25] if root.is_dir() else []
+print(f"mounted inputs: {{tree or 'none'}}", flush=True)
+src = root / STATE_DIR
 archive = src / "state.tgz"
-if not archive.is_file() and mounted:
-    # Kaggle has been known to mount under a name derived from the title rather
-    # than the slug, so look for the archive anywhere before giving up.
-    found = list(Path("/kaggle/input").glob("*/state.tgz"))
+if not archive.is_file() and root.is_dir():
+    found = sorted(root.rglob("state.tgz"))
     if found:
         archive = found[0]
-        print(f"found the checkpoint at {{archive}} instead", flush=True)
+        print(f"found the checkpoint at {{archive}}", flush=True)
 if archive.is_file():
     import tarfile
     with tarfile.open(archive) as tar:
