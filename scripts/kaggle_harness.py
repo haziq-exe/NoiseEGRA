@@ -246,8 +246,18 @@ sh("nvidia-smi --query-gpu=name,memory.total --format=csv,noheader || true", che
 print("=" * 70, flush=True)
 
 # ---- restore the checkpoint -------------------------------------------------
+mounted = sorted(p.name for p in Path("/kaggle/input").glob("*")) \
+    if Path("/kaggle/input").is_dir() else []
+print(f"mounted inputs: {{mounted or 'none'}}", flush=True)
 src = Path("/kaggle/input") / STATE_DIR
 archive = src / "state.tgz"
+if not archive.is_file() and mounted:
+    # Kaggle has been known to mount under a name derived from the title rather
+    # than the slug, so look for the archive anywhere before giving up.
+    found = list(Path("/kaggle/input").glob("*/state.tgz"))
+    if found:
+        archive = found[0]
+        print(f"found the checkpoint at {{archive}} instead", flush=True)
 if archive.is_file():
     import tarfile
     with tarfile.open(archive) as tar:
@@ -267,8 +277,6 @@ elif EXPECT_STATE:
     # A checkpoint was uploaded for this run, so its absence is a mounting
     # failure, not a first run. Carrying on would regenerate everything.
     print(f"ERROR: expected a checkpoint at {{src}} and found none.", flush=True)
-    print(f"Mounted inputs: {{sorted(p.name for p in Path('/kaggle/input').glob('*'))}}",
-          flush=True)
     sys.exit(2)
 else:
     print(f"no checkpoint mounted at {{src}}; starting fresh", flush=True)
@@ -571,7 +579,7 @@ def cmd_run(args) -> None:
                  title=f"{KERNEL_PREFIX} {name}", repo=args.repo, commit=commit,
                  state_dir=dataset_slug, out_name=name, command=command,
                  gpu=not args.no_gpu, dataset_sources=sources, spacy=not args.no_spacy,
-                 max_minutes=args.max_minutes)
+                 max_minutes=args.max_minutes, expect_state=bool(sources))
 
     if args.dry_run:
         print(f"would push {kernel_id}")
