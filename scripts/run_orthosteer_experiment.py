@@ -85,6 +85,11 @@ def make_plan(
     offset_basis_kind="step",
     offset_prefill=False,
     offset_basis=None,
+    offset_decode=True,
+    amplify_lambda=1.0,
+    amplify_prefill=False,
+    amplify_basis=None,
+    amplify_mean=None,
     noise_horizon=None,
     gate_threshold=0.0,
     gate_level="none",
@@ -115,6 +120,11 @@ def make_plan(
         offset_basis_kind=offset_basis_kind,
         offset_prefill=offset_prefill,
         offset_basis=offset_basis,
+        offset_decode=offset_decode,
+        amplify_lambda=amplify_lambda,
+        amplify_prefill=amplify_prefill,
+        amplify_basis=amplify_basis,
+        amplify_mean=amplify_mean,
         noise_horizon=noise_horizon,
         gate_threshold=gate_threshold,
         gate_level=gate_level,
@@ -211,6 +221,40 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         return arms, (f"steering + per-story offsets at gamma {list(args.gamma_sweep)} "
                       f"drawn from the {kind}-level activation directions, each "
                       "applied from the first generated token and from the prompt")
+
+    if name == "prompt":
+        # Where the offset is applied, at one magnitude per arm. The prompt-only
+        # arm is the interesting one: the model is moved somewhere else before it
+        # writes a token and then decodes with nothing touching it, so the shift
+        # can be large without costing fluency.
+        kind = getattr(args, "offset_basis_kind", "story")
+        arms = []
+        for g in args.gamma_sweep:
+            arms.append({"plan": make_plan(
+                beta=args.beta, noise_mode="none", noise_alpha=0.0,
+                offset_gamma=g, offset_mode="orth", offset_basis=offset_basis,
+                offset_basis_kind=kind, offset_prefill=True, offset_decode=False,
+                **common)})
+        return arms, (f"steering + per-story offsets at gamma {list(args.gamma_sweep)} "
+                      "applied to the prompt only, with decoding left unperturbed")
+
+    if name == "amplify":
+        # No perturbation at all: the component of the current state that lies in
+        # the between-story subspace is stretched. Each story is pushed further
+        # along the direction it was already taking, so stories are driven apart
+        # from each other rather than jointly displaced.
+        arms = []
+        for lam in args.lambda_sweep:
+            for pre in (False, True):
+                arms.append({"plan": make_plan(
+                    beta=args.beta, noise_mode="none", noise_alpha=0.0,
+                    amplify_lambda=lam, amplify_prefill=pre,
+                    amplify_basis=getattr(args, "amplify_basis", None),
+                    amplify_mean=getattr(args, "amplify_mean", None),
+                    **common)})
+        return arms, (f"steering + between-story amplification at lambda "
+                      f"{list(args.lambda_sweep)}, applied while writing and from "
+                      "the prompt")
 
     if name == "window":
         # The same per-token noise as before, switched off after the opening. The

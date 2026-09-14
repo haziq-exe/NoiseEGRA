@@ -287,6 +287,8 @@ class LayerPlan:
     report: Dict[str, object] = field(default_factory=dict)
     offset_basis: Optional[torch.Tensor] = None   # (dim, M) directions offsets may use
     offset: Optional[torch.Tensor] = None         # (dim,) this generation's offset
+    amp_basis: Optional[torch.Tensor] = None      # (dim, r) directions stories differ along
+    amp_mean: Optional[torch.Tensor] = None       # (dim,) what they differ *from*
 
     def steering_delta(
         self,
@@ -337,11 +339,29 @@ class SteeringPlan:
     # components of individual decode-step activations, "story" the components of
     # whole-story mean activations.
     offset_basis_kind: str = "step"
+    # Whether the per-story offset is added during decode at all. Turning it off
+    # while `offset_prefill` is on gives a prompt-only offset: the model is moved
+    # somewhere else before it writes a token and then decodes completely
+    # unperturbed, so a large shift costs no fluency.
+    offset_decode: bool = True
     # Whether the per-story offset is also added to the prompt positions during
     # prefill. With it on, the offset shifts how the model reads the instruction
     # before it writes a single token, so the story starts somewhere else without
     # any per-token jitter at all.
     offset_prefill: bool = False
+    # Amplification of a story's own deviation from the average story. At every
+    # perturbed site the component of the current state that lies in the
+    # between-story subspace is multiplied by this factor:
+    #
+    #     h  ->  h + (lambda - 1) * B B^T (h - mu)
+    #
+    # 1.0 is a no-op. Unlike an offset this adds nothing random: it pushes each
+    # story further along whatever direction it was already taking, so two stories
+    # that had started to diverge are driven apart rather than jointly displaced.
+    # B has the constraint directions projected out, so the components the
+    # requirements depend on are left at their original size.
+    amplify_lambda: float = 1.0
+    amplify_prefill: bool = False
     # Decode steps the noise schedule is measured against. Defaults to ``horizon``.
     # Separate because ``horizon`` also drives the constraint schedules: a
     # perturbation confined to the first 24 tokens must not also compress the
@@ -378,6 +398,11 @@ class SteeringPlan:
         offset_basis_kind: str = "step",
         offset_prefill: bool = False,
         offset_basis: Optional[Mapping[int, torch.Tensor]] = None,
+        offset_decode: bool = True,
+        amplify_lambda: float = 1.0,
+        amplify_prefill: bool = False,
+        amplify_basis: Optional[Mapping[int, torch.Tensor]] = None,
+        amplify_mean: Optional[Mapping[int, torch.Tensor]] = None,
         noise_horizon: Optional[int] = None,
         gate_threshold: float = 0.0,
         gate_level: str = "none",
@@ -454,8 +479,28 @@ class SteeringPlan:
                     ob = None      # no basis: draw isotropically and project at draw time
                 report["offset_rank"] = 0 if ob is None else ob.shape[1]
 
+            ab = am = None
+            if amplify_lambda != 1.0 and amplify_basis is not None and layer in amplify_basis:
+                ab = amplify_basis[layer].detach().to(torch.float32)
+                if device is not None:
+                    ab = ab.to(device)
+                if ab.dim() == 1:
+                    ab = ab.unsqueeze(1)
+                # Same projection as the offset: what the requirements depend on is
+                # not amplified, so the arm changes diversity and nothing else.
+                ab = complement_basis(ab, protect)
+                if amplify_mean is not None and layer in amplify_mean:
+                    am = amplify_mean[layer].detach().to(torch.float32).flatten()
+                    if device is not None:
+                        am = am.to(device)
+                else:
+                    am = torch.zeros(dim, dtype=torch.float32,
+                                     device=ab.device if ab is not None else None)
+                report["amplify_rank"] = 0 if ab is None else ab.shape[1]
+
             layer_plans[layer] = LayerPlan(
-                layer=layer, basis=basis, protect=protect, report=report, offset_basis=ob
+                layer=layer, basis=basis, protect=protect, report=report,
+                offset_basis=ob, amp_basis=ab, amp_mean=am,
             )
 
         return cls(
@@ -472,6 +517,9 @@ class SteeringPlan:
             offset_gamma=float(offset_gamma),
             offset_mode=offset_mode,
             offset_norm=offset_norm,
+            offset_decode=bool(offset_decode),
+            amplify_lambda=float(amplify_lambda),
+            amplify_prefill=bool(amplify_prefill),
             offset_basis_kind=offset_basis_kind,
             offset_prefill=bool(offset_prefill),
             noise_horizon=None if noise_horizon is None else int(noise_horizon),
@@ -496,6 +544,10 @@ class SteeringPlan:
                 lp.protect = lp.protect.to(device=device, dtype=dtype)
             if lp.offset_basis is not None:
                 lp.offset_basis = lp.offset_basis.to(device=device, dtype=dtype)
+            if lp.amp_basis is not None:
+                lp.amp_basis = lp.amp_basis.to(device=device, dtype=dtype)
+            if lp.amp_mean is not None:
+                lp.amp_mean = lp.amp_mean.to(device=device, dtype=dtype)
         return self
 
     def resample_offset(self) -> None:
@@ -567,9 +619,8 @@ class SteeringPlan:
         delta = lp.steering_delta(t, h, self.specs, self.rms_scale)
 
         # The per-story offset is a perturbation, so it is gated with the noise
-        # rather than with the steering: prefill never sees it, and an entropy
-        # gate closes on both together.
-        if with_offset and lp.offset is not None:
+        # rather than with the steering: an entropy gate closes on both together.
+        if with_offset and self.offset_decode and lp.offset is not None:
             delta = lp.offset if delta is None else delta + lp.offset
 
         if with_noise and self.noise_mode != "none" and self.noise_alpha > 0:
@@ -588,6 +639,40 @@ class SteeringPlan:
                     delta = noise if delta is None else delta + noise
 
         return delta
+
+    def amplify_delta(
+        self,
+        layer: int,
+        state: torch.Tensor,
+        *,
+        device: Optional[torch.device] = None,
+    ) -> Optional[torch.Tensor]:
+        """What to add to ``state`` to stretch its between-story component.
+
+        ``state`` is a block output, either one position of shape (dim,) or a run of
+        them of shape (T, dim) -- prefill hands over the whole prompt at once, and
+        each position there has its own deviation from the average, so this is not
+        one vector added everywhere. The result has the same shape as ``state`` and
+        is ``(lambda - 1) * (state - mu) B B^T``: the part of each position that
+        distinguishes this story from the average story, scaled up. Adding it
+        multiplies that part by ``lambda`` and leaves everything else, including
+        every constraint direction, exactly as it was.
+
+        Returns None when there is nothing to do, so the hook can skip the work.
+        """
+        if self.amplify_lambda == 1.0:
+            return None
+        lp = self.layer_plans[layer]
+        if lp.amp_basis is None:
+            return None
+        if device is not None and lp.amp_basis.device != device:
+            lp.amp_basis = lp.amp_basis.to(device)
+            if lp.amp_mean is not None:
+                lp.amp_mean = lp.amp_mean.to(device)
+        h = state.to(lp.amp_basis.dtype)
+        if lp.amp_mean is not None:
+            h = h - lp.amp_mean
+        return ((h @ lp.amp_basis) @ lp.amp_basis.t()) * (self.amplify_lambda - 1.0)
 
     # ---- diagnostics ------------------------------------------------------ #
 
@@ -617,6 +702,10 @@ class SteeringPlan:
             "offset_gamma": self.offset_gamma,
             "offset_mode": self.offset_mode,
             "offset_norm": self.offset_norm,
+            "offset_decode": self.offset_decode,
+            "amplify_lambda": self.amplify_lambda,
+            "amplify_prefill": self.amplify_prefill,
+            "amplify_rank": self.layer_plans[self.layers[0]].report.get("amplify_rank"),
             "offset_basis_kind": self.offset_basis_kind,
             "offset_prefill": self.offset_prefill,
             "noise_horizon": self.noise_horizon,
@@ -648,6 +737,10 @@ class SteeringPlan:
                   f"rank={info['offset_rank']} basis={info['offset_basis_kind']} "
                   f"norm={info['offset_norm']} "
                   f"prefill={info['offset_prefill']}")
+        if info["amplify_lambda"] != 1.0:
+            print(f"amplification    : lambda={info['amplify_lambda']:.6g} over "
+                  f"{info['amplify_rank']} between-story directions "
+                  f"(prefill={info['amplify_prefill']})")
         print(f"protected rank   : {info['protect_rank']} of {info['dim']} "
               f"({100.0 * info['protect_rank'] / max(info['dim'], 1):.3f}% of the stream)")
         print(f"steer at prefill : {info['steer_prefill']}")

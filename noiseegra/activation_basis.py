@@ -16,9 +16,27 @@ where projecting them out changes the outcome.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Union
 
 import torch
+
+
+@dataclass
+class StoryAxes:
+    """How the model's own stories differ from one another, per layer.
+
+    ``basis[layer]`` is a (hidden_size, rank) orthonormal matrix whose columns are
+    the directions between-story variation runs along, ordered by how much of it
+    each explains. ``mean[layer]`` is the average activation those directions are
+    measured from: a story's position along an axis only means anything relative
+    to it. ``explained`` is the share of between-story variation the kept
+    directions carry, between 0 and 1.
+    """
+    basis: Dict[int, torch.Tensor]
+    mean: Dict[int, torch.Tensor]
+    explained: float = 0.0
+    n_stories: int = 0
 
 
 @torch.no_grad()
@@ -128,7 +146,7 @@ def collect_story_pcs(
     temperature: float = 1.0,
     seed: Optional[int] = 0,
     verbose: bool = True,
-) -> Dict[int, torch.Tensor]:
+) -> "StoryAxes":
     """Directions along which one *story* differs from another.
 
     ``collect_block_pcs`` takes the principal components of individual decode-step
@@ -143,9 +161,10 @@ def collect_story_pcs(
     ends. Pushing along one of them amplifies a way the model already varies, which
     is why it stays fluent at magnitudes that isotropic noise cannot survive.
 
-    Returns a per-layer ``(hidden_size, rank)`` orthonormal basis, ordered by how
-    much of the between-story variation each direction explains. ``rank`` is capped
-    at ``n_stories - 1``: that is how many directions a set of ``n_stories`` points
+    Returns a :class:`StoryAxes`: the per-layer basis, and the mean activation the
+    basis is centred on, which a method that amplifies a story's own deviation
+    needs in order to know what it is deviating from. ``rank`` is capped at
+    ``n_stories - 1``: that is how many directions a set of ``n_stories`` points
     can span once it is centred.
 
     ``skip_first`` drops the opening decode steps, where every story is still
@@ -227,16 +246,22 @@ def collect_story_pcs(
                 pass
 
     basis: Dict[int, torch.Tensor] = {}
+    centre: Dict[int, torch.Tensor] = {}
+    explained, n_used = 0.0, 0
     for li, means in story_means.items():
         if len(means) < 3:
             raise RuntimeError(f"only {len(means)} usable stories for layer {li}.")
         mat = torch.stack(means, dim=0)
-        mat = mat - mat.mean(dim=0, keepdim=True)
+        mu = mat.mean(dim=0)
+        centre[li] = mu.contiguous()
+        mat = mat - mu.unsqueeze(0)
         k = min(rank, mat.shape[0] - 1, mat.shape[1])
         _, sv, vh = torch.linalg.svd(mat, full_matrices=False)
         basis[li] = vh[:k].t().contiguous()
-        if verbose and li == min(story_means):
-            share = float((sv[:k] ** 2).sum() / (sv ** 2).sum().clamp_min(1e-12))
-            print(f"  [story basis] rank {k} from {mat.shape[0]} stories; "
-                  f"those directions carry {share:.0%} of the between-story variation")
-    return basis
+        n_used = mat.shape[0]
+        if li == min(story_means):
+            explained = float((sv[:k] ** 2).sum() / (sv ** 2).sum().clamp_min(1e-12))
+            if verbose:
+                print(f"  [story basis] rank {k} from {n_used} stories; those "
+                      f"directions carry {explained:.0%} of the between-story variation")
+    return StoryAxes(basis=basis, mean=centre, explained=explained, n_stories=n_used)

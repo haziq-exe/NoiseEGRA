@@ -25,7 +25,7 @@ from typing import Dict, List, Optional, Sequence
 # Order families appear in a table: the reference conditions first, then the
 # thing being swept.
 FAMILY_ORDER = [
-    "baseline", "sampling", "steer", "per-token", "per-story",
+    "baseline", "sampling", "steer", "per-token", "per-story", "amplify",
     "embed", "attn", "resid", "entropy", "double", "two-stage", "other",
 ]
 
@@ -58,6 +58,7 @@ _PROTECT = re.compile(r"__k(\d+)")
 _GATE = re.compile(r"__gate([a-z]+)")
 _NHORIZON = re.compile(r"__nh(\d+)")
 _NSCHED = re.compile(r"__nsch([a-z])")
+_AMP = re.compile(rf"__amp(?P<val>m?{_FLOAT})")
 _ORTHONORM = re.compile(r"__(lowdin|gram_schmidt|none)__")
 
 
@@ -96,6 +97,8 @@ _SHORTEN = [
     ("per-token noise a=", "tok "),
     ("per-story offset g=", "sto "),
     (", from the prompt onward", "+pre"),
+    (", at the prompt only", " pre"),
+    ("story-difference amplified x", "amp "),
     (", only over the first ", " <"),
     (" (orthogonal)", ""), (" (unrestricted)", " iso"), (" (in-subspace)", " para"),
     (", gated to the most uncertain steps", " g-hi"),
@@ -168,11 +171,23 @@ def label_run(run_id: str) -> RunLabel:
         gate_txt = ({"median": ", gated to uncertain steps",
                      "high": ", gated to the most uncertain steps"}
                     .get(gate.group(1), f", gate {gate.group(1)}") if gate else "")
+        amp = _AMP.search(rid)
+        if amp:
+            v = untag_float(amp.group("val"))
+            where = " from the prompt" if "__apre" in rid else " while writing"
+            return RunLabel(
+                f"story-difference amplified x{_fmt(v)}{where}{gate_txt}",
+                "amplify", v, rid)
         g = _G.search(rid)
         if g and g.group("mode") != "none" and untag_float(g.group("val")) > 0:
             v = untag_float(g.group("val"))
             mode = SUBSPACE_MODES.get(g.group("mode"), g.group("mode"))
-            where = ", from the prompt onward" if "__opre" in rid else ""
+            if "__ponly" in rid:
+                where = ", at the prompt only"
+            elif "__opre" in rid:
+                where = ", from the prompt onward"
+            else:
+                where = ""
             return RunLabel(f"per-story offset g={_fmt(v)} ({mode}){where}{gate_txt}",
                             "per-story", v, rid)
         a = _NZ.search(rid)

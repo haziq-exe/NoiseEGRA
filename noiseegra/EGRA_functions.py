@@ -692,7 +692,8 @@ class EGRA:
                             # instruction before it writes a token, which changes
                             # the story without perturbing any decode step.
                             offset_here = bool(getattr(plan, "offset_prefill", False))
-                            if not plan.steer_prefill and not offset_here:
+                            amp_here = bool(getattr(plan, "amplify_prefill", False))
+                            if not plan.steer_prefill and not offset_here and not amp_here:
                                 return None
                             delta = None
                             if plan.steer_prefill:
@@ -705,9 +706,17 @@ class EGRA:
                                 if off is not None:
                                     off = off.to(target.device)
                                     delta = off if delta is None else delta + off
-                            if delta is None:
-                                return None
-                            target.add_(delta.to(target.dtype).view(1, 1, -1))
+                            if delta is not None:
+                                target.add_(delta.to(target.dtype).view(1, 1, -1))
+                            if amp_here:
+                                # Per position: each prompt position has its own
+                                # deviation from the average, so this is not one
+                                # vector added everywhere.
+                                amp = plan.amplify_delta(
+                                    layer_idx, target[0].float(), device=target.device
+                                )
+                                if amp is not None:
+                                    target[0].add_(amp.to(target.dtype))
                             return None
 
                         # Gate the perturbation, never the steering: a gate sweep
@@ -723,9 +732,15 @@ class EGRA:
                             layer_idx, shared["cur_t"], with_noise=gate_open,
                             with_offset=gate_open, device=target.device,
                         )
-                        if delta is None:
-                            return None
-                        target[:, -1:, :].add_(delta.to(target.dtype).view(1, 1, -1))
+                        if delta is not None:
+                            target[:, -1:, :].add_(delta.to(target.dtype).view(1, 1, -1))
+                        if gate_open:
+                            amp = plan.amplify_delta(
+                                layer_idx, target[0, -1, :].float(),
+                                device=target.device,
+                            )
+                            if amp is not None:
+                                target[:, -1:, :].add_(amp.to(target.dtype).view(1, 1, -1))
 
                     return None
                 return hook

@@ -183,8 +183,14 @@ def _ortho_tag(model_name: str, spec: ExperimentSpec) -> str:
             parts.append(f"__ob{plan.offset_basis_kind}")
         if getattr(plan, "offset_prefill", False):
             parts.append("__opre")
+        if not getattr(plan, "offset_decode", True):
+            parts.append("__ponly")
         if getattr(plan, "offset_norm", "energy") != "energy":
             parts.append(f"__on{plan.offset_norm}")
+    if getattr(plan, "amplify_lambda", 1.0) != 1.0:
+        parts.append(f"__amp{_float_tag(plan.amplify_lambda)}")
+        if getattr(plan, "amplify_prefill", False):
+            parts.append("__apre")
     if getattr(plan, "gate_level", "none") not in ("none", None):
         parts.append(f"__gate{plan.gate_level}")
     schedules = [s.schedule for s in plan.specs]

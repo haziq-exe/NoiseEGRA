@@ -28,7 +28,9 @@ import numpy as np  # noqa: E402
 import torch  # noqa: E402
 
 from noiseegra import writingprompts as wp  # noqa: E402
-from noiseegra.activation_basis import collect_block_pcs, collect_story_pcs  # noqa: E402
+from noiseegra.activation_basis import (  # noqa: E402
+    StoryAxes, collect_block_pcs, collect_story_pcs,
+)
 from noiseegra.constraint_metrics_en import EnglishConstraintChecker  # noqa: E402
 from noiseegra.defaults import (  # noqa: E402
     EN_STEER_VECTORS,
@@ -126,8 +128,8 @@ def main() -> None:
     ap.add_argument("--dtype", default="auto", choices=["auto", "float16", "bfloat16"])
     ap.add_argument("--suite", nargs="+", default=["compare"],
                     choices=["baseline", "sampling", "compare", "method", "noise",
-                             "offset", "story", "window", "core", "ortho", "alpha",
-                             "gate", "beta", "loo", "all"])
+                             "offset", "story", "prompt", "amplify", "window",
+                             "core", "ortho", "alpha", "gate", "beta", "loo", "all"])
     ap.add_argument("--task", default="generic", choices=["generic", "scenario"],
                     help="'generic' is the published design: one instruction with no "
                          "scenario, many requirements, and every story in one group, so "
@@ -183,6 +185,9 @@ def main() -> None:
                     help="tokens generated per sample while estimating either basis")
     ap.add_argument("--noise-horizon", type=int, default=24,
                     help="decode steps the perturbation covers in --suite window")
+    ap.add_argument("--lambda-sweep", nargs="*", type=float, default=[1.5, 2.0, 3.0],
+                    help="how far --suite amplify stretches a story's own deviation "
+                         "from the average story. 1 is a no-op; 2 doubles it")
     ap.add_argument("--alpha-sweep", nargs="*", type=float,
                     default=[0.0, 0.0875, 0.175, 0.35, 0.7],
                     help="noise strengths used by --suite alpha")
@@ -389,41 +394,69 @@ def main() -> None:
     # Cached under the basis kind, because the two are different sets of
     # directions and a run that mixed them would be unreadable.
     args.offset_basis = None
-    if {"offset", "story"} & set(suites_req):
+    args.amplify_basis = None
+    args.amplify_mean = None
+    if {"offset", "story", "prompt", "amplify"} & set(suites_req):
         kind = args.offset_basis_kind
         pc_path = out / f"actpcs_{kind}_{args.model}.pt"
         legacy = out / f"actpcs_{args.model}.pt"
         if kind == "step" and not pc_path.is_file() and legacy.is_file():
             pc_path = legacy
+        cached = None
         if pc_path.is_file():
-            args.offset_basis = torch.load(pc_path, map_location="cpu", weights_only=False)
-            print(f"activation basis ({kind}): loaded from {pc_path.name}")
+            cached = torch.load(pc_path, map_location="cpu", weights_only=False)
+            if kind == "story" and not isinstance(cached, StoryAxes):
+                # Written before the estimate carried the mean its directions are
+                # measured from. The directions themselves are still right, but
+                # amplification cannot use them, so take it again.
+                print(f"activation basis: {pc_path.name} predates the stored mean "
+                      "activation; re-estimating")
+                cached = None
+            else:
+                print(f"activation basis ({kind}): loaded from {pc_path.name}")
+        if cached is not None:
+            pass
         elif kind == "story":
             print(f"activation basis: sampling {args.offset_basis_stories} unsteered "
                   "stories to find the directions they differ along (once) ...",
                   flush=True)
-            args.offset_basis = collect_story_pcs(
+            cached = collect_story_pcs(
                 get_model(), messages[0], layers,
                 n_stories=args.offset_basis_stories,
                 rank=args.offset_rank,
                 max_new_tokens=args.offset_basis_tokens,
             )
-            torch.save(args.offset_basis, pc_path)
+            torch.save(cached, pc_path)
             print(f"activation basis (story): saved to {pc_path.name}")
         else:
             print("activation basis: estimating decode-step principal components "
                   "(once) ...", flush=True)
-            args.offset_basis = collect_block_pcs(
+            cached = collect_block_pcs(
                 get_model(),
                 (messages * 4)[:4],
                 layers, rank=args.offset_rank,
                 max_new_tokens=args.offset_basis_tokens,
             )
-            torch.save(args.offset_basis, pc_path)
+            torch.save(cached, pc_path)
             print(f"activation basis (step): saved to {pc_path.name}")
+
+        # The story-level estimate carries the mean the directions are measured
+        # from, which amplification needs; the decode-step one is a bare basis and
+        # is centred on zero.
+        if isinstance(cached, StoryAxes):
+            args.offset_basis, args.amplify_basis = cached.basis, cached.basis
+            args.amplify_mean = cached.mean
+        else:
+            args.offset_basis = args.amplify_basis = cached
         rank0 = args.offset_basis[sorted(args.offset_basis)[0]].shape[1]
-        print(f"  offsets may move along {rank0} directions per layer, before the "
-              "constraint directions are projected out")
+        print(f"  the perturbation may move along {rank0} directions per layer, "
+              "before the constraint directions are projected out")
+        if "amplify" in suites_req and args.amplify_mean is None:
+            raise SystemExit(
+                "--suite amplify needs the average activation its directions are "
+                "measured from, which only the story-level basis carries. Re-run "
+                "with --offset-basis story."
+            )
 
     # ---- entropy gate threshold, measured once per model ------------------- #
     # In nats, and nats are not comparable across models or tokenisers, so the

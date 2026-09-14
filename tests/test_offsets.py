@@ -127,6 +127,57 @@ p.resample_offset()
 check("and a fresh one is drawn for the next story",
       not torch.allclose(first, p.layer_plans[2].offset, atol=1e-4))
 
+print("\n== the offset can be confined to the prompt ==")
+p = plan(noise_mode="none", noise_alpha=0.0, offset_gamma=0.2, offset_mode="orth",
+         offset_basis=basis, offset_prefill=True, offset_decode=False)
+torch.manual_seed(3)
+p.resample_offset()
+check("a prompt-only offset is still drawn", p.layer_plans[2].offset is not None)
+d = p.delta_for(2, 5)
+steer = plan(noise_mode="none", noise_alpha=0.0).delta_for(2, 5)
+check("but adds nothing at a decode step", torch.allclose(d, steer, atol=1e-5),
+      f"max diff {float((d - steer).abs().max()):.3g}")
+
+print("\n== amplifying a story's own deviation ==")
+torch.manual_seed(5)
+amp_basis = {l: torch.linalg.qr(torch.randn(DIM, 12))[0] for l in LAYERS}
+amp_mean = {l: torch.randn(DIM) for l in LAYERS}
+p = plan(noise_mode="none", noise_alpha=0.0, amplify_lambda=2.0,
+         amplify_basis=amp_basis, amplify_mean=amp_mean)
+B = p.layer_plans[2].amp_basis
+mu = p.layer_plans[2].amp_mean
+h = torch.randn(DIM)
+d = p.amplify_delta(2, h)
+new_h = h + d
+before = B.t() @ (h - mu)
+after = B.t() @ (new_h - mu)
+check("lambda=2 doubles the part of the state that lies in the story subspace",
+      torch.allclose(after, 2 * before, atol=1e-4),
+      f"|before|={float(before.norm()):.3f} |after|={float(after.norm()):.3f}")
+rest = (h - mu) - B @ before
+rest_after = (new_h - mu) - B @ after
+check("and leaves the rest of the state untouched",
+      torch.allclose(rest, rest_after, atol=1e-4))
+leak = float((p.layer_plans[2].protect.t() @ d).norm() / d.norm())
+check("nothing is added along a constraint direction", leak < 1e-4, f"leak {leak:.3g}")
+# Prefill hands the hook every prompt position at once.
+block = torch.randn(7, DIM)
+db = p.amplify_delta(2, block)
+check("a run of positions is amplified position by position",
+      db.shape == (7, DIM)
+      and torch.allclose(db[3], p.amplify_delta(2, block[3]), atol=1e-4),
+      str(tuple(db.shape)))
+check("lambda=1 is a no-op",
+      plan(noise_mode="none", noise_alpha=0.0, amplify_lambda=1.0,
+           amplify_basis=amp_basis, amplify_mean=amp_mean).amplify_delta(2, h) is None)
+
+# Two stories that had started to diverge must be driven apart, not jointly moved.
+h1, h2 = torch.randn(DIM), torch.randn(DIM)
+gap = float((h1 - h2).norm())
+gap_after = float(((h1 + p.amplify_delta(2, h1)) - (h2 + p.amplify_delta(2, h2))).norm())
+check("two different states end up further apart than they started",
+      gap_after > gap * 1.05, f"{gap:.3f} -> {gap_after:.3f}")
+
 print("\n== run ids and labels ==")
 from noiseegra.setup_experiment import _spec_to_run_id, make_specs  # noqa: E402
 
@@ -140,11 +191,17 @@ for tag, kw in [
                        offset_basis_kind="step", offset_prefill=False)),
     ("window", dict(noise_mode="orth", noise_alpha=0.4, noise_schedule="prefix",
                     noise_horizon=24)),
+    ("promptonly", dict(offset_gamma=0.2, offset_mode="orth", offset_basis=basis,
+                        offset_basis_kind="story", offset_prefill=True,
+                        offset_decode=False)),
+    ("amp", dict(amplify_lambda=2.0, amplify_basis=amp_basis, amplify_mean=amp_mean)),
+    ("amppre", dict(amplify_lambda=2.0, amplify_prefill=True,
+                    amplify_basis=amp_basis, amplify_mean=amp_mean)),
 ]:
     kw.setdefault("noise_mode", "none"); kw.setdefault("noise_alpha", 0.0)
     spec = list(make_specs({"plan": plan(**kw)}))[0]
     ids[tag] = _spec_to_run_id("M", spec)
-check("four settings give four different run ids", len(set(ids.values())) == 4,
+check("every setting gets its own run id", len(set(ids.values())) == len(ids),
       "\n    " + "\n    ".join(f"{k}: {v}" for k, v in ids.items()))
 check("the prompt-onward offset says so in its name",
       "from the prompt onward" in label_run(ids["prefill"]).text,
@@ -158,26 +215,42 @@ check("and says so differently for the decode-step basis",
       str(plan_summary([ids["stepbasis"]])))
 check("the windowed noise names its window",
       "first 24 tokens" in label_run(ids["window"]).text, label_run(ids["window"]).text)
+check("a prompt-only offset says so",
+      "at the prompt only" in label_run(ids["promptonly"]).text,
+      label_run(ids["promptonly"]).text)
+check("amplification is named and its factor read back",
+      label_run(ids["amp"]).family == "amplify"
+      and label_run(ids["amp"]).magnitude == 2.0,
+      label_run(ids["amp"]).text)
+check("and where it is applied distinguishes the two arms",
+      label_run(ids["amp"]).text != label_run(ids["amppre"]).text,
+      label_run(ids["amppre"]).text)
 
 print("\n== the story-level basis ==")
 from tiny_model import Tiny  # noqa: E402
 
 egra = Tiny()
 msgs = [{"role": "user", "content": "Write a story."}]
-b = collect_story_pcs(egra, msgs, [2, 3], n_stories=6, rank=8, max_new_tokens=12,
-                      skip_first=1, verbose=False)
-check("a basis per layer", sorted(b) == [2, 3], str(sorted(b)))
-k = b[2].shape[1]
+axes = collect_story_pcs(egra, msgs, [2, 3], n_stories=6, rank=8, max_new_tokens=12,
+                         skip_first=1, verbose=False)
+check("a basis per layer", sorted(axes.basis) == [2, 3], str(sorted(axes.basis)))
+k = axes.basis[2].shape[1]
 check("rank is capped at one less than the number of stories", k <= 5, f"rank {k}")
 check("the columns are orthonormal",
-      torch.allclose(b[2].t() @ b[2], torch.eye(k), atol=1e-4))
+      torch.allclose(axes.basis[2].t() @ axes.basis[2], torch.eye(k), atol=1e-4))
+check("the mean the directions are measured from comes back too",
+      sorted(axes.mean) == [2, 3] and axes.mean[2].shape == (64,),
+      str({l: tuple(v.shape) for l, v in axes.mean.items()}))
+check("and the share of variation they carry is reported",
+      0.0 < axes.explained <= 1.0, f"{axes.explained:.3f}")
 
 print("\n== end to end on a tiny model ==")
 import run_english_experiment as R  # noqa: E402
 
 OUT = Path("/tmp/_offset_test"); shutil.rmtree(OUT, ignore_errors=True)
 R.build_model = lambda mid, **kw: Tiny()
-sys.argv = ["x", "--model", "Qwen3-8B", "--suite", "story", "window",
+sys.argv = ["x", "--model", "Qwen3-8B", "--suite", "story", "window", "prompt",
+            "amplify", "--lambda-sweep", "2.0",
             "--layers", "2", "5", "--task", "generic", "--stories", "2",
             "--out", str(OUT), "--max-new-tokens", "4", "--pca-rank", "2",
             "--protect-rank", "2", "--no-diversity", "--gamma-sweep", "0.1",
@@ -189,8 +262,8 @@ with contextlib.redirect_stdout(io.StringIO()) as buf:
 out = buf.getvalue()
 state = json.loads((OUT / "Qwen3-8B" / "state.json").read_text())
 runs = sorted(state["runs"])
-check("three conditions: two offset arms and one windowed-noise arm",
-      len(runs) == 3, "\n    " + "\n    ".join(runs))
+check("six conditions: two offset arms, one prompt-only, two amplify, one window",
+      len(runs) == 6, "\n    " + "\n    ".join(runs))
 check("every cell is filled",
       all(len(v) == 2 for v in state["runs"].values()),
       str({r: len(v) for r, v in state["runs"].items()}))
@@ -204,7 +277,7 @@ check("the table names the arms apart",
 before = {r: dict(v) for r, v in state["runs"].items()}
 with contextlib.redirect_stdout(io.StringIO()) as buf2:
     R.main()
-check("a second run regenerates nothing", "0 of 6 still to generate" in buf2.getvalue())
+check("a second run regenerates nothing", "0 of 12 still to generate" in buf2.getvalue())
 state2 = json.loads((OUT / "Qwen3-8B" / "state.json").read_text())
 check("and leaves the stories alone", state2["runs"] == before)
 
