@@ -39,6 +39,8 @@ already handles.
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import json
 import os
 import re
@@ -69,7 +71,7 @@ _SLUG_OK = re.compile(r"^[a-z0-9-]{5,50}$")
 
 USER_CACHE = EXPERIMENTS / ".kaggle-username"
 
-CRED_HELP = """no Kaggle credentials on this machine.
+CRED_HELP = """could not authenticate with Kaggle.
 
   Easiest, opens a browser once and caches the result:
 
@@ -82,43 +84,58 @@ CRED_HELP = """no Kaggle credentials on this machine.
       chmod 600 ~/.kaggle/kaggle.json
 
   Either grants full access to the account, so keep it out of the repo.
-  KAGGLE_USERNAME with KAGGLE_KEY, or KAGGLE_API_TOKEN, work too."""
+  KAGGLE_USERNAME with KAGGLE_KEY, or KAGGLE_API_TOKEN, work too.
+
+  If you have logged in and still see this, the login may have gone to a
+  different interpreter's kaggle install. Check which one holds it:
+
+      {venv} -m kaggle auth login --force"""
 
 
-def _have_credentials() -> bool:
-    home = Path.home() / ".kaggle"
-    return bool(
-        os.environ.get("KAGGLE_API_TOKEN")
-        or (os.environ.get("KAGGLE_USERNAME") and os.environ.get("KAGGLE_KEY"))
-        or (home / "access_token").is_file()
-        or (home / "kaggle.json").is_file()
-        or (home / "oauth_credentials.json").is_file()
-    )
+def _authenticate():
+    """Return an authenticated client, or None.
 
-
-def _api():
-    """An authenticated Kaggle client, with a readable error if it is not set up.
-
-    Credentials are checked before the import, because the kaggle package
-    authenticates as a side effect of being imported and prints its own help on
-    failure, which would land on top of ours.
+    The client supports several credential stores -- an OAuth file, a legacy
+    kaggle.json, an access token, environment variables -- and where each lives
+    has changed between versions. Rather than guess filenames, this asks the
+    client to authenticate and believes the answer. The library prints its own
+    help and calls exit() when it cannot, so its output is captured and swapped
+    for ours.
     """
-    if not _have_credentials():
-        raise SystemExit(CRED_HELP.format(venv=VENV_PY))
+    buf = io.StringIO()
     try:
-        from kaggle.api.kaggle_api_extended import KaggleApi
-    except ImportError as exc:
+        with contextlib.redirect_stdout(buf):
+            from kaggle.api.kaggle_api_extended import KaggleApi
+
+            api = KaggleApi()
+            api.authenticate()
+    except ImportError:
         raise SystemExit(
             "the kaggle package is not importable from this interpreter.\n"
             f"  Use the harness venv:  {VENV_PY} scripts/kaggle_harness.py ...\n"
             "  Or install it here:     pip install kaggle"
-        ) from exc
+        )
+    except SystemExit:
+        return None
+    except Exception:
+        return None
+    # An anonymous fallback authenticates without identifying anyone, which fails
+    # later on anything that needs an account.
+    values = getattr(api, "config_values", {}) or {}
+    if not (values.get("username") or values.get("token") or values.get("key")
+            or os.environ.get("KAGGLE_USERNAME")):
+        return None
+    return api
 
+
+def _api():
+    """An authenticated Kaggle client, with a readable error if it is not set up."""
     token = Path.home() / ".kaggle" / "kaggle.json"
     if token.is_file() and (token.stat().st_mode & 0o077):
         token.chmod(0o600)
-    api = KaggleApi()
-    api.authenticate()
+    api = _authenticate()
+    if api is None:
+        raise SystemExit(CRED_HELP.format(venv=VENV_PY))
     return api
 
 

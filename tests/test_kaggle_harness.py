@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import inspect
 import json
 import shutil
 import subprocess
@@ -109,11 +110,17 @@ check("an underscore is rejected", not H._SLUG_OK.match("noiseegra_qwen"))
 check("a capital is rejected", not H._SLUG_OK.match("noiseegra-Qwen"))
 check("something too short is rejected", not H._SLUG_OK.match("ab"))
 
-check("credentials are looked for in every supported place",
-      {"KAGGLE_API_TOKEN", "KAGGLE_USERNAME", "KAGGLE_KEY"}
-      <= set(H._have_credentials.__code__.co_consts
-             + tuple(H._have_credentials.__code__.co_names))
-      or "KAGGLE_API_TOKEN" in H._have_credentials.__code__.co_consts)
+# Credential discovery is delegated to the client rather than guessed from
+# filenames: OAuth login writes ~/.kaggle/credentials.json, the legacy path is
+# ~/.kaggle/kaggle.json, and both have moved between versions. A harness that
+# guesses reports "no credentials" to someone who is plainly logged in.
+src = inspect.getsource(H._authenticate)
+check("authentication asks the client instead of guessing file paths",
+      "api.authenticate()" in src and "credentials.json" not in src)
+check("the client's own help is captured, not printed over ours",
+      "redirect_stdout" in src)
+check("an anonymous fallback is not mistaken for being logged in",
+      "username" in src and "return None" in src)
 
 print("\n== the repo must be pushed before a run ==")
 branch, commit = H.repo_state(require_clean=False)
