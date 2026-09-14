@@ -518,8 +518,22 @@ def cmd_stop(args) -> None:
         if reply != "y":
             print("left it running")
             return
-    api.kernels_delete(kernel_id)
+    # The client prompts again on its own, which raises EOFError anywhere
+    # non-interactive; --yes has already been answered here.
+    api.kernels_delete(kernel_id, no_confirm=True)
     print(f"deleted {kernel_id}")
+    for _ in range(10):
+        time.sleep(6)
+        try:
+            state, _ = _status(api, kernel_id)
+        except Exception:
+            print("the session is gone")
+            return
+        if state not in ("running", "queued"):
+            print(f"the session is {state}")
+            return
+    print("WARNING: the session still reports as running. Check "
+          f"kaggle.com/{kernel_id} and use Stop Session there.")
 
 
 def cmd_check(args) -> None:
