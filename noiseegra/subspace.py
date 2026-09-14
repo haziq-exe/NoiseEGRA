@@ -49,8 +49,9 @@ from .EGRA_functions import _cosine_noise_decay
 ORTHOGONALIZE_METHODS = ("none", "gram_schmidt", "lowdin")
 NOISE_MODES = ("none", "iso", "orth", "para")
 OFFSET_MODES = ("none", "orth", "free")
+OFFSET_NORMS = ("energy", "raw")
 NORM_MATCH_MODES = ("energy", "none")
-SCHEDULES = ("constant", "cosine_decay", "ramp", "linear_decay")
+SCHEDULES = ("constant", "cosine_decay", "ramp", "linear_decay", "prefix")
 
 
 # --------------------------------------------------------------------------- #
@@ -66,6 +67,14 @@ def schedule_factor(kind: str, t: int, horizon: int) -> float:
                       the closure direction: push the model to wrap up *more* the
                       longer the story has run.
     ``linear_decay``  1.0 at t=0 falling linearly to 0.0 at t>=horizon.
+    ``prefix``        1.0 for the first ``horizon`` decode steps and 0.0 after.
+                      A story's premise -- who it is about, where it happens,
+                      what goes wrong -- is chosen in its first few dozen tokens.
+                      Perturbing after that cannot change the premise and can only
+                      cost grammar, and because every perturbed step is written to
+                      the KV cache and read by every later step, the damage
+                      compounds. Confining the perturbation to the opening keeps
+                      the branch point and drops the compounding.
     """
     if kind == "constant":
         return 1.0
@@ -73,6 +82,8 @@ def schedule_factor(kind: str, t: int, horizon: int) -> float:
         return 0.0
     if kind == "cosine_decay":
         return _cosine_noise_decay(t, horizon)
+    if kind == "prefix":
+        return 1.0 if t < horizon else 0.0
     frac = min(t, horizon) / horizon
     if kind == "ramp":
         return float(frac)
@@ -313,6 +324,29 @@ class SteeringPlan:
     noise_schedule: str
     offset_gamma: float = 0.0
     offset_mode: str = "none"
+    # How ``offset_gamma`` is read. ``energy`` scales the drawn offset to a fixed
+    # length, ``gamma * rms_scale * sqrt(dim)``, which is the expected length of
+    # an isotropic noise draw at ``noise_alpha = gamma``. That makes gamma and
+    # alpha the same dimensionless quantity: the perturbation's length as a
+    # fraction of the hidden state's own length. ``raw`` keeps the historical
+    # behaviour, where the drawn vector was used at its natural length and gamma
+    # therefore meant something different for every subspace rank.
+    offset_norm: str = "energy"
+    # Which set of directions the offset was drawn from, kept so two conditions
+    # that differ only in that cannot collide on disk. "step" is the principal
+    # components of individual decode-step activations, "story" the components of
+    # whole-story mean activations.
+    offset_basis_kind: str = "step"
+    # Whether the per-story offset is also added to the prompt positions during
+    # prefill. With it on, the offset shifts how the model reads the instruction
+    # before it writes a single token, so the story starts somewhere else without
+    # any per-token jitter at all.
+    offset_prefill: bool = False
+    # Decode steps the noise schedule is measured against. Defaults to ``horizon``.
+    # Separate because ``horizon`` also drives the constraint schedules: a
+    # perturbation confined to the first 24 tokens must not also compress the
+    # closure ramp into 24 tokens.
+    noise_horizon: Optional[int] = None
     # Entropy gate: the perturbation is applied only at decode steps where the
     # model's own next-token distribution was at least this uncertain, in nats.
     # 0.0 means every step, which is the ungated behaviour. ``gate_level`` is the
@@ -340,7 +374,11 @@ class SteeringPlan:
         noise_schedule: str = "constant",
         offset_gamma: float = 0.0,
         offset_mode: str = "none",
+        offset_norm: str = "energy",
+        offset_basis_kind: str = "step",
+        offset_prefill: bool = False,
         offset_basis: Optional[Mapping[int, torch.Tensor]] = None,
+        noise_horizon: Optional[int] = None,
         gate_threshold: float = 0.0,
         gate_level: str = "none",
         horizon: int = 200,
@@ -433,6 +471,10 @@ class SteeringPlan:
             noise_schedule=noise_schedule,
             offset_gamma=float(offset_gamma),
             offset_mode=offset_mode,
+            offset_norm=offset_norm,
+            offset_basis_kind=offset_basis_kind,
+            offset_prefill=bool(offset_prefill),
+            noise_horizon=None if noise_horizon is None else int(noise_horizon),
             gate_threshold=float(gate_threshold),
             gate_level=gate_level,
             horizon=int(horizon),
@@ -479,7 +521,17 @@ class SteeringPlan:
                 vec = torch.randn(self.dim, dtype=dt, device=dev)
                 if self.offset_mode == "orth" and lp.protect is not None:
                     vec = vec - lp.protect @ (lp.protect.t() @ vec)
-            lp.offset = vec * (self.offset_gamma * self.rms_scale)
+            if self.offset_norm == "energy":
+                # Fixed length, so gamma means the same thing whatever the rank of
+                # the subspace the offset was drawn from. A draw from a rank-r
+                # subspace has natural length ~sqrt(r); without this, gamma silently
+                # meant a perturbation sqrt(dim/r) times weaker than the same gamma
+                # asked of the isotropic arm -- a factor of 8 at rank 64 in a
+                # 4096-dimensional stream.
+                vec = vec / vec.norm().clamp_min(1e-12)
+                lp.offset = vec * (self.offset_gamma * self.rms_scale * math.sqrt(self.dim))
+            else:
+                lp.offset = vec * (self.offset_gamma * self.rms_scale)
 
     def delta_for(
         self,
@@ -521,7 +573,8 @@ class SteeringPlan:
             delta = lp.offset if delta is None else delta + lp.offset
 
         if with_noise and self.noise_mode != "none" and self.noise_alpha > 0:
-            sigma = self.sigma * schedule_factor(self.noise_schedule, t, h)
+            nh = h if self.noise_horizon is None else self.noise_horizon
+            sigma = self.sigma * schedule_factor(self.noise_schedule, t, nh)
             if sigma > 0:
                 g = torch.randn(self.dim, dtype=lp.basis.dtype, device=lp.basis.device)
                 noise = constrained_noise(
@@ -563,6 +616,10 @@ class SteeringPlan:
             "noise_schedule": self.noise_schedule,
             "offset_gamma": self.offset_gamma,
             "offset_mode": self.offset_mode,
+            "offset_norm": self.offset_norm,
+            "offset_basis_kind": self.offset_basis_kind,
+            "offset_prefill": self.offset_prefill,
+            "noise_horizon": self.noise_horizon,
             "offset_rank": self.layer_plans[self.layers[0]].report.get("offset_rank"),
             "horizon": self.horizon,
             "steer_prefill": self.steer_prefill,
@@ -588,7 +645,9 @@ class SteeringPlan:
         )
         if info["offset_mode"] != "none" and info["offset_gamma"]:
             print(f"per-story offset : gamma={info['offset_gamma']:.6g} mode={info['offset_mode']} "
-                  f"rank={info['offset_rank']}")
+                  f"rank={info['offset_rank']} basis={info['offset_basis_kind']} "
+                  f"norm={info['offset_norm']} "
+                  f"prefill={info['offset_prefill']}")
         print(f"protected rank   : {info['protect_rank']} of {info['dim']} "
               f"({100.0 * info['protect_rank'] / max(info['dim'], 1):.3f}% of the stream)")
         print(f"steer at prefill : {info['steer_prefill']}")

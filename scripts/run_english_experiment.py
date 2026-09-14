@@ -28,7 +28,7 @@ import numpy as np  # noqa: E402
 import torch  # noqa: E402
 
 from noiseegra import writingprompts as wp  # noqa: E402
-from noiseegra.activation_basis import collect_block_pcs  # noqa: E402
+from noiseegra.activation_basis import collect_block_pcs, collect_story_pcs  # noqa: E402
 from noiseegra.constraint_metrics_en import EnglishConstraintChecker  # noqa: E402
 from noiseegra.defaults import (  # noqa: E402
     EN_STEER_VECTORS,
@@ -126,8 +126,8 @@ def main() -> None:
     ap.add_argument("--dtype", default="auto", choices=["auto", "float16", "bfloat16"])
     ap.add_argument("--suite", nargs="+", default=["compare"],
                     choices=["baseline", "sampling", "compare", "method", "noise",
-                             "offset", "core", "ortho", "alpha", "gate", "beta",
-                             "loo", "all"])
+                             "offset", "story", "window", "core", "ortho", "alpha",
+                             "gate", "beta", "loo", "all"])
     ap.add_argument("--task", default="generic", choices=["generic", "scenario"],
                     help="'generic' is the published design: one instruction with no "
                          "scenario, many requirements, and every story in one group, so "
@@ -169,6 +169,20 @@ def main() -> None:
                     help="per-story offset magnitudes used by --suite offset")
     ap.add_argument("--offset-rank", type=int, default=64,
                     help="how many activation principal components offsets may use")
+    ap.add_argument("--offset-basis", dest="offset_basis_kind", default="story",
+                    choices=["step", "story"],
+                    help="which directions a per-story offset is drawn from. 'story' "
+                         "takes the principal components of whole-story mean "
+                         "activations, so the offset moves along an axis the model's "
+                         "own stories already differ on. 'step' takes them over "
+                         "individual decode steps, whose leading directions describe "
+                         "token position rather than story content")
+    ap.add_argument("--offset-basis-stories", type=int, default=32,
+                    help="unsteered stories sampled to estimate the story-level basis")
+    ap.add_argument("--offset-basis-tokens", type=int, default=120,
+                    help="tokens generated per sample while estimating either basis")
+    ap.add_argument("--noise-horizon", type=int, default=24,
+                    help="decode steps the perturbation covers in --suite window")
     ap.add_argument("--alpha-sweep", nargs="*", type=float,
                     default=[0.0, 0.0875, 0.175, 0.35, 0.7],
                     help="noise strengths used by --suite alpha")
@@ -372,21 +386,44 @@ def main() -> None:
                   "rerun with --dtype bfloat16.")
 
     # ---- directions a per-story offset is allowed to use -------------------- #
+    # Cached under the basis kind, because the two are different sets of
+    # directions and a run that mixed them would be unreadable.
     args.offset_basis = None
-    if "offset" in suites_req:
-        pc_path = out / f"actpcs_{args.model}.pt"
+    if {"offset", "story"} & set(suites_req):
+        kind = args.offset_basis_kind
+        pc_path = out / f"actpcs_{kind}_{args.model}.pt"
+        legacy = out / f"actpcs_{args.model}.pt"
+        if kind == "step" and not pc_path.is_file() and legacy.is_file():
+            pc_path = legacy
         if pc_path.is_file():
             args.offset_basis = torch.load(pc_path, map_location="cpu", weights_only=False)
-            print(f"activation basis: loaded from {pc_path.name}")
-        else:
-            print("activation basis: estimating principal components (once) ...")
-            args.offset_basis = collect_block_pcs(
-                get_model(),
-                messages[:4],
-                layers, rank=args.offset_rank,
+            print(f"activation basis ({kind}): loaded from {pc_path.name}")
+        elif kind == "story":
+            print(f"activation basis: sampling {args.offset_basis_stories} unsteered "
+                  "stories to find the directions they differ along (once) ...",
+                  flush=True)
+            args.offset_basis = collect_story_pcs(
+                get_model(), messages[0], layers,
+                n_stories=args.offset_basis_stories,
+                rank=args.offset_rank,
+                max_new_tokens=args.offset_basis_tokens,
             )
             torch.save(args.offset_basis, pc_path)
-            print(f"activation basis: saved to {pc_path.name}")
+            print(f"activation basis (story): saved to {pc_path.name}")
+        else:
+            print("activation basis: estimating decode-step principal components "
+                  "(once) ...", flush=True)
+            args.offset_basis = collect_block_pcs(
+                get_model(),
+                (messages * 4)[:4],
+                layers, rank=args.offset_rank,
+                max_new_tokens=args.offset_basis_tokens,
+            )
+            torch.save(args.offset_basis, pc_path)
+            print(f"activation basis (step): saved to {pc_path.name}")
+        rank0 = args.offset_basis[sorted(args.offset_basis)[0]].shape[1]
+        print(f"  offsets may move along {rank0} directions per layer, before the "
+              "constraint directions are projected out")
 
     # ---- entropy gate threshold, measured once per model ------------------- #
     # In nats, and nats are not comparable across models or tokenisers, so the

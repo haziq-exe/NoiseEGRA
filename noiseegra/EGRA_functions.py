@@ -682,15 +682,29 @@ class EGRA:
 
                     with torch.no_grad():
                         if shared["is_prefill"]:
-                            # Perturbation never touches the prompt (paper
-                            # convention). Steering optionally does, CAA-style,
-                            # across all prompt positions.
-                            if not plan.steer_prefill:
+                            # Per-token noise never touches the prompt (paper
+                            # convention): it is redrawn every step, and the prompt
+                            # is read once. Steering optionally does, CAA-style,
+                            # across all prompt positions -- and so does the
+                            # per-story offset, which is one fixed vector for the
+                            # whole generation and so has a well-defined value here.
+                            # Adding it at prefill shifts how the model reads the
+                            # instruction before it writes a token, which changes
+                            # the story without perturbing any decode step.
+                            offset_here = bool(getattr(plan, "offset_prefill", False))
+                            if not plan.steer_prefill and not offset_here:
                                 return None
-                            delta = plan.delta_for(
-                                layer_idx, 0, with_noise=False, with_offset=False,
-                                device=target.device,
-                            )
+                            delta = None
+                            if plan.steer_prefill:
+                                delta = plan.delta_for(
+                                    layer_idx, 0, with_noise=False, with_offset=False,
+                                    device=target.device,
+                                )
+                            if offset_here:
+                                off = plan.layer_plans[layer_idx].offset
+                                if off is not None:
+                                    off = off.to(target.device)
+                                    delta = off if delta is None else delta + off
                             if delta is None:
                                 return None
                             target.add_(delta.to(target.dtype).view(1, 1, -1))

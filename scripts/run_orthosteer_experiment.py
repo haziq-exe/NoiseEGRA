@@ -81,7 +81,11 @@ def make_plan(
     noise_schedule="constant",
     offset_gamma=0.0,
     offset_mode="none",
+    offset_norm="energy",
+    offset_basis_kind="step",
+    offset_prefill=False,
     offset_basis=None,
+    noise_horizon=None,
     gate_threshold=0.0,
     gate_level="none",
 ) -> SteeringPlan:
@@ -107,7 +111,11 @@ def make_plan(
         protect_extra=extra,
         offset_gamma=offset_gamma,
         offset_mode=offset_mode,
+        offset_norm=offset_norm,
+        offset_basis_kind=offset_basis_kind,
+        offset_prefill=offset_prefill,
         offset_basis=offset_basis,
+        noise_horizon=noise_horizon,
         gate_threshold=gate_threshold,
         gate_level=gate_level,
     )
@@ -181,6 +189,44 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                     offset_gamma=g, offset_mode=mode, offset_basis=offset_basis, **common)})
         return arms, (f"steering + per-story constant offsets at gamma {list(args.gamma_sweep)}, "
                       "each drawn with and without the constraint subspace removed")
+
+    if name == "story":
+        # Per-story constant offsets, drawn from the directions along which the
+        # model's own stories already differ from one another, and projected off
+        # the constraint directions. One vector per story, held for the whole
+        # generation, so it shifts *which* story gets written rather than jittering
+        # every token -- and because nothing is redrawn mid-story, nothing
+        # compounds through the KV cache.
+        kind = getattr(args, "offset_basis_kind", "step")
+        arms = []
+        for g in args.gamma_sweep:
+            arms.append({"plan": make_plan(
+                beta=args.beta, noise_mode="none", noise_alpha=0.0,
+                offset_gamma=g, offset_mode="orth", offset_basis=offset_basis,
+                offset_basis_kind=kind, offset_prefill=False, **common)})
+            arms.append({"plan": make_plan(
+                beta=args.beta, noise_mode="none", noise_alpha=0.0,
+                offset_gamma=g, offset_mode="orth", offset_basis=offset_basis,
+                offset_basis_kind=kind, offset_prefill=True, **common)})
+        return arms, (f"steering + per-story offsets at gamma {list(args.gamma_sweep)} "
+                      f"drawn from the {kind}-level activation directions, each "
+                      "applied from the first generated token and from the prompt")
+
+    if name == "window":
+        # The same per-token noise as before, switched off after the opening. The
+        # premise is chosen in the first few dozen tokens; past that the
+        # perturbation can only cost grammar, and every perturbed step is written
+        # to the KV cache and read by every later one, so the damage compounds.
+        h = int(getattr(args, "noise_horizon", 24) or 24)
+        mags = [m for m in args.alpha_sweep if m > 0]
+        arms = [
+            {"plan": make_plan(
+                beta=args.beta, noise_mode="orth", noise_alpha=m,
+                noise_schedule="prefix", noise_horizon=h, **common)}
+            for m in mags
+        ]
+        return arms, (f"steering + per-token noise at {mags}, applied only over the "
+                      f"first {h} generated tokens")
 
     if name == "compare":
         # The minimal head-to-head: unmodified generation vs. the proposed method.

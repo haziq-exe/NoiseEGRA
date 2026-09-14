@@ -155,7 +155,8 @@ def _sampling_tag(spec: ExperimentSpec) -> str:
     return "__" + "__".join(parts)
 
 
-_SCHEDULE_CODE = {"constant": "c", "cosine_decay": "d", "ramp": "r", "linear_decay": "l"}
+_SCHEDULE_CODE = {"constant": "c", "cosine_decay": "d", "ramp": "r", "linear_decay": "l",
+                  "prefix": "p"}
 
 
 def _ortho_tag(model_name: str, spec: ExperimentSpec) -> str:
@@ -178,6 +179,12 @@ def _ortho_tag(model_name: str, spec: ExperimentSpec) -> str:
     ]
     if getattr(plan, "offset_gamma", 0) and plan.offset_mode != "none":
         parts.append(f"__g{_float_tag(plan.offset_gamma)}{plan.offset_mode}")
+        if getattr(plan, "offset_basis_kind", "step") != "step":
+            parts.append(f"__ob{plan.offset_basis_kind}")
+        if getattr(plan, "offset_prefill", False):
+            parts.append("__opre")
+        if getattr(plan, "offset_norm", "energy") != "energy":
+            parts.append(f"__on{plan.offset_norm}")
     if getattr(plan, "gate_level", "none") not in ("none", None):
         parts.append(f"__gate{plan.gate_level}")
     schedules = [s.schedule for s in plan.specs]
@@ -187,6 +194,8 @@ def _ortho_tag(model_name: str, spec: ExperimentSpec) -> str:
         parts.append(f"__nm{plan.noise_norm_match}")
     if plan.noise_schedule != "constant":
         parts.append(f"__nsch{_SCHEDULE_CODE.get(plan.noise_schedule, plan.noise_schedule[:1])}")
+        if getattr(plan, "noise_horizon", None):
+            parts.append(f"__nh{int(plan.noise_horizon)}")
     if plan.steer_prefill:
         parts.append("__prefill")
     return "".join(parts)

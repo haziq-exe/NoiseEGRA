@@ -56,6 +56,8 @@ _BETAS = re.compile(r"__b([0-9pm-]+)__")
 _CONSTR = re.compile(r"__C([a-z-]+)__")
 _PROTECT = re.compile(r"__k(\d+)")
 _GATE = re.compile(r"__gate([a-z]+)")
+_NHORIZON = re.compile(r"__nh(\d+)")
+_NSCHED = re.compile(r"__nsch([a-z])")
 _ORTHONORM = re.compile(r"__(lowdin|gram_schmidt|none)__")
 
 
@@ -93,6 +95,8 @@ _SHORTEN = [
     ("steering only, no perturbation", "steer"),
     ("per-token noise a=", "tok "),
     ("per-story offset g=", "sto "),
+    (", from the prompt onward", "+pre"),
+    (", only over the first ", " <"),
     (" (orthogonal)", ""), (" (unrestricted)", " iso"), (" (in-subspace)", " para"),
     (", gated to the most uncertain steps", " g-hi"),
     (", gated to uncertain steps", " g-med"),
@@ -129,6 +133,21 @@ def _sampling_suffix(run_id: str) -> str:
     return ", ".join(bits)
 
 
+def _noise_window(run_id: str) -> str:
+    """How the perturbation is spread over the story, if it is not flat."""
+    sc = _NSCHED.search(run_id)
+    if not sc:
+        return ""
+    h = _NHORIZON.search(run_id)
+    steps = f"{h.group(1)} tokens" if h else "the horizon"
+    return {
+        "p": f", only over the first {steps}",
+        "d": f", fading out over the first {steps}",
+        "l": f", fading out linearly over the first {steps}",
+        "r": f", ramping up over the first {steps}",
+    }.get(sc.group(1), "")
+
+
 def _layer_suffix(run_id: str) -> str:
     m = _LAYERS.search(run_id)
     return f"layers {m.group(1)}-{m.group(2)}" if m else ""
@@ -153,13 +172,15 @@ def label_run(run_id: str) -> RunLabel:
         if g and g.group("mode") != "none" and untag_float(g.group("val")) > 0:
             v = untag_float(g.group("val"))
             mode = SUBSPACE_MODES.get(g.group("mode"), g.group("mode"))
-            return RunLabel(f"per-story offset g={_fmt(v)} ({mode}){gate_txt}",
+            where = ", from the prompt onward" if "__opre" in rid else ""
+            return RunLabel(f"per-story offset g={_fmt(v)} ({mode}){where}{gate_txt}",
                             "per-story", v, rid)
         a = _NZ.search(rid)
         if a and a.group("mode") != "none" and untag_float(a.group("val")) > 0:
             v = untag_float(a.group("val"))
             mode = SUBSPACE_MODES.get(a.group("mode"), a.group("mode"))
-            return RunLabel(f"per-token noise a={_fmt(v)} ({mode}){gate_txt}",
+            return RunLabel(f"per-token noise a={_fmt(v)} ({mode})"
+                            f"{_noise_window(rid)}{gate_txt}",
                             "per-token", v, rid)
         return RunLabel("steering only, no perturbation", "steer", 0.0, rid)
 
@@ -258,6 +279,24 @@ def plan_summary(run_ids: Sequence[str]) -> List[str]:
     gates = {m.group(1) for m in map(_GATE.search, run_ids) if m}
     if not gates and all("__gate" not in r for r in run_ids):
         out.append("perturbation is applied at every decode step (no entropy gate)")
+
+    kinds = {"story" if "__obstory" in r else "step"
+             for r in run_ids if _G.search(r) and "__g0orth" not in r}
+    if len(kinds) == 1:
+        kind = kinds.pop()
+        out.append(
+            "per-story offsets are drawn from the directions along which "
+            + ("whole stories differ from one another"
+               if kind == "story" else
+               "one decode step differs from another")
+        )
+
+    windows = {(m.group(1), _NHORIZON.search(r).group(1) if _NHORIZON.search(r) else "")
+               for r in run_ids for m in [_NSCHED.search(r)] if m}
+    if len(windows) == 1:
+        sched, h = windows.pop()
+        if sched == "p" and h:
+            out.append(f"the perturbation covers only the first {h} generated tokens")
 
     modes = {m.group("mode") for m in map(_NZ.search, run_ids) if m}
     modes |= {m.group("mode") for m in map(_G.search, run_ids) if m}
