@@ -136,6 +136,13 @@ with tempfile.TemporaryDirectory() as td:
           sorted(str(f.relative_to(restored)) for f in restored.rglob("*") if f.is_file())
           == sorted(str(f.relative_to(state)) for f in files))
 
+print("\n== a failed run does not destroy the last good one ==")
+src = inspect.getsource(H._pull)
+check("output is downloaded to one side before replacing anything",
+      ".download" in src and "shutil.move" in src)
+check("and kept when the kernel returns nothing",
+      "keeping what was already here" in src)
+
 print("\n== guards ==")
 check("a slug of the right shape is accepted",
       bool(H._SLUG_OK.match("noiseegra-qwen-gate")))

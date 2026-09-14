@@ -750,9 +750,25 @@ def _wait_and_pull(api, kernel_id, exp: Path, out_dir: Path, state_dir: Path,
 
 
 def _pull(api, kernel_id: str, exp: Path, out_dir: Path, state_dir: Path) -> None:
-    shutil.rmtree(out_dir, ignore_errors=True)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    api.kernels_output(kernel_id, path=str(out_dir), quiet=True)
+    # Download to one side first. Clearing out_dir up front destroys the previous
+    # run's results whenever the new one fails, which is exactly when you want
+    # them; a failed kernel returns nothing at all.
+    staging = exp / ".download"
+    shutil.rmtree(staging, ignore_errors=True)
+    staging.mkdir(parents=True, exist_ok=True)
+    try:
+        api.kernels_output(kernel_id, path=str(staging), quiet=True)
+    except Exception as exc:
+        shutil.rmtree(staging, ignore_errors=True)
+        print(f"  could not download output: {type(exc).__name__}: {exc}")
+        return
+    if any(f.is_file() for f in staging.rglob("*")):
+        shutil.rmtree(out_dir, ignore_errors=True)
+        shutil.move(str(staging), str(out_dir))
+    else:
+        shutil.rmtree(staging, ignore_errors=True)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        print("  the kernel returned no files; keeping what was already here")
 
     streamed = exp / "log.txt"
     streamed_len = len(streamed.read_text(encoding="utf-8")) if streamed.is_file() else 0
