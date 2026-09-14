@@ -54,7 +54,7 @@ from score_english import (  # noqa: E402
     constraint_legend, live_table, score_condition,
 )
 
-from noiseegra.run_labels import SUBSPACE_MODES, plan_summary  # noqa: E402
+from noiseegra.run_labels import label_run, plan_summary  # noqa: E402
 from noiseegra.constraint_metrics_en import (  # noqa: E402
     DEFAULT_MAX_OPENING_WORDS, DEFAULT_MAX_SENTENCE_WORDS, DEFAULT_MAX_SYLLABLES,
     DEFAULT_MIN_NAME_USES, DEFAULT_SENTENCE_RANGE,
@@ -88,22 +88,16 @@ EN_SCHEDULES = {
 }
 
 
-def condition_label(spec) -> str:
-    """Readable name for a condition, for the live table.
+def condition_label(run_id: str) -> str:
+    """Readable name for a condition.
 
-    Kept identical to what ``noiseegra.run_labels`` recovers from the run id, so
-    the live table and every later scoring pass name the same thing the same way.
+    Derived from the run id rather than from the plan, because the run id is the
+    one thing that is guaranteed to distinguish two conditions -- that is what it
+    is for. A second implementation reading the plan directly existed here and
+    drifted: it never learned about the entropy gate, so a three-arm gate sweep
+    printed the same name three times.
     """
-    plan = getattr(spec, "steering_plan", None)
-    if plan is None:
-        return "baseline"
-    if plan.offset_gamma > 0 and plan.offset_mode != "none":
-        mode = SUBSPACE_MODES.get(plan.offset_mode, plan.offset_mode)
-        return f"per-story offset g={plan.offset_gamma:g} ({mode})"
-    if plan.noise_alpha > 0 and plan.noise_mode != "none":
-        mode = SUBSPACE_MODES.get(plan.noise_mode, plan.noise_mode)
-        return f"per-token noise a={plan.noise_alpha:g} ({mode})"
-    return "steering only, no perturbation"
+    return label_run(run_id).text
 
 
 def seed_for(prompt_idx: int, story_idx: int) -> int:
@@ -501,7 +495,7 @@ def main() -> None:
         row["run"] = rid
         rows.append(row)
         write_csvs(out, state)
-        print(live_row(condition_label(spec), row), flush=True)
+        print(live_row(condition_label(rid), row), flush=True)
 
     print("\n" + "=" * len(live_header))
     print(f"  {args.model}: {P} prompt{'s' if P != 1 else ''} x {K} stories per condition")
@@ -511,8 +505,8 @@ def main() -> None:
     print("=" * len(live_header))
     print(live_header)
     print("-" * len(live_header))
-    for spec, row in zip(specs, rows):
-        print(live_row(condition_label(spec), row))
+    for row in rows:
+        print(live_row(condition_label(row["run"]), row))
     print("\nwhat each requirement column means, and what a story has to do to pass it")
     for line in constraint_legend(checker):
         print("  " + line)
@@ -521,8 +515,8 @@ def main() -> None:
     with summary.open("w", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, fieldnames=["run", "label"] + [k for k in rows[0] if k != "run"])
         w.writeheader()
-        for spec, row in zip(specs, rows):
-            w.writerow({**row, "label": condition_label(spec)})
+        for row in rows:
+            w.writerow({**row, "label": condition_label(row["run"])})
     print(f"\nwrote {summary}")
 
 

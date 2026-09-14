@@ -326,6 +326,19 @@ check("the gate thresholds are ordered none < median <= high",
 gate_ids = sorted(gstate["runs"])
 check("the gate suite produces a reference plus three gate levels",
       len(gate_ids) == 4, str(len(gate_ids)))
+
+# Two conditions that differ must not print the same name. A second label
+# implementation that read the plan instead of the run id used to exist and did
+# not know about the gate, so a three-arm sweep printed one name three times.
+gate_names = [R.condition_label(r) for r in gate_ids]
+check("every condition in the sweep gets its own name",
+      len(set(gate_names)) == len(gate_names), str(sorted(gate_names)))
+check("the printed names are the ones the scorer will use later",
+      gate_names == [label_run(r).text for r in gate_ids])
+check("the live_scores labels match too",
+      sorted(row["label"] for row in csv.DictReader(
+          (GOUT / "Qwen3-8B" / "live_scores.csv").open(encoding="utf-8")))
+      == sorted(gate_names))
 labels = sorted(label_run(r).text for r in gate_ids)
 check("the gate level is recoverable from the run id",
       any("gated to uncertain steps" in l for l in labels)
