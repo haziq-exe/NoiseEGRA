@@ -121,8 +121,18 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         steer_prefill=args.steer_prefill,
     )
     offset_basis = getattr(args, "offset_basis", None)
-    resid_std = args.alpha * rms_scale
     items = []
+
+    if name == "baseline":
+        # Unmodified generation and nothing else. The reference every other
+        # condition is read against, and the first thing to run on a new model.
+        # Returned before anything touches `vectors` or `rms_scale`, because a
+        # baseline run has neither: it is the model under the prompt alone.
+        return (["baseline"], "unmodified generation, no steering and no perturbation")
+
+    if vectors is None:
+        raise ValueError(f"suite {name!r} needs steering vectors")
+    resid_std = args.alpha * rms_scale
 
     if name == "method":
         # Just the proposed method, one condition. For a quick smoke run that does
@@ -267,7 +277,7 @@ def main() -> None:
     ap.add_argument("--vectors", help="path to the .pt from build_steering_vectors.py")
     ap.add_argument("--layers", nargs=2, type=int, metavar=("LO", "HI"))
     ap.add_argument("--suite", nargs="+", default=["core"],
-                    choices=["compare", "method", "noise", "offset", "core", "ortho", "alpha", "gate", "beta",
+                    choices=["baseline", "compare", "method", "noise", "offset", "core", "ortho", "alpha", "gate", "beta",
                              "loo", "all"])
     ap.add_argument("--with-baseline", action="store_true",
                     help="prepend an unsteered baseline condition to whichever suite is run "

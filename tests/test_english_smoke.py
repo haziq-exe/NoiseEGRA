@@ -449,6 +449,55 @@ check("an out-of-memory error falls back to the CPU instead of killing the run",
       stub.calls == 2 and stub.device == "cpu" and emb.shape[0] == 3,
       f"calls={stub.calls} device={stub.device}")
 
+
+# --------------------------------------------------------------------------- #
+print("\n== baseline on its own ==")
+
+BOUT = Path("/tmp/_en_baseline"); shutil.rmtree(BOUT, ignore_errors=True)
+sys.argv = ["x", "--model", "Qwen3-8B", "--suite", "baseline",
+            "--task", "generic", "--stories", "4", "--out", str(BOUT),
+            "--max-new-tokens", "4", "--no-diversity"]
+with contextlib.redirect_stdout(io.StringIO()) as bbuf:
+    R.main()
+btext = bbuf.getvalue()
+bstate = json.loads((BOUT / "Qwen3-8B" / "state.json").read_text())
+
+check("baseline produces exactly one condition", len(bstate["runs"]) == 1,
+      str(list(bstate["runs"])))
+check("that condition is the unmodified one",
+      R.condition_label(next(iter(bstate["runs"]))) == "baseline",
+      R.condition_label(next(iter(bstate["runs"]))))
+check("all four stories are generated",
+      len(next(iter(bstate["runs"].values()))) == 4)
+check("no steering vectors are extracted",
+      not (BOUT / "Qwen3-8B" / "steering_Qwen3-8B.pt").exists()
+      and "extracting (once)" not in btext)
+check("no activation scale is calibrated",
+      not bstate.get("rms_scale"), str(bstate.get("rms_scale")))
+check("and none is reported",
+      "activation scale [" not in btext,
+      next((l for l in btext.splitlines() if "activation scale" in l), ""))
+check("the run says why it skipped them", "baseline only" in btext)
+check("no steering layers are claimed in the header",
+      "steering layers" not in btext)
+
+# The steering path must still work in the same output directory afterwards.
+sys.argv = ["x", "--model", "Qwen3-8B", "--suite", "compare",
+            "--task", "generic", "--stories", "4", "--out", str(BOUT),
+            "--layers", "2", "5", "--max-new-tokens", "4", "--pca-rank", "2",
+            "--protect-rank", "2", "--no-diversity"]
+with contextlib.redirect_stdout(io.StringIO()) as b2buf:
+    R.main()
+bstate2 = json.loads((BOUT / "Qwen3-8B" / "state.json").read_text())
+check("a later steering run reuses the baseline stories",
+      bstate2["runs"][next(iter(bstate["runs"]))]
+      == next(iter(bstate["runs"].values())))
+check("and adds the steering condition without regenerating the baseline",
+      len(bstate2["runs"]) == 2 and "0 of " not in b2buf.getvalue(),
+      str(len(bstate2["runs"])))
+
+shutil.rmtree(BOUT, ignore_errors=True)
+
 shutil.rmtree(OUT, ignore_errors=True)
 print()
 if FAILURES:

@@ -125,8 +125,8 @@ def main() -> None:
     ap.add_argument("--layers", nargs=2, type=int, metavar=("LO", "HI"))
     ap.add_argument("--dtype", default="auto", choices=["auto", "float16", "bfloat16"])
     ap.add_argument("--suite", nargs="+", default=["compare"],
-                    choices=["compare", "method", "noise", "offset", "core", "ortho",
-                             "alpha", "gate", "beta", "loo", "all"])
+                    choices=["baseline", "compare", "method", "noise", "offset", "core",
+                             "ortho", "alpha", "gate", "beta", "loo", "all"])
     ap.add_argument("--task", default="generic", choices=["generic", "scenario"],
                     help="'generic' is the published design: one instruction with no "
                          "scenario, many requirements, and every story in one group, so "
@@ -304,50 +304,62 @@ def main() -> None:
             holder["model"], holder["dtype"] = m, d
         return holder["model"]
 
-    # ---- steering vectors ------------------------------------------------- #
-    vec_path = out / f"steering_{args.model}.pt"
-    if vec_path.is_file():
-        vectors = SteeringVectorSet.load(vec_path)
-        print(f"steering vectors: loaded from {vec_path.name}")
-    else:
-        print("steering vectors: extracting (once) ...")
-        vectors = SteeringVectorExtractor(get_model()).extract(
-            load_pairs(EN_PAIRS), layers,
-            system=wp.SYSTEM_PROMPT, user=wp.EXTRACTION_PROMPT,
-            pca_rank=args.pca_rank, only=args.steer_vectors, verbose=False,
-        )
-        vectors.save(vec_path)
-        print(f"steering vectors: saved to {vec_path.name}")
-    for name in args.steer_vectors:
-        cons = [vectors.diagnostics[name][l]["consistency"] for l in layers]
-        flag = "" if min(cons) > 0.3 else "   <-- weak, direction may be mostly noise"
-        print(f"  {name:<16} agreement across pairs: {min(cons):.2f}-{max(cons):.2f}{flag}")
+    suites_req = (["core", "ortho", "alpha", "gate", "beta", "loo"]
+                  if "all" in args.suite else list(args.suite))
 
-    # ---- activation scale, keyed by model+layers -------------------------- #
-    cal_key = f"{args.model}|{lo}-{hi}"
-    if cal_key not in state["rms_scale"]:
-        print("\ncalibrating activation scale ...")
-        rms = RMSCalibrator(get_model()).collect_block_rms(messages[0], layers=layers)
-        state["rms_scale"][cal_key] = float(np.median(list(rms.values())))
-        save_state(state_path, state)
-    rms_scale = state["rms_scale"][cal_key]
-    if not (rms_scale > 0) or rms_scale != rms_scale:
-        raise SystemExit(
-            f"calibration returned {rms_scale}; the forward pass produced non-finite "
-            "activations. This model probably cannot run in float16 -- retry with "
-            "--dtype bfloat16 (slower on a T4, but correct)."
-        )
-    print(f"activation scale [{cal_key}] = {rms_scale:.4g}  "
-          f"(noise {args.alpha * rms_scale:.4g}, steering {args.beta * rms_scale:.4g})")
-    if holder["dtype"] == torch.float16 and rms_scale > 100:
-        print(f"[warn] activation scale {rms_scale:.4g} is large for float16 "
-              "(max representable 65504). If the stories come out empty or garbled, "
-              "rerun with --dtype bfloat16.")
+    # A baseline-only run is unmodified generation: no steering vectors, no
+    # activation scale, no entropy measurement. Skipping all three means it starts
+    # generating immediately, and it runs on a model the extraction pair file has
+    # never been tried on.
+    steering_needed = any(name != "baseline" for name in suites_req)
+    vectors, rms_scale = None, 0.0
+
+    # ---- steering vectors ------------------------------------------------- #
+    if not steering_needed:
+        print("\nbaseline only: skipping steering-vector extraction and activation "
+              "scale calibration.")
+    if steering_needed:
+        vec_path = out / f"steering_{args.model}.pt"
+        if vec_path.is_file():
+            vectors = SteeringVectorSet.load(vec_path)
+            print(f"steering vectors: loaded from {vec_path.name}")
+        else:
+            print("steering vectors: extracting (once) ...")
+            vectors = SteeringVectorExtractor(get_model()).extract(
+                load_pairs(EN_PAIRS), layers,
+                system=wp.SYSTEM_PROMPT, user=wp.EXTRACTION_PROMPT,
+                pca_rank=args.pca_rank, only=args.steer_vectors, verbose=False,
+            )
+            vectors.save(vec_path)
+            print(f"steering vectors: saved to {vec_path.name}")
+        for name in args.steer_vectors:
+            cons = [vectors.diagnostics[name][l]["consistency"] for l in layers]
+            flag = "" if min(cons) > 0.3 else "   <-- weak, direction may be mostly noise"
+            print(f"  {name:<16} agreement across pairs: {min(cons):.2f}-{max(cons):.2f}{flag}")
+
+        # ---- activation scale, keyed by model+layers -------------------------- #
+        cal_key = f"{args.model}|{lo}-{hi}"
+        if cal_key not in state["rms_scale"]:
+            print("\ncalibrating activation scale ...")
+            rms = RMSCalibrator(get_model()).collect_block_rms(messages[0], layers=layers)
+            state["rms_scale"][cal_key] = float(np.median(list(rms.values())))
+            save_state(state_path, state)
+        rms_scale = state["rms_scale"][cal_key]
+        if not (rms_scale > 0) or rms_scale != rms_scale:
+            raise SystemExit(
+                f"calibration returned {rms_scale}; the forward pass produced non-finite "
+                "activations. This model probably cannot run in float16 -- retry with "
+                "--dtype bfloat16 (slower on a T4, but correct)."
+            )
+        print(f"activation scale [{cal_key}] = {rms_scale:.4g}  "
+              f"(noise {args.alpha * rms_scale:.4g}, steering {args.beta * rms_scale:.4g})")
+        if holder["dtype"] == torch.float16 and rms_scale > 100:
+            print(f"[warn] activation scale {rms_scale:.4g} is large for float16 "
+                  "(max representable 65504). If the stories come out empty or garbled, "
+                  "rerun with --dtype bfloat16.")
 
     # ---- directions a per-story offset is allowed to use -------------------- #
     args.offset_basis = None
-    suites_req = (["core", "ortho", "alpha", "gate", "beta", "loo"]
-                  if "all" in args.suite else args.suite)
     if "offset" in suites_req:
         pc_path = out / f"actpcs_{args.model}.pt"
         if pc_path.is_file():
