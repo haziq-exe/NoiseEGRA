@@ -328,6 +328,24 @@ def write_kernel(folder: Path, *, kernel_id: str, title: str, repo: str, commit:
 STATE_ARCHIVE = "state.tgz"
 
 
+def dataset_exists(api, dataset_id: str) -> bool:
+    """Whether the checkpoint dataset has been created yet.
+
+    Asked explicitly rather than inferred from a failure: versioning a dataset
+    that does not exist answers 403 Forbidden, which is indistinguishable from a
+    genuine permissions problem, so sniffing the error would either mask real
+    failures or crash on the first run of every experiment.
+    """
+    slug = dataset_id.split("/")[-1]
+    try:
+        for item in api.dataset_list(mine=True, search=slug) or []:
+            if str(getattr(item, "ref", item)).lower() == dataset_id.lower():
+                return True
+    except Exception:
+        pass
+    return False
+
+
 def sync_state_up(api, state_dir: Path, dataset_id: str, title: str) -> bool:
     """Upload the checkpoint as a private dataset version. False if there is none.
 
@@ -356,15 +374,16 @@ def sync_state_up(api, state_dir: Path, dataset_id: str, title: str) -> bool:
     print(f"  checkpoint: {len(files)} files, {raw:.1f} MB -> "
           f"{archive.stat().st_size / 1e6:.1f} MB compressed", flush=True)
     try:
-        api.dataset_create_version(str(staging), version_notes="harness sync",
-                                   quiet=True)
-    except Exception as exc:
-        if "not found" not in str(exc).lower() and "404" not in str(exc):
-            raise
-        print(f"  creating {dataset_id}", flush=True)
-        api.dataset_create_new(str(staging), public=False, quiet=True)
-        time.sleep(15)  # a new dataset takes a moment to become mountable
-    shutil.rmtree(staging, ignore_errors=True)
+        if dataset_exists(api, dataset_id):
+            api.dataset_create_version(str(staging), version_notes="harness sync",
+                                       quiet=True)
+        else:
+            print(f"  creating {dataset_id}", flush=True)
+            api.dataset_create_new(str(staging), public=False, quiet=True)
+            # A new dataset is not mountable the instant it is created.
+            time.sleep(20)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
     return True
 
 
