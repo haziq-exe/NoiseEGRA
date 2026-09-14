@@ -130,6 +130,22 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         # baseline run has neither: it is the model under the prompt alone.
         return (["baseline"], "unmodified generation, no steering and no perturbation")
 
+    if name == "sampling":
+        # The decoding-parameter comparison from the published study: raising the
+        # temperature and truncating the tail is the obvious way to buy diversity
+        # without touching the representation, so it is the reference any
+        # representation-level method has to beat. Same magnitudes as the paper.
+        t = args.baseline_temperature
+        arms = [{"mode": "baseline"}]
+        if args.baseline_top_p is not None:
+            arms.append({"mode": "baseline", "temperature": t,
+                         "top_p": args.baseline_top_p})
+        if args.baseline_top_k is not None:
+            arms.append({"mode": "baseline", "temperature": t,
+                         "top_k": args.baseline_top_k})
+        return arms, (f"unmodified generation, plus sampling baselines at "
+                      f"temperature {t:g}")
+
     if vectors is None:
         raise ValueError(f"suite {name!r} needs steering vectors")
     resid_std = args.alpha * rms_scale
@@ -277,7 +293,7 @@ def main() -> None:
     ap.add_argument("--vectors", help="path to the .pt from build_steering_vectors.py")
     ap.add_argument("--layers", nargs=2, type=int, metavar=("LO", "HI"))
     ap.add_argument("--suite", nargs="+", default=["core"],
-                    choices=["baseline", "compare", "method", "noise", "offset", "core", "ortho", "alpha", "gate", "beta",
+                    choices=["baseline", "sampling", "compare", "method", "noise", "offset", "core", "ortho", "alpha", "gate", "beta",
                              "loo", "all"])
     ap.add_argument("--with-baseline", action="store_true",
                     help="prepend an unsteered baseline condition to whichever suite is run "

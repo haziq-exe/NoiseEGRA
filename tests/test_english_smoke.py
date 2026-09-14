@@ -453,7 +453,38 @@ check("an out-of-memory error falls back to the CPU instead of killing the run",
 # --------------------------------------------------------------------------- #
 print("\n== baseline on its own ==")
 
-BOUT = Path("/tmp/_en_baseline"); shutil.rmtree(BOUT, ignore_errors=True)
+BOUT = Path("/tmp/_en_baseline"); 
+# --------------------------------------------------------------------------- #
+print("\n== sampling baselines ==")
+
+SOUT = Path("/tmp/_en_sampling"); shutil.rmtree(SOUT, ignore_errors=True)
+sys.argv = ["x", "--model", "Qwen3-8B", "--suite", "sampling",
+            "--task", "generic", "--stories", "2", "--out", str(SOUT),
+            "--max-new-tokens", "4", "--no-diversity"]
+with contextlib.redirect_stdout(io.StringIO()):
+    R.main()
+sstate = json.loads((SOUT / "Qwen3-8B" / "state.json").read_text())
+snames = sorted(R.condition_label(r) for r in sstate["runs"])
+check("sampling gives the plain baseline plus two decoding baselines",
+      snames == ["baseline",
+                 "baseline (temperature 1.8, top-k 40)",
+                 "baseline (temperature 1.8, top-p 0.95)"], str(snames))
+check("the sampling settings are in the run id",
+      any("temp1p8__topp0p95" in r for r in sstate["runs"])
+      and any("temp1p8__topk40" in r for r in sstate["runs"]), str(sorted(sstate["runs"])))
+check("sampling needs no steering vectors either",
+      not (SOUT / "Qwen3-8B" / "steering_Qwen3-8B.pt").exists())
+
+sys.argv = ["x", "--model", "Qwen3-8B", "--suite", "sampling", "--task", "generic",
+            "--stories", "2", "--out", str(SOUT), "--max-new-tokens", "4",
+            "--baseline-top-k", "-1", "--no-diversity", "--allow-task-change"]
+with contextlib.redirect_stdout(io.StringIO()):
+    R.main()
+check("a negative cut-off drops that arm",
+      len(json.loads((SOUT / "Qwen3-8B" / "state.json").read_text())["runs"]) == 3)
+
+shutil.rmtree(SOUT, ignore_errors=True)
+shutil.rmtree(BOUT, ignore_errors=True)
 sys.argv = ["x", "--model", "Qwen3-8B", "--suite", "baseline",
             "--task", "generic", "--stories", "4", "--out", str(BOUT),
             "--max-new-tokens", "4", "--no-diversity"]
@@ -497,6 +528,45 @@ check("and adds the steering condition without regenerating the baseline",
       str(len(bstate2["runs"])))
 
 shutil.rmtree(BOUT, ignore_errors=True)
+
+
+# --------------------------------------------------------------------------- #
+print("\n== the embedding model loads late, not early ==")
+
+from noiseegra.creativity_metrics import CreativityScorer as CS  # noqa: E402
+import noiseegra.embeddings as EM  # noqa: E402
+
+calls = {"n": 0, "device_seen": []}
+real_loader = EM.load_embedder
+
+
+class TinyEmbedder:
+    device = "cpu"
+
+    def encode(self, texts, **kw):
+        import numpy as np
+        v = np.eye(len(texts), 8)
+        return v / np.linalg.norm(v, axis=1, keepdims=True)
+
+
+def fake_loader(name=None, device=None):
+    calls["n"] += 1
+    calls["device_seen"].append(device)
+    return TinyEmbedder()
+
+
+EM.load_embedder = fake_loader
+try:
+    sc = CS(["a story about rain", "a story about snow"], device="cpu")
+    check("constructing the scorer loads nothing", calls["n"] == 0, str(calls["n"]))
+    check("the device can be reported without loading", sc.device == "cpu")
+    check("no load has happened yet", calls["n"] == 0, str(calls["n"]))
+    sc.semantic_diversity()
+    check("the first score loads it", calls["n"] == 1, str(calls["n"]))
+    sc.semantic_diversity()
+    check("and only once", calls["n"] == 1, str(calls["n"]))
+finally:
+    EM.load_embedder = real_loader
 
 shutil.rmtree(OUT, ignore_errors=True)
 print()

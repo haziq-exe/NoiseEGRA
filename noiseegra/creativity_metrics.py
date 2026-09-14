@@ -69,15 +69,14 @@ class CreativityScorer:
     ):
         # Imported lazily: `import noiseegra` should not pull in sentence-transformers
         # (and its model download) for callers that only generate or score constraints.
-        from .embeddings import load_embedder, resolve_embedding_model
+        from .embeddings import resolve_embedding_model
 
         self.texts = [t.strip() for t in texts if isinstance(t, str) and t.strip()]
         self.embedding_model = resolve_embedding_model(embedding_model)
-        # `device=None` means "wherever there is room": during a generation run the
-        # language model holds most of the GPU, so this normally lands on the CPU
-        # or the second card rather than evicting the generator.
-        self.model = load_embedder(embedding_model, device=device)
         self.batch_size = int(batch_size)
+        self._device = device
+        self._requested = embedding_model
+        self._model = None
         self.max_k = max_k
         self.random_state = random_state
         # Cut every story to the same number of words before embedding. Longer
@@ -85,6 +84,35 @@ class CreativityScorer:
         # diversity scores partly measure output length. `None` keeps full texts.
         self.truncate_words = truncate_words
         self.total_modal_collapse_indices_by_run = self.load_paper_modal_collapse_indices()
+
+    @property
+    def model(self):
+        """The embedding model, loaded on first use.
+
+        Loading is deferred because of where the device decision lands. A runner
+        builds this scorer before it loads the language model, so an eager load
+        would see two empty GPUs, take one, and leave the 8B generator to squeeze
+        onto the same card. By the time the first story is scored the generator is
+        already resident and `device=None` picks somewhere that has room.
+        """
+        if self._model is None:
+            from .embeddings import load_embedder
+
+            self._model = load_embedder(self._requested, device=self._device)
+        return self._model
+
+    @model.setter
+    def model(self, value):
+        self._model = value
+
+    @property
+    def device(self):
+        """Where the model is, or where it would go, without forcing a load."""
+        if self._model is not None:
+            return self._model.device
+        from .embeddings import pick_device
+
+        return self._device if self._device not in (None, "auto") else pick_device()
 
     def _prepared(self) -> List[str]:
         if not self.truncate_words or self.truncate_words <= 0:

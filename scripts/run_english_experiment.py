@@ -125,8 +125,9 @@ def main() -> None:
     ap.add_argument("--layers", nargs=2, type=int, metavar=("LO", "HI"))
     ap.add_argument("--dtype", default="auto", choices=["auto", "float16", "bfloat16"])
     ap.add_argument("--suite", nargs="+", default=["compare"],
-                    choices=["baseline", "compare", "method", "noise", "offset", "core",
-                             "ortho", "alpha", "gate", "beta", "loo", "all"])
+                    choices=["baseline", "sampling", "compare", "method", "noise",
+                             "offset", "core", "ortho", "alpha", "gate", "beta",
+                             "loo", "all"])
     ap.add_argument("--task", default="generic", choices=["generic", "scenario"],
                     help="'generic' is the published design: one instruction with no "
                          "scenario, many requirements, and every story in one group, so "
@@ -177,6 +178,14 @@ def main() -> None:
     ap.add_argument("--steer-prefill", action="store_true")
     ap.add_argument("--max-new-tokens", type=int, default=400)
     ap.add_argument("--temperature", type=float, default=1.0)
+    ap.add_argument("--baseline-temperature", type=float, default=1.8,
+                    help="temperature for the sampling baselines in --suite sampling")
+    ap.add_argument("--baseline-top-p", type=float, default=0.95,
+                    help="nucleus cut-off for the high-temperature baseline; "
+                         "pass a negative value to skip that arm")
+    ap.add_argument("--baseline-top-k", type=int, default=40,
+                    help="top-k cut-off for the high-temperature baseline; "
+                         "pass a negative value to skip that arm")
     ap.add_argument("--pca-rank", type=int, default=8)
     ap.add_argument("--embedding-model", default=None,
                     help="diversity embedding model: registry key or HF id "
@@ -311,7 +320,11 @@ def main() -> None:
     # activation scale, no entropy measurement. Skipping all three means it starts
     # generating immediately, and it runs on a model the extraction pair file has
     # never been tried on.
-    steering_needed = any(name != "baseline" for name in suites_req)
+    if args.baseline_top_p is not None and args.baseline_top_p < 0:
+        args.baseline_top_p = None
+    if args.baseline_top_k is not None and args.baseline_top_k < 0:
+        args.baseline_top_k = None
+    steering_needed = any(name not in ("baseline", "sampling") for name in suites_req)
     vectors, rms_scale = None, 0.0
 
     # ---- steering vectors ------------------------------------------------- #
@@ -455,14 +468,17 @@ def main() -> None:
     scorer = None
     if args.diversity:
         from noiseegra.creativity_metrics import CreativityScorer
-        print("loading the embedding model for diversity scoring ...", flush=True)
+
+        # Built now, loaded on first use: loading it here, before the language
+        # model, would take the empty GPU and leave the generator to share it.
         scorer = CreativityScorer(
             ["placeholder one", "placeholder two"],
             embedding_model=args.embedding_model,
             truncate_words=args.truncate_words,
             device=args.embedding_device,
         )
-        print(f"  embedding model on {scorer.model.device}", flush=True)
+        print(f"diversity scoring: {scorer.embedding_model}, "
+              f"loaded on first use", flush=True)
 
     done, t0 = total - remaining, time.time()
     started = done
@@ -500,9 +516,13 @@ def main() -> None:
         except Exception as exc:
             # Every story is already on disk. Losing the scores for one condition
             # is an inconvenience; losing the run at story 300 of 400 is not.
-            print(f"  [warn] scoring {rid} failed ({type(exc).__name__}: {exc}); "
-                  "the stories are saved, score them later with "
-                  "scripts/score_english.py", flush=True)
+            import traceback
+
+            print(f"\n  [warn] diversity scoring failed for {rid}:", flush=True)
+            traceback.print_exc()
+            print("  The stories themselves are saved. Score them afterwards with\n"
+                  f"    python scripts/score_english.py --input-dir {out} --diversity\n",
+                  flush=True)
             row = score_condition(stories, pidx, checker, None)
         row["run"] = rid
         rows.append(row)

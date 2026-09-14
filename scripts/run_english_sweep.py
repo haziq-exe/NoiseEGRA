@@ -46,6 +46,9 @@ PASSTHROUGH = [
     ("--steer-vectors", "steer_vectors", True),
     ("--embedding-model", "embedding_model", False),
     ("--embedding-device", "embedding_device", False),
+    ("--baseline-temperature", "baseline_temperature", False),
+    ("--baseline-top-p", "baseline_top_p", False),
+    ("--baseline-top-k", "baseline_top_k", False),
     ("--truncate-words", "truncate_words", False),
 ]
 
@@ -87,6 +90,9 @@ def main() -> None:
     ap.add_argument("--steer-vectors", nargs="*", default=None)
     ap.add_argument("--embedding-model", default=None)
     ap.add_argument("--embedding-device", default=None)
+    ap.add_argument("--baseline-temperature", type=float, default=None)
+    ap.add_argument("--baseline-top-p", type=float, default=None)
+    ap.add_argument("--baseline-top-k", type=int, default=None)
     ap.add_argument("--truncate-words", type=int, default=None)
     ap.add_argument("--no-diversity", dest="diversity", action="store_false")
     ap.add_argument("--out", default="/kaggle/working/english")
