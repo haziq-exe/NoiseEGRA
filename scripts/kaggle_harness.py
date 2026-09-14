@@ -227,6 +227,7 @@ OUT_NAME  = {out_name!r}
 COMMAND   = {command!r}
 SPACY     = {spacy}
 MAX_MIN   = {max_minutes}
+EXPECT_STATE = {expect_state}
 
 WORK = Path("/kaggle/working")
 OUT  = WORK / OUT_NAME
@@ -262,6 +263,13 @@ elif src.is_dir():
             shutil.copy2(item, dest)
             n += 1
     print(f"restored {{n}} loose checkpoint files from {{src}}", flush=True)
+elif EXPECT_STATE:
+    # A checkpoint was uploaded for this run, so its absence is a mounting
+    # failure, not a first run. Carrying on would regenerate everything.
+    print(f"ERROR: expected a checkpoint at {{src}} and found none.", flush=True)
+    print(f"Mounted inputs: {{sorted(p.name for p in Path('/kaggle/input').glob('*'))}}",
+          flush=True)
+    sys.exit(2)
 else:
     print(f"no checkpoint mounted at {{src}}; starting fresh", flush=True)
 
@@ -337,12 +345,13 @@ sys.exit(rc)
 def write_kernel(folder: Path, *, kernel_id: str, title: str, repo: str, commit: str,
                  state_dir: str, out_name: str, command: str, gpu: bool,
                  dataset_sources: List[str], spacy: bool,
-                 max_minutes: int = 240) -> None:
+                 max_minutes: int = 240, expect_state: bool = False) -> None:
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "run.py").write_text(
         KERNEL_TEMPLATE.format(repo=repo, commit=commit, state_dir=state_dir,
                                out_name=out_name, command=command, spacy=spacy,
-                               max_minutes=int(max_minutes)),
+                               max_minutes=int(max_minutes),
+                               expect_state=bool(expect_state)),
         encoding="utf-8",
     )
     (folder / "kernel-metadata.json").write_text(json.dumps({
@@ -386,6 +395,31 @@ def dataset_exists(api, dataset_id: str) -> bool:
     return False
 
 
+def wait_for_dataset(api, dataset_id: str, timeout_s: int = 300) -> bool:
+    """Block until a newly created dataset can actually be mounted.
+
+    Kaggle processes an upload before the dataset can be attached to a kernel,
+    and a fixed sleep is a guess. Attaching too early does not fail the push --
+    the kernel simply starts with nothing mounted, which for a resumed run means
+    silently regenerating everything.
+    """
+    t0 = time.time()
+    while time.time() - t0 < timeout_s:
+        try:
+            files = api.dataset_list_files(dataset_id)
+            names = [getattr(f, "name", str(f)) for f in getattr(files, "files", files) or []]
+            if names:
+                print(f"  {dataset_id} is ready after {time.time() - t0:.0f}s "
+                      f"({', '.join(names[:3])})", flush=True)
+                return True
+        except Exception:
+            pass
+        time.sleep(10)
+    print(f"  WARNING: {dataset_id} was still not listable after {timeout_s}s; "
+          "the kernel may start without the checkpoint", flush=True)
+    return False
+
+
 def sync_state_up(api, state_dir: Path, dataset_id: str, title: str) -> bool:
     """Upload the checkpoint as a private dataset version. False if there is none.
 
@@ -420,8 +454,7 @@ def sync_state_up(api, state_dir: Path, dataset_id: str, title: str) -> bool:
         else:
             print(f"  creating {dataset_id}", flush=True)
             api.dataset_create_new(str(staging), public=False, quiet=True)
-            # A new dataset is not mountable the instant it is created.
-            time.sleep(20)
+            wait_for_dataset(api, dataset_id)
     finally:
         shutil.rmtree(staging, ignore_errors=True)
     return True

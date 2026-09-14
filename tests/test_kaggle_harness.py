@@ -35,6 +35,7 @@ with tempfile.TemporaryDirectory() as td:
         state_dir="noiseegra-demo-state", out_name="demo",
         command="scripts/run_english_experiment.py --model Qwen3-8B --stories 100",
         gpu=True, dataset_sources=["someone/noiseegra-demo-state"], spacy=True,
+        expect_state=True,
     )
     meta = json.loads((folder / "kernel-metadata.json").read_text())
     script = (folder / "run.py").read_text()
@@ -67,6 +68,9 @@ with tempfile.TemporaryDirectory() as td:
           'COMMAND.replace("{OUT}", str(OUT))' in script)
     check("it unpacks the checkpoint archive", "state.tgz" in script
           and "tarfile" in script)
+    # A mount that silently fails would make a resumed run regenerate everything.
+    check("a promised checkpoint that fails to mount is an error, not a fresh start",
+          "EXPECT_STATE = True" in script and "sys.exit(2)" in script)
     check("it installs spaCy when asked", "spacy download en_core_web_sm" in script)
     check("it deletes the clone so only results are returned",
           "shutil.rmtree(repo" in script)
@@ -83,7 +87,9 @@ with tempfile.TemporaryDirectory() as td:
 
     H.write_kernel(folder, kernel_id="a/b", title="t", repo="r", commit="c",
                    state_dir="s", out_name="o", command="x", gpu=False,
-                   dataset_sources=[], spacy=False)
+                   dataset_sources=[], spacy=False, expect_state=False)
+    check("a first run with no checkpoint starts fresh instead",
+          "EXPECT_STATE = False" in (folder / "run.py").read_text())
     check("spaCy can be skipped",
           "spacy download" not in (folder / "run.py").read_text().split("SPACY")[1]
           or "SPACY     = False" in (folder / "run.py").read_text())
