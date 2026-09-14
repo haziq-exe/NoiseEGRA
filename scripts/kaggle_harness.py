@@ -449,7 +449,8 @@ def cmd_run(args) -> None:
     _wait_and_pull(api, kernel_id, exp, out_dir, state_dir, args.timeout)
 
 
-TERMINAL = ("complete", "error", "cancelacknowledged", "cancelled", "cancelrequested")
+TERMINAL = ("complete", "error", "cancelacknowledged", "cancelled",
+            "cancelrequested", "failed", "unknown")
 _LOG_RETRY_DELAY = 5
 _LOG_MAX_SILENT_FAILURES = 6
 
@@ -525,11 +526,25 @@ def follow_logs(api, kernel_id: str, log_path: Path) -> None:
                 return
 
 
+def _norm_status(value) -> str:
+    """A bare lowercase state name.
+
+    The client returns an enum whose str() is "KernelWorkerStatus.COMPLETE", and
+    older versions returned the plain string "complete". Comparing against the
+    raw value silently never matches, so a finished run looks like it is still
+    going until the timeout fires.
+    """
+    text = str(value if not hasattr(value, "name") else value.name)
+    return text.rsplit(".", 1)[-1].strip().lower()
+
+
 def _status(api, kernel_id: str):
+    """(normalised state, failure message or None)."""
     raw = api.kernels_status(kernel_id)
     if isinstance(raw, dict):
-        return raw.get("status", "unknown"), raw.get("failureMessage")
-    return getattr(raw, "status", "unknown"), getattr(raw, "failureMessage", None)
+        return _norm_status(raw.get("status", "unknown")), raw.get("failureMessage")
+    return (_norm_status(getattr(raw, "status", "unknown")),
+            getattr(raw, "failureMessage", None))
 
 
 def _wait_and_pull(api, kernel_id, exp: Path, out_dir: Path, state_dir: Path,
@@ -542,17 +557,16 @@ def _wait_and_pull(api, kernel_id, exp: Path, out_dir: Path, state_dir: Path,
     last = None
     while True:
         status, failure = _status(api, kernel_id)
-        key = str(status).lower()
-        if key != last:
+        if status != last:
             print(f"  [{(time.time() - t0) / 60:5.1f} min] {status}", flush=True)
-            last = key
-        if key == "running" or key in TERMINAL:
+            last = status
+        if status == "running" or status in TERMINAL:
             break
         if (time.time() - t0) / 60 > timeout_min:
             raise SystemExit(f"still {status} after {timeout_min} min")
         time.sleep(15)
 
-    if str(status).lower() not in TERMINAL:
+    if status not in TERMINAL:
         print("-" * 70, flush=True)
         follow_logs(api, kernel_id, exp / "log.txt")
         print("-" * 70, flush=True)
@@ -560,7 +574,7 @@ def _wait_and_pull(api, kernel_id, exp: Path, out_dir: Path, state_dir: Path,
     # The stream ends slightly before the session is marked finished.
     while True:
         status, failure = _status(api, kernel_id)
-        if str(status).lower() in TERMINAL:
+        if status in TERMINAL:
             break
         if (time.time() - t0) / 60 > timeout_min:
             raise SystemExit(f"still {status} after {timeout_min} min; "
@@ -634,7 +648,7 @@ def cmd_follow(args) -> None:
     kernel_id = f"{_username(api)}/{KERNEL_PREFIX}-{args.name}"
     status, _ = _status(api, kernel_id)
     print(f"{kernel_id}: {status}")
-    if str(status).lower() in TERMINAL:
+    if status in TERMINAL:
         print("that session has finished; showing the persisted log")
         text = api.kernels_logs(kernel_id) if hasattr(api, "kernels_logs") else ""
         if text:
