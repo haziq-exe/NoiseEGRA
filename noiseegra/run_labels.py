@@ -295,15 +295,19 @@ def plan_summary(run_ids: Sequence[str]) -> List[str]:
     if not gates and all("__gate" not in r for r in run_ids):
         out.append("perturbation is applied at every decode step (no entropy gate)")
 
-    kinds = {"story" if "__obstory" in r else "step"
-             for r in run_ids if _G.search(r) and "__g0orth" not in r}
+    def _basis_kind(rid: str) -> str:
+        for tag in ("story", "prompt"):
+            if f"__ob{tag}" in rid:
+                return tag
+        return "step"
+
+    kinds = {_basis_kind(r) for r in run_ids if _G.search(r) and "__g0orth" not in r}
     if len(kinds) == 1:
-        kind = kinds.pop()
         out.append(
             "per-story offsets are drawn from the directions along which "
-            + ("whole stories differ from one another"
-               if kind == "story" else
-               "one decode step differs from another")
+            + {"story": "whole stories differ from one another",
+               "prompt": "the instruction's own token positions differ from one another",
+               "step": "one decode step differs from another"}[kinds.pop()]
         )
 
     windows = {(m.group(1), _NHORIZON.search(r).group(1) if _NHORIZON.search(r) else "")

@@ -265,3 +265,96 @@ def collect_story_pcs(
                 print(f"  [story basis] rank {k} from {n_used} stories; those "
                       f"directions carry {explained:.0%} of the between-story variation")
     return StoryAxes(basis=basis, mean=centre, explained=explained, n_stories=n_used)
+
+
+@torch.no_grad()
+def collect_prompt_pcs(
+    egra,
+    prompt: Union[str, List[Dict[str, str]]],
+    layers: Sequence[int],
+    *,
+    rank: int = 24,
+    skip_first: int = 4,
+    verbose: bool = True,
+) -> "StoryAxes":
+    """Directions the residual stream varies along, from the prompt alone.
+
+    One forward pass, no generation. The prompt is a few hundred tokens, and each
+    of them has a hidden state at every layer; the principal components of those
+    states are the directions this model's residual stream actually moves along
+    while it is reading. That is enough to keep a perturbation on the manifold the
+    model operates on, which is the property that matters -- an isotropic draw in
+    4096 dimensions is almost entirely in directions the model never uses, so it
+    has to be enormous before it changes anything, and by then fluency is gone.
+
+    Compared with :func:`collect_story_pcs` this measures a different thing. Story
+    axes are how one finished story differs from another, which needs stories to
+    be sampled. Prompt axes are how one token position differs from another inside
+    the instruction, which needs nothing but the instruction. The claim is only
+    that both span the part of the space the model uses, not that they are the
+    same directions.
+
+    ``skip_first`` drops the opening positions, where the chat template's own
+    boilerplate sits and every prompt looks alike.
+
+    Returns a :class:`StoryAxes` so it is interchangeable with the sampled
+    estimate: ``basis`` per layer, and the ``mean`` those directions are measured
+    from, which the amplification variant needs.
+    """
+    blocks = egra._get_transformer_blocks()
+    norm_layers = sorted({egra._normalize_layer_index(int(i), len(blocks)) for i in layers})
+    caught: Dict[int, torch.Tensor] = {}
+    handles = []
+
+    def make_hook(li: int):
+        def hook(module, inp, out):
+            t = out[0] if isinstance(out, (tuple, list)) else out
+            if isinstance(t, torch.Tensor) and t.dim() == 3:
+                caught[li] = t[0].detach().to("cpu", torch.float32)
+            return None
+        return hook
+
+    try:
+        for li in norm_layers:
+            handles.append(blocks[li].register_forward_hook(make_hook(li)))
+
+        text = (
+            egra.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
+            if isinstance(prompt, (list, tuple))
+            else prompt
+        )
+        enc = egra.tokenizer(text, return_tensors="pt").to(egra._input_device())
+        enc.pop("token_type_ids", None)
+        egra.model.eval()
+        egra.model(**enc, use_cache=False, return_dict=True)
+    finally:
+        for h in handles:
+            try:
+                h.remove()
+            except Exception:
+                pass
+
+    basis: Dict[int, torch.Tensor] = {}
+    centre: Dict[int, torch.Tensor] = {}
+    explained, n_pos = 0.0, 0
+    for li in norm_layers:
+        mat = caught.get(li)
+        if mat is None or mat.shape[0] <= skip_first + 2:
+            raise RuntimeError(
+                f"layer {li} gave {0 if mat is None else mat.shape[0]} prompt positions; "
+                "the prompt is too short to estimate anything from."
+            )
+        mat = mat[skip_first:]
+        mu = mat.mean(dim=0)
+        centre[li] = mu.contiguous()
+        mat = mat - mu.unsqueeze(0)
+        k = min(rank, mat.shape[0] - 1, mat.shape[1])
+        _, sv, vh = torch.linalg.svd(mat, full_matrices=False)
+        basis[li] = vh[:k].t().contiguous()
+        n_pos = mat.shape[0]
+        if li == norm_layers[0]:
+            explained = float((sv[:k] ** 2).sum() / (sv ** 2).sum().clamp_min(1e-12))
+            if verbose:
+                print(f"  [prompt basis] rank {k} from {n_pos} prompt positions; those "
+                      f"directions carry {explained:.0%} of the variation across them")
+    return StoryAxes(basis=basis, mean=centre, explained=explained, n_stories=n_pos)

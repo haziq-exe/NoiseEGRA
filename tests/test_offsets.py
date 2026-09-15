@@ -14,11 +14,19 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT)); sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "tests"))
 
-from noiseegra.activation_basis import collect_story_pcs  # noqa: E402
+from noiseegra.activation_basis import collect_prompt_pcs, collect_story_pcs  # noqa: E402
 from noiseegra.run_labels import label_run  # noqa: E402
 from noiseegra.subspace import SteeringPlan, ConstraintSpec, schedule_factor  # noqa: E402
 
 FAILURES = []
+
+
+def _raises(fn):
+    try:
+        fn()
+    except Exception:
+        return True
+    return False
 
 
 def check(name, cond, extra=""):
@@ -244,13 +252,49 @@ check("the mean the directions are measured from comes back too",
 check("and the share of variation they carry is reported",
       0.0 < axes.explained <= 1.0, f"{axes.explained:.3f}")
 
+print("\n== the basis from the prompt alone ==")
+# No generation at all: one forward pass over the instruction.
+calls = {"n": 0}
+_gen = egra.model.generate
+def counting_generate(*a, **k):
+    calls["n"] += 1
+    return _gen(*a, **k)
+egra.model.generate = counting_generate
+long_msgs = [{"role": "user", "content": "Write a story. " * 40}]
+paxes = collect_prompt_pcs(egra, long_msgs, [2, 3], rank=8, verbose=False)
+egra.model.generate = _gen
+check("nothing was generated to build it", calls["n"] == 0, f"{calls['n']} generate calls")
+check("a basis per layer", sorted(paxes.basis) == [2, 3], str(sorted(paxes.basis)))
+pk = paxes.basis[2].shape[1]
+check("the columns are orthonormal",
+      torch.allclose(paxes.basis[2].t() @ paxes.basis[2], torch.eye(pk), atol=1e-4))
+check("it carries the mean too, so amplification can use it",
+      sorted(paxes.mean) == [2, 3] and paxes.mean[2].shape == (64,))
+check("too few usable positions is an error, not a silent empty basis",
+      _raises(lambda: collect_prompt_pcs(egra, long_msgs, [2], rank=8,
+                                         skip_first=10_000, verbose=False)))
+
+print("\n== cosine decay with its own horizon ==")
+p = plan(noise_mode="orth", noise_alpha=0.8, noise_schedule="cosine_decay",
+         noise_horizon=16, horizon=200)
+steer = plan(noise_mode="none", noise_alpha=0.0)
+sizes = []
+for t in (0, 8, 15, 16, 40):
+    torch.manual_seed(11)
+    d = p.delta_for(2, t)
+    torch.manual_seed(11)
+    sizes.append(float((d - steer.delta_for(2, t)).norm()))
+check("noise is strongest at the first token", sizes[0] == max(sizes), f"{sizes}")
+check("it shrinks as the story runs", sizes[0] > sizes[1] > sizes[2], f"{sizes}")
+check("and is gone at the horizon", sizes[3] < 1e-5 and sizes[4] < 1e-5, f"{sizes}")
+
 print("\n== end to end on a tiny model ==")
 import run_english_experiment as R  # noqa: E402
 
 OUT = Path("/tmp/_offset_test"); shutil.rmtree(OUT, ignore_errors=True)
 R.build_model = lambda mid, **kw: Tiny()
 sys.argv = ["x", "--model", "Qwen3-8B", "--suite", "story", "window", "prompt",
-            "amplify", "--lambda-sweep", "2.0",
+            "amplify", "decay", "--lambda-sweep", "2.0",
             "--layers", "2", "5", "--task", "generic", "--stories", "2",
             "--out", str(OUT), "--max-new-tokens", "4", "--pca-rank", "2",
             "--protect-rank", "2", "--no-diversity", "--gamma-sweep", "0.1",
@@ -262,13 +306,18 @@ with contextlib.redirect_stdout(io.StringIO()) as buf:
 out = buf.getvalue()
 state = json.loads((OUT / "Qwen3-8B" / "state.json").read_text())
 runs = sorted(state["runs"])
-check("six conditions: two offset arms, one prompt-only, two amplify, one window",
-      len(runs) == 6, "\n    " + "\n    ".join(runs))
+check("seven conditions: two offset arms, one prompt-only, two amplify, "
+      "one window, one decaying",
+      len(runs) == 7, "\n    " + "\n    ".join(runs))
+check("the window and the decaying arm are not the same condition",
+      sum("__nschp" in r for r in runs) == 1 and sum("__nschd" in r for r in runs) == 1,
+      "\n    " + "\n    ".join(r for r in runs if "__nsch" in r))
 check("every cell is filled",
       all(len(v) == 2 for v in state["runs"].values()),
       str({r: len(v) for r, v in state["runs"].items()}))
-check("the story basis is cached for the next run",
-      (OUT / "Qwen3-8B" / "actpcs_story_Qwen3-8B.pt").is_file())
+check("the basis is cached for the next run, under the kind it came from",
+      (OUT / "Qwen3-8B" / "actpcs_prompt_Qwen3-8B.pt").is_file(),
+      str(sorted(f.name for f in (OUT / "Qwen3-8B").glob("actpcs_*"))))
 check("the table names the arms apart",
       len({l[:52] for l in out.splitlines() if "per-story offset" in l}) >= 2
       and "first 3 generated tokens" in out,
@@ -277,7 +326,7 @@ check("the table names the arms apart",
 before = {r: dict(v) for r, v in state["runs"].items()}
 with contextlib.redirect_stdout(io.StringIO()) as buf2:
     R.main()
-check("a second run regenerates nothing", "0 of 12 still to generate" in buf2.getvalue())
+check("a second run regenerates nothing", "0 of 14 still to generate" in buf2.getvalue())
 state2 = json.loads((OUT / "Qwen3-8B" / "state.json").read_text())
 check("and leaves the stories alone", state2["runs"] == before)
 

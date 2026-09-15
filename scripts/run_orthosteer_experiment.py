@@ -256,6 +256,24 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                       f"{list(args.lambda_sweep)}, applied while writing and from "
                       "the prompt")
 
+    if name == "decay":
+        # The published cosine decay, but with its own horizon and at magnitudes
+        # the flat schedule cannot survive. The reason flat noise collapses is that
+        # every perturbed step is written to the key/value cache and read by every
+        # later step, so the damage accumulates; a schedule that starts high and is
+        # gone by the horizon spends the perturbation where it decides the premise
+        # and leaves the rest of the story clean, so alpha can be raised.
+        h = int(getattr(args, "noise_horizon", 64) or 64)
+        mags = [m for m in args.alpha_sweep if m > 0]
+        arms = [
+            {"plan": make_plan(
+                beta=args.beta, noise_mode="orth", noise_alpha=m,
+                noise_schedule="cosine_decay", noise_horizon=h, **common)}
+            for m in mags
+        ]
+        return arms, (f"steering + per-token noise at {mags}, decaying on a cosine "
+                      f"from full strength to nothing over the first {h} tokens")
+
     if name == "window":
         # The same per-token noise as before, switched off after the opening. The
         # premise is chosen in the first few dozen tokens; past that the

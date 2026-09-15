@@ -29,7 +29,7 @@ import torch  # noqa: E402
 
 from noiseegra import writingprompts as wp  # noqa: E402
 from noiseegra.activation_basis import (  # noqa: E402
-    StoryAxes, collect_block_pcs, collect_story_pcs,
+    StoryAxes, collect_block_pcs, collect_prompt_pcs, collect_story_pcs,
 )
 from noiseegra.constraint_metrics_en import EnglishConstraintChecker  # noqa: E402
 from noiseegra.defaults import (  # noqa: E402
@@ -129,7 +129,8 @@ def main() -> None:
     ap.add_argument("--suite", nargs="+", default=["compare"],
                     choices=["baseline", "sampling", "compare", "method", "noise",
                              "offset", "story", "prompt", "amplify", "window",
-                             "core", "ortho", "alpha", "gate", "beta", "loo", "all"])
+                             "decay", "core", "ortho", "alpha", "gate", "beta",
+                             "loo", "all"])
     ap.add_argument("--task", default="generic", choices=["generic", "scenario"],
                     help="'generic' is the published design: one instruction with no "
                          "scenario, many requirements, and every story in one group, so "
@@ -171,20 +172,27 @@ def main() -> None:
                     help="per-story offset magnitudes used by --suite offset")
     ap.add_argument("--offset-rank", type=int, default=64,
                     help="how many activation principal components offsets may use")
-    ap.add_argument("--offset-basis", dest="offset_basis_kind", default="story",
-                    choices=["step", "story"],
-                    help="which directions a per-story offset is drawn from. 'story' "
-                         "takes the principal components of whole-story mean "
-                         "activations, so the offset moves along an axis the model's "
-                         "own stories already differ on. 'step' takes them over "
-                         "individual decode steps, whose leading directions describe "
-                         "token position rather than story content")
+    ap.add_argument("--offset-basis", dest="offset_basis_kind", default="prompt",
+                    choices=["step", "story", "prompt"],
+                    help="which directions a per-story offset is drawn from. 'prompt' "
+                         "takes the principal components of the instruction's own "
+                         "hidden states in a single forward pass, so nothing has to "
+                         "be generated first. 'story' samples stories and takes the "
+                         "components across their mean activations, so the offset "
+                         "moves along an axis the model's own stories already differ "
+                         "on -- stronger, but it costs a sampling pass. 'step' takes "
+                         "them over individual decode steps, whose leading directions "
+                         "describe token position rather than content")
     ap.add_argument("--offset-basis-stories", type=int, default=32,
                     help="unsteered stories sampled to estimate the story-level basis")
     ap.add_argument("--offset-basis-tokens", type=int, default=120,
                     help="tokens generated per sample while estimating either basis")
     ap.add_argument("--noise-horizon", type=int, default=24,
-                    help="decode steps the perturbation covers in --suite window")
+                    help="decode steps the perturbation covers in --suite window, and "
+                         "the cosine horizon it fades out over in --suite decay. Kept "
+                         "separate from --horizon, which drives the constraint "
+                         "schedules: a 24-token noise window must not also compress "
+                         "the closure ramp into 24 tokens")
     ap.add_argument("--lambda-sweep", nargs="*", type=float, default=[1.5, 2.0, 3.0],
                     help="how far --suite amplify stretches a story's own deviation "
                          "from the average story. 1 is a no-op; 2 doubles it")
@@ -405,7 +413,7 @@ def main() -> None:
         cached = None
         if pc_path.is_file():
             cached = torch.load(pc_path, map_location="cpu", weights_only=False)
-            if kind == "story" and not isinstance(cached, StoryAxes):
+            if kind in ("story", "prompt") and not isinstance(cached, StoryAxes):
                 # Written before the estimate carried the mean its directions are
                 # measured from. The directions themselves are still right, but
                 # amplification cannot use them, so take it again.
@@ -416,6 +424,14 @@ def main() -> None:
                 print(f"activation basis ({kind}): loaded from {pc_path.name}")
         if cached is not None:
             pass
+        elif kind == "prompt":
+            print("activation basis: reading the instruction's own hidden states "
+                  "(one forward pass, nothing generated) ...", flush=True)
+            cached = collect_prompt_pcs(
+                get_model(), messages[0], layers, rank=args.offset_rank,
+            )
+            torch.save(cached, pc_path)
+            print(f"activation basis (prompt): saved to {pc_path.name}")
         elif kind == "story":
             print(f"activation basis: sampling {args.offset_basis_stories} unsteered "
                   "stories to find the directions they differ along (once) ...",
