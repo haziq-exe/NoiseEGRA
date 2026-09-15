@@ -123,7 +123,7 @@ def main() -> None:
     ap.add_argument("--dtype", default="auto", choices=["auto", "float16", "bfloat16"])
     ap.add_argument("--suite", nargs="+", default=["compare"],
                     choices=["baseline", "sampling", "compare", "method", "noise",
-                             "offset", "story", "prompt", "main", "ablate", "amplify",
+                             "offset", "story", "prompt", "main", "pareto", "ablate", "amplify",
                              "window", "decay", "core", "ortho", "alpha", "gate",
                              "beta", "loo", "all"])
     ap.add_argument("--task", default="generic", choices=["generic", "scenario"],
@@ -211,6 +211,8 @@ def main() -> None:
                          "push of that size do the same?' -- if the random arm moves "
                          "the requirements as much as the real one, the extraction "
                          "is not what is doing the work")
+    ap.add_argument("--kappa-sweep", nargs="*", type=float, default=[0.1, 0.15],
+                    help="f(S_c) sideways-step magnitudes used by --suite pareto")
     ap.add_argument("--main-gamma", type=float, default=0.15,
                     help="per-story offset magnitude used by --suite main")
     ap.add_argument("--main-kappa-perp", type=float, default=0.15,
@@ -477,7 +479,7 @@ def main() -> None:
     args.offset_basis = None
     args.amplify_basis = None
     args.amplify_mean = None
-    if {"offset", "story", "prompt", "main", "ablate", "amplify"} & set(suites_req):
+    if {"offset", "story", "prompt", "main", "pareto", "ablate", "amplify"} & set(suites_req):
         kind = args.offset_basis_kind
         pc_path = out / f"actpcs_{kind}_{args.model}.pt"
         legacy = out / f"actpcs_{args.model}.pt"

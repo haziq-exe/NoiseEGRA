@@ -461,3 +461,103 @@ inside the span against 0.88% chance (9.4x), prompt basis 6.22% (7.1x), largest
 principal cosine 0.588 -- and adds what the hand computation did not have: the
 overlap is flat across every layer from 14 to 22 (7.7% to 8.5%), so it is not an
 artefact of one layer.
+
+### Round 2 results, all thirteen conditions
+
+40 stories each, Vendi length-matched to 43 words (the baseline mean). Each
+perturbed arm is read against the unperturbed control at *its own* injection
+site, not against the baseline, because the site alone moves diversity.
+
+| condition | broken /12 | words | Vendi@43 | vs its control | | per broken |
+|---|---|---|---|---|---|---|
+| baseline | 4.55 | 43 | 4.02 | | | |
+| the constraint vector at the decode steps | 5.05 | 48 | 3.68 | *control* | | |
+| the constraint vector at the prompt | 4.95 | 49 | 4.11 | *control* | | |
+| per-token noise a=0.4, flat | 7.28 | 159 | 5.24 | +1.56 | +2.23 | 0.70 |
+| per-token noise a=0.4, cosine decay over 24 | 5.50 | 44 | 4.88 | +1.20 | +0.45 | **2.67** |
+| per-story offset g=0.15, at the decode steps | 5.83 | 55 | 5.62 | +1.94 | +0.78 | 2.49 |
+| per-story offset g=0.15, at the prompt | 5.75 | 49 | 6.33 | +2.22 | +0.80 | **2.78** |
+| f(S_c) perp k=0.15, at the decode steps | 5.75 | 56 | 4.67 | +0.99 | +0.70 | 1.41 |
+| f(S_c) perp k=0.15, at the prompt | 5.95 | 53 | **6.54** | +2.43 | +1.00 | 2.43 |
+| f(S_c) rotate k=1, at the decode steps | 5.03 | 47 | 4.10 | +0.42 | -0.02 | free but tiny |
+| f(S_c) rotate k=1, at the prompt | 5.12 | 45 | 4.23 | +0.12 | +0.17 | 0.7 |
+| f(S_c) gain 0.5, at the decode steps | 5.15 | 47 | 3.66 | -0.02 | +0.10 | ~0 |
+| f(S_c) gain 0.5, at the prompt | 5.08 | 48 | 4.13 | +0.02 | +0.13 | ~0 |
+
+**Cosine decay at matched alpha is a large win, and the earlier "decay does not
+help" was wrong because it was never run at matched strength.** Round 1 jumped
+straight to alpha 0.8 and 1.6 and concluded the schedule bought nothing. At the
+alpha the flat schedule was actually run at, the same noise costs 0.45 broken
+instead of 2.23 and still buys 1.20 Vendi instead of 1.56. The flat arm is
+degenerate on inspection -- 159 words and 78.7 sentences against a 50-to-65-word,
+six-to-eight-sentence rule, which is fragments, not prose -- and it generates
+about six times slower for it, roughly 43 seconds a story against 6.6, because
+the perturbation stops the model terminating and every sample runs to the
+400-token cap. For a method whose selling point is that it is cheap at inference,
+that is a cost worth stating.
+
+**f(S_c) `perp` does not beat the orthogonal offset.** It reaches the highest
+absolute diversity in the round, 6.54 against 6.33, and costs proportionally more
+for it, 1.00 broken against 0.80, so per requirement spent it is slightly worse.
+`perp` is the arm that is allowed to put its perturbation inside the constraint
+subspace while holding the net push along the summed constraint vector exactly
+fixed. If the round-1 entanglement measurement were causal -- if the axes stories
+differ along overlapping the constraint span at nine times chance meant the
+projection was throwing away real diversity -- this is the arm that should have
+shown it, and it did not.
+
+**`gain` is a clean null**: +0.02 Vendi. It never leaves the constraint span at
+all, and it buys nothing. Taken with `perp`, that is the same conclusion from two
+directions: the diversity is not in the constraint span, and the projection that
+keeps the perturbation out of it is not costing anything worth recovering.
+
+The honest reading of the entanglement result is therefore **weaker than round 1
+claimed**. The overlap is real and reproducible (9.4x chance, stable across
+layers 14-22). It does not follow that removing it costs diversity, and two arms
+designed to test exactly that came back negative. What the `ablate` suite can
+still settle is the other half: whether the projection *buys* compliance. If it
+does not, the projection is decoration either way.
+
+**`rotate` is nearly free and too small to matter**: +0.42 Vendi at -0.02 broken
+at the decode steps. That is a dose limit and not a mechanism limit, as predicted
+before the run -- at beta 1 a 45-degree turn of the summed constraint vector
+displaces about 2.6 activation units against the offset's 14.6, and rotation is
+bounded above by |S| * sqrt(2) whatever kappa is. It cannot be scaled without
+scaling beta.
+
+**Where the cost falls.** Per-requirement pass rates say the twelve are not
+twelve: `simple_register`, `easy_opening` and `plain_punctuation` sit at 100% for
+every condition and `varied_openers` at 5% for most, so the effective scale is
+about eight. The largest single cost in the best arm is specific and
+interpretable: `spelled_number` falls from 60% at baseline to 12% under f(S_c)
+`perp` at the prompt, against 42% under the orthogonal offset. "Mention a number"
+is not one of the five steered directions, so it is not in the protected span;
+`perp` is free to move it and the offset is not. The projection protects what it
+was built to protect and nothing else.
+
+**Nothing preserves compliance.** Every arm that buys diversity costs about one
+requirement of twelve. That, not the diversity, is now the open problem.
+
+### What round 3 runs, and why
+
+The largest untested lever is that **every arm in round 2 sits on top of steering
+that was signed wrongly** and is therefore worse than no steering at all: 5.05
+broken at the decode steps and 4.95 at the prompt against a 4.55 baseline. The
+perturbation results are all measured from a starting point below where they
+should start. `--beta-calibration auto` fixes the sign by measurement rather than
+by assumption.
+
+`--suite pareto`, eleven conditions, 440 generations:
+
+* both unperturbed siting controls, with calibrated signs;
+* the per-story offset at the prompt at gamma 0.05, 0.10, 0.15 and 0.25 -- the
+  method that bought the most per requirement, swept over dose so the trade is a
+  curve rather than one point;
+* f(S_c) `perp` at the prompt at kappa 0.10 and 0.15, to see whether the two
+  families cross anywhere on that curve;
+* cosine-decayed noise at alpha 0.4 and 0.8, which was the surprise of round 2
+  and has never had a dose sweep of its own.
+
+Dropped: flat noise (degenerate and six times slower), `rotate` and `gain` (null).
+The gamma 0.15 and kappa 0.15 points are directly comparable to round 2, so the
+effect of the sign fix is readable off the same two rows.

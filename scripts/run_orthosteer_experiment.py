@@ -233,6 +233,54 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                       f"drawn from the {kind}-level activation directions, each "
                       "applied from the first generated token and from the prompt")
 
+    if name == "pareto":
+        # Round 2 said three things. Every useful arm costs about one requirement
+        # of twelve, so the question is no longer "does a perturbation buy
+        # diversity" but "what does a unit of diversity cost, and can the cost be
+        # paid back somewhere else". The offset at the prompt bought the most per
+        # requirement broken. And the steering every arm sits on top of was signed
+        # wrongly, so every one of them inherited a starting point worse than no
+        # steering at all.
+        #
+        # So: the two families that worked, swept over dose at the site that
+        # worked, on top of steering whose signs come from which way the model
+        # actually errs (--beta-calibration auto). The flat-noise arm is dropped --
+        # it is degenerate at this alpha (159 words, 78 sentences) and generates
+        # six times slower for it -- and `rotate` and `gain` are dropped as nulls.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        kind = getattr(args, "offset_basis_kind", "story")
+        h = int(getattr(args, "noise_horizon", 24) or 24)
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        gammas = list(getattr(args, "gamma_sweep", [0.05, 0.1, 0.15, 0.25]))
+        kappas = list(getattr(args, "kappa_sweep", [0.1, 0.15]))
+        alphas = [a for a in getattr(args, "alpha_sweep", [0.4, 0.8]) if a > 0]
+
+        items = ["baseline"]
+        items.append({"plan": make_plan(beta=args.beta, steer_prefill=False,
+                                        **quiet, **base)})
+        items.append({"plan": make_plan(beta=args.beta, steer_prefill=True,
+                                        steer_decode=False, **quiet, **base)})
+        for g in gammas:
+            items.append({"plan": make_plan(
+                beta=args.beta, offset_gamma=g, offset_mode="orth",
+                offset_basis=offset_basis, offset_basis_kind=kind,
+                offset_prefill=True, offset_decode=False,
+                steer_prefill=False, **quiet, **base)})
+        for k in kappas:
+            items.append({"plan": make_plan(
+                beta=args.beta, jitter_mode="perp", jitter_kappa=k,
+                steer_prefill=True, steer_decode=False, **quiet, **base)})
+        for a in alphas:
+            items.append({"plan": make_plan(
+                beta=args.beta, noise_mode="orth", noise_alpha=a,
+                noise_schedule="cosine_decay", noise_horizon=h,
+                steer_prefill=False, **base)})
+        return items, (
+            f"the dose curve at the prompt: per-story offset at gamma {gammas}, "
+            f"f(S_c) sideways step at kappa {kappas}, and cosine-decayed per-token "
+            f"noise at alpha {alphas} over {h} tokens, with both unperturbed siting "
+            "controls")
+
     if name == "ablate":
         # Does projecting the constraint subspace out of the offset actually buy
         # anything? The round-1 measurement said the between-story axes put 8.2% of
