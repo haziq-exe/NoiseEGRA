@@ -60,7 +60,7 @@ DEFAULT_CONSTRAINTS = ["closure", "present_tense", "simple_register"]
 # The closure direction ramps up: push the model to wrap up harder the longer the
 # story has already run. The other two are properties of every sentence, so they
 # stay constant.
-DEFAULT_SCHEDULES = {"closure": "ramp", "present_tense": "constant", "simple_register": "constant"}
+DEFAULT_SCHEDULES = {}   # flat for every direction unless a caller says otherwise
 
 
 def make_plan(
@@ -91,6 +91,10 @@ def make_plan(
     amplify_basis=None,
     amplify_mean=None,
     noise_horizon=None,
+    jitter_kappa=0.0,
+    jitter_mode="none",
+    jitter_draw="iso",
+    steer_decode=True,
     gate_threshold=0.0,
     gate_level="none",
 ) -> SteeringPlan:
@@ -126,6 +130,10 @@ def make_plan(
         amplify_basis=amplify_basis,
         amplify_mean=amplify_mean,
         noise_horizon=noise_horizon,
+        jitter_kappa=jitter_kappa,
+        jitter_mode=jitter_mode,
+        jitter_draw=jitter_draw,
+        steer_decode=steer_decode,
         gate_threshold=gate_threshold,
         gate_level=gate_level,
     )
@@ -221,6 +229,62 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         return arms, (f"steering + per-story offsets at gamma {list(args.gamma_sweep)} "
                       f"drawn from the {kind}-level activation directions, each "
                       "applied from the first generated token and from the prompt")
+
+    if name == "main":
+        # The head-to-head. Every perturbed arm has an unperturbed control at the
+        # same injection site, so a difference cannot be read as "the prompt is a
+        # better place to push" when it is really "pushing harder helps".
+        #
+        #   site "decode"  the constraint vector is added at every decode step,
+        #                  which is what every run so far has done
+        #   site "prompt"  it is added to the prompt positions during prefill and
+        #                  decoding is left alone
+        #
+        # Three families are compared at those two sites: the published per-token
+        # noise, the per-story offset drawn beside the constraint vector, and
+        # f(S_c), which perturbs the constraint vector itself.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        kind = getattr(args, "offset_basis_kind", "story")
+        g = float(getattr(args, "main_gamma", 0.15))
+        a = float(args.alpha)
+        nh = int(getattr(args, "noise_horizon", 64) or 64)
+        kappas = {
+            "perp": float(getattr(args, "main_kappa_perp", 0.15)),
+            "rotate": float(getattr(args, "main_kappa_rotate", 1.0)),
+            "gain": float(getattr(args, "main_kappa_gain", 0.5)),
+        }
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+
+        items = ["baseline"]
+        items.append({"plan": make_plan(beta=args.beta, steer_prefill=False,
+                                        **quiet, **base)})
+        items.append({"plan": make_plan(beta=args.beta, steer_prefill=True,
+                                        steer_decode=False, **quiet, **base)})
+        items.append({"plan": make_plan(beta=args.beta, noise_mode="orth", noise_alpha=a,
+                                        noise_schedule="constant", steer_prefill=False,
+                                        **base)})
+        items.append({"plan": make_plan(beta=args.beta, noise_mode="orth", noise_alpha=a,
+                                        noise_schedule="cosine_decay", noise_horizon=nh,
+                                        steer_prefill=False, **base)})
+        items.append({"plan": make_plan(beta=args.beta, offset_gamma=g, offset_mode="orth",
+                                        offset_basis=offset_basis, offset_basis_kind=kind,
+                                        steer_prefill=False, **quiet, **base)})
+        items.append({"plan": make_plan(beta=args.beta, offset_gamma=g, offset_mode="orth",
+                                        offset_basis=offset_basis, offset_basis_kind=kind,
+                                        offset_prefill=True, offset_decode=False,
+                                        steer_prefill=False, **quiet, **base)})
+        for mode in ("perp", "rotate", "gain"):
+            items.append({"plan": make_plan(
+                beta=args.beta, jitter_mode=mode, jitter_kappa=kappas[mode],
+                steer_prefill=False, **quiet, **base)})
+            items.append({"plan": make_plan(
+                beta=args.beta, jitter_mode=mode, jitter_kappa=kappas[mode],
+                steer_prefill=True, steer_decode=False, **quiet, **base)})
+        return items, (
+            "baseline, the constraint vector alone, per-token noise flat and "
+            f"cosine-decayed at a={a:g}, the per-story offset at gamma={g:g}, and "
+            f"f(S_c) at kappa {kappas} -- each applied at the decode steps and at "
+            "the prompt")
 
     if name == "prompt":
         # Where the offset is applied, at one magnitude per arm. The prompt-only

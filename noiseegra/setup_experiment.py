@@ -187,6 +187,12 @@ def _ortho_tag(model_name: str, spec: ExperimentSpec) -> str:
             parts.append("__ponly")
         if getattr(plan, "offset_norm", "energy") != "energy":
             parts.append(f"__on{plan.offset_norm}")
+    if getattr(plan, "jitter_mode", "none") != "none" and getattr(plan, "jitter_kappa", 0):
+        parts.append(f"__j{_float_tag(plan.jitter_kappa)}{plan.jitter_mode}")
+        if getattr(plan, "jitter_draw", "iso") != "iso":
+            parts.append(f"__jd{plan.jitter_draw}")
+    if not getattr(plan, "steer_decode", True):
+        parts.append("__sdec0")
     if getattr(plan, "amplify_lambda", 1.0) != 1.0:
         parts.append(f"__amp{_float_tag(plan.amplify_lambda)}")
         if getattr(plan, "amplify_prefill", False):

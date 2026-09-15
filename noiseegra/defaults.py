@@ -94,19 +94,27 @@ EN_MODEL_LAYER_RANGES: Dict[str, Tuple[int, int]] = {
 # The directions steering is applied along. Only four, because a steering vector
 # has to be extractable from minimal pairs: "wrap the story up" is a direction,
 # "use no digits" is not.
-EN_STEER_VECTORS = ("closure", "present_tense", "simple_register", "dialogue")
+# Steering is applied along the constraints whose violation is a *local* property
+# of the text -- tense, register, quoted speech, sentence length, how a sentence
+# starts. A counting constraint ("between 50 and 65 words", "exactly one name") has
+# no token-level direction that means "stop at 65", so it is asked for in the
+# prompt and scored, but not steered. The earlier list steered `closure`, which was
+# not one of the scored requirements at all.
+EN_STEER_VECTORS = ("present_tense", "simple_register", "dialogue", "terse",
+                    "varied_openers")
 
 # What the prompt asks for and the scorer checks. Twelve, matching the pressure
 # the original EGRA prompt put on the model, and every one of them decidable
 # without a judge. See noiseegra.constraint_metrics_en.
 EN_TASK_CONSTRAINTS = (
     "length", "present_tense", "simple_register", "dialogue",
-    "easy_opening", "short_sentences", "sentence_count", "short_words",
-    "no_digits", "one_name", "varied_openers", "single_paragraph",
+    "easy_opening", "sentence_band", "sentence_count", "short_words",
+    "one_name", "varied_openers", "plain_punctuation", "spelled_number",
 )
 
 # Back-compatible alias: older callers used this for the steering names.
 EN_CONSTRAINTS = EN_STEER_VECTORS
 
-EN_MAX_WORDS = 60
-EN_MAX_GRADE_LEVEL = 3.0
+EN_MIN_WORDS = 50
+EN_MAX_WORDS = 65
+EN_MAX_GRADE_LEVEL = 2.5

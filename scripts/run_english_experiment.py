@@ -37,6 +37,7 @@ from noiseegra.defaults import (  # noqa: E402
     EN_TASK_CONSTRAINTS,
     EN_MAX_GRADE_LEVEL,
     EN_MAX_WORDS,
+    EN_MIN_WORDS,
     EN_MODEL_HF_IDS,
     EN_MODEL_LAYER_RANGES,
     RMS_ALPHA,
@@ -57,10 +58,6 @@ from score_english import (  # noqa: E402
 )
 
 from noiseegra.run_labels import label_run, plan_summary  # noqa: E402
-from noiseegra.constraint_metrics_en import (  # noqa: E402
-    DEFAULT_MAX_OPENING_WORDS, DEFAULT_MAX_SENTENCE_WORDS, DEFAULT_MAX_SYLLABLES,
-    DEFAULT_MIN_NAME_USES, DEFAULT_SENTENCE_RANGE,
-)
 from noiseegra.entropy_gate import (  # noqa: E402
     GATE_LEVELS, collect_decode_entropies, describe as describe_gate, gate_threshold,
 )
@@ -80,14 +77,11 @@ def weights_are_cached(model_id: str) -> bool:
     except Exception:
         return False
 
-# closure ramps up so the pressure to wrap up grows as the story runs long;
-# the others are properties of every sentence and stay flat.
-EN_SCHEDULES = {
-    "closure": "ramp",
-    "present_tense": "constant",
-    "simple_register": "constant",
-    "dialogue": "constant",
-}
+# Every steered direction is a property of every sentence, so every schedule is
+# flat. The earlier list ramped `closure` up over the story, which only made sense
+# for a direction meaning "wrap it up"; that direction is gone, because it was not
+# one of the scored requirements.
+EN_SCHEDULES = {name: "constant" for name in EN_STEER_VECTORS}
 
 
 def condition_label(run_id: str) -> str:
@@ -128,9 +122,9 @@ def main() -> None:
     ap.add_argument("--dtype", default="auto", choices=["auto", "float16", "bfloat16"])
     ap.add_argument("--suite", nargs="+", default=["compare"],
                     choices=["baseline", "sampling", "compare", "method", "noise",
-                             "offset", "story", "prompt", "amplify", "window",
-                             "decay", "core", "ortho", "alpha", "gate", "beta",
-                             "loo", "all"])
+                             "offset", "story", "prompt", "main", "amplify",
+                             "window", "decay", "core", "ortho", "alpha", "gate",
+                             "beta", "loo", "all"])
     ap.add_argument("--task", default="generic", choices=["generic", "scenario"],
                     help="'generic' is the published design: one instruction with no "
                          "scenario, many requirements, and every story in one group, so "
@@ -164,6 +158,7 @@ def main() -> None:
     ap.add_argument("--stories-per-prompt", type=int, default=5)
     ap.add_argument("--prompt-seed", type=int, default=0)
     ap.add_argument("--prompt-split", default="test")
+    ap.add_argument("--min-words", type=int, default=EN_MIN_WORDS)
     ap.add_argument("--max-words", type=int, default=EN_MAX_WORDS)
     ap.add_argument("--max-grade", type=float, default=EN_MAX_GRADE_LEVEL)
     ap.add_argument("--beta", type=float, default=1.0)
@@ -193,6 +188,17 @@ def main() -> None:
                          "separate from --horizon, which drives the constraint "
                          "schedules: a 24-token noise window must not also compress "
                          "the closure ramp into 24 tokens")
+    ap.add_argument("--main-gamma", type=float, default=0.15,
+                    help="per-story offset magnitude used by --suite main")
+    ap.add_argument("--main-kappa-perp", type=float, default=0.15,
+                    help="f(S_c) sideways step, read on the same scale as gamma: the "
+                         "step's length as a fraction of the hidden state's own length")
+    ap.add_argument("--main-kappa-rotate", type=float, default=1.0,
+                    help="f(S_c) rotation: the constraint vector is turned by "
+                         "atan(kappa) and keeps its length, so 1.0 is 45 degrees")
+    ap.add_argument("--main-kappa-gain", type=float, default=0.5,
+                    help="f(S_c) per-constraint gain jitter: the spread of a "
+                         "lognormal with mean 1 applied to each constraint's beta")
     ap.add_argument("--lambda-sweep", nargs="*", type=float, default=[1.5, 2.0, 3.0],
                     help="how far --suite amplify stretches a story's own deviation "
                          "from the average story. 1 is a no-op; 2 doubles it")
@@ -245,6 +251,7 @@ def main() -> None:
         "task": args.task,
         "constraints": list(args.constraints),
         "steer_vectors": list(args.steer_vectors),
+        "min_words": args.min_words,
         "max_words": args.max_words,
         "max_grade": args.max_grade,
         "num_prompts": args.num_prompts if args.task == "scenario" else 1,
@@ -281,7 +288,8 @@ def main() -> None:
     # scored against are the same object. A threshold cannot change in one place
     # and not the other.
     checker = EnglishConstraintChecker(
-        max_words=args.max_words, max_grade_level=args.max_grade,
+        min_words=args.min_words, max_words=args.max_words,
+        max_grade_level=args.max_grade,
         constraints=list(args.constraints),
     )
 
@@ -404,7 +412,7 @@ def main() -> None:
     args.offset_basis = None
     args.amplify_basis = None
     args.amplify_mean = None
-    if {"offset", "story", "prompt", "amplify"} & set(suites_req):
+    if {"offset", "story", "prompt", "main", "amplify"} & set(suites_req):
         kind = args.offset_basis_kind
         pc_path = out / f"actpcs_{kind}_{args.model}.pt"
         legacy = out / f"actpcs_{args.model}.pt"

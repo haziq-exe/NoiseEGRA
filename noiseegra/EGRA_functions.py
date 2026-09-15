@@ -697,9 +697,8 @@ class EGRA:
                                 return None
                             delta = None
                             if plan.steer_prefill:
-                                delta = plan.delta_for(
-                                    layer_idx, 0, with_noise=False, with_offset=False,
-                                    device=target.device,
+                                delta = plan.steering_only(
+                                    layer_idx, 0, device=target.device,
                                 )
                             if offset_here:
                                 off = plan.layer_plans[layer_idx].offset

@@ -189,15 +189,18 @@ prefill = SteeringPlan.build(vecs.vectors, LAYERS,
                              [ConstraintSpec(n, beta=25.0) for n in names],
                              rms_scale=1.0, noise_mode="none", noise_alpha=0.0,
                              steer_prefill=True)
-pcalls = []
-rp = prefill.delta_for
-prefill.delta_for = lambda layer, t, **kw: (pcalls.append(kw.get("with_noise", True)) or rp(layer, t, **kw))
+# Prefill goes through `steering_only`, not `delta_for`: whether the constraint
+# vector reaches the prompt is steer_prefill's decision, and it must not pick up
+# noise or a per-story offset on the way.
+pcalls, scalls = [], []
+rp, rs = prefill.delta_for, prefill.steering_only
+prefill.delta_for = lambda layer, t, **kw: (pcalls.append(layer) or rp(layer, t, **kw))
+prefill.steering_only = lambda layer, t, **kw: (scalls.append(layer) or rs(layer, t, **kw))
 egra.generate_with_orthogonal_steering(prompt, prefill, max_new_tokens=N_NEW, seed=7)
-prefill.delta_for = rp
+prefill.delta_for, prefill.steering_only = rp, rs
 check("steer_prefill adds one noise-free pass per layer over the prompt",
-      len(pcalls) == len(LAYERS) * (DECODE_STEPS + 1)
-      and pcalls.count(False) == len(LAYERS),
-      f"calls={len(pcalls)} noise_free={pcalls.count(False)}")
+      len(scalls) == len(LAYERS) and len(pcalls) == len(LAYERS) * DECODE_STEPS,
+      f"prefill={len(scalls)} decode={len(pcalls)}")
 
 print("\n== experiment plumbing ==")
 built = make_specs({"plan": plan, "temperature": 1.0})

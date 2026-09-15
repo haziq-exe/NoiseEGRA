@@ -25,7 +25,7 @@ from typing import Dict, List, Optional, Sequence
 # Order families appear in a table: the reference conditions first, then the
 # thing being swept.
 FAMILY_ORDER = [
-    "baseline", "sampling", "steer", "per-token", "per-story", "amplify",
+    "baseline", "sampling", "steer", "per-token", "per-story", "f(Sc)", "amplify",
     "embed", "attn", "resid", "entropy", "double", "two-stage", "other",
 ]
 
@@ -40,7 +40,15 @@ SUBSPACE_MODES = {
 
 CONSTRAINT_NAMES = {
     "clo": "closure", "pre": "present tense", "sim": "simple register",
-    "dia": "dialogue", "len": "length",
+    "dia": "dialogue", "len": "length", "ter": "short sentences",
+    "var": "varied sentence openings", "sho": "short words",
+}
+
+# How f(S_c) perturbs the constraint vector. See noiseegra.subspace.
+JITTER_MODES = {
+    "perp": "sideways step",
+    "rotate": "turned",
+    "gain": "constraint mix jittered",
 }
 
 _FLOAT = r"[0-9]+(?:p[0-9]+)?"
@@ -59,6 +67,7 @@ _GATE = re.compile(r"__gate([a-z]+)")
 _NHORIZON = re.compile(r"__nh(\d+)")
 _NSCHED = re.compile(r"__nsch([a-z])")
 _AMP = re.compile(rf"__amp(?P<val>m?{_FLOAT})")
+_JIT = re.compile(rf"__j(?P<val>m?{_FLOAT})(?P<mode>perp|rotate|gain)")
 _ORTHONORM = re.compile(r"__(lowdin|gram_schmidt|none)__")
 
 
@@ -167,6 +176,10 @@ def label_run(run_id: str) -> RunLabel:
     up = rid.upper()
 
     if "__ORTHO" in up:
+        # Where the constraint vector itself is applied. Every f(S_c) arm and every
+        # steering-only control comes in both sitings, so the table has to say
+        # which one a row is.
+        site = " at the prompt" if "__sdec0" in rid else ""
         gate = _GATE.search(rid)
         gate_txt = ({"median": ", gated to uncertain steps",
                      "high": ", gated to the most uncertain steps"}
@@ -188,16 +201,28 @@ def label_run(run_id: str) -> RunLabel:
                 where = ", from the prompt onward"
             else:
                 where = ""
-            return RunLabel(f"per-story offset g={_fmt(v)} ({mode}){where}{gate_txt}",
+            return RunLabel(f"per-story offset g={_fmt(v)} ({mode}){where}{site}{gate_txt}",
                             "per-story", v, rid)
         a = _NZ.search(rid)
         if a and a.group("mode") != "none" and untag_float(a.group("val")) > 0:
             v = untag_float(a.group("val"))
             mode = SUBSPACE_MODES.get(a.group("mode"), a.group("mode"))
             return RunLabel(f"per-token noise a={_fmt(v)} ({mode})"
-                            f"{_noise_window(rid)}{gate_txt}",
+                            f"{_noise_window(rid)}{site}{gate_txt}",
                             "per-token", v, rid)
-        return RunLabel("steering only, no perturbation", "steer", 0.0, rid)
+        j = _JIT.search(rid)
+        if j:
+            v = untag_float(j.group("val"))
+            mode = j.group("mode")
+            draw = ", drawn in the activation subspace" if "__jdbasis" in rid else ""
+            if mode == "gain":
+                text = f"f(S_c): constraint mix jittered, spread {_fmt(v)}"
+            elif mode == "rotate":
+                text = f"f(S_c): constraint vector turned, kappa={_fmt(v)}"
+            else:
+                text = f"f(S_c): sideways step on the constraint vector, kappa={_fmt(v)}"
+            return RunLabel(f"{text}{draw}{site}{gate_txt}", "f(Sc)", v, rid)
+        return RunLabel(f"steering only, no perturbation{site}", "steer", 0.0, rid)
 
     if "BASELINE" in up:
         sampling = _sampling_suffix(rid)
@@ -317,6 +342,14 @@ def plan_summary(run_ids: Sequence[str]) -> List[str]:
         if sched == "p" and h:
             out.append(f"the perturbation covers only the first {h} generated tokens")
 
+    if any(_JIT.search(r) for r in run_ids):
+        out.append(
+            "f(S_c) rows perturb the constraint vector itself rather than adding a "
+            "perturbation beside it, so their perturbation is free to lie inside the "
+            "constraint subspace; what is held fixed is the push along the summed "
+            "constraint vector"
+        )
+
     modes = {m.group("mode") for m in map(_NZ.search, run_ids) if m}
     modes |= {m.group("mode") for m in map(_G.search, run_ids) if m}
     modes.discard("none")
@@ -331,7 +364,7 @@ def plan_summary(run_ids: Sequence[str]) -> List[str]:
         out.append(f"perturbation is {meaning}")
 
     if all("schr-c-c-c" in r or "__sch" not in r for r in run_ids):
-        out.append("schedules: closure ramps up over the story, the others constant")
+        out.append("schedules: the steering strength is flat over the story")
     if all("__nsch" not in r for r in run_ids):
         out.append("perturbation magnitude is constant over the story (no decay)")
     return out

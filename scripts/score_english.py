@@ -140,7 +140,7 @@ def live_table(constraints=(), diversity: bool = True):
     """
     keys, heads, fmts, _ = build_columns(constraints, diversity)
     widths = {k: max(len(heads[k]) + 2, 7) for k in keys}
-    widths["run"] = 52
+    widths["run"] = 70
 
     header = "".join(heads[k].ljust(widths[k]) if k == "run" else heads[k].rjust(widths[k])
                      for k in keys)

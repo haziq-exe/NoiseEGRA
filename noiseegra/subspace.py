@@ -50,6 +50,9 @@ ORTHOGONALIZE_METHODS = ("none", "gram_schmidt", "lowdin")
 NOISE_MODES = ("none", "iso", "orth", "para")
 OFFSET_MODES = ("none", "orth", "free")
 OFFSET_NORMS = ("energy", "raw")
+# How f(S_c) perturbs the constraint vector itself. See SteeringPlan.jitter_*.
+JITTER_MODES = ("none", "perp", "rotate", "gain")
+JITTER_DRAWS = ("iso", "basis")
 NORM_MATCH_MODES = ("energy", "none")
 SCHEDULES = ("constant", "cosine_decay", "ramp", "linear_decay", "prefix")
 
@@ -289,6 +292,8 @@ class LayerPlan:
     offset: Optional[torch.Tensor] = None         # (dim,) this generation's offset
     amp_basis: Optional[torch.Tensor] = None      # (dim, r) directions stories differ along
     amp_mean: Optional[torch.Tensor] = None       # (dim,) what they differ *from*
+    jitter_basis: Optional[torch.Tensor] = None   # (dim, M) directions f(S_c) may use
+    jitter: Optional[torch.Tensor] = None         # (dim,) this generation's unit draw
 
     def steering_delta(
         self,
@@ -296,12 +301,18 @@ class LayerPlan:
         horizon: int,
         specs: Sequence[ConstraintSpec],
         rms_scale: float,
+        gains: Optional[Sequence[float]] = None,
     ) -> Optional[torch.Tensor]:
-        """Sum_c beta_c * f_c(t) * rms_scale * s_c  ->  a single (dim,) vector."""
+        """Sum_c beta_c * g_c * f_c(t) * rms_scale * s_c  ->  a single (dim,) vector.
+
+        ``gains`` are this generation's per-constraint multipliers, 1.0 each unless
+        the plan is jittering the mix (``jitter_mode="gain"``).
+        """
         coeffs = torch.tensor(
             [
                 spec.beta * schedule_factor(spec.schedule, t, horizon) * rms_scale
-                for spec in specs
+                * (1.0 if gains is None else float(gains[i]))
+                for i, spec in enumerate(specs)
             ],
             dtype=self.basis.dtype,
             device=self.basis.device,
@@ -362,6 +373,45 @@ class SteeringPlan:
     # requirements depend on are left at their original size.
     amplify_lambda: float = 1.0
     amplify_prefill: bool = False
+    # --- f(S_c): perturb the constraint vector itself ---------------------- #
+    #
+    # Everything above adds a perturbation *beside* the constraint push and then
+    # works to keep the two apart -- the noise is projected out of the constraint
+    # subspace so it cannot move a requirement. This does the opposite. The
+    # perturbation is applied *to* the constraint vector, and what is added to the
+    # residual stream is one vector, f(S_c), not a sum of a signal and a
+    # disturbance:
+    #
+    #   perp     f(S) = S + kappa * rms * sqrt(dim) * j,  j unit and perpendicular
+    #            to S. The push along S survives exactly, so every constraint keeps
+    #            the dose it had, and the sideways step is free to lie inside the
+    #            constraint subspace -- which the protected-subspace offset forbids
+    #            by construction. kappa is read on the same scale as the offset's
+    #            gamma and the noise's alpha: the perturbation's length as a
+    #            fraction of the hidden state's own length.
+    #   rotate   f(S) = |S| * (S/|S| + kappa * j) / sqrt(1 + kappa^2). Same
+    #            direction jitter, but norm-preserving: the constraint push is
+    #            turned by atan(kappa) rather than added to, so the total amount of
+    #            steering is identical to the unjittered run and only its aim moves.
+    #   gain     f(S) = sum_c beta_c * exp(kappa z_c - kappa^2/2) * s_c, one
+    #            lognormal draw per constraint per story (mean 1). Nothing leaves
+    #            the constraint span at all: each story is written under a different
+    #            emphasis of the same requirements.
+    #
+    # One draw per generation in every mode, held fixed for the whole story.
+    jitter_kappa: float = 0.0
+    jitter_mode: str = "none"
+    # Where the sideways direction comes from: "iso" a fresh isotropic draw,
+    # "basis" a draw restricted to the activation subspace, which keeps f(S_c) on
+    # the manifold the model's own states occupy.
+    jitter_draw: str = "iso"
+    # Whether the (possibly jittered) constraint vector is added during decode.
+    # Off, with ``steer_prefill`` on, gives the prompt-only variant: the model is
+    # pushed once while it reads the instruction and then writes unperturbed.
+    steer_decode: bool = True
+    # This generation's per-constraint gains, for ``jitter_mode="gain"``.
+    gains: Optional[List[float]] = None
+
     # Decode steps the noise schedule is measured against. Defaults to ``horizon``.
     # Separate because ``horizon`` also drives the constraint schedules: a
     # perturbation confined to the first 24 tokens must not also compress the
@@ -404,6 +454,10 @@ class SteeringPlan:
         amplify_basis: Optional[Mapping[int, torch.Tensor]] = None,
         amplify_mean: Optional[Mapping[int, torch.Tensor]] = None,
         noise_horizon: Optional[int] = None,
+        jitter_kappa: float = 0.0,
+        jitter_mode: str = "none",
+        jitter_draw: str = "iso",
+        steer_decode: bool = True,
         gate_threshold: float = 0.0,
         gate_level: str = "none",
         horizon: int = 200,
@@ -422,6 +476,10 @@ class SteeringPlan:
         specs = list(specs)
         if not specs:
             raise ValueError("at least one ConstraintSpec is required.")
+        if jitter_mode not in JITTER_MODES:
+            raise ValueError(f"jitter_mode must be one of {JITTER_MODES}, got '{jitter_mode}'.")
+        if jitter_draw not in JITTER_DRAWS:
+            raise ValueError(f"jitter_draw must be one of {JITTER_DRAWS}, got '{jitter_draw}'.")
         layers = sorted({int(i) for i in layers})
 
         missing = [s.name for s in specs if s.name not in vectors]
@@ -465,6 +523,21 @@ class SteeringPlan:
 
             report["protect_rank"] = protect_rank
 
+            jb = None
+            if jitter_mode in ("perp", "rotate") and jitter_draw == "basis":
+                if offset_basis is None or layer not in offset_basis:
+                    raise ValueError(
+                        "jitter_draw='basis' needs an activation basis; pass "
+                        "offset_basis, or use jitter_draw='iso'."
+                    )
+                jb = offset_basis[layer].detach().to(torch.float32)
+                if device is not None:
+                    jb = jb.to(device)
+                # Deliberately *not* projected against the constraint subspace. The
+                # whole point of f(S_c) is that the perturbation may live inside
+                # that subspace; it is kept off the constraint push by being made
+                # perpendicular to S_c at use time instead.
+
             ob = None
             if offset_mode != "none" and offset_gamma > 0:
                 if offset_basis is not None and layer in offset_basis:
@@ -500,7 +573,7 @@ class SteeringPlan:
 
             layer_plans[layer] = LayerPlan(
                 layer=layer, basis=basis, protect=protect, report=report,
-                offset_basis=ob, amp_basis=ab, amp_mean=am,
+                offset_basis=ob, amp_basis=ab, amp_mean=am, jitter_basis=jb,
             )
 
         return cls(
@@ -523,6 +596,10 @@ class SteeringPlan:
             offset_basis_kind=offset_basis_kind,
             offset_prefill=bool(offset_prefill),
             noise_horizon=None if noise_horizon is None else int(noise_horizon),
+            jitter_kappa=float(jitter_kappa),
+            jitter_mode=jitter_mode,
+            jitter_draw=jitter_draw,
+            steer_decode=bool(steer_decode),
             gate_threshold=float(gate_threshold),
             gate_level=gate_level,
             horizon=int(horizon),
@@ -548,7 +625,104 @@ class SteeringPlan:
                 lp.amp_basis = lp.amp_basis.to(device=device, dtype=dtype)
             if lp.amp_mean is not None:
                 lp.amp_mean = lp.amp_mean.to(device=device, dtype=dtype)
+            if lp.jitter_basis is not None:
+                lp.jitter_basis = lp.jitter_basis.to(device=device, dtype=dtype)
+            if lp.jitter is not None:
+                lp.jitter = lp.jitter.to(device=device, dtype=dtype)
         return self
+
+    def resample_jitter(self) -> None:
+        """Draw this generation's perturbation of the constraint vector.
+
+        Called from ``resample_offset`` so the generation loop needs no second
+        hook. Like the offset, the draw is held fixed for the whole story: what
+        varies between stories is *which* f(S_c) the model is written under, not
+        which one it is written under at each token.
+        """
+        if self.jitter_mode == "none" or self.jitter_kappa <= 0:
+            self.gains = None
+            for lp in self.layer_plans.values():
+                lp.jitter = None
+            return
+
+        if self.jitter_mode == "gain":
+            # Lognormal with mean 1, so the expected constraint push is unchanged
+            # and no draw can flip a constraint's sign and push against it.
+            k = self.jitter_kappa
+            z = torch.randn(len(self.specs))
+            self.gains = [float(math.exp(k * float(zi) - 0.5 * k * k)) for zi in z]
+            for lp in self.layer_plans.values():
+                lp.jitter = None
+            return
+
+        self.gains = None
+        for lp in self.layer_plans.values():
+            dev, dt = lp.basis.device, lp.basis.dtype
+            if self.jitter_draw == "basis" and lp.jitter_basis is not None:
+                coeff = torch.randn(lp.jitter_basis.shape[1], dtype=dt, device=dev)
+                vec = lp.jitter_basis @ coeff
+            else:
+                vec = torch.randn(self.dim, dtype=dt, device=dev)
+            lp.jitter = vec / vec.norm().clamp_min(1e-12)
+
+    def jitter_steering(
+        self,
+        layer: int,
+        delta: Optional[torch.Tensor],
+    ) -> Optional[torch.Tensor]:
+        """Apply f to a constraint vector that has already been summed.
+
+        ``gain`` is handled inside ``LayerPlan.steering_delta`` because it acts on
+        the per-constraint coefficients, not on the summed vector, so it is a no-op
+        here.
+        """
+        if delta is None or self.jitter_kappa <= 0:
+            return delta
+        if self.jitter_mode not in ("perp", "rotate"):
+            return delta
+        lp = self.layer_plans[layer]
+        if lp.jitter is None:
+            return delta
+        j = lp.jitter.to(device=delta.device, dtype=delta.dtype)
+        n = delta.norm()
+        if float(n) <= 1e-12:
+            return delta
+        u = delta / n
+        # Only the part of the draw perpendicular to the constraint push is used,
+        # so the dose along every constraint direction is exactly preserved and
+        # kappa sets a known angle rather than an incidental one.
+        j = j - u * (j @ u)
+        jn = j.norm()
+        if float(jn) <= 1e-12:
+            return delta
+        j = j / jn
+        if self.jitter_mode == "rotate":
+            k = self.jitter_kappa
+            return (u + j * k) * (n / math.sqrt(1.0 + k * k))
+        return delta + j * (self.jitter_kappa * self.rms_scale * math.sqrt(self.dim))
+
+    def steering_only(
+        self,
+        layer: int,
+        t: int,
+        *,
+        horizon: Optional[int] = None,
+        device: Optional[torch.device] = None,
+    ) -> Optional[torch.Tensor]:
+        """The (possibly jittered) constraint vector alone, ignoring ``steer_decode``.
+
+        Prefill uses this: whether the constraint vector is applied to the prompt
+        is ``steer_prefill``'s decision, not ``steer_decode``'s.
+        """
+        lp = self.layer_plans[layer]
+        if device is not None and lp.basis.device != device:
+            lp.basis = lp.basis.to(device)
+            if lp.jitter is not None:
+                lp.jitter = lp.jitter.to(device)
+        h = self.horizon if horizon is None else horizon
+        return self.jitter_steering(
+            layer, lp.steering_delta(t, h, self.specs, self.rms_scale, gains=self.gains)
+        )
 
     def resample_offset(self) -> None:
         """Draw a fresh constant offset for the next generation.
@@ -559,6 +733,7 @@ class SteeringPlan:
         to be kept out of the constraint subspace: a constant leak onto a
         constraint direction biases that constraint for the entire story.
         """
+        self.resample_jitter()
         if self.offset_mode == "none" or self.offset_gamma <= 0:
             for lp in self.layer_plans.values():
                 lp.offset = None
@@ -614,9 +789,15 @@ class SteeringPlan:
                 lp.offset_basis = lp.offset_basis.to(device)
             if lp.offset is not None:
                 lp.offset = lp.offset.to(device)
+            if lp.jitter is not None:
+                lp.jitter = lp.jitter.to(device)
 
         h = self.horizon if horizon is None else horizon
-        delta = lp.steering_delta(t, h, self.specs, self.rms_scale)
+        delta = None
+        if self.steer_decode:
+            delta = self.jitter_steering(
+                layer, lp.steering_delta(t, h, self.specs, self.rms_scale, gains=self.gains)
+            )
 
         # The per-story offset is a perturbation, so it is gated with the noise
         # rather than with the steering: an entropy gate closes on both together.
@@ -709,6 +890,10 @@ class SteeringPlan:
             "offset_basis_kind": self.offset_basis_kind,
             "offset_prefill": self.offset_prefill,
             "noise_horizon": self.noise_horizon,
+            "jitter_mode": self.jitter_mode,
+            "jitter_kappa": self.jitter_kappa,
+            "jitter_draw": self.jitter_draw,
+            "steer_decode": self.steer_decode,
             "offset_rank": self.layer_plans[self.layers[0]].report.get("offset_rank"),
             "horizon": self.horizon,
             "steer_prefill": self.steer_prefill,
@@ -737,13 +922,18 @@ class SteeringPlan:
                   f"rank={info['offset_rank']} basis={info['offset_basis_kind']} "
                   f"norm={info['offset_norm']} "
                   f"prefill={info['offset_prefill']}")
+        if info["jitter_mode"] != "none" and info["jitter_kappa"]:
+            print(f"f(S_c)           : mode={info['jitter_mode']} "
+                  f"kappa={info['jitter_kappa']:.6g} draw={info['jitter_draw']} "
+                  f"(one draw per story)")
         if info["amplify_lambda"] != 1.0:
             print(f"amplification    : lambda={info['amplify_lambda']:.6g} over "
                   f"{info['amplify_rank']} between-story directions "
                   f"(prefill={info['amplify_prefill']})")
         print(f"protected rank   : {info['protect_rank']} of {info['dim']} "
               f"({100.0 * info['protect_rank'] / max(info['dim'], 1):.3f}% of the stream)")
-        print(f"steer at prefill : {info['steer_prefill']}")
+        print(f"steer at prefill : {info['steer_prefill']}  at decode: "
+              f"{info['steer_decode']}")
         print("\n-- per-layer geometry --")
         for layer in self.layers:
             rep = self.layer_plans[layer].report

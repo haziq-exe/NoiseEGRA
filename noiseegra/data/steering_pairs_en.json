@@ -1,347 +1,323 @@
 {
-  "_readme": "English contrastive pairs for CAA-style steering-vector extraction. Each item shares a PREFIX; `positive` and `negative` are minimal-pair continuations differing only in the target property, so the prefix cancels in the mean difference.",
+  "_readme": "English contrast pairs for mean-difference (CAA) steering-direction extraction. Each pair shares a prefix and differs only in the target property. Positive and negative continuations are written to the same word count (the builder refuses a delta above one word) and the extractor additionally averages both sides over the same number of token positions, so neither the wording nor the read-out window can turn a style direction into a length direction. The five directions are the constraints whose violation is a local, continuous property of the text; the counting constraints (total words, sentence count, one name) are asked for in the prompt only, because there is no token-level direction that means 'stop at 60'.",
   "constraints": {
-    "closure": {
-      "targets": "length",
-      "description": "Narrative wrap-up/resolution vs. plot escalation. Steering positive should make the model resolve and stop sooner, reducing word count.",
-      "pairs": [
-        {
-          "prefix": "Mara sets the last box down in the empty apartment. The radiator clanks twice and goes quiet.",
-          "positive": "She plugs in the lamp, and the room turns warm and small and hers. She sleeps well for the first time in months.",
-          "negative": "From behind the radiator comes a sound like someone counting, slow and patient, and it does not stop when she knocks on the wall."
-        },
-        {
-          "prefix": "The lighthouse keeper finds a boy asleep in the supply boat.",
-          "positive": "He wraps him in a blanket and radios the mainland. By morning the boy's mother is on the dock, running.",
-          "negative": "The boy will not say his name. He points at the water and asks how long the light has been broken, and the keeper realizes the lamp went dark three nights ago."
-        },
-        {
-          "prefix": "Dev finds his grandmother's recipe card tucked inside a library book he never checked out.",
-          "positive": "He makes the soup that night. It tastes exactly right, and he finally stops looking for reasons.",
-          "negative": "The handwriting is hers, but the date in the corner is next March, and his grandmother has been dead two years."
-        },
-        {
-          "prefix": "The last bee in the city lands on Ines's windowsill.",
-          "positive": "She fills a saucer with sugar water and sets it out. By morning there are four, and the garden begins again.",
-          "negative": "It carries pollen from a flower that has not grown anywhere on this coast since the ice, and Ines knows she has to find out where it has been."
-        },
-        {
-          "prefix": "Every clock in the office stops at 3:47.",
-          "positive": "The building manager resets the breaker, the hands sweep forward, and everyone goes back to work a little embarrassed.",
-          "negative": "An hour later every phone still reads 3:47, and outside the window the traffic has not moved at all."
-        },
-        {
-          "prefix": "Yusuf's bicycle is gone from the rack outside the school.",
-          "positive": "His teacher finds it behind the gym, chain slipped, and shows him how to set it right. He rides home before dark.",
-          "negative": "In its place is a bicycle he has never seen, newer than his, with his own name scratched carefully into the crossbar."
-        },
-        {
-          "prefix": "The bakery on Oak Street opens at four in the morning and nobody knows who runs it.",
-          "positive": "Nadia knocks, and an old woman lets her in, and they bake together until the sun comes up. After that the door is always open.",
-          "negative": "Nadia knocks. The lights go out. When she looks through the glass the shelves are full, still warm, and there is no back door."
-        },
-        {
-          "prefix": "A letter arrives for the previous tenant, twelve years late.",
-          "positive": "Rosa forwards it, and a week later a thank-you note comes back with a photograph of a garden. She pins it above the sink.",
-          "negative": "Rosa opens it. It describes, in detail, the apartment as it looks today, down to the chip in the doorframe she made last spring."
-        },
-        {
-          "prefix": "The dog will not walk past the third streetlight.",
-          "positive": "Sam checks his paw, finds a thorn, and pulls it free. They finish the walk twice around the block.",
-          "negative": "Sam looks up. The light is out, and it has been out every night this week, and only on the nights he takes this route."
-        },
-        {
-          "prefix": "Two sisters inherit a house they have never seen.",
-          "positive": "They spend a weekend cleaning it, argue once about the wallpaper, and decide to keep it. They start visiting in summers.",
-          "negative": "In the hallway hangs a photograph of the two of them on the porch, taken from behind, and neither has ever been here before."
-        },
-        {
-          "prefix": "The pianist forgets the second movement in front of eight hundred people.",
-          "positive": "She plays something of her own instead. It is short and strange and the applause is real, and she keeps it in the program after that.",
-          "negative": "She plays something of her own instead, and in the third row a man stands up, white-faced, because it is a piece his mother wrote and never published."
-        },
-        {
-          "prefix": "A fisherman pulls up a net full of paper.",
-          "positive": "He dries the sheets on the deck, finds they are old shipping manifests, and sells them to the harbour museum for more than the day's catch.",
-          "negative": "Every sheet is a page of the same logbook, in his own handwriting, describing a voyage he is scheduled to make next month."
-        },
-        {
-          "prefix": "The new tenant upstairs plays the same four notes every evening at seven.",
-          "positive": "Ada knocks and asks about it. He is learning, badly, for his daughter's birthday. She offers to help, and by June he can play the whole thing.",
-          "negative": "Ada knocks. The apartment is empty, unrented for a year, dust thick on the floor, and at seven the next evening the notes begin again."
-        },
-        {
-          "prefix": "A boy trades his lunch for a stone that is supposed to be lucky.",
-          "positive": "It is just a stone. He keeps it anyway, and years later it is still in his coat pocket, worn smooth.",
-          "negative": "It is warm. It is warm every day, even in December, even in the freezer where he hides it to check."
-        },
-        {
-          "prefix": "The town votes to take down the old water tower.",
-          "positive": "They do it on a Saturday. Half the town comes to watch, and afterwards there is more sky than anyone expected, and people stand around liking it.",
-          "negative": "The crew finds the inside painted, floor to ceiling, with the faces of everyone who has ever lived here, including the ones not born yet."
-        },
-        {
-          "prefix": "A translator is hired to work on a diary with no named author.",
-          "positive": "She finishes in three weeks. It is an ordinary life, well described, and she is glad to have spent time with it.",
-          "negative": "By the fortieth page the diary has begun describing her apartment, her habits, the exact way she holds her pen."
-        }
-      ]
-    },
     "present_tense": {
-      "targets": "present_tense",
-      "description": "Simple present vs. simple past; the two continuations are the same sentences in the two tenses.",
       "pairs": [
         {
           "prefix": "In the story that follows,",
-          "positive": "She walks to the river and sits on the cold stones. The water carries a paper boat past her feet, and she laughs.",
-          "negative": "She walked to the river and sat on the cold stones. The water carried a paper boat past her feet, and she laughed."
+          "positive": "She walks to the river and sits on the cold stones.",
+          "negative": "She walked to the river and sat on the cold stones."
         },
         {
-          "prefix": "The scene opens.",
-          "positive": "He opens the shop at six, sweeps the step, and turns the sign around. The first customer arrives before the coffee is ready.",
-          "negative": "He opened the shop at six, swept the step, and turned the sign around. The first customer arrived before the coffee was ready."
+          "prefix": "Here is what happens next.",
+          "positive": "The boy opens the gate and the dog runs out.",
+          "negative": "The boy opened the gate and the dog ran out."
         },
         {
-          "prefix": "Here is what happens.",
-          "positive": "The train stops between stations. The lights flicker. A woman across the aisle offers him half her sandwich, and he takes it.",
-          "negative": "The train stopped between stations. The lights flickered. A woman across the aisle offered him half her sandwich, and he took it."
+          "prefix": "The story continues.",
+          "positive": "Rain falls on the roof and the cat hides under the chair.",
+          "negative": "Rain fell on the roof and the cat hid under the chair."
         },
         {
-          "prefix": "The story goes like this.",
-          "positive": "Nadia climbs the hill behind the school. She finds the kite in a tree, works it loose, and carries it home under her arm.",
-          "negative": "Nadia climbed the hill behind the school. She found the kite in a tree, worked it loose, and carried it home under her arm."
+          "prefix": "Next in the story,",
+          "positive": "He finds a key and puts it in his pocket.",
+          "negative": "He found a key and put it in his pocket."
         },
         {
-          "prefix": "It begins in the kitchen.",
-          "positive": "He burns the first pancake and throws it out. The second is better. His daughter eats four and asks for more.",
-          "negative": "He burned the first pancake and threw it out. The second was better. His daughter ate four and asked for more."
+          "prefix": "The next part goes like this.",
+          "positive": "She calls her friend and they meet by the old tree.",
+          "negative": "She called her friend and they met by the old tree."
         },
         {
-          "prefix": "Picture it.",
-          "positive": "The dog runs ahead, stops at the corner, and waits. She catches up. They cross together, the way they always do.",
-          "negative": "The dog ran ahead, stopped at the corner, and waited. She caught up. They crossed together, the way they always did."
+          "prefix": "Read on.",
+          "positive": "The bus stops and a woman gets off with a box.",
+          "negative": "The bus stopped and a woman got off with a box."
         },
         {
-          "prefix": "This is the moment.",
-          "positive": "Rain starts halfway through the ceremony. Nobody moves. The bride laughs first, and then everyone does.",
-          "negative": "Rain started halfway through the ceremony. Nobody moved. The bride laughed first, and then everyone did."
+          "prefix": "Here is the middle of the story.",
+          "positive": "They walk home slowly because the sun is very warm.",
+          "negative": "They walked home slowly because the sun was very warm."
         },
         {
-          "prefix": "The account runs as follows.",
-          "positive": "He finds the letter in the attic, reads it twice, and puts it back exactly where it was. He tells no one that night.",
-          "negative": "He found the letter in the attic, read it twice, and put it back exactly where it was. He told no one that night."
+          "prefix": "The story says:",
+          "positive": "A bird lands on the fence and looks at the girl.",
+          "negative": "A bird landed on the fence and looked at the girl."
         },
         {
-          "prefix": "Consider the following.",
-          "positive": "She learns the route in three days. By the second week she knows which steps creak and which neighbours are awake.",
-          "negative": "She learned the route in three days. By the second week she knew which steps creaked and which neighbours were awake."
+          "prefix": "What happens is this.",
+          "positive": "He drops the ball and it rolls under the blue car.",
+          "negative": "He dropped the ball and it rolled under the blue car."
         },
         {
-          "prefix": "What follows is the whole of it.",
-          "positive": "The power goes out at nine. They light candles, play cards badly, and agree it is the best evening in months.",
-          "negative": "The power went out at nine. They lit candles, played cards badly, and agreed it was the best evening in months."
+          "prefix": "Then comes this part.",
+          "positive": "She takes the letter and reads it twice by the window.",
+          "negative": "She took the letter and read it twice by the window."
         },
         {
-          "prefix": "The events unfold this way.",
-          "positive": "Marcus misses the bus and walks. It takes an hour. He arrives late, and the interview goes better than it should.",
-          "negative": "Marcus missed the bus and walked. It took an hour. He arrived late, and the interview went better than it should have."
+          "prefix": "In this scene,",
+          "positive": "The door opens and a small grey cat comes inside.",
+          "negative": "The door opened and a small grey cat came inside."
         },
         {
-          "prefix": "Now, the story.",
-          "positive": "The cat brings something to the door every morning. Today it is a key. She sets it on the shelf with the others.",
-          "negative": "The cat brought something to the door every morning. Today it was a key. She set it on the shelf with the others."
-        },
-        {
-          "prefix": "Begin here.",
-          "positive": "They paint the room yellow because neither can decide on anything else. It looks wrong for a week and then it looks right.",
-          "negative": "They painted the room yellow because neither could decide on anything else. It looked wrong for a week and then it looked right."
-        },
-        {
-          "prefix": "The narrative proceeds.",
-          "positive": "He counts the boats from the window each evening. When one is missing he writes the number down and waits.",
-          "negative": "He counted the boats from the window each evening. When one was missing he wrote the number down and waited."
-        },
-        {
-          "prefix": "It happens like this.",
-          "positive": "She sings to the baby in the language her mother used. She does not know all the words. The baby sleeps anyway.",
-          "negative": "She sang to the baby in the language her mother used. She did not know all the words. The baby slept anyway."
-        },
-        {
-          "prefix": "The story is short.",
-          "positive": "The boy plants the seed in a paper cup. Nothing happens for eleven days. On the twelfth he shouts loud enough to wake the house.",
-          "negative": "The boy planted the seed in a paper cup. Nothing happened for eleven days. On the twelfth he shouted loud enough to wake the house."
+          "prefix": "The passage reads:",
+          "positive": "Mud covers his boots and he laughs at the mess.",
+          "negative": "Mud covered his boots and he laughed at the mess."
         }
       ]
     },
     "simple_register": {
-      "targets": "simple_register",
-      "description": "Plain short-sentence prose vs. elaborate literary register with long subordinated clauses and Latinate vocabulary; same propositional content.",
       "pairs": [
         {
           "prefix": "The old man stands at the gate.",
-          "positive": "He is tired. His hands shake. He waits for the bus and thinks about lunch.",
-          "negative": "A profound exhaustion has settled into the architecture of his frame, his hands describing small tremulous arcs as he awaits the omnibus, his thoughts circling the modest question of his midday meal."
+          "positive": "He is tired. His hands shake. He waits for the bus.",
+          "negative": "He is exhausted. His hands tremble. He awaits the municipal omnibus."
         },
         {
-          "prefix": "The girl looks out at the sea.",
-          "positive": "The water is grey. The wind is cold. She pulls her coat tight and goes back inside.",
-          "negative": "The waters present themselves in an unrelieved slate monotony, and the wind, arriving off them with a knifelike insistence, obliges her to draw her coat about her before retreating indoors."
+          "prefix": "The girl looks at the sky.",
+          "positive": "Big clouds move fast. The wind is loud. She feels cold.",
+          "negative": "Enormous clouds migrate rapidly. The gale is deafening. She feels frozen."
         },
         {
-          "prefix": "He opens the letter.",
-          "positive": "It is short. He reads it twice. Then he sits down on the step.",
-          "negative": "The communication proves to be of the briefest possible compass, and having submitted it to a second and more deliberate perusal, he lowers himself onto the step in a manner suggestive of collapse."
+          "prefix": "They open the box.",
+          "positive": "Inside is a small toy. It is old but still works well.",
+          "negative": "Within resides a diminutive artifact. It is antique yet still remains operational."
         },
         {
-          "prefix": "She finds the dog under the porch.",
-          "positive": "It is wet and thin. She brings a towel and some bread. It eats and then it sleeps.",
-          "negative": "The animal she discovers beneath the veranda is sodden and pitifully attenuated; she procures a towel and a portion of bread, whereupon it consumes the offering and surrenders itself to slumber."
+          "prefix": "The dog waits by the door.",
+          "positive": "It wants to go out. Its tail moves back and forth.",
+          "negative": "It desires immediate egress outdoors. Its tail oscillates backward and forward."
         },
         {
-          "prefix": "The house is empty now.",
-          "positive": "The rooms are big. Every sound comes back. He turns on the radio just to fill it.",
-          "negative": "The chambers stand cavernous and unpeopled, returning every incidental noise in faithful echo, so that he sets the wireless going for no purpose beyond the displacement of that silence."
+          "prefix": "The class starts.",
+          "positive": "The teacher talks about rain. The children listen and take notes.",
+          "negative": "The instructor discourses regarding precipitation. The pupils attend and transcribe notes."
         },
         {
-          "prefix": "They wait at the station.",
-          "positive": "The train is late. Nobody talks. A woman shares her umbrella with a stranger.",
-          "negative": "The locomotive being delayed beyond its appointed hour, a general and uncompanionable silence prevails, broken only when a woman extends the shelter of her umbrella to an unacquainted fellow traveller."
+          "prefix": "He walks into the shop.",
+          "positive": "The man behind the counter smiles and asks what he needs.",
+          "negative": "The proprietor behind the counter beams and inquires what he requires."
         },
         {
-          "prefix": "The boy climbs the fence.",
-          "positive": "He tears his sleeve. He does not care. On the other side there is a field and nobody in it.",
-          "negative": "In surmounting the palings he sustains a rent to his sleeve, a circumstance he regards with complete indifference, for beyond lies a meadow untenanted by any living soul."
+          "prefix": "Night comes.",
+          "positive": "The town goes quiet. One light stays on above the door.",
+          "negative": "The municipality becomes silent. One lantern remains illuminated above the entrance."
         },
         {
-          "prefix": "She cooks for six people.",
-          "positive": "There is not enough rice. She adds water and salt. Everyone eats and nobody says anything about it.",
-          "negative": "Catering for a company of six, she finds her provision of rice insufficient to the occasion, and remedies the deficiency with water and seasoning; the assembly dines, and the matter passes without remark."
+          "prefix": "The boat leaves.",
+          "positive": "Water pushes at the sides. The rope is wet and tight.",
+          "negative": "Water agitates the vessel periphery. The cordage is saturated and taut."
         },
         {
-          "prefix": "The lamp goes out.",
-          "positive": "The room is black. He feels along the wall. His hand finds the door.",
-          "negative": "With the extinction of the lamp an absolute darkness possesses the chamber, and he is reduced to navigating by touch along the plaster until his fingers encounter the doorframe."
+          "prefix": "She finds a nest.",
+          "positive": "Three small eggs sit in it. She does not touch them.",
+          "negative": "Three diminutive eggs repose within it. She does not disturb them."
         },
         {
-          "prefix": "The bus is full.",
-          "positive": "She stands the whole way. Her bag is heavy. At her stop, a man lifts it down for her.",
-          "negative": "The omnibus being filled to capacity, she endures the journey upon her feet, encumbered by a bag of considerable weight, until at her destination a gentleman relieves her of it unbidden."
+          "prefix": "The race begins.",
+          "positive": "Feet hit the ground hard. Dust goes up in the air.",
+          "negative": "Feet impact the terrain forcefully. Dust ascends into the upper atmosphere."
         },
         {
-          "prefix": "He learns to swim at thirty.",
-          "positive": "The water is loud in his ears. He is not good at it. He goes back every week.",
-          "negative": "He undertakes instruction in swimming in his thirtieth year, the water thundering in his ears, and although he displays no aptitude whatever, he presents himself weekly without fail."
+          "prefix": "A letter comes.",
+          "positive": "She reads it twice. Her face changes and she sits down.",
+          "negative": "She peruses it repeatedly. Her countenance alters and she promptly descends."
         },
         {
-          "prefix": "The market closes early.",
-          "positive": "The stalls come down fast. A boy sweeps up the fruit that fell. His father counts the money twice.",
-          "negative": "The market concludes its business prematurely; the stalls are dismantled with practised rapidity, a boy applies a broom to such fruit as has fallen, and his father submits the takings to a second enumeration."
-        },
-        {
-          "prefix": "She writes to her brother.",
-          "positive": "The letter is one page. She says the weather is fine. She does not say the rest.",
-          "negative": "Her correspondence to her brother occupies a single sheet, in which she affirms the clemency of the season and withholds entirely the remainder of what might have been communicated."
-        },
-        {
-          "prefix": "The snow comes in November.",
-          "positive": "It covers the road. Nobody drives. Children walk to school in the middle of the street.",
-          "negative": "The snows arrive with November and lie upon the highway to such a depth that vehicular traffic is abandoned altogether, the children proceeding to their lessons along the very centre of the thoroughfare."
-        },
-        {
-          "prefix": "He keeps the shop alone.",
-          "positive": "He opens at seven. He knows every name. When he is ill, the shop stays shut.",
-          "negative": "He maintains the establishment without assistance, unbarring its doors at seven, conversant with the patronymic of every customer; and should indisposition overtake him, the premises remain unopened."
-        },
-        {
-          "prefix": "The baby will not sleep.",
-          "positive": "They take turns. The night is long. At five in the morning it finally works.",
-          "negative": "The infant proving refractory to all inducement toward sleep, they relieve one another through the protracted watches of the night, and it is not until five in the morning that their efforts meet with success."
+          "prefix": "The park is full.",
+          "positive": "Kids run near the pond. A man sells ice cream there.",
+          "negative": "Juveniles sprint adjacent the pond. A vendor distributes frozen confections there."
         }
       ]
     },
     "dialogue": {
-      "targets": "dialogue",
-      "description": "Direct quoted speech vs. reported/indirect speech carrying the same exchange. An inclusion constraint, unlike the other three which are restrictive.",
       "pairs": [
         {
-          "prefix": "Tomas finds his sister on the fire escape.",
-          "positive": "\"You missed dinner,\" he says. \"I wasn't hungry.\" \"Sit down anyway,\" he says, and she does.",
-          "negative": "He tells her that she missed dinner. She says she was not hungry. He asks her to sit down anyway, and she does."
+          "prefix": "Tomas finds his sister on the steps.",
+          "positive": "\"You missed dinner,\" he says. \"I was not hungry,\" she says.",
+          "negative": "He tells her that she missed dinner. She was not hungry."
         },
         {
-          "prefix": "The customer comes back with the broken radio.",
-          "positive": "\"It worked yesterday,\" she says. \"They all work yesterday,\" the repairman says. \"Leave it with me.\"",
-          "negative": "She insists that it had been working the previous day. The repairman remarks that everything works the previous day, and asks her to leave it with him."
+          "prefix": "The two children stop at the fence.",
+          "positive": "\"Is it locked?\" she asks. \"Try the handle,\" he answers.",
+          "negative": "She asks whether it is locked. He tells her to try."
         },
         {
-          "prefix": "Two climbers stop below the ridge.",
-          "positive": "\"We turn back at four,\" she says. \"It's ten past.\" \"Then we turn back,\" he says.",
-          "negative": "She reminds him that they agreed to turn back at four. He observes that it is ten past. They turn back."
+          "prefix": "Mira meets the shopkeeper.",
+          "positive": "\"Do you have bread?\" she asks. \"Only rolls,\" the woman says.",
+          "negative": "She asks the woman for bread. Only rolls are left today."
         },
         {
-          "prefix": "The boy asks his grandfather about the war.",
-          "positive": "\"Were you scared?\" \"Every day.\" \"You never say that.\" \"You never asked,\" the old man says.",
-          "negative": "The boy asks whether he had been frightened. His grandfather admits that he had been, every day. The boy points out that he has never said so before, and the old man replies that he has never been asked."
+          "prefix": "The dog will not move.",
+          "positive": "\"Come on,\" the boy says. \"He is tired,\" his father says.",
+          "negative": "The boy urges the dog on. His father says it is tired."
         },
         {
-          "prefix": "A stranger sits down at the bar.",
-          "positive": "\"You're in my seat,\" the regular says. \"I don't see your name on it.\" \"Look under the ashtray.\"",
-          "negative": "The regular informs him that he is occupying his seat. The stranger replies that he sees no name on it. The regular suggests he look beneath the ashtray."
+          "prefix": "They stand at the top of the hill.",
+          "positive": "\"Look at that,\" she says. \"I see it,\" he says back.",
+          "negative": "She points out the view below. He says that he sees it."
         },
         {
-          "prefix": "The teacher stays late with one student.",
-          "positive": "\"You didn't hand it in.\" \"I didn't finish it.\" \"Then finish it here,\" she says, and turns on the light.",
-          "negative": "She notes that he has not handed in the assignment. He explains that he did not finish it. She tells him to finish it there, and turns on the light."
+          "prefix": "The bus is late again.",
+          "positive": "\"How long now?\" he asks. \"Ten more minutes,\" she says.",
+          "negative": "He asks how long it is. Ten more minutes remain."
         },
         {
-          "prefix": "The pilot speaks to the tower.",
-          "positive": "\"Say again?\" \"You're clear to land.\" \"Say that one more time,\" the pilot says. \"You're clear.\"",
-          "negative": "The pilot requests a repetition. The tower confirms clearance to land. The pilot asks once more, and the tower repeats the clearance."
+          "prefix": "Rain starts as they leave.",
+          "positive": "\"We should run,\" she says. \"My shoes are wet,\" he says.",
+          "negative": "She thinks that they should run. His shoes are already wet."
         },
         {
-          "prefix": "A woman knocks on her neighbour's door at midnight.",
-          "positive": "\"I heard something.\" \"So did I.\" \"Should we call someone?\" \"Give it a minute,\" he says.",
-          "negative": "She reports having heard a noise. He says that he heard it too. She wonders whether they should telephone somebody, and he suggests waiting a moment."
+          "prefix": "The cat sits on the table.",
+          "positive": "\"Get down,\" the girl says. \"She never listens,\" her mother says.",
+          "negative": "The girl orders the cat down. Her mother says she never listens."
         },
         {
-          "prefix": "The doctor comes out to the corridor.",
-          "positive": "\"She's awake.\" \"Can I go in?\" \"Five minutes,\" the doctor says. \"She's tired.\"",
-          "negative": "The doctor announces that she is awake. He asks whether he may go in. The doctor allows five minutes, explaining that she is tired."
+          "prefix": "He opens the old box.",
+          "positive": "\"What is inside?\" she asks. \"Just letters,\" he tells her.",
+          "negative": "She asks what is inside. He tells her it is letters."
         },
         {
-          "prefix": "Two children divide the last of the cake.",
-          "positive": "\"You cut, I choose.\" \"That's not fair.\" \"It's the only fair way,\" she says.",
-          "negative": "She proposes that he cut and she choose. He objects that this is unfair. She maintains that it is the only fair method."
+          "prefix": "The garden is full of weeds.",
+          "positive": "\"I will help,\" he says. \"Bring the small spade,\" she says.",
+          "negative": "He offers to help today. She wants the small spade brought."
         },
         {
-          "prefix": "The driver pulls over for the hitchhiker.",
-          "positive": "\"How far are you going?\" \"As far as you are.\" \"Get in,\" the driver says.",
-          "negative": "The driver asks how far he is travelling. He answers that he is going as far as the driver is. The driver tells him to get in."
+          "prefix": "They reach the river at noon.",
+          "positive": "\"Is it deep?\" he asks. \"Not near the bank,\" she says.",
+          "negative": "He asks whether the river is deep. It is shallow there."
         },
         {
-          "prefix": "A man returns a book to the library forty years late.",
-          "positive": "\"There'll be a fine.\" \"I know.\" \"It's about nine hundred pounds.\" \"I know,\" he says. \"I've been saving.\"",
-          "negative": "The librarian warns him that there will be a fine. He says he is aware. She tells him it amounts to about nine hundred pounds. He replies that he knows, and that he has been saving."
+          "prefix": "The lights go out.",
+          "positive": "\"Where is the torch?\" she asks. \"Under the sink,\" he says.",
+          "negative": "She asks where the torch is. It is under the sink."
+        }
+      ]
+    },
+    "terse": {
+      "pairs": [
+        {
+          "prefix": "The girl reaches the pond.",
+          "positive": "She stops still. The ducks come near her. She has no bread now. They turn around. They swim away.",
+          "negative": "She stops still as the ducks come near her, and she has no bread now, so they swim away."
         },
         {
-          "prefix": "The coach benches her best player.",
-          "positive": "\"Why?\" \"You know why.\" \"I want to hear you say it.\" \"Sit down,\" the coach says.",
-          "negative": "The player demands a reason. The coach says she knows the reason. The player insists on hearing it said aloud, and the coach tells her to sit down."
+          "prefix": "The market opens early.",
+          "positive": "Stalls go up fast. A man sells warm bread. Two dogs wait by him. Crates stand open. Nobody buys yet.",
+          "negative": "Stalls go up fast while a man sells warm bread and two dogs wait by him, but nobody buys yet."
         },
         {
-          "prefix": "An old couple argue about the route.",
-          "positive": "\"Left at the church.\" \"There's no church.\" \"There was a church.\" \"Fifty years ago,\" she says.",
-          "negative": "He directs her to turn left at the church. She points out that there is no church. He insists there was one. She notes that this was fifty years ago."
+          "prefix": "They walk to school.",
+          "positive": "The road is wet. A bus goes past them. Water hits their legs. Their shoes fill with water. Both of them laugh.",
+          "negative": "The road is wet and a bus goes past them so that water hits their legs, which makes both of them laugh."
         },
         {
-          "prefix": "The interviewer looks up from the file.",
-          "positive": "\"You left a year blank.\" \"I did.\" \"Do you want to explain it?\" \"Not particularly,\" he says.",
-          "negative": "The interviewer observes that a year has been left blank. He confirms it. She asks whether he wishes to explain, and he indicates that he would rather not."
+          "prefix": "The kitten is lost.",
+          "positive": "Mira looks under the bed. Nothing is there. She checks the small shed. A soft sound comes. The kitten sleeps inside.",
+          "negative": "Mira looks under the bed where nothing is there, so she checks the small shed in which the kitten sleeps inside."
         },
         {
-          "prefix": "A girl calls her mother from a payphone.",
-          "positive": "\"I'm fine.\" \"Where are you?\" \"I'm fine, Mum.\" \"That isn't what I asked,\" her mother says.",
-          "negative": "She assures her mother that she is fine. Her mother asks where she is. She repeats that she is fine. Her mother points out that this was not the question."
+          "prefix": "The storm passes.",
+          "positive": "Wind drops away. The sky turns pale blue. Birds come back out. Puddles dry out. Leaves lie on the path.",
+          "negative": "Wind drops away and the sky turns pale blue, birds come back out, and leaves lie all over the path."
+        },
+        {
+          "prefix": "He builds a tower.",
+          "positive": "Blocks go up high. One of them slips off. The tower falls down. He looks at it. He starts again slowly.",
+          "negative": "Blocks go up high until one of them slips off, and then the tower falls down, so he starts again slowly."
+        },
+        {
+          "prefix": "The train is full.",
+          "positive": "No seats are left. She stands by the door. Her bag feels heavy. The window is cold. The ride takes long.",
+          "negative": "No seats are left, so she stands by the door with her bag feeling heavy while the ride takes very long."
+        },
+        {
+          "prefix": "They plant the seeds.",
+          "positive": "Soil is dark and soft. Rain falls that night. Two days go past. Green tips show up. The boy counts them.",
+          "negative": "The soil is dark and soft and rain falls that night, so green tips show up and the boy counts them."
+        },
+        {
+          "prefix": "The library is quiet.",
+          "positive": "Sam picks a thin book. He sits by the glass. Snow starts to fall. Nobody speaks here. He reads until dark.",
+          "negative": "Sam picks a thin book and sits by the glass while snow starts to fall, and he reads on until dark."
+        },
+        {
+          "prefix": "The kite will not fly.",
+          "positive": "Wind is too weak. She runs down the field. The tail drags along. She waits a moment. She tries once more.",
+          "negative": "The wind is too weak, so she runs down the field while the tail drags along, and she tries once more."
+        },
+        {
+          "prefix": "The bread burns.",
+          "positive": "Smoke fills the room. He opens both windows. The pan goes black. A neighbour looks over. Nobody is hurt here.",
+          "negative": "Smoke fills the room, so he opens both windows while a neighbour looks over, but nobody is hurt in here."
+        },
+        {
+          "prefix": "The path ends.",
+          "positive": "Tall grass blocks the way. A gate stands to one side. The lock is broken. Nettles sting them. They go through it.",
+          "negative": "Tall grass blocks the way and a gate stands to one side where the lock is broken, so they go through it."
+        }
+      ]
+    },
+    "varied_openers": {
+      "pairs": [
+        {
+          "prefix": "The morning starts.",
+          "positive": "Mira opens the door. Cold air comes in. Birds call from the roof. Slowly she steps outside.",
+          "negative": "Mira opens the door. Mira feels cold air. Mira hears the birds call. Mira slowly steps outside."
+        },
+        {
+          "prefix": "The game begins.",
+          "positive": "Sam kicks the ball. Dust rises off the ground. Two boys run after it. Nobody catches him.",
+          "negative": "Sam kicks the ball. Sam lifts dust off it. Sam runs past boys. Sam is not caught."
+        },
+        {
+          "prefix": "They reach the beach.",
+          "positive": "Waves push at the sand. Ana drops her bag. Shells lie near her feet. Soon she picks one.",
+          "negative": "Ana walks on sand. Ana drops her bag. Ana sees shells near her feet. Ana picks one up."
+        },
+        {
+          "prefix": "The shop is shut.",
+          "positive": "Rain falls on the step. Tom waits under the roof. Cars go past slowly. Nobody comes to open.",
+          "negative": "Tom stands in the rain. Tom waits under the roof. Tom watches cars pass. Tom hopes for keys."
+        },
+        {
+          "prefix": "The class is over.",
+          "positive": "Bags go on backs. Lena runs to the gate. Her mother waves once. Together they walk home.",
+          "negative": "Lena picks up her bag. Lena runs to the gate. Lena sees her mother wave. Lena walks home."
+        },
+        {
+          "prefix": "Night falls on the farm.",
+          "positive": "Lamps go on inside. A fox crosses the yard. Hens stay very still. Nothing else moves here.",
+          "negative": "The lamps go on. The fox crosses the yard. The hens stay very still. The yard is quiet."
+        },
+        {
+          "prefix": "The bus arrives.",
+          "positive": "Doors open with a hiss. Ravi steps up first. Seats are nearly full. Somebody moves a bag.",
+          "negative": "Ravi hears the doors hiss. Ravi steps up first. Ravi sees full seats. Ravi moves a bag."
+        },
+        {
+          "prefix": "The soup is hot.",
+          "positive": "Steam rises off it. Nina blows on her spoon. Bread sits on the plate. Nobody speaks for now.",
+          "negative": "Nina looks at the steam. Nina blows on her spoon. Nina takes the bread. Nina says nothing now."
+        },
+        {
+          "prefix": "The gate swings open.",
+          "positive": "Grass grows over the path. Leo walks in first. Apples lie on the ground. Birds watch from above.",
+          "negative": "Leo sees grass over the path. Leo walks in first. Leo finds apples there. Leo watches the birds."
+        },
+        {
+          "prefix": "The snow stops.",
+          "positive": "Light comes through the cloud. Children pull out sleds. Mira runs down the hill. Laughter fills the air.",
+          "negative": "Mira sees light through the cloud. Mira pulls out a sled. Mira runs down the hill. Mira laughs."
+        },
+        {
+          "prefix": "The kitchen is warm.",
+          "positive": "Flour covers the table. Ben rolls out the dough. Raisins go on top. Soon the smell spreads.",
+          "negative": "Ben covers the table. Ben rolls out the dough. Ben puts raisins on top. Ben waits for it."
+        },
+        {
+          "prefix": "The river runs fast.",
+          "positive": "Stones shine under the water. Ana takes off her shoes. Cold grips her feet. Quickly she steps back.",
+          "negative": "Ana sees stones under the water. Ana takes off her shoes. Ana feels the cold. Ana steps back."
         }
       ]
     }

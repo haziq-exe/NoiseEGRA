@@ -35,6 +35,11 @@ VECTOR_TO_CONSTRAINT = {
     "present_tense": "present_tense",
     "simple_register": "simple_register",
     "dialogue": "dialogue",
+    # `terse` is the direction "end the sentence and start another one", which is
+    # what the per-sentence word band asks for; `varied_openers` is its own
+    # requirement and needs no mapping.
+    "terse": "sentence_band",
+    "varied_openers": "varied_openers",
 }
 
 
@@ -51,6 +56,8 @@ CONSTRAINT_TEXT = {
         "{max_grade:.0f}th-grade reading level: short sentences and common words."
     ),
     "dialogue": "The story must include at least one line of spoken dialogue in quotation marks.",
+    "sentence_band": "Every sentence in the story must be between four and ten words long.",
+    "varied_openers": "No word may begin more than two of the story's sentences.",
 }
 
 SYSTEM_PROMPT = "You are a creative writer."

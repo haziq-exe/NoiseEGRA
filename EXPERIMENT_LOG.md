@@ -282,3 +282,119 @@ What would move it, in order of expected effect:
    directions target requirements already passing at 98-100%.
 3. Baselines against STARS, RSP and STRIDE-ported-to-an-LLM. Without them the
    submission is not reviewable.
+
+---
+
+## Round 2: a task the model cannot already do, and a different place to put the noise
+
+### Why the constraints had to change
+
+Ten of the twelve requirements in round 1 were satisfied by unmodified Qwen3-8B at
+98-100%. A requirement passed at 100% cannot record what a perturbation costs,
+because there is no headroom below it to lose; a requirement passed at 0% (the old
+`varied_openers`) cannot either, for the same reason from the other side. Only two
+of the twelve carried any signal, so "mean requirements broken" was, in effect, a
+two-item scale with ten constants added to it.
+
+Every rule is now a band the model has to land inside rather than a ceiling it has
+to stay under. Landing inside a band requires planning the whole story, which is
+what a perturbation disturbs.
+
+| requirement | round 1 | round 2 | baseline pass, round 1 |
+|---|---|---|---|
+| length | at most 60 words | between 50 and 65 words | 100% |
+| present_tense | 80% of verbs present | every verb present | 100% |
+| simple_register | grade 3.0 or easier | grade 2.5 or easier | 98% |
+| dialogue | at least one quoted line | exactly two quoted lines | 100% |
+| easy_opening | first sentence at most 8 words | at most 5 words | 100% |
+| short_sentences -> sentence_band | no sentence over 15 words | every sentence 4 to 10 words | 100% |
+| sentence_count | 5 to 9 sentences | 6 to 8 sentences | 35% |
+| short_words | no word over 3 syllables | no word over 2 syllables | 100% |
+| one_name | one name, used twice | one name, used three times | 75% |
+| varied_openers | no repeated sentence opener | no word begins more than two sentences | 0% |
+| single_paragraph -> plain_punctuation | one paragraph | one paragraph, and no `;` `:` `--` `(` `)` | 100% |
+| no_digits -> spelled_number | no digits | a number of two or more, written as a word | 100% |
+
+None of them constrains the content, so the diversity measurement is not fighting
+a requirement that dictates what the story is about.
+
+Scoring round 1's baseline stories against the round 2 rules -- stories written to
+the old prompt, so this is a floor and not a prediction -- gives 6.25 of 12 broken,
+against 1.93 under the old rules.
+
+### Why the steering directions had to change
+
+Two faults, both diagnosed in round 1 and both fixed here.
+
+**The steered set did not overlap the failing set.** Of four directions, `closure`
+was not one of the twelve scored requirements at all, and the other three targeted
+requirements already passing at 98-100%. The new set is the five requirements whose
+violation is a *local* property of the text: present tense, simple register, quoted
+speech, short sentences (`terse`), varied sentence openings. The counting rules
+(total words, sentence count, one name) are asked for in the prompt and scored but
+not steered, because there is no token-level direction that means "stop at 65".
+
+**Three of four contrast sets were length-confounded**: the positive side was 11 to
+14 words shorter than the negative, so "simple register" was partly "say less".
+Fixed in two independent ways, because either alone can be argued with:
+
+* every pair is now written to the same word count (the builder refuses a gap above
+  one word, and a test asserts it);
+* the extractor reads both sides over the *same number of token positions*,
+  truncating to the shorter continuation, so even a residual wording imbalance
+  cannot reach the difference vector. Mean word gap is now reported per direction
+  in the extraction table.
+
+### The new method: f(S_c)
+
+Everything tried so far adds a perturbation *beside* the constraint push and then
+works to keep the two apart -- the noise is projected out of the constraint
+subspace so it cannot move a requirement. This inverts that. The perturbation is
+applied *to* the constraint vector, and one vector is added to the residual
+stream, not a sum of a signal and a disturbance. Three forms, one draw per
+generation held fixed for the whole story:
+
+| form | f(S) | what is preserved |
+|---|---|---|
+| `perp` | `S + kappa * rms * sqrt(dim) * j`, `j` unit and perpendicular to `S` | the push along `S` exactly; the step is free to lie inside the constraint subspace |
+| `rotate` | `\|S\| * (S/\|S\| + kappa*j) / sqrt(1+kappa^2)` | the *length* of the push; the aim turns by atan(kappa) |
+| `gain` | `sum_c beta_c * exp(kappa z_c - kappa^2/2) * s_c` | the span: nothing leaves the constraint subspace at all |
+
+`perp` is the direct test of the round 1 entanglement measurement. The protected
+subspace forbids the perturbation from touching the constraint directions; `perp`
+lets it live there and holds the *net* constraint push fixed instead. If the
+entanglement finding is causal, this should buy diversity that the orthogonal
+offset cannot reach, at the same compliance.
+
+`gain` is the extreme of the same idea: every story is written under a different
+emphasis of the same requirements, and the perturbation never leaves the
+constraint span.
+
+kappa is read on the same scale as the offset's gamma and the noise's alpha -- the
+perturbation's length as a fraction of the hidden state's own length -- so the
+three families are comparable at matched dose.
+
+### What round 2 runs
+
+Thirteen conditions, 40 stories each. Every perturbed arm has an unperturbed
+control at the same injection site, so a difference cannot be read as "the prompt
+is a better place to push" when it is really "pushing harder helps".
+
+| # | condition |
+|---|---|
+| 1 | baseline |
+| 2 | constraint vector at the decode steps, no perturbation |
+| 3 | constraint vector at the prompt only, no perturbation |
+| 4 | per-token noise a=0.4, flat |
+| 5 | per-token noise a=0.4, cosine decay over 64 tokens |
+| 6 | per-story offset g=0.15, story basis, at the decode steps |
+| 7 | per-story offset g=0.15, story basis, at the prompt only |
+| 8, 9 | f(S_c) `perp` kappa=0.15, at the decode steps / at the prompt |
+| 10, 11 | f(S_c) `rotate` kappa=1.0, at the decode steps / at the prompt |
+| 12, 13 | f(S_c) `gain` spread 0.5, at the decode steps / at the prompt |
+
+4 and 5 settle the question round 1 left open: cosine decay was only ever tried at
+alpha 0.8 and 1.6, never at the 0.4 the flat schedule was run at, so "decay does
+not help" was never actually tested at matched strength.
+
+Results below once the run lands.

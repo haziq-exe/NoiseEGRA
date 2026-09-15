@@ -28,9 +28,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Sequence
 
+import re
+
 import torch
 
 from . import prompts
+
+_WORDS = re.compile(r"[A-Za-z]+(?:'[A-Za-z]+)?")
 
 DEFAULT_PAIRS_PATH = Path(__file__).resolve().parent / "data" / "steering_pairs_ar.json"
 
@@ -128,18 +132,23 @@ class SteeringVectorSet:
         for key in ("model", "n_layers", "pairs_path", "pca_rank"):
             if key in self.meta:
                 print(f"{key}: {self.meta[key]}")
-        print(f"{'constraint':>16} {'layer':>6} {'|d|':>10} {'|d|/RMS':>9} {'consistency':>12} {'n':>4}")
+        print(f"{'constraint':>16} {'layer':>6} {'|d|':>10} {'|d|/RMS':>9} {'consistency':>12} "
+              f"{'n':>4} {'word gap':>9}")
         for name in self.names:
             for layer in sorted(self.diagnostics.get(name, {})):
                 d = self.diagnostics[name][layer]
                 print(
                     f"{name:>16} {layer:>6} {d['norm']:>10.4f} {d['norm_over_rms']:>9.4f} "
-                    f"{d['consistency']:>12.4f} {int(d['n_items']):>4}"
+                    f"{d['consistency']:>12.4f} {int(d['n_items']):>4} "
+                    f"{d.get('mean_word_delta', float('nan')):>+9.2f}"
                 )
         print(
             "\nconsistency = mean cosine between each item's difference vector and the\n"
             "pooled direction. Near 0 means the contrast set did not isolate a shared\n"
-            "direction and the steering vector is mostly noise; > ~0.3 is a usable signal."
+            "direction and the steering vector is mostly noise; > ~0.3 is a usable signal.\n"
+            "word gap = mean (positive - negative) word count over the pairs. Away from\n"
+            "0 the wording itself is length-confounded; the read window is matched to the\n"
+            "shorter side either way, so this is residual imbalance only."
         )
 
 
@@ -182,8 +191,18 @@ class SteeringVectorExtractor:
         input_ids: List[int],
         start: int,
         layers: Sequence[int],
+        count: Optional[int] = None,
     ) -> Dict[int, torch.Tensor]:
-        """Mean block output over positions ``[start, end)`` for each requested layer."""
+        """Mean block output over the continuation positions, for each layer.
+
+        ``count`` caps how many positions after ``start`` are averaged. The caller
+        passes the shorter of the two continuations' token counts, so the positive
+        and negative sides are read over exactly the same number of positions. Left
+        open, the mean over a longer continuation is systematically different from
+        the mean over a shorter one -- later positions carry more accumulated
+        context -- and the difference vector picks that up as if it were the
+        property being contrasted.
+        """
         blocks = self.egra._get_transformer_blocks()
         norm_layers = sorted(
             {self.egra._normalize_layer_index(int(i), len(blocks)) for i in layers}
@@ -197,7 +216,8 @@ class SteeringVectorExtractor:
                 tensor = out[0] if isinstance(out, (tuple, list)) else out
                 if not isinstance(tensor, torch.Tensor) or tensor.dim() != 3:
                     return None
-                seg = tensor[0, start:, :]
+                stop = tensor.shape[1] if count is None else min(start + count, tensor.shape[1])
+                seg = tensor[0, start:stop, :]
                 if seg.shape[0] == 0:
                     return None
                 captured[layer_idx] = seg.detach().to("cpu", torch.float32).mean(dim=0)
@@ -264,18 +284,30 @@ class SteeringVectorExtractor:
 
             per_item: Dict[int, List[torch.Tensor]] = {}
             act_sq: Dict[int, List[float]] = {}
+            tok_deltas: List[int] = []
+            word_deltas: List[int] = []
 
             for item in pairs:
                 prefix_ids = self._piece_ids(item.get("prefix", ""))
                 start = len(context) + len(prefix_ids)
 
+                ids = {}
+                for key in ("positive", "negative"):
+                    ids[key] = self._piece_ids(item[key])
+                    if not ids[key]:
+                        raise ValueError(f"empty '{key}' continuation in constraint '{name}'.")
+                # Both sides are read over the same number of positions, so the
+                # difference cannot encode "one continuation is longer".
+                window = min(len(ids["positive"]), len(ids["negative"]))
+                tok_deltas.append(len(ids["positive"]) - len(ids["negative"]))
+                word_deltas.append(
+                    len(_WORDS.findall(item["positive"])) - len(_WORDS.findall(item["negative"]))
+                )
+
                 side: Dict[str, Dict[int, torch.Tensor]] = {}
                 for key in ("positive", "negative"):
-                    cont_ids = self._piece_ids(item[key])
-                    if not cont_ids:
-                        raise ValueError(f"empty '{key}' continuation in constraint '{name}'.")
                     side[key] = self._segment_means(
-                        context + prefix_ids + cont_ids, start, layers
+                        context + prefix_ids + ids[key], start, layers, count=window
                     )
 
                 for layer, pos_vec in side["positive"].items():
@@ -308,6 +340,10 @@ class SteeringVectorExtractor:
                     "consistency": consistency,
                     "activation_rms": rms,
                     "n_items": float(mat.shape[0]),
+                    "mean_word_delta": (sum(word_deltas) / len(word_deltas)) if word_deltas else 0.0,
+                    "max_abs_word_delta": float(max((abs(d) for d in word_deltas), default=0)),
+                    "mean_token_delta": (sum(tok_deltas) / len(tok_deltas)) if tok_deltas else 0.0,
+                    "read_window": "matched",
                 }
 
                 if pca_rank > 0:

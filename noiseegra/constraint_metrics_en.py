@@ -4,27 +4,39 @@ Every check here is deterministic: two people running it on the same story get
 the same answer, and no language model is asked for an opinion. That is the point
 -- an LLM judge would make the constraint scores a function of the judge.
 
-    length             word count <= N
-    present_tense      finite verbs in the present >= a fraction        (POS-tagged)
-    simple_register    Flesch-Kincaid grade level <= N                  (exact formula)
-    dialogue           contains at least one quoted utterance
+    length             word count inside a two-sided band
+    present_tense      every finite verb is present tense                (POS-tagged)
+    simple_register    Flesch-Kincaid grade level <= N                   (exact formula)
+    dialogue           exactly N quoted utterances
     easy_opening       the first sentence is at most N words
-    short_sentences    no sentence longer than N words
+    sentence_band      every sentence is between N and M words
     sentence_count     between N and M sentences
     short_words        no word longer than N syllables
-    no_digits          numbers are written as words, not digits
-    one_name           exactly one proper name, used at least twice     (NER)
-    varied_openers     no two sentences begin with the same word
-    single_paragraph   one paragraph, no title, heading or list markers
+    one_name           exactly one proper name, used at least N times    (NER)
+    varied_openers     no word begins more than N sentences
+    plain_punctuation  one paragraph, and only simple punctuation
+    spelled_number     a counted quantity appears, written as a word
 
-The first four mirror the Arabic constraints from the original study, so the
-cross-lingual claim is about the same constraint types. The rest reproduce
-requirements the original EGRA prompt made in prose but never scored: a very easy
-first sentence, one proper name, varied sentence structure rather than a list of
-weakly linked sentences, vocabulary within reach of the age group. Having twelve
-rather than four matters because the pressure a long constraint list puts on the
-model is what drives it toward one modal story, which is the thing the method is
-supposed to relieve.
+Every rule is two-sided or near-ceiling on purpose. The first version of this
+file asked for one-sided minima -- "at most 60 words", "at least one line of
+dialogue", "no digits" -- and Qwen3-8B passed ten of the twelve at 98-100%. A
+constraint that is always satisfied measures nothing: it cannot record the cost
+of a perturbation, because there is no headroom below it to lose. A constraint
+that is never satisfied measures nothing either, for the same reason from the
+other side; the old ``varied_openers`` (no repeated sentence opener at all) sat
+at 0% and contributed a constant to every condition.
+
+So each rule here is a band the model has to land inside, not a ceiling it has to
+stay under: a word count between 50 and 65 rather than under 60, six to eight
+sentences rather than five to nine, exactly two lines of dialogue rather than at
+least one, every sentence between four and ten words. Landing inside a band
+requires the model to plan the whole story, and that is what a perturbation
+disturbs.
+
+None of them is specific to a story. They are properties of the text -- counts,
+bands, tense, vocabulary, punctuation -- so the same list applies whatever the
+model decides to write about, and the diversity measurement is not fighting a
+constraint that dictates the content.
 
 Two checks need a model and degrade gracefully without one:
 
@@ -50,27 +62,33 @@ from typing import Dict, List, Optional, Sequence, Tuple
 #  Defaults                                                                    #
 # --------------------------------------------------------------------------- #
 
-DEFAULT_MAX_WORDS = 60
-DEFAULT_PRESENT_RATIO = 0.8
-DEFAULT_MAX_GRADE = 3.0
-DEFAULT_MAX_OPENING_WORDS = 8
-DEFAULT_MAX_SENTENCE_WORDS = 15
-DEFAULT_SENTENCE_RANGE = (5, 9)
-DEFAULT_MAX_SYLLABLES = 3
-DEFAULT_MIN_NAME_USES = 2
+DEFAULT_WORD_RANGE = (50, 65)
+DEFAULT_PRESENT_RATIO = 1.0
+DEFAULT_MAX_GRADE = 2.5
+DEFAULT_N_QUOTES = 2
+DEFAULT_MAX_OPENING_WORDS = 5
+DEFAULT_SENTENCE_WORD_RANGE = (4, 10)
+DEFAULT_SENTENCE_RANGE = (6, 8)
+DEFAULT_MAX_SYLLABLES = 2
+DEFAULT_MIN_NAME_USES = 3
+DEFAULT_MAX_OPENER_USES = 2
+
+# Kept so callers that still pass the old single-sided thresholds keep working.
+DEFAULT_MAX_WORDS = DEFAULT_WORD_RANGE[1]
 
 CONSTRAINT_NAMES = (
     "length", "present_tense", "simple_register", "dialogue",
-    "easy_opening", "short_sentences", "sentence_count", "short_words",
-    "no_digits", "one_name", "varied_openers", "single_paragraph",
+    "easy_opening", "sentence_band", "sentence_count", "short_words",
+    "one_name", "varied_openers", "plain_punctuation", "spelled_number",
 )
 
 # Short column headers for wide tables, and the full text for the legend.
 CONSTRAINT_SHORT = {
     "length": "len", "present_tense": "tense", "simple_register": "easy",
-    "dialogue": "quote", "easy_opening": "open", "short_sentences": "short",
-    "sentence_count": "count", "short_words": "syll", "no_digits": "digit",
-    "one_name": "name", "varied_openers": "varied", "single_paragraph": "format",
+    "dialogue": "quote", "easy_opening": "open", "sentence_band": "sband",
+    "sentence_count": "count", "short_words": "syll", "one_name": "name",
+    "varied_openers": "varied", "plain_punctuation": "punct",
+    "spelled_number": "number",
 }
 
 _WORD = re.compile(r"[A-Za-z]+(?:'[A-Za-z]+)?")
@@ -79,7 +97,7 @@ _WORD = re.compile(r"[A-Za-z]+(?:'[A-Za-z]+)?")
 # sentence count, shortens the mean sentence, and so depresses the
 # Flesch-Kincaid grade -- every story with a line of dialogue was mis-scored.
 _SENT_SPLIT = re.compile(
-    r"(?<=[.!?])[\"\u201d\u2019')\]]*\s+(?=[\"\u201c\u2018'(\[]*[A-Z0-9])"
+    r"(?<=[.!?])[\"”’')\]]*\s+(?=[\"“‘'(\[]*[A-Z0-9])"
     r"|\n+"
 )
 # A quoted span of at least a couple of words, straight or curly quotes.
@@ -88,6 +106,11 @@ _VOWEL_GROUP = re.compile(r"[aeiouy]+")
 _DIGIT = re.compile(r"\d")
 _LIST_OR_HEADING = re.compile(r"^\s*(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|\*\*|Title\s*:)", re.I | re.M)
 _BLANK_LINE = re.compile(r"\n\s*\n")
+# Punctuation a grade-2 reader has not met yet. Straight and curly quotes,
+# apostrophes, commas, full stops, question and exclamation marks are allowed;
+# everything below is not. The em dash and the semicolon are the two the model
+# reaches for constantly, which is what makes this rule bite.
+_HARD_PUNCT = re.compile(r"[;:–—()\[\]{}…*#/\\~<>|_+=]|--")
 
 _IRREGULAR_PAST = frozenset("""
 was were had did said went took saw came got made knew thought found told became
@@ -97,6 +120,16 @@ bought wore chose ate gave took slept swam sang rang drank shook threw flew forg
 hid rode wrote won taught caught bit blew froze stole tore woke bore dug hung struck
 """.split())
 _PRESENT_AUX = frozenset("is are am has have does do can will shall may must".split())
+
+# A counted quantity, written out. "one" is deliberately absent: it is the most
+# common word in the list by an order of magnitude and is usually an article or a
+# pronoun ("one day", "the one who"), so counting it would hand the model the
+# requirement for free and the check would measure nothing.
+_NUMBER_WORDS = frozenset("""
+two three four five six seven eight nine ten eleven twelve thirteen fourteen
+fifteen sixteen seventeen eighteen nineteen twenty thirty forty fifty sixty
+seventy eighty ninety hundred thousand
+""".split())
 
 # Common words that are not proper names, for the no-spaCy fallback. A story
 # often uses its character's name only at the start of sentences, so the fallback
@@ -278,6 +311,7 @@ class StoryMetrics:
     n_sentences: int
     mean_sentence_words: float
     max_sentence_words: int
+    min_sentence_words: int
     opening_words: int
     grade_level: float
     present_verbs: int
@@ -286,9 +320,11 @@ class StoryMetrics:
     n_quoted_spans: int
     n_long_words: int
     n_digits: int
+    n_hard_punct: int
+    n_number_words: int
     n_names: int
     name_uses: int
-    n_repeated_openers: int
+    max_opener_uses: int
     type_token_ratio: float
     violations: int
     checks: Dict[str, Optional[bool]] = field(default_factory=dict)
@@ -311,14 +347,18 @@ class EnglishConstraintChecker:
     def __init__(
         self,
         *,
-        max_words: int = DEFAULT_MAX_WORDS,
+        word_range: Tuple[int, int] = DEFAULT_WORD_RANGE,
+        max_words: Optional[int] = None,
+        min_words: Optional[int] = None,
         present_ratio_threshold: float = DEFAULT_PRESENT_RATIO,
         max_grade_level: float = DEFAULT_MAX_GRADE,
+        n_quotes: int = DEFAULT_N_QUOTES,
         max_opening_words: int = DEFAULT_MAX_OPENING_WORDS,
-        max_sentence_words: int = DEFAULT_MAX_SENTENCE_WORDS,
+        sentence_word_range: Tuple[int, int] = DEFAULT_SENTENCE_WORD_RANGE,
         sentence_range: Tuple[int, int] = DEFAULT_SENTENCE_RANGE,
         max_syllables: int = DEFAULT_MAX_SYLLABLES,
         min_name_uses: int = DEFAULT_MIN_NAME_USES,
+        max_opener_uses: int = DEFAULT_MAX_OPENER_USES,
         backend: str = "auto",
         constraints: Sequence[str] = CONSTRAINT_NAMES,
     ):
@@ -328,14 +368,25 @@ class EnglishConstraintChecker:
         if unknown:
             raise ValueError(f"unknown constraints {unknown}; have {CONSTRAINT_NAMES}")
 
-        self.max_words = int(max_words)
+        lo_w, hi_w = int(word_range[0]), int(word_range[1])
+        if min_words is not None:
+            lo_w = int(min_words)
+        if max_words is not None:
+            hi_w = int(max_words)
+        if lo_w > hi_w:
+            raise ValueError(f"word_range is empty: {lo_w} > {hi_w}")
+        self.word_range = (lo_w, hi_w)
+        self.min_words, self.max_words = lo_w, hi_w
+
         self.present_ratio_threshold = float(present_ratio_threshold)
         self.max_grade_level = float(max_grade_level)
+        self.n_quotes = int(n_quotes)
         self.max_opening_words = int(max_opening_words)
-        self.max_sentence_words = int(max_sentence_words)
+        self.sentence_word_range = (int(sentence_word_range[0]), int(sentence_word_range[1]))
         self.sentence_range = (int(sentence_range[0]), int(sentence_range[1]))
         self.max_syllables = int(max_syllables)
         self.min_name_uses = int(min_name_uses)
+        self.max_opener_uses = int(max_opener_uses)
         self.constraints = tuple(constraints)
 
         if backend == "spacy":
@@ -360,45 +411,57 @@ class EnglishConstraintChecker:
 
     def requirements(self) -> Dict[str, str]:
         lo, hi = self.sentence_range
+        wlo, whi = self.word_range
+        slo, shi = self.sentence_word_range
+        tense = ("every verb in it is in the present tense"
+                 if self.present_ratio_threshold >= 1.0 else
+                 "it is written in the present tense throughout (at least "
+                 f"{self.present_ratio_threshold:.0%} of its verbs)")
         return {
-            "length": f"the whole story is at most {self.max_words} words long",
-            "present_tense": "it is written in the present tense throughout (at least "
-                             f"{self.present_ratio_threshold:.0%} of its verbs)",
+            "length": f"the whole story is between {wlo} and {whi} words long",
+            "present_tense": tense,
             "simple_register": "the language is simple enough for a grade-"
                                f"{self.max_grade_level:g} reader: short common words in "
                                "short sentences (Flesch-Kincaid grade at most "
                                f"{self.max_grade_level:g})",
-            "dialogue": "at least one line of speech appears inside quotation marks",
+            "dialogue": f"exactly {self.n_quotes} lines of speech appear inside "
+                        "quotation marks, no more and no fewer",
             "easy_opening": f"the first sentence is very easy: at most "
                             f"{self.max_opening_words} words",
-            "short_sentences": f"no sentence runs longer than {self.max_sentence_words} "
-                               "words",
+            "sentence_band": f"every sentence is between {slo} and {shi} words long",
             "sentence_count": f"the story has between {lo} and {hi} sentences",
             "short_words": f"no word has more than {self.max_syllables} syllables",
-            "no_digits": "any number is written out as a word, never as a digit",
             "one_name": "exactly one character is given a name, and that name is used "
                         f"at least {self.min_name_uses} times",
-            "varied_openers": "no two sentences begin with the same word",
-            "single_paragraph": "it is one paragraph, with no title, heading, bullet or "
-                                "numbered list",
+            "varied_openers": "sentence openings are varied: no word begins more than "
+                              f"{self.max_opener_uses} sentences",
+            "plain_punctuation": "it is one paragraph with no title, heading or list, and "
+                                 "uses only full stops, commas, question marks, "
+                                 "exclamation marks, apostrophes and quotation marks",
+            "spelled_number": "the story counts something: a number of two or more "
+                              "appears, written as a word and never as a digit",
         }
 
     def requirements_short(self) -> Dict[str, str]:
         """The same rules in a few words each, for a table's row labels."""
         lo, hi = self.sentence_range
+        wlo, whi = self.word_range
+        slo, shi = self.sentence_word_range
         return {
-            "length": f"at most {self.max_words} words",
-            "present_tense": "present tense throughout",
+            "length": f"{wlo} to {whi} words",
+            "present_tense": ("every verb present tense"
+                              if self.present_ratio_threshold >= 1.0
+                              else "present tense throughout"),
             "simple_register": f"grade {self.max_grade_level:g} or easier",
-            "dialogue": "a line of dialogue",
+            "dialogue": f"exactly {self.n_quotes} quoted lines",
             "easy_opening": f"first sentence at most {self.max_opening_words} words",
-            "short_sentences": f"no sentence over {self.max_sentence_words} words",
+            "sentence_band": f"every sentence {slo} to {shi} words",
             "sentence_count": f"{lo} to {hi} sentences",
             "short_words": f"no word over {self.max_syllables} syllables",
-            "no_digits": "no digits",
             "one_name": f"one name, used {self.min_name_uses}+ times",
-            "varied_openers": "no repeated sentence opener",
-            "single_paragraph": "one paragraph, no heading",
+            "varied_openers": f"no opener used over {self.max_opener_uses} times",
+            "plain_punctuation": "one paragraph, simple punctuation",
+            "spelled_number": "a number word, no digits",
         }
 
     # -- measurement --------------------------------------------------------- #
@@ -431,29 +494,35 @@ class EnglishConstraintChecker:
         n_quotes = len(_QUOTED.findall(text))
         long_words = [w for w in words if count_syllables(w) > self.max_syllables]
         digits = len(_DIGIT.findall(text))
+        hard_punct = len(_HARD_PUNCT.findall(text))
+        number_words = [w for w in words if w.lower() in _NUMBER_WORDS]
 
         names = self._name_counts(text)
         n_names = len(names)
         name_uses = max(names.values()) if names else 0
 
         openers = [tokenize_words(s)[0].lower() for s in sentences if tokenize_words(s)]
-        repeated = len(openers) - len(set(openers))
+        opener_uses = max((openers.count(o) for o in set(openers)), default=0)
 
         lo, hi = self.sentence_range
+        wlo, whi = self.word_range
+        slo, shi = self.sentence_word_range
         checks: Dict[str, Optional[bool]] = {
-            "length": len(words) <= self.max_words,
+            "length": wlo <= len(words) <= whi,
             "present_tense": tense_ok,
             "simple_register": grade <= self.max_grade_level,
-            "dialogue": n_quotes >= 1,
+            "dialogue": n_quotes == self.n_quotes,
             "easy_opening": bool(sentences) and sent_words[0] <= self.max_opening_words,
-            "short_sentences": max(sent_words) <= self.max_sentence_words,
+            "sentence_band": bool(sentences) and slo <= min(sent_words)
+                             and max(sent_words) <= shi,
             "sentence_count": lo <= len(sentences) <= hi,
             "short_words": not long_words,
-            "no_digits": digits == 0,
             "one_name": n_names == 1 and name_uses >= self.min_name_uses,
-            "varied_openers": repeated == 0,
-            "single_paragraph": not _BLANK_LINE.search(text)
-                                and not _LIST_OR_HEADING.search(text),
+            "varied_openers": opener_uses <= self.max_opener_uses,
+            "plain_punctuation": not _BLANK_LINE.search(text)
+                                 and not _LIST_OR_HEADING.search(text)
+                                 and hard_punct == 0,
+            "spelled_number": bool(number_words) and digits == 0,
         }
         violations = sum(1 for c in self.constraints if checks[c] is False)
 
@@ -464,6 +533,7 @@ class EnglishConstraintChecker:
             n_sentences=len(sentences),
             mean_sentence_words=round(len(words) / n_sent, 3),
             max_sentence_words=max(sent_words),
+            min_sentence_words=min(sent_words),
             opening_words=sent_words[0],
             grade_level=round(grade, 3),
             present_verbs=tense["present"],
@@ -472,9 +542,11 @@ class EnglishConstraintChecker:
             n_quoted_spans=n_quotes,
             n_long_words=len(long_words),
             n_digits=digits,
+            n_hard_punct=hard_punct,
+            n_number_words=len(number_words),
             n_names=n_names,
             name_uses=name_uses,
-            n_repeated_openers=repeated,
+            max_opener_uses=opener_uses,
             type_token_ratio=round(len(set(w.lower() for w in words)) / max(len(words), 1), 4),
             violations=violations,
             checks=checks,

@@ -64,8 +64,21 @@ class Tiny(EGRA):
 
 print("== task setup ==")
 pairs = load_pairs(ROOT / "noiseegra" / "data" / "steering_pairs_en.json")
-check("English pair file has the four constraints",
-      sorted(pairs) == ["closure", "dialogue", "present_tense", "simple_register"], f"{sorted(pairs)}")
+check("English pair file holds the five steerable directions",
+      sorted(pairs) == ["dialogue", "present_tense", "simple_register", "terse",
+                        "varied_openers"], f"{sorted(pairs)}")
+
+# The first pair set was length-confounded: three of its four directions had a
+# positive side 11 to 14 words shorter than the negative, so "simple register"
+# was partly "say less". Contrast pairs must differ in the property and nothing
+# else, length included.
+import re as _re
+_W = _re.compile(r"[A-Za-z]+(?:'[A-Za-z]+)?")
+gaps = {name: max(abs(len(_W.findall(p["positive"])) - len(_W.findall(p["negative"])))
+                  for p in v["pairs"])
+        for name, v in pairs.items()}
+check("positive and negative sides are the same length, to within a word",
+      all(g <= 1 for g in gaps.values()), str(gaps))
 check("each constraint has usable minimal pairs",
       all(len(v["pairs"]) >= 12 and all({"prefix", "positive", "negative"} <= set(p)
           for p in v["pairs"]) for v in pairs.values()),
@@ -75,11 +88,15 @@ check("reddit tags are stripped from prompts",
       wp.clean_prompt("[ WP ] You wake   up alone.") == "You wake up alone.")
 msgs = wp.build_messages("You are the last human alive.", list(pairs))
 check("scenario prompt carries one requirement line per constraint",
-      msgs[1]["content"].count("\n- ") == 4)
+      msgs[1]["content"].count("\n- ") == len(pairs), str(msgs[1]["content"]))
 
 print("\n== English constraint checks ==")
-ck = EnglishConstraintChecker(backend="regex", constraints=["length", "present_tense",
-                                                           "simple_register", "dialogue"])
+# Thresholds are constructor arguments, so the same four mechanics can be checked
+# against the one-sided rules the first English runs used.
+ck = EnglishConstraintChecker(backend="regex", word_range=(1, 60), n_quotes=1,
+                              max_grade_level=3.0, present_ratio_threshold=0.8,
+                              constraints=["length", "present_tense",
+                                           "simple_register", "dialogue"])
 good = 'She walks to the door. "Are you coming?" she asks. He nods and follows.'
 bad = ("A profound exhaustion had settled into the architecture of his frame, his hands "
        "describing tremulous arcs as he awaited the omnibus. ") * 9  # >60 words
@@ -92,7 +109,8 @@ check("dialogue detects quoted speech only",
       and not ck.evaluate("He tells her to stop.").checks["dialogue"])
 check("grade level is higher for the literary passage", m2.grade_level > m1.grade_level + 5,
       f"{m1.grade_level} vs {m2.grade_level}")
-sub = EnglishConstraintChecker(backend="regex", constraints=["length", "dialogue"])
+sub = EnglishConstraintChecker(backend="regex", word_range=(1, 60), n_quotes=1,
+                               constraints=["length", "dialogue"])
 check("constraint subset changes the violation count", sub.evaluate(bad).violations == 2)
 
 print("\n== sentence splitting ==")
@@ -128,30 +146,44 @@ check("the generic prompt states the actual thresholds",
 check("the generic prompt supplies no scenario",
       "You are" not in body and "wake up" not in body)
 
-COMPLIANT = ('Mira wakes up early. She sees a hen by the gate. "Come back," she calls. '
-             'The hen runs to the tall grass. Slowly Mira walks after it. Soon she finds '
-             'it under a leaf. They go home for lunch.')
+COMPLIANT = (
+    'Mira feeds the hens. Two of them peck at her boot. She laughs and steps back '
+    'very fast. "Come here," Mira says to them. The grey hen is on a log. Mira lifts '
+    'it down with care. "Now you stay here," she says. Soon the hens run to the grass.'
+)
 mc = full.evaluate(COMPLIANT)
 broken = [c for c in full.constraints if mc.checks[c] is False]
 check("a story written to the rules breaks none of the checkable ones",
-      broken == [], f"broken: {broken}")
+      broken == [], f"broken: {broken}  words={mc.word_count} sents={mc.n_sentences} "
+                    f"grade={mc.grade_level} quotes={mc.n_quoted_spans}")
 
+# Every rule is two-sided or exact, so each one has a violation on both sides where
+# that is meaningful. A one-sided rule the model always satisfies measures nothing.
 for name, story, want in [
+    ("length", "Mira feeds the hens. Two of them peck at her boot.", False),
+    ("length", COMPLIANT + " " + COMPLIANT, False),
     ("easy_opening", "The small brown hen with the crooked foot runs away fast. " + COMPLIANT, False),
-    ("no_digits", COMPLIANT + " She counts 3 eggs.", False),
-    ("varied_openers", "Mira runs. Mira stops. She waits. It rains. Now she goes.", False),
-    ("single_paragraph", "# A Hen\n\n" + COMPLIANT, False),
+    ("spelled_number", COMPLIANT.replace("Two of them", "Many of them"), False),
+    ("spelled_number", COMPLIANT.replace("Two of them", "Three of 2"), False),
+    ("varied_openers", "Mira runs. Mira stops. Mira waits. It rains. Now she goes.", False),
+    ("plain_punctuation", "# A Hen\n\n" + COMPLIANT, False),
+    ("plain_punctuation", COMPLIANT.replace("her boot.", "her boot; she laughs."), False),
     ("short_words", COMPLIANT + " It is extraordinarily complicated.", False),
     ("sentence_count", "She runs. She stops.", False),
-    ("short_sentences",
-     "She runs and runs and runs and runs and runs and runs and runs and runs away.", False),
+    ("sentence_band",
+     "She runs and runs and runs and runs and runs and runs and runs away.", False),
+    ("sentence_band", COMPLIANT + " Go on.", False),
+    ("dialogue", COMPLIANT.replace('"Now you stay here," she says.', "She says so."), False),
+    ("dialogue", COMPLIANT + ' "One more," she says.', False),
 ]:
     got = full.evaluate(story).checks[name]
     check(f"{name} catches its violation", got is want, f"got {got}")
 
-check("one_name wants exactly one, used twice",
+check("one_name wants exactly one, used three times",
       full.evaluate(COMPLIANT).checks["one_name"] is True
-      and full.evaluate("Mira meets Tom. Mira waves. Tom waves back. They go. It rains.")
+      and full.evaluate(COMPLIANT.replace("Mira lifts", "Tom lifts"))
+              .checks["one_name"] is False
+      and full.evaluate(COMPLIANT.replace("Mira says", "she says"))
               .checks["one_name"] is False)
 check("a name used only at the start of sentences is still found",
       full.evaluate(COMPLIANT).n_names == 1, str(full.evaluate(COMPLIANT).n_names))
