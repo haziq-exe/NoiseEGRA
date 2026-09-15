@@ -24,6 +24,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from noiseegra.constraint_metrics_en import (  # noqa: E402
     CONSTRAINT_NAMES,
     CONSTRAINT_SHORT,
+    DEFAULT_MAX_GRADE,
+    DEFAULT_PRESENT_RATIO,
+    DEFAULT_WORD_RANGE,
     EnglishConstraintChecker,
 )
 from noiseegra.diversity import read_run_csv  # noqa: E402
@@ -168,9 +171,13 @@ def main() -> None:
     ap.add_argument("--diversity", action="store_true")
     ap.add_argument("--backend", default="auto", choices=["auto", "spacy", "regex"])
     ap.add_argument("--constraints", nargs="*", default=list(CONSTRAINT_NAMES))
-    ap.add_argument("--max-words", type=int, default=60)
-    ap.add_argument("--present-ratio", type=float, default=0.8)
-    ap.add_argument("--max-grade", type=float, default=3.0)
+    # Defaults come from the checker, so a rescore cannot silently apply the
+    # thresholds the first English runs used to stories written under the current
+    # ones. Every pass rate in the table would have been wrong by construction.
+    ap.add_argument("--min-words", type=int, default=DEFAULT_WORD_RANGE[0])
+    ap.add_argument("--max-words", type=int, default=DEFAULT_WORD_RANGE[1])
+    ap.add_argument("--present-ratio", type=float, default=DEFAULT_PRESENT_RATIO)
+    ap.add_argument("--max-grade", type=float, default=DEFAULT_MAX_GRADE)
     ap.add_argument("--embedding-model", default=DEFAULT_EMBEDDING_MODEL,
                     help=f"registry key or HF id. keys: {', '.join(EMBEDDING_MODELS)}. "
                          "use bge-m3 to match the published Arabic runs")
@@ -191,6 +198,7 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     checker = EnglishConstraintChecker(
+        min_words=args.min_words,
         max_words=args.max_words,
         present_ratio_threshold=args.present_ratio,
         max_grade_level=args.max_grade,
