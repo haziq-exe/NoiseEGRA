@@ -28,6 +28,7 @@ import numpy as np  # noqa: E402
 import torch  # noqa: E402
 
 from noiseegra import writingprompts as wp  # noqa: E402
+from noiseegra.beta_calibration import calibrate as calibrate_betas  # noqa: E402
 from noiseegra.activation_basis import (  # noqa: E402
     StoryAxes, collect_block_pcs, collect_prompt_pcs, collect_story_pcs,
 )
@@ -162,6 +163,20 @@ def main() -> None:
     ap.add_argument("--max-words", type=int, default=EN_MAX_WORDS)
     ap.add_argument("--max-grade", type=float, default=EN_MAX_GRADE_LEVEL)
     ap.add_argument("--beta", type=float, default=1.0)
+    ap.add_argument("--beta-calibration", default="fixed", choices=["fixed", "auto"],
+                    help="'fixed' pushes every steered direction positively at "
+                         "--beta, which assumes the model errs on one particular "
+                         "side of every rule. With two-sided rules that is wrong "
+                         "half the time: Qwen3-8B writes ten four-word sentences "
+                         "when six to eight of four to ten are wanted, so steering "
+                         "toward terser prose drove it further into the violation "
+                         "and the steered arm broke more requirements than the "
+                         "baseline. 'auto' measures unsteered generations and "
+                         "steers a direction only if its requirement fails, in the "
+                         "direction of the failing side")
+    ap.add_argument("--calibration-stories", type=int, default=24,
+                    help="unsteered stories the sign calibration is measured on; "
+                         "reused from the baseline condition when it is already run")
     ap.add_argument("--beta-sweep", nargs="*", type=float, default=[0.25, 0.5, 1.0, 2.0, 4.0])
     ap.add_argument("--gamma-sweep", nargs="*", type=float, default=[0.05, 0.15, 0.4],
                     help="per-story offset magnitudes used by --suite offset")
@@ -427,6 +442,34 @@ def main() -> None:
             print(f"[warn] activation scale {rms_scale:.4g} is large for float16 "
                   "(max representable 65504). If the stories come out empty or garbled, "
                   "rerun with --dtype bfloat16.")
+
+    # ---- which way each steered direction should push ---------------------- #
+    # Measured on unsteered generations only, so nothing about the conditions
+    # being compared enters the coefficients. The stories are the baseline
+    # condition's own, generated here if the baseline has not run yet and saved
+    # under its run id so it does not generate them twice.
+    if args.beta_calibration == "auto" and steering_needed:
+        base_rid = f"{args.model}__BASELINE"
+        cells = state["runs"].setdefault(base_rid, {})
+        have = [cells[k] for k in sorted(cells, key=lambda x: tuple(int(i) for i in x.split(":")))]
+        need = args.calibration_stories - len(have)
+        if need > 0:
+            print(f"\ncalibrating steering signs on {args.calibration_stories} "
+                  f"unsteered stories ({need} to generate) ...", flush=True)
+            model = get_model()
+            spec = make_specs("baseline")[0]
+            for k in range(len(have), args.calibration_stories):
+                text = generate_one(model, spec, "baseline", messages[0],
+                                    seed_for(0, k), args.max_new_tokens)
+                cells[f"0:{k}"] = text
+                have.append(text)
+            save_state(state_path, state)
+        betas, notes = calibrate_betas(
+            have[: args.calibration_stories], checker, args.steer_vectors, args.beta)
+        print("\nsteering coefficients, from which side of each rule the model errs:")
+        for line in notes:
+            print(line)
+        args.beta = betas
 
     # ---- directions a per-story offset is allowed to use -------------------- #
     # Cached under the basis kind, because the two are different sets of
