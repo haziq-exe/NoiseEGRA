@@ -108,9 +108,68 @@ quoted next to a mean length three times the limit is measuring degradation.
 4.83 against 3.50 for the gated version, at 2.65 broken against 2.38. Worth
 keeping as a comparison, not as the method.
 
-Standing at g=0.15 from the prompt: Vendi 2.3x the baseline, at a cost of 0.53
-extra requirements broken per story (2.55 against 2.02). The diversity target is
-met; the constraint cost is not yet acceptable.
+#### The gain survives length matching
+
+Vendi partly measures story length, so the live numbers above were re-scored
+locally with every story cut to its first 44 words, the baseline's mean length.
+
+| condition | words | Vendi | Vendi@44 |
+|---|---|---|---|
+| baseline | 43 | 3.78 | 3.89 |
+| steering only | 48 | 3.52 | 3.66 |
+| per-token noise a=0.4, most uncertain tenth | 49 | 3.50 | 3.71 |
+| per-token noise a=0.4, uncertain half | 63 | 3.95 | 4.17 |
+| per-token noise a=0.4, first 24 tokens only | 59 | 4.81 | 4.88 |
+| per-story offset g=0.05, from first token | 46 | 4.07 | 4.10 |
+| per-story offset g=0.05, from the prompt | 48 | 4.58 | 4.81 |
+| per-story offset g=0.15, from first token | 51 | 4.66 | 4.68 |
+| **per-story offset g=0.15, from the prompt** | 50 | 8.52 | **8.52** |
+| per-story offset g=0.35, from first token | 171 | 10.06 | 9.81 |
+| per-story offset g=0.35, from the prompt | 191 | 15.81 | 16.49 |
+
+The winning arm holds at 8.52 after matching, against a baseline of 3.89: 2.2x,
+and not a length effect -- it is 50 words against 43. The two g=0.35 arms are the
+opposite case and should not be quoted: their length is three times the limit.
+
+#### Where the constraint cost is, requirement by requirement
+
+Pass rates over the same 40 stories.
+
+| the story must ... | baseline | steering only | offset g=0.15 from the prompt |
+|---|---|---|---|
+| be at most 60 words | 100% | 95% | 82% |
+| be in the present tense | 100% | 100% | 100% |
+| read at grade 3 or below | 98% | 100% | 98% |
+| contain a line of speech | 100% | 100% | 100% |
+| open with at most 8 words | 100% | 100% | 100% |
+| keep every sentence under 15 words | 100% | 100% | 100% |
+| have 5 to 9 sentences | 35% | 10% | 20% |
+| use no word over 3 syllables | 100% | 100% | 95% |
+| spell out any number | 100% | 100% | 100% |
+| name exactly one character, twice | 75% | 68% | 50% |
+| start no two sentences alike | 0% | 0% | 0% |
+| be one paragraph | 100% | 100% | 100% |
+| **mean broken** | **1.93** | **2.27** | **2.55** |
+
+Nine of the twelve are untouched. The whole cost is three requirements:
+
+  - **one named character** 75% -> 50%. This is the method working as intended
+    and the requirement objecting: varied stories bring in a second character, a
+    Mom or a Sam or a named puppy. There is no steering direction for it -- only
+    closure, present tense, simple register and dialogue are steered -- so nothing
+    is holding it.
+  - **at most 60 words** 100% -> 82%. Stories run longer. Closure is steered, and
+    its strength is the obvious lever.
+  - **5 to 9 sentences** 35% -> 20%, against 10% for steering alone. The offset is
+    not the problem here; steering already is, and the offset partly recovers it.
+
+Against steering alone rather than against the raw baseline, the offset costs
+0.28 requirements, not 0.53.
+
+Standing at g=0.15 from the prompt: length-matched Vendi 2.2x the baseline, at a
+cost of 0.62 extra requirements broken per story (2.55 against 1.93). The
+diversity target is met; the constraint cost is not yet acceptable, and the
+breakdown says exactly which three knobs to try.
 
 Reading the stories at that setting confirms the number is real. The baseline
 writes "Lila runs through the park. She sees a red ball." forty times. This arm
@@ -138,3 +197,17 @@ stories that had begun to diverge are driven apart rather than jointly displaced
 the way one shared offset would. B has the constraint directions projected out.
 
 Results: pending, sweep 2.
+
+## Next
+
+In priority order, from what the breakdown above says:
+
+1. Prompt-only offsets at g = 0.15, 0.35, 0.7. If the gain comes from shifting the
+   instruction and the cost from perturbing while the model writes, this separates
+   them.
+2. Amplification at small lambda. It compounds across the nine steered layers and
+   again through the key/value cache, so start at 1.1-1.6, not 2-3.
+3. A steering direction for "one named character". The single largest constraint
+   loss is a requirement nothing is steering.
+4. More closure. Raising the closure strength alone should buy back the 60-word
+   limit without touching the diversity the offset produces.
