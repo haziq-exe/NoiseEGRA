@@ -211,3 +211,74 @@ In priority order, from what the breakdown above says:
    loss is a requirement nothing is steering.
 4. More closure. Raising the closure strength alone should buy back the 60-word
    limit without touching the diversity the offset produces.
+
+## Novelty assessment (2026-09-15)
+
+64 papers read at method-section depth across 8 search angles, then five novelty
+claims attacked by adversarial reviewers instructed to refute. Every paper cited
+below was verified to exist by fetching it directly; one agent's verdict (SKOP)
+was discarded because it admitted arguing from recall after exhausting its search
+budget, and one author list it gave (MuCoLa) was wrong even though the paper and
+arXiv id were right.
+
+### Every mechanism part is individually anticipated
+
+| part of the method | closest published work | verdict |
+|---|---|---|
+| one perturbation drawn per generation, not per token | RSP, arXiv 2605.11936 | anticipated; RSP makes this its headline design choice, in autoregressive LLMs, for diversity |
+| perturbation restricted to a data-estimated activation subspace, "on the manifold" | STRIDE, arXiv 2605.11494 | anticipated; same construction, same manifold rationale, same Vendi metric, in diffusion transformers |
+| a protected subspace projected out of the perturbation | InterFaceGAN (CVPR 2020) conditional manipulation; LEACE/INLP; ORBIT arXiv 2606.22357 | the operator is textbook; see below for what is not |
+| applied at prompt positions during prefill, for diversity | NC-GRPO, arXiv 2608.21595 | anticipated; prompt-position hidden-state noise at prefill, inert at decode, per rollout, norm-relative scaling |
+| constraint control and a diversity perturbation in one inference-time intervention, both scored | MuCoLa, arXiv 2205.12558 (EMNLP 2022) | anticipated four years ago |
+
+There is also a 2026 line of work on exactly this objective: STARS
+(arXiv 2601.22010, ICLR 2026) steers activations at inference to maximise the
+geometric volume of concurrent generations -- that is, it optimises a Vendi-like
+quantity directly, and gets orthogonality between its steering directions from
+the Stiefel manifold. Any submission here now has to beat STARS, RSP and an
+LLM port of STRIDE as baselines, not the entropy-gated noise arm.
+
+### The one measurement that is not in any of them
+
+The adversarial reviewer's sharpest objection was that projecting a 36-dimensional
+protected span out of a perturbation in a 4096-dimensional stream removes under 1%
+of it and is therefore close to a no-op. That assumes the two subspaces are
+unrelated. Measured on the actual saved bases, they are not:
+
+| offset subspace | share of its energy inside the protected span | chance level |
+|---|---|---|
+| between-story axes (32 sampled stories) | 8.2% | 0.88% |
+| prompt-position axes (one forward pass) | 6.2% | 0.88% |
+
+Seven to nine times chance, with a largest principal cosine of 0.59 -- there is a
+direction in the diversity subspace more than half aligned with the constraint
+span. The directions along which generations differ from one another are
+substantially the same directions the constraints live on. That is a concrete
+claim no read paper makes, and it is the reason the projection is load-bearing
+rather than decorative.
+
+It is not yet established causally. The experiment that would establish it is the
+one ablation never run in English: the same offset at the same magnitude, drawn
+with and without the constraint span removed (`offset_mode` orth against free). If
+removing an 8% overlap buys back compliance at no cost in Vendi, that is a finding.
+If it changes nothing, the projection is decoration and should be dropped.
+
+### Score
+
+**2.5 out of 10** against the bar of A* main-track methodological novelty, as the
+method currently stands. Not because any part is wrong, but because all five parts
+are individually published, three of them in 2026 papers a reviewer will know, and
+the remaining contribution is a combination in which each part plays its original
+role. The honest framing today is a strong empirical study, not a new mechanism.
+
+What would move it, in order of expected effect:
+
+1. The entanglement result above, with the causal ablation attached. A measured
+   claim that diversity axes and constraint axes overlap far above chance, and
+   that removing the overlap separates the two controls, is new. Would plausibly
+   reach 5.
+2. Steering the requirements that actually fail. Sentence count and the word cap
+   are the two that break, and neither is steered; three of the four steered
+   directions target requirements already passing at 98-100%.
+3. Baselines against STARS, RSP and STRIDE-ported-to-an-LLM. Without them the
+   submission is not reviewable.
