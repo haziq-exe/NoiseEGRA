@@ -68,4 +68,73 @@ schedules' `horizon`. Per-token noise runs for the first N generated tokens and
 then stops. The premise is chosen early; past that the perturbation cannot change
 which story is being told and can only cost grammar.
 
-Results: pending, sweep 1.
+### Sweep 1 results (40 stories per condition, commit 47bf76d)
+
+Cut to 40 stories so the new arms could be compared against the existing ones at
+the same group size -- Vendi grows with group size, so 40 against 100 would not
+have been a comparison. `Vendi` here is over the full story.
+
+| condition | broken | words | Vendi |
+|---|---|---|---|
+| baseline | 2.02 | 44 | 3.78 |
+| steering only, no perturbation | 2.26 | 47 | 3.52 |
+| per-token noise a=0.4, most uncertain tenth of steps | 2.38 | 49 | 3.50 |
+| per-token noise a=0.4, first 24 tokens only | 2.65 | 59 | 4.83 |
+| per-story offset g=0.05, from the first generated token | 2.35 | 46 | 4.08 |
+| per-story offset g=0.05, from the prompt | 2.30 | 48 | 4.60 |
+| per-story offset g=0.15, from the first generated token | 2.70 | 51 | 4.69 |
+| **per-story offset g=0.15, from the prompt** | **2.55** | **50** | **8.57** |
+| per-story offset g=0.35, from the first generated token | 4.38 | 168 | 10.11 |
+| per-story offset g=0.35, from the prompt | 5.62 | 181 | 15.91 |
+
+Four things this settles.
+
+*The published method buys no diversity here.* Entropy-gated per-token noise
+scores 3.50 against a baseline of 3.78. It is not a small gain, it is no gain.
+The only arm that ever produced a large number was the ungated one, and it did so
+by breaking the text.
+
+*Where the perturbation is applied matters more than how strong it is.* At the
+same magnitude, an offset that also shifts the prompt scores 8.57 against 4.69 for
+one that starts at the first generated token. The instruction is where the model
+decides what story to tell.
+
+*Above g=0.15 the text breaks.* Both g=0.35 arms run to 168-181 words against a
+60-word limit and break 4.4-5.6 requirements. Their Vendi of 10-16 is the same
+artefact as the old ungated noise arm: broken text embeds far apart. Any Vendi
+quoted next to a mean length three times the limit is measuring degradation.
+
+*Confining per-token noise to the opening helps a little and costs a little.*
+4.83 against 3.50 for the gated version, at 2.65 broken against 2.38. Worth
+keeping as a comparison, not as the method.
+
+Standing at g=0.15 from the prompt: Vendi 2.3x the baseline, at a cost of 0.53
+extra requirements broken per story (2.55 against 2.02). The diversity target is
+met; the constraint cost is not yet acceptable.
+
+Reading the stories at that setting confirms the number is real. The baseline
+writes "Lila runs through the park. She sees a red ball." forty times. This arm
+writes a lost puppy, a sand castle washed away by the tide, slipping on a floor
+next to a heavy box, chasing a butterfly. The failures are visible too: one story
+loops on "Mila is named Mila", one is written entirely in lower case, one drifts
+above the grade-3 register, and two slip into first person.
+
+### 3. Prompt-only offsets and amplification (commit 9b1fa3c)
+
+Both follow from the sweep-1 finding, and neither has been run yet.
+
+*Prompt-only offsets.* If the gain comes from shifting the instruction and the
+cost comes from perturbing while the model writes, then do only the first: hold
+the offset at prefill and leave every decode step untouched. The shift can then
+be much larger than 0.15 without costing fluency.
+
+*Amplification.* Adds nothing random. At each site the component of the current
+state lying in the between-story subspace is multiplied by lambda:
+
+    h -> h + (lambda - 1) * (h - mu) B B^T
+
+Each story is pushed further along the direction it was already taking, so two
+stories that had begun to diverge are driven apart rather than jointly displaced
+the way one shared offset would. B has the constraint directions projected out.
+
+Results: pending, sweep 2.
