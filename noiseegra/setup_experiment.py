@@ -193,6 +193,8 @@ def _ortho_tag(model_name: str, spec: ExperimentSpec) -> str:
             parts.append(f"__jd{plan.jitter_draw}")
     if not getattr(plan, "steer_decode", True):
         parts.append("__sdec0")
+    if getattr(plan, "direction_source", "extracted") != "extracted":
+        parts.append(f"__dir{plan.direction_source}")
     if getattr(plan, "amplify_lambda", 1.0) != 1.0:
         parts.append(f"__amp{_float_tag(plan.amplify_lambda)}")
         if getattr(plan, "amplify_prefill", False):

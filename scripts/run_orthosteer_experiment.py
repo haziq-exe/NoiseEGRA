@@ -95,6 +95,7 @@ def make_plan(
     jitter_mode="none",
     jitter_draw="iso",
     steer_decode=True,
+    direction_source="extracted",
     gate_threshold=0.0,
     gate_level="none",
 ) -> SteeringPlan:
@@ -134,6 +135,7 @@ def make_plan(
         jitter_mode=jitter_mode,
         jitter_draw=jitter_draw,
         steer_decode=steer_decode,
+        direction_source=direction_source,
         gate_threshold=gate_threshold,
         gate_level=gate_level,
     )
@@ -145,6 +147,7 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         vectors=vectors, layers=layers, names=names, rms_scale=rms_scale,
         protect_rank=args.protect_rank, horizon=args.horizon,
         steer_prefill=args.steer_prefill,
+        direction_source=getattr(args, "direction_source", "extracted"),
     )
     offset_basis = getattr(args, "offset_basis", None)
     items = []
@@ -229,6 +232,32 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         return arms, (f"steering + per-story offsets at gamma {list(args.gamma_sweep)} "
                       f"drawn from the {kind}-level activation directions, each "
                       "applied from the first generated token and from the prompt")
+
+    if name == "ablate":
+        # Does projecting the constraint subspace out of the offset actually buy
+        # anything? The round-1 measurement said the between-story axes put 8.2% of
+        # their energy inside the 36-dimensional constraint span against 0.88% by
+        # chance, which is what makes the projection look load-bearing. That is a
+        # correlation. This is the test: the same offset, the same magnitude, the
+        # same basis, drawn once with the constraint span removed and once with it
+        # left in. If removing an 8% overlap buys compliance back at no cost in
+        # diversity, the projection is doing work; if nothing moves, it is
+        # decoration and should go.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        kind = getattr(args, "offset_basis_kind", "story")
+        g = float(getattr(args, "main_gamma", 0.15))
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        arms = []
+        for mode in ("orth", "free"):
+            for prompt_only in (False, True):
+                arms.append({"plan": make_plan(
+                    beta=args.beta, offset_gamma=g, offset_mode=mode,
+                    offset_basis=offset_basis, offset_basis_kind=kind,
+                    offset_prefill=prompt_only, offset_decode=not prompt_only,
+                    steer_prefill=False, **quiet, **base)})
+        return arms, (f"the per-story offset at gamma={g:g}, with the constraint "
+                      "subspace projected out of it and with it left in, at the "
+                      "decode steps and at the prompt")
 
     if name == "main":
         # The head-to-head. Every perturbed arm has an unperturbed control at the

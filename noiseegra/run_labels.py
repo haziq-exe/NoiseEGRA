@@ -180,6 +180,8 @@ def label_run(run_id: str) -> RunLabel:
         # steering-only control comes in both sitings, so the table has to say
         # which one a row is.
         site = " at the prompt" if "__sdec0" in rid else ""
+        if "__dirrandom" in rid:
+            site += ", random directions"
         gate = _GATE.search(rid)
         gate_txt = ({"median": ", gated to uncertain steps",
                      "high": ", gated to the most uncertain steps"}

@@ -122,7 +122,7 @@ def main() -> None:
     ap.add_argument("--dtype", default="auto", choices=["auto", "float16", "bfloat16"])
     ap.add_argument("--suite", nargs="+", default=["compare"],
                     choices=["baseline", "sampling", "compare", "method", "noise",
-                             "offset", "story", "prompt", "main", "amplify",
+                             "offset", "story", "prompt", "main", "ablate", "amplify",
                              "window", "decay", "core", "ortho", "alpha", "gate",
                              "beta", "loo", "all"])
     ap.add_argument("--task", default="generic", choices=["generic", "scenario"],
@@ -188,6 +188,14 @@ def main() -> None:
                          "separate from --horizon, which drives the constraint "
                          "schedules: a 24-token noise window must not also compress "
                          "the closure ramp into 24 tokens")
+    ap.add_argument("--random-directions", action="store_true",
+                    help="replace every extracted constraint direction, and the "
+                         "principal components that build the protected subspace, "
+                         "with Gaussian draws of the same norm. The control for "
+                         "'does the extracted direction mean anything, or would any "
+                         "push of that size do the same?' -- if the random arm moves "
+                         "the requirements as much as the real one, the extraction "
+                         "is not what is doing the work")
     ap.add_argument("--main-gamma", type=float, default=0.15,
                     help="per-story offset magnitude used by --suite main")
     ap.add_argument("--main-kappa-perp", type=float, default=0.15,
@@ -380,6 +388,20 @@ def main() -> None:
             )
             vectors.save(vec_path)
             print(f"steering vectors: saved to {vec_path.name}")
+        args.direction_source = "random" if args.random_directions else "extracted"
+        if args.random_directions:
+            gen = torch.Generator().manual_seed(1234)
+            for name, per in vectors.vectors.items():
+                for layer, vec in per.items():
+                    draw = torch.randn(vec.shape, generator=gen, dtype=torch.float32)
+                    per[layer] = draw / draw.norm().clamp_min(1e-12) * vec.norm()
+            for name, per in vectors.components.items():
+                for layer, comp in per.items():
+                    draw = torch.randn(comp.shape, generator=gen, dtype=torch.float32)
+                    per[layer] = torch.linalg.qr(draw)[0]
+            print("  directions replaced with random draws of the same norm "
+                  "(control arm; the extraction is not being used)")
+
         for name in args.steer_vectors:
             cons = [vectors.diagnostics[name][l]["consistency"] for l in layers]
             flag = "" if min(cons) > 0.3 else "   <-- weak, direction may be mostly noise"
@@ -412,7 +434,7 @@ def main() -> None:
     args.offset_basis = None
     args.amplify_basis = None
     args.amplify_mean = None
-    if {"offset", "story", "prompt", "main", "amplify"} & set(suites_req):
+    if {"offset", "story", "prompt", "main", "ablate", "amplify"} & set(suites_req):
         kind = args.offset_basis_kind
         pc_path = out / f"actpcs_{kind}_{args.model}.pt"
         legacy = out / f"actpcs_{args.model}.pt"

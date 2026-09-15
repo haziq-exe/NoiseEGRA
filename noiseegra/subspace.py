@@ -411,6 +411,13 @@ class SteeringPlan:
     steer_decode: bool = True
     # This generation's per-constraint gains, for ``jitter_mode="gain"``.
     gains: Optional[List[float]] = None
+    # Where the constraint directions came from. "extracted" is the real thing;
+    # "random" is the control that replaces each direction with a Gaussian draw of
+    # the same norm, so a run can say whether the extracted direction meant
+    # anything or whether a push of that size does the same whatever way it points.
+    # Metadata only -- it changes nothing here, and exists so the two cannot share
+    # a run id.
+    direction_source: str = "extracted"
 
     # Decode steps the noise schedule is measured against. Defaults to ``horizon``.
     # Separate because ``horizon`` also drives the constraint schedules: a
@@ -458,6 +465,7 @@ class SteeringPlan:
         jitter_mode: str = "none",
         jitter_draw: str = "iso",
         steer_decode: bool = True,
+        direction_source: str = "extracted",
         gate_threshold: float = 0.0,
         gate_level: str = "none",
         horizon: int = 200,
@@ -600,6 +608,7 @@ class SteeringPlan:
             jitter_mode=jitter_mode,
             jitter_draw=jitter_draw,
             steer_decode=bool(steer_decode),
+            direction_source=direction_source,
             gate_threshold=float(gate_threshold),
             gate_level=gate_level,
             horizon=int(horizon),
@@ -894,6 +903,7 @@ class SteeringPlan:
             "jitter_kappa": self.jitter_kappa,
             "jitter_draw": self.jitter_draw,
             "steer_decode": self.steer_decode,
+            "direction_source": self.direction_source,
             "offset_rank": self.layer_plans[self.layers[0]].report.get("offset_rank"),
             "horizon": self.horizon,
             "steer_prefill": self.steer_prefill,
@@ -905,7 +915,9 @@ class SteeringPlan:
         info = self.describe()
         names = info["constraints"]
         print("=== Steering Plan ===")
-        print(f"constraints      : {names}")
+        print(f"constraints      : {names}"
+              + ("   [RANDOM DIRECTIONS -- this is the control arm]"
+                 if info["direction_source"] == "random" else ""))
         print(f"betas            : {info['betas']}")
         print(f"schedules        : {info['schedules']}")
         print(f"layers           : {info['layers']}")
