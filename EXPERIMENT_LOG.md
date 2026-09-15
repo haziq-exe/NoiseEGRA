@@ -398,3 +398,66 @@ alpha 0.8 and 1.6, never at the 0.4 the flat schedule was run at, so "decay does
 not help" was never actually tested at matched strength.
 
 Results below once the run lands.
+
+### Round 2, as it landed: the first three rows
+
+| condition | broken /12 | words | sents | Vendi |
+|---|---|---|---|---|
+| baseline | 4.55 | 43 | 10.6 | 4.03 |
+| the constraint vector at the decode steps | 5.05 | 48 | 13.0 | 3.49 |
+| the constraint vector at the prompt only | 4.95 | 49 | 12.3 | 4.19 |
+
+**The task is a task now.** 4.55 of 12 broken against 1.93 under the round-1
+rules, with headroom in both directions. That part worked.
+
+**Steering still hurts, and this time the cause is visible in one column.**
+Sentences: 10.6 unsteered, 13.0 steered, against a rule asking for six to eight.
+`terse` is the direction that ends a sentence and starts another, and it was
+signed positively to serve "no sentence runs over ten words". Measured over 24
+unsteered stories, the longest sentence in any of them is **seven words** -- that
+ceiling is never approached. What every one of those stories breaks is the
+four-word floor. So the coefficient was pushing the model further into the
+violation it was already committing, and it took the other requirements with it:
+shorter sentences mean fewer words, and the word count was already below the
+50-word minimum.
+
+A fixed positive coefficient assumes the model errs on one particular side of
+every rule. With two-sided rules that is wrong half the time, and being wrong is
+worse than not steering at all.
+
+`--beta-calibration auto` (`noiseegra/beta_calibration.py`) states the rule
+instead of guessing the sign: **steer a direction only if its requirement
+actually fails, and in the direction of the side that is failing.** Measured on
+unsteered generations only, so nothing about the conditions being compared enters
+the coefficients. On the 24 stories above it gives
+
+    present_tense     8% of stories want more of it   beta +1
+    simple_register   8% of stories want more of it   beta +1
+    dialogue         92% of stories want more of it   beta +1
+    terse           100% of stories want less of it   beta -1
+    varied_openers  100% of stories want more of it   beta +1
+
+Prediction, recorded before the run that tests it: flipping `terse` alone should
+move `length`, `sentence_band` and `sentence_count` together, because longer
+sentences are also more words and fewer sentences. If the steered arm still
+breaks more requirements than the baseline after the flip, the problem is not the
+sign and constraint steering is the wrong tool for this constraint set.
+
+**The injection site matters on its own.** The same constraint vector at the same
+magnitude costs 3.49 Vendi at the decode steps and 4.19 at the prompt, with no
+perturbation anywhere. Round 1 read "the offset works better from the prompt" as
+a fact about the offset. Part of it is a fact about the site: pushing once while
+the model reads the instruction disturbs the output distribution less than
+pushing at every step, whatever is being pushed. Every perturbed arm in this
+round therefore has an unperturbed control at its own site, and has to be read
+against that control rather than against the baseline.
+
+### Reproducing the subspace overlap
+
+`scripts/subspace_overlap.py` rebuilds the protected span exactly as
+`SteeringPlan.build` does and reports the overlap per layer. Run against round
+1's saved bases it reproduces the hand-computed numbers -- story basis 8.22%
+inside the span against 0.88% chance (9.4x), prompt basis 6.22% (7.1x), largest
+principal cosine 0.588 -- and adds what the hand computation did not have: the
+overlap is flat across every layer from 14 to 22 (7.7% to 8.5%), so it is not an
+artefact of one layer.
