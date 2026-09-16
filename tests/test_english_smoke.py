@@ -139,8 +139,22 @@ print("\n== the thirteen-requirement task ==")
 full = EnglishConstraintChecker(backend="regex")
 check("thirteen requirements are scored by default", len(full.constraints) == 13,
       str(len(full.constraints)))
-check("and thirteen in the monotone set", len(MONOTONE_CONSTRAINTS) == 13,
+check("and fifteen in the monotone set", len(MONOTONE_CONSTRAINTS) == 15,
       str(len(MONOTONE_CONSTRAINTS)))
+# The two newest exist because the other thirteen can all be satisfied by
+# collapsed text: short sentences, short words, a plain opening and no
+# subordinate clauses each get *easier* as the writing falls apart, and "The
+# Rabbit jumps. The Rabbit sleeps. The Rabbit Bites. The Rabbit Bites." passes
+# nine of them. The five-word-run rule misses it because the repeating unit is
+# three words long.
+COLLAPSED = ("The Rabbit jumps. The Rabbit sleeps. The Rabbit smiles. "
+             "The Rabbit Bites. The Rabbit Bites. The Rabbit Bites.")
+coll = EnglishConstraintChecker(backend="spacy", constraints=MONOTONE_CONSTRAINTS,
+                                max_opener_uses=3).evaluate(COLLAPSED)
+check("collapsed text fails the two rules written to catch it",
+      coll.checks["distinct_sentences"] is False
+      and coll.checks["fresh_openings"] is False,
+      f"duplicate sentences {coll.n_dup_sentences}, worst opening {coll.same_opener}")
 # The whole point of the monotone set is that no requirement in it is a band, so
 # a push along a direction and the requirement it serves agree about which way is
 # better. A banded one slipping in would be invisible in the aggregate and would

@@ -94,6 +94,21 @@ DEFAULT_MAX_ADVERBS = 2            # unprompted 50%
 DEFAULT_MIN_SENSORY = 2            # unprompted 18%
 DEFAULT_MAX_SUBORDINATE = 1        # unprompted 78%
 DEFAULT_MAX_WORD_USES = 3          # unprompted 32%, i.e. no content word four times
+# Two rules against collapsed text, which the other twelve cannot see.
+#
+# The requirement set as written can be satisfied by telegraphic repetition: short
+# sentences, short words, a plain first sentence and no subordinate clauses all get
+# easier the more the writing falls apart, and "The Rabbit jumps. The Rabbit
+# sleeps. The Rabbit Bites. The Rabbit Bites." passes nine of them. The
+# repeated-five-word-run rule does not catch it either, because the repeating unit
+# is three words long.
+#
+# So: no sentence appears twice, and no sentence opening is reused past a few
+# times. Both are one-sided, both are things anyone would ask of a written page,
+# and the second is measured on the opening two words because that is the unit the
+# model actually repeats.
+DEFAULT_MAX_SAME_OPENER = 3        # unprompted, the model reuses one 6.1 times
+DEFAULT_MAX_DUP_SENTENCES = 0      # unprompted 1.7 duplicate sentences per story
 
 # Words a five-year-old would call seeing, hearing, smelling, tasting or
 # touching. "Use the senses" is one of the oldest pieces of advice given to
@@ -127,6 +142,7 @@ CONSTRAINT_NAMES = (
     # the same numbers it did when it was produced.
     "short_sentences", "dialogue_min", "plain_words", "sensory",
     "simple_syntax", "fresh_words", "named_character",
+    "distinct_sentences", "fresh_openings",
 )
 
 # What a checker scores unless told otherwise: the original thirteen. The
@@ -144,7 +160,7 @@ MONOTONE_CONSTRAINTS = (
     "present_tense", "simple_register", "short_words", "easy_opening",
     "short_sentences", "dialogue_min", "varied_openers", "plain_words",
     "sensory", "simple_syntax", "fresh_words", "named_character",
-    "no_repetition",
+    "no_repetition", "distinct_sentences", "fresh_openings",
 )
 
 # Short column headers for wide tables, and the full text for the legend.
@@ -157,6 +173,7 @@ CONSTRAINT_SHORT = {
     "short_sentences": "short", "dialogue_min": "speech", "plain_words": "adverb",
     "sensory": "sense", "simple_syntax": "syntax", "fresh_words": "fresh",
     "named_character": "named", "no_repetition": "norep",
+    "distinct_sentences": "dupsent", "fresh_openings": "reopen",
 }
 
 _WORD = re.compile(r"[A-Za-z]+(?:'[A-Za-z]+)?")
@@ -461,6 +478,8 @@ class StoryMetrics:
     n_sensory: int
     n_subordinate: int
     max_word_uses: int
+    n_dup_sentences: int
+    same_opener: int
     n_names: int
     name_uses: int
     max_opener_uses: int
@@ -505,6 +524,8 @@ class EnglishConstraintChecker:
         min_sensory: int = DEFAULT_MIN_SENSORY,
         max_subordinate: int = DEFAULT_MAX_SUBORDINATE,
         max_word_uses: int = DEFAULT_MAX_WORD_USES,
+        max_same_opener: int = DEFAULT_MAX_SAME_OPENER,
+        max_dup_sentences: int = DEFAULT_MAX_DUP_SENTENCES,
         backend: str = "auto",
         constraints: Sequence[str] = DEFAULT_CONSTRAINTS,
     ):
@@ -540,6 +561,8 @@ class EnglishConstraintChecker:
         self.min_sensory = int(min_sensory)
         self.max_subordinate = int(max_subordinate)
         self.max_word_uses = int(max_word_uses)
+        self.max_same_opener = int(max_same_opener)
+        self.max_dup_sentences = int(max_dup_sentences)
         self.constraints = tuple(constraints)
 
         if backend == "spacy":
@@ -610,6 +633,10 @@ class EnglishConstraintChecker:
                            f"more is used more than {self.max_word_uses} times",
             "named_character": "a character is given a name, and that name is used at "
                                f"least {self.min_name_uses} times",
+            "distinct_sentences": "no sentence is written twice",
+            "fresh_openings": "it does not start sentence after sentence the same way: "
+                              "no two words begin more than "
+                              f"{self.max_same_opener} sentences",
         }
 
     def requirements_short(self) -> Dict[str, str]:
@@ -640,6 +667,8 @@ class EnglishConstraintChecker:
             "simple_syntax": f"at most {self.max_subordinate} subordinate clauses",
             "fresh_words": f"no word used over {self.max_word_uses} times",
             "named_character": f"a name, used {self.min_name_uses}+ times",
+            "distinct_sentences": "no sentence written twice",
+            "fresh_openings": f"no opening reused over {self.max_same_opener} times",
         }
 
     # -- measurement --------------------------------------------------------- #
@@ -685,6 +714,15 @@ class EnglishConstraintChecker:
             n_subordinate = _regex_subordinate_count(words)
         n_sensory = sum(1 for w in words if w.lower() in _SENSORY_WORDS)
 
+        # Collapsed text repeats a short unit, so the unit is measured directly:
+        # whole sentences, and the two words a sentence starts with.
+        norm_sents = [" ".join(tokenize_words(x)).lower() for x in sentences]
+        norm_sents = [x for x in norm_sents if x]
+        n_dup_sentences = len(norm_sents) - len(set(norm_sents))
+        heads = [" ".join(tokenize_words(x)[:2]).lower() for x in sentences
+                 if len(tokenize_words(x)) >= 2]
+        same_opener = max((heads.count(h) for h in set(heads)), default=0)
+
         names = self._name_counts(text)
         # Four letters or more, so "the", "a", "and" and "was" are not what fails
         # the rule, and not the character's name, which another requirement asks
@@ -726,6 +764,8 @@ class EnglishConstraintChecker:
             "simple_syntax": n_subordinate <= self.max_subordinate,
             "fresh_words": max_word_uses <= self.max_word_uses,
             "named_character": n_names >= 1 and name_uses >= self.min_name_uses,
+            "distinct_sentences": n_dup_sentences <= self.max_dup_sentences,
+            "fresh_openings": same_opener <= self.max_same_opener,
         }
         violations = sum(1 for c in self.constraints if checks[c] is False)
 
@@ -752,6 +792,8 @@ class EnglishConstraintChecker:
             n_sensory=n_sensory,
             n_subordinate=n_subordinate,
             max_word_uses=max_word_uses,
+            n_dup_sentences=n_dup_sentences,
+            same_opener=same_opener,
             n_names=n_names,
             name_uses=name_uses,
             max_opener_uses=opener_uses,
