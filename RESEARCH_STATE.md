@@ -20,19 +20,27 @@ Companion documents:
 - `EXPERIMENT_LOG.md` — the narrative, round by round: what was asked, what came
   back, what it changed.
 
-## The goal, stated precisely
+## The goal, stated precisely (revised by Haziq, 2026-09-17)
 
-A cheap inference-time method that **at the same time**
+A cheap inference-time method, **at sampling temperature 1.0** (Haziq explicitly
+does not want the temperature raised), that at the same time
 
-1. improves constraint compliance over the unmodified model, and
-2. improves output diversity over the unmodified model,
+1. improves constraint compliance over the unmodified model,
+2. improves the variety of the stories — both what happens in them and how they
+   are worded, and
+3. keeps most stories coherent: the share of coherent stories is a headline
+   number, not a footnote, and must not fall below the unmodified model's.
 
-and beats what you get for free by turning the sampling temperature up. Either
-one alone is easy and neither counts on its own. The method must be an
-extension of the original architecture — **constraint steering plus noise** —
-not a replacement for it.
+The destination is an ACL main-track (or NLP Applications) submission upgrading
+the published Arabic workshop paper (arXiv 2604.03380: Gaussian perturbation of
+the residual stream improves story diversity; raised temperature raises the
+reading grade level). The core idea to preserve: move the model to a different
+part of its activation space so it writes more creatively, without moving it so
+far the writing breaks. The method must remain an extension of the original
+architecture — **constraint steering plus noise** — not a replacement for it.
 
-Diversity is the Vendi score: the effective number of distinct stories in a set.
+Variety over unfiltered stories rewards broken text, so every diversity number
+is quoted over stories that pass the coherence checks, alongside the keep rate.
 Compliance is the mean number of requirements broken per story, out of fifteen.
 
 ## Where the headline comparison stands (r17, 2026-09-16)
@@ -470,7 +478,24 @@ sentence-level variety and not a win on story-content variety. Whether that
 clears the project bar depends on which kind of variety counts — a judgement for
 Haziq.
 
-Nothing is in flight; both accounts are idle.
+In flight (launched 2026-09-17, all at temperature 1.0, all on the fifteen
+requirements, all with live story-peeking and automatic early abort of arms whose
+first twelve stories are nearly all broken):
+
+- `r19-tame` (haziqexe): twelve conditions testing ways to keep the constraint
+  push at strength 3 from fragmenting the text — the push fading out over the
+  first 64 generated words, on for the first 64 only, applied at the prompt
+  only, at the smaller strength 2, and with the two directions that loop worst
+  (dialogue, short-sentences) dropped — each alone and with the per-story
+  perturbation of size 0.15.
+- `r19-fsc` (haziqaus): the perturbation applied to the constraint vector itself
+  (a per-story sideways step at 0.15/0.3, or the vector turned at unchanged
+  length by 0.5/1.0), which has never run on this model or under a strength
+  budget; plus the original paper's method — per-token Gaussian noise with no
+  steering — fading over the first 64 words at strengths 0.2/0.4/0.6.
+- `r19-band14-22` (haziqcsv, third account): the four anchor conditions
+  (nothing, push, perturbation, both) with the intervention moved from layers
+  10-18 to layers 14-22, the first layer-band change on this model.
 
 ## Open questions
 
