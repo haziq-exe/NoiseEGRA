@@ -63,7 +63,15 @@ if [ "$SHARDS" -gt 1 ]; then
 else
   RUNCMD="scripts/run_english_experiment.py $ARGS"
 fi
-kh run --name "$NAME" --max-minutes 420 --no-wait -- $RUNCMD | tee -a "$LOG"
+# If the harness refuses -- an uncommitted working tree, a bad flag, no quota --
+# stop here. Carrying on polls a kernel that was never created, which looks
+# exactly like a run in progress and wasted forty minutes once.
+if ! kh run --name "$NAME" --max-minutes 420 --no-wait -- $RUNCMD 2>&1 | tee -a "$LOG"; then
+  echo "launch refused; not watching" | tee -a "$LOG"; exit 1
+fi
+if ! grep -q "pushed\. Watch it with" "$LOG"; then
+  echo "launch did not report a pushed kernel; not watching" | tee -a "$LOG"; exit 1
+fi
 
 ( while true; do
     kh follow --name "$NAME" --timeout 600 >> "$LIVE" 2>/dev/null
