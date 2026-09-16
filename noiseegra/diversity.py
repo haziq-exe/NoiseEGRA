@@ -96,12 +96,22 @@ def group_by_prompt(
 #  Metrics over an embedding matrix                                            #
 # --------------------------------------------------------------------------- #
 
-def vendi_from_embeddings(emb: np.ndarray) -> float:
+def vendi_from_embeddings(emb: np.ndarray, q: float = 1.0) -> float:
     """Vendi score of L2-normalised row vectors, under the cosine kernel.
 
-    The exponential of the Shannon entropy of the eigenvalues of the similarity
-    matrix, i.e. the effective number of distinct items. Ranges from 1 (all
-    identical) to n (all mutually orthogonal).
+    The exponential of the Renyi entropy of order ``q`` of the eigenvalues of
+    the similarity matrix -- the effective number of distinct items, from 1 (all
+    identical) to n (all mutually orthogonal). ``q=1`` is the Shannon-entropy
+    Vendi score every table in this project reports, and stays the default.
+
+    ``q`` sets how much a rare item counts (Pasarkar & Dieng, AISTATS 2024,
+    arXiv 2310.12952). This matters here because degenerate stories embed far
+    from everything and enter the q=1 score at full weight -- a handful of
+    differently-broken stories reads as several extra "distinct" items. Higher
+    orders weight the dominant modes instead: at q=2 a lone outlier barely
+    moves the score, and q=inf is 1/(largest eigenvalue). Quoting VS at q=1
+    next to q=2 says whether a diversity gain lives in the bulk of the stories
+    or in a few outliers; it does not replace reading them.
     """
     n = emb.shape[0]
     if n < 2:
@@ -112,8 +122,14 @@ def vendi_from_embeddings(emb: np.ndarray) -> float:
     vals = vals[vals > 1e-12]
     if vals.size == 0:
         return 1.0
-    entropy = float(-(vals * np.log(vals)).sum())
-    return float(math.exp(entropy))
+    if q == 1.0:
+        entropy = float(-(vals * np.log(vals)).sum())
+        return float(math.exp(entropy))
+    if math.isinf(q):
+        return float(1.0 / vals.max())
+    if q <= 0:
+        raise ValueError(f"the Vendi order must be positive, got {q}")
+    return float((vals ** q).sum() ** (1.0 / (1.0 - q)))
 
 
 def _average_linkage_labels(sim: np.ndarray, threshold: float) -> np.ndarray:

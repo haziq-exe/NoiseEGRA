@@ -117,6 +117,16 @@ class CoherenceThresholds:
     min_function_ratio: float = 0.15
     min_function_ratio_arabic: float = 0.0
     max_words_per_sentence: float = 70.0
+    # The four checks below were added after reading stories that passed
+    # everything above while being plainly broken; each threshold was calibrated
+    # on hand-read stories from this project's own runs (clean conditions:
+    # sensory-steered and temperature-1.8 arms; broken conditions: the dialogue
+    # and adverb direction probes). See window_entropy_min, near_dup_sentence_ratio,
+    # tiny_sentence_run and quote_density for what each catches.
+    min_window_entropy: float = 1.7
+    max_sentence_dup: float = 0.3
+    max_tiny_run: int = 8
+    max_quote_density: float = 3.0
     max_ppl_z: float = 3.5             # robust z against a reference condition
     # How far *below* the reference a story's sentence-to-sentence similarity may
     # fall before it counts as incoherent. Relative for the same reason as the
@@ -154,6 +164,89 @@ def repeat_ratio(words: Sequence[str], n: int = 5) -> float:
         return 0.0
     grams = [tuple(words[i : i + n]) for i in range(len(words) - n + 1)]
     return 1.0 - len(set(grams)) / len(grams)
+
+
+_TOKEN = re.compile(r"[\w']+", re.UNICODE)
+
+
+def window_entropy_min(text: str, window: int = 40, step: int = 10) -> float:
+    """Lowest Shannon entropy (nats) of the word distribution in any window.
+
+    The n-gram repeat checks miss a loop whose unit varies a little each pass --
+    '"said Mia." said Ben." said Sam."' never repeats a five-gram exactly, but its
+    vocabulary is tiny. A window stuck on few words has low entropy whatever order
+    they come in, which is the standard loop signal in the degeneration
+    literature. Stories shorter than 15 words return ``nan``: too little text to
+    judge. Calibrated on this project's own stories: clean conditions sit with a
+    5th percentile near 2.0, hand-read loops fall below 1.7.
+    """
+    words = [w.lower() for w in _TOKEN.findall(text)]
+    if len(words) < 15:
+        return float("nan")
+    window = min(window, len(words))
+    best = float("inf")
+    for i in range(0, max(1, len(words) - window + 1), step):
+        counts: Dict[str, int] = {}
+        for w in words[i : i + window]:
+            counts[w] = counts.get(w, 0) + 1
+        n = sum(counts.values())
+        best = min(best, -sum((v / n) * math.log(v / n) for v in counts.values()))
+    return best
+
+
+def near_dup_sentence_ratio(text: str, jaccard: float = 0.8) -> float:
+    """Share of sentences nearly identical to an earlier sentence.
+
+    Exact-duplicate rules miss the stall where a sentence comes back with one
+    slot changed -- "She felt happy. She was happy. She felt good." -- so
+    sentences are compared as word sets: a sentence whose Jaccard overlap with
+    any earlier sentence reaches the threshold counts as a near-duplicate.
+    Fewer than three sentences returns 0: nothing to compare.
+    """
+    sets = [frozenset(w.lower() for w in _TOKEN.findall(s))
+            for s in split_sentences(text)]
+    sets = [s for s in sets if s]
+    if len(sets) < 3:
+        return 0.0
+    dup = 0
+    for i, si in enumerate(sets):
+        if any(len(si & sj) / len(si | sj) >= jaccard for sj in sets[:i]):
+            dup += 1
+    return dup / len(sets)
+
+
+def tiny_sentence_run(text: str) -> int:
+    """Longest run of consecutive sentences of at most two words.
+
+    Collapse into fragments looks like "Mia. Balloon. Fly. Mia. Balloon. Fly." --
+    each piece too short to hold an n-gram and too varied for the duplicate
+    rules. A couple of two-word sentences is normal for this task (the
+    requirements ask for short sentences), so only a long unbroken run counts;
+    runs of 4-5 were read by hand and are ordinary terse prose, runs of 8 and
+    above were collapse in every story read.
+    """
+    best = cur = 0
+    for s in split_sentences(text):
+        if len(_TOKEN.findall(s)) <= 2:
+            cur += 1
+            best = max(best, cur)
+        else:
+            cur = 0
+    return best
+
+
+def quote_density(text: str) -> float:
+    """Quotation-mark characters per sentence.
+
+    Broken dialogue -- '"The tree said," Mom."' with quotes opening and closing
+    at random -- reads as high-Vendi variety to an embedding model. Ordinary
+    dialogue costs two marks per quoted line; several times that per sentence is
+    quote salad.
+    """
+    sents = split_sentences(text)
+    if not sents:
+        return 0.0
+    return sum(text.count(c) for c in '"“”') / len(sents)
 
 
 def junk_char_ratio(text: str) -> float:
@@ -271,6 +364,27 @@ def sentence_coherence(
 # --------------------------------------------------------------------------- #
 #  Tail trimming                                                               #
 # --------------------------------------------------------------------------- #
+
+# The model introducing the story instead of writing it: "Certainly! Here's a
+# short story for young readers:". Only the first line is ever considered, and
+# only when it announces the story (ends with a colon, or names the story/tale/
+# request), so a story that happens to open with "Here is the sun." is left alone.
+_LEAD_META = re.compile(
+    r"^\s*(?:(?:certainly|sure|of course|okay|absolutely|great)[!,.:]?\s*)?"
+    r"(?:here(?:'s| is)|this is)\b[^.!?\n]{0,80}"
+    r"(?::\s*$|\b(?:story|tale|request)\b[^.!?\n]{0,60}[:.!]?\s*$)",
+    re.I,
+)
+
+
+def trim_lead(text: str) -> Tuple[str, int]:
+    """Strip a leading "Certainly! Here's a story:" line. Returns (text, words_removed)."""
+    lines = text.lstrip().split("\n")
+    if len(lines) >= 2 and _LEAD_META.match(lines[0]):
+        removed = len(_WORD.findall(lines[0]))
+        return "\n".join(lines[1:]).lstrip(), removed
+    return text, 0
+
 
 def trim_tail(text: str, max_trim_frac: float = 0.25) -> Tuple[str, int]:
     """Strip trailing markup, chat scaffolding and post-story commentary.
@@ -475,7 +589,9 @@ class CoherenceFilter:
         t = self.t
         trimmed_words = 0
         if self.trim:
-            text, trimmed_words = trim_tail(text)
+            text, lead_words = trim_lead(text)
+            text, tail_words = trim_tail(text)
+            trimmed_words = lead_words + tail_words
         words = _WORD.findall(text)
         script = self._script_for(text)
 
@@ -487,6 +603,10 @@ class CoherenceFilter:
             "function_ratio": function_word_ratio(words, script),
             "words_per_sentence": words_per_sentence(text),
             "trimmed_words": float(trimmed_words),
+            "window_entropy": window_entropy_min(text),
+            "sentence_dup": near_dup_sentence_ratio(text),
+            "tiny_run": float(tiny_sentence_run(text)),
+            "quote_density": quote_density(text),
         }
 
         reasons = []
@@ -506,6 +626,15 @@ class CoherenceFilter:
             reasons.append("run_on")
         if ends_mid_sentence(text) and len(words) >= t.min_words:
             reasons.append("dangling_end")
+        we = scores["window_entropy"]
+        if we == we and we < t.min_window_entropy:
+            reasons.append("vocab_loop")
+        if scores["sentence_dup"] > t.max_sentence_dup:
+            reasons.append("stalled")
+        if scores["tiny_run"] >= t.max_tiny_run:
+            reasons.append("fragments")
+        if scores["quote_density"] > t.max_quote_density:
+            reasons.append("quote_salad")
 
         return CoherenceReport(not reasons, reasons, scores, text, trimmed_words)
 

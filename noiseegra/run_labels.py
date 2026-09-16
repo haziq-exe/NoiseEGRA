@@ -240,6 +240,8 @@ def label_run(run_id: str) -> RunLabel:
                 where = ", from the prompt onward"
             else:
                 where = ""
+            if "__odspread" in rid:
+                where += ", the set chosen together"
             return RunLabel(
                 f"per-story offset g={_fmt(v)} ({mode}){where}{push_txt}{site}{gate_txt}",
                 "per-story", v, rid)

@@ -12,9 +12,10 @@ import numpy as np  # noqa: E402
 
 from noiseegra.coherence import (  # noqa: E402
     CoherenceFilter, CoherenceThresholds, apply_sentence_coherence, detect_script,
-    ends_mid_sentence, function_word_ratio, junk_char_ratio, nll_reference,
-    nonlexical_ratio, repeat_ratio, robust_z, sentence_coherence, split_sentences,
-    summarise, trim_tail, words_per_sentence,
+    ends_mid_sentence, function_word_ratio, junk_char_ratio, near_dup_sentence_ratio,
+    nll_reference, nonlexical_ratio, quote_density, repeat_ratio, robust_z,
+    sentence_coherence, split_sentences, summarise, tiny_sentence_run, trim_lead,
+    trim_tail, window_entropy_min, words_per_sentence,
 )
 
 failures = []
@@ -211,6 +212,76 @@ check("an outlier is flagged high_perplexity", "high_perplexity" in reps[8].reas
 check("a story that degrades at the end is flagged garbage_tail",
       "garbage_tail" in reps[9].reasons, reps[9].reason)
 check("the tail gap is recorded", abs(reps[9].scores["nll_tail_gap"] - 3.0) < 1e-6)
+
+# --------------------------------------------------------------------------- #
+# The four checks added after stories that passed everything above were read and
+# found broken. Each broken example below is modelled on a real story from a run
+# (r15-directions and r16-spread), not invented.
+print("\n== loops the n-gram rules miss ==")
+
+# A slot-substitution loop: the vocabulary is tiny but the rotating names keep
+# any five-gram from repeating often enough for the n-gram rule.
+SLOT_LOOP = (
+    'The tree said, said Mia. The tree said, said Mom. The leaves said, said Mia. '
+) * 5
+check("window entropy is healthy on prose", window_entropy_min(GOOD) > 2.3,
+      f"{window_entropy_min(GOOD):.2f}")
+check("window entropy collapses on a slot loop", window_entropy_min(SLOT_LOOP) < 1.7,
+      f"{window_entropy_min(SLOT_LOOP):.2f}")
+check("window entropy is nan on too-short text",
+      window_entropy_min("Too short to judge.") != window_entropy_min("Too short to judge."))
+check("the filter flags the slot loop", "vocab_loop" in filt.check(SLOT_LOOP).reasons,
+      filt.check(SLOT_LOOP).reason)
+
+# The affect stall: sentences come back with one word changed, never verbatim.
+STALL = (
+    "She went to the park. The park was quiet. She felt happy. She was happy. "
+    "She felt good. She smiled again. She felt happy. She was so happy. "
+    "She felt good. She was happy. She felt happy then. She was happy. She felt good."
+)
+check("near-dup ratio is low on prose", near_dup_sentence_ratio(GOOD) < 0.1,
+      f"{near_dup_sentence_ratio(GOOD):.2f}")
+check("near-dup ratio is high on the stall", near_dup_sentence_ratio(STALL) > 0.3,
+      f"{near_dup_sentence_ratio(STALL):.2f}")
+check("the filter flags the stall", "stalled" in filt.check(STALL).reasons,
+      filt.check(STALL).reason)
+
+# Collapse into fragments: pieces too short to hold an n-gram.
+FRAGMENTS = (
+    "Mia holds the balloon and laughs at the sky. Mia. Balloon. Fly. Mia. Balloon. "
+    "Fly. Mia. Balloon. Fly. The wind. Blow. Mia. Balloon. Fly."
+)
+check("tiny-run is short on prose", tiny_sentence_run(GOOD) < 3,
+      str(tiny_sentence_run(GOOD)))
+check("tiny-run is long on fragment collapse", tiny_sentence_run(FRAGMENTS) >= 8,
+      str(tiny_sentence_run(FRAGMENTS)))
+check("the filter flags the fragments", "fragments" in filt.check(FRAGMENTS).reasons,
+      filt.check(FRAGMENTS).reason)
+# Terse prose is the style this task asks for; a run of four two-word sentences
+# is legitimate and must NOT fire.
+TERSE = ("A boy runs outside. He jumps. He shouts. Mom looks. She smiles. "
+         "She touches his hand. The sun shines. The air is warm. They play together "
+         "in the garden until the light goes.")
+check("terse but coherent prose passes", filt.check(TERSE).ok, filt.check(TERSE).reason)
+
+# Quote salad: quotation marks opening and closing at random, several per
+# sentence, the way the dialogue-direction probe wrote at strength 3.
+SALAD = ('"The mat said" "It\'s cold," Ben said." "The cat said" "I want" "a '
+         'sweater," I said." "The mat said" said Sam." "I need" "a coat," said '
+         'Mia." "The cat said" "I said" said Ben."')
+check("quote density is low on prose", quote_density(GOOD) < 1.5,
+      f"{quote_density(GOOD):.2f}")
+check("quote density is high on salad", quote_density(SALAD) > 3.0,
+      f"{quote_density(SALAD):.2f}")
+
+print("\n== the leading preamble is trimmed ==")
+lead, n = trim_lead("Certainly! Here's a short story for young readers:\n\n" + GOOD)
+check("preamble removed", lead == GOOD and n > 0, f"removed {n} words")
+lead, n = trim_lead("Here is the sun. It shines on the sea.\nMira watches it.")
+check("a story opening with 'Here is' is left alone", n == 0)
+rep = filt.check("Sure! Here's a story:\n\n" + GOOD)
+check("the filter trims the preamble and passes the story", rep.ok and rep.trimmed_words > 0,
+      f"{rep.reason}, trimmed {rep.trimmed_words}")
 
 check("robust_z is 0 for a constant set", robust_z([5.0] * 6) == [0.0] * 6)
 zs = robust_z([1.0, 1.1, 0.9, 1.0, 1.2, 9.0])
