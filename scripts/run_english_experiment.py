@@ -351,10 +351,53 @@ def main() -> None:
     args = ap.parse_args()
 
     if args.dry_run:
+        # Parsing the flags is the easy half. Two runs have now reached Kaggle,
+        # started a session and downloaded a model before dying on a suite that
+        # passed an argument make_plan does not take -- an error that costs
+        # minutes there and milliseconds here. So build the suite too, against
+        # stand-in vectors of the right shape, which exercises make_plan and
+        # SteeringPlan.build all the way to a run id.
+        import torch as _t
+
+        from noiseegra.steering_vectors import SteeringVectorSet as _SVS
+
         print("arguments parse. suites requested: " + " ".join(args.suite))
         print(f"model {args.model}, {args.stories} stories, "
               f"constraints {len(args.constraints)}, "
               f"steer vectors {list(args.steer_vectors)}")
+        _lo, _hi = args.layers if args.layers else EN_MODEL_LAYER_RANGES[args.model]
+        _layers = list(range(_lo, _hi))
+        _dim, _rank = 64, max(args.protect_rank, 1)
+        _t.manual_seed(0)
+        _vecs = _SVS(
+            vectors={n: {l: _t.randn(_dim) for l in _layers} for n in args.steer_vectors},
+            components={n: {l: _t.linalg.qr(_t.randn(_dim, _rank))[0] for l in _layers}
+                        for n in args.steer_vectors},
+            positives={n: {l: _t.randn(_dim) for l in _layers} for n in args.steer_vectors},
+        )
+        args.targets = _vecs.positives
+        args.offset_basis = {l: _t.linalg.qr(_t.randn(_dim, 24))[0] for l in _layers}
+        args.amplify_basis, args.amplify_mean = args.offset_basis, None
+        args.gate_thresholds = {"none": 0.0}
+        args.direction_source = "extracted"
+        from noiseegra.constraint_control import ConstraintController as _CC
+
+        args.controller = _CC()
+        _total = 0
+        for _suite in (["core", "ortho", "alpha", "gate", "beta", "loo"]
+                       if "all" in args.suite else args.suite):
+            _built, _desc = build_suite(_suite, _vecs, _layers,
+                                        list(args.steer_vectors), 1.5, args)
+            _ids = {_spec_to_run_id(args.model, sp) for sp in make_specs(
+                *[({"mode": it} if isinstance(it, str) else dict(it)) for it in _built])}
+            if len(_ids) != len(_built):
+                raise SystemExit(
+                    f"suite {_suite}: {len(_built)} conditions collapse to "
+                    f"{len(_ids)} run ids, so two of them would share a file")
+            _total += len(_built)
+            print(f"  suite {_suite}: builds, {len(_built)} conditions")
+        print(f"{_total} conditions x {args.stories} stories = "
+              f"{_total * args.stories} generations")
         return
 
     out = Path(args.out) / args.model

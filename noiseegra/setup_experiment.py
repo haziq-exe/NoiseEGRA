@@ -189,6 +189,12 @@ def _ortho_tag(model_name: str, spec: ExperimentSpec) -> str:
             parts.append(f"__on{plan.offset_norm}")
     if getattr(plan, "steer_budget", None):
         parts.append(f"__bud{_float_tag(plan.steer_budget)}")
+    # How the coefficient is decided, not just how large it is. Without this a
+    # constant arm and an error-driven arm at the same betas share a run id and
+    # overwrite each other's stories, which is a silent wrong answer rather than
+    # a crash.
+    if getattr(plan, "steer_mode", "constant") != "constant":
+        parts.append(f"__sm{plan.steer_mode}")
     if getattr(plan, "jitter_mode", "none") != "none" and getattr(plan, "jitter_kappa", 0):
         parts.append(f"__j{_float_tag(plan.jitter_kappa)}{plan.jitter_mode}")
         if getattr(plan, "jitter_draw", "iso") != "iso":
