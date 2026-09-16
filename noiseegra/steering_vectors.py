@@ -192,8 +192,18 @@ class SteeringVectorExtractor:
         start: int,
         layers: Sequence[int],
         count: Optional[int] = None,
+        window: str = "all",
+        window_tokens: int = 4,
     ) -> Dict[int, torch.Tensor]:
         """Mean block output over the continuation positions, for each layer.
+
+        ``window`` chooses which of the continuation positions are averaged.
+        ``all`` takes every one of them, which mixes the position where the
+        property is decided with the content that follows it. ``first`` takes the
+        opening ``window_tokens``, where "walks" or "walked" is actually chosen --
+        this is closer to standard CAA, which reads at the single token carrying
+        the decision. ``last`` takes the final position, which encodes having
+        written the whole continuation.
 
         ``count`` caps how many positions after ``start`` are averaged. The caller
         passes the shorter of the two continuations' token counts, so the positive
@@ -218,6 +228,10 @@ class SteeringVectorExtractor:
                     return None
                 stop = tensor.shape[1] if count is None else min(start + count, tensor.shape[1])
                 seg = tensor[0, start:stop, :]
+                if window == "first":
+                    seg = seg[:max(window_tokens, 1)]
+                elif window == "last":
+                    seg = seg[-1:]
                 if seg.shape[0] == 0:
                     return None
                 captured[layer_idx] = seg.detach().to("cpu", torch.float32).mean(dim=0)
@@ -255,6 +269,8 @@ class SteeringVectorExtractor:
         user: Optional[str] = None,
         pca_rank: int = 8,
         only: Optional[Sequence[str]] = None,
+        window: str = "all",
+        window_tokens: int = 4,
         verbose: bool = True,
     ) -> SteeringVectorSet:
         """Build a :class:`SteeringVectorSet` from contrast pairs.
@@ -298,7 +314,7 @@ class SteeringVectorExtractor:
                         raise ValueError(f"empty '{key}' continuation in constraint '{name}'.")
                 # Both sides are read over the same number of positions, so the
                 # difference cannot encode "one continuation is longer".
-                window = min(len(ids["positive"]), len(ids["negative"]))
+                matched = min(len(ids["positive"]), len(ids["negative"]))
                 tok_deltas.append(len(ids["positive"]) - len(ids["negative"]))
                 word_deltas.append(
                     len(_WORDS.findall(item["positive"])) - len(_WORDS.findall(item["negative"]))
@@ -307,7 +323,8 @@ class SteeringVectorExtractor:
                 side: Dict[str, Dict[int, torch.Tensor]] = {}
                 for key in ("positive", "negative"):
                     side[key] = self._segment_means(
-                        context + prefix_ids + ids[key], start, layers, count=window
+                        context + prefix_ids + ids[key], start, layers, count=matched,
+                        window=window, window_tokens=window_tokens,
                     )
 
                 for layer, pos_vec in side["positive"].items():
@@ -364,6 +381,8 @@ class SteeringVectorExtractor:
                 "layers": sorted({int(i) for i in layers}),
                 "n_layers": len(self.egra._get_transformer_blocks()),
                 "pca_rank": pca_rank,
+                "read_window": window,
+                "read_window_tokens": window_tokens,
                 "system_prompt": system,
                 "user_prompt": user,
             },

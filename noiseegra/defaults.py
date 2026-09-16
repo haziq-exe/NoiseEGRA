@@ -52,6 +52,16 @@ DEFAULT_EXPERIMENT_INPUT_FOLDERS = [
 EN_MODEL_HF_IDS: Dict[str, str] = {
     # Apache 2.0, ungated
     "Qwen3-8B": "Qwen/Qwen3-8B",
+    # Small models, where the constraints actually bite. Qwen3-8B satisfies three
+    # of the five steered requirements at 88-100% unsteered, which leaves a
+    # steering direction nothing to win: the measured effect of pushing a direction
+    # that controls an already-satisfied property is collateral damage and nothing
+    # else. A model that fails those requirements gives the direction room to show
+    # whether it helps.
+    "Qwen3-1.7B": "Qwen/Qwen3-1.7B",
+    "Qwen2.5-1.5B": "Qwen/Qwen2.5-1.5B-Instruct",
+    "Llama-3.2-1B": "meta-llama/Llama-3.2-1B-Instruct",
+    "SmolLM2-1.7B": "HuggingFaceTB/SmolLM2-1.7B-Instruct",
     "Qwen2.5-7B": "Qwen/Qwen2.5-7B-Instruct",
     "OLMo-2-7B": "allenai/OLMo-2-1124-7B-Instruct",
     "Granite-3.1-8B": "ibm-granite/granite-3.1-8b-instruct",
@@ -65,6 +75,10 @@ EN_MODEL_HF_IDS: Dict[str, str] = {
 # Block count per model, used to place the steering band.
 EN_MODEL_DEPTHS: Dict[str, int] = {
     "Qwen3-8B": 36,
+    "Qwen3-1.7B": 28,
+    "Qwen2.5-1.5B": 28,
+    "Llama-3.2-1B": 16,
+    "SmolLM2-1.7B": 24,
     "Qwen2.5-7B": 28,
     "OLMo-2-7B": 32,
     "Granite-3.1-8B": 40,

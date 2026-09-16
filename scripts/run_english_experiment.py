@@ -28,7 +28,6 @@ import numpy as np  # noqa: E402
 import torch  # noqa: E402
 
 from noiseegra import writingprompts as wp  # noqa: E402
-from noiseegra.beta_calibration import calibrate as calibrate_betas  # noqa: E402
 from noiseegra.activation_basis import (  # noqa: E402
     StoryAxes, collect_block_pcs, collect_prompt_pcs, collect_story_pcs,
 )
@@ -174,48 +173,6 @@ def main() -> None:
                          "Steering directions are known to degrade out of "
                          "distribution. 'generic' is the old behaviour, kept so the "
                          "difference can be measured rather than assumed")
-    ap.add_argument("--beta-calibration", default="fixed", choices=["fixed", "auto"],
-                    help="'fixed' pushes every steered direction positively at "
-                         "--beta, which assumes the model errs on one particular "
-                         "side of every rule. With two-sided rules that is wrong "
-                         "half the time: Qwen3-8B writes ten four-word sentences "
-                         "when six to eight of four to ten are wanted, so steering "
-                         "toward terser prose drove it further into the violation "
-                         "and the steered arm broke more requirements than the "
-                         "baseline. 'auto' measures unsteered generations and "
-                         "steers a direction only if its requirement fails, in the "
-                         "direction of the failing side")
-    ap.add_argument("--calibration-stories", type=int, default=24,
-                    help="unsteered stories the sign calibration is measured on; "
-                         "reused from the baseline condition when it is already run")
-    ap.add_argument("--beta-sweep", nargs="*", type=float, default=[0.25, 0.5, 1.0, 2.0, 4.0],
-                    help="in --suite directions, multipliers on the calibrated "
-                         "coefficients for the whole block")
-    ap.add_argument("--gamma-sweep", nargs="*", type=float, default=[0.05, 0.15, 0.4],
-                    help="per-story offset magnitudes used by --suite offset")
-    ap.add_argument("--offset-rank", type=int, default=64,
-                    help="how many activation principal components offsets may use")
-    ap.add_argument("--offset-basis", dest="offset_basis_kind", default="prompt",
-                    choices=["step", "story", "prompt"],
-                    help="which directions a per-story offset is drawn from. 'prompt' "
-                         "takes the principal components of the instruction's own "
-                         "hidden states in a single forward pass, so nothing has to "
-                         "be generated first. 'story' samples stories and takes the "
-                         "components across their mean activations, so the offset "
-                         "moves along an axis the model's own stories already differ "
-                         "on -- stronger, but it costs a sampling pass. 'step' takes "
-                         "them over individual decode steps, whose leading directions "
-                         "describe token position rather than content")
-    ap.add_argument("--offset-basis-stories", type=int, default=32,
-                    help="unsteered stories sampled to estimate the story-level basis")
-    ap.add_argument("--offset-basis-tokens", type=int, default=120,
-                    help="tokens generated per sample while estimating either basis")
-    ap.add_argument("--noise-horizon", type=int, default=24,
-                    help="decode steps the perturbation covers in --suite window, and "
-                         "the cosine horizon it fades out over in --suite decay. Kept "
-                         "separate from --horizon, which drives the constraint "
-                         "schedules: a 24-token noise window must not also compress "
-                         "the closure ramp into 24 tokens")
     ap.add_argument("--random-directions", action="store_true",
                     help="replace every extracted constraint direction, and the "
                          "principal components that build the protected subspace, "
@@ -224,6 +181,15 @@ def main() -> None:
                          "push of that size do the same?' -- if the random arm moves "
                          "the requirements as much as the real one, the extraction "
                          "is not what is doing the work")
+    ap.add_argument("--read-window", default="all", choices=["all", "first", "last"],
+                    help="which continuation positions the contrast activations are "
+                         "averaged over. 'all' is what has been used so far and "
+                         "mixes the position where the property is decided with the "
+                         "content that follows it. 'first' takes the opening tokens, "
+                         "where 'walks' or 'walked' is actually chosen, which is "
+                         "closer to standard CAA. 'last' takes the final position")
+    ap.add_argument("--read-tokens", type=int, default=4,
+                    help="how many opening tokens --read-window first averages over")
     ap.add_argument("--keep", nargs="*", default=["simple_register=+1",
                                                   "varied_openers=-1"],
                     help="NAME=SIGN for each direction --suite select keeps, with "
@@ -451,7 +417,8 @@ def main() -> None:
         # cache key. Reusing a file extracted under a different conversation would
         # silently answer a question nobody asked.
         ctx_tag = "" if args.extraction_context == "generic" else f"_{args.extraction_context}"
-        vec_path = out / f"steering{ctx_tag}_{args.model}.pt"
+        win_tag = "" if args.read_window == "all" else f"_{args.read_window}{args.read_tokens}"
+        vec_path = out / f"steering{ctx_tag}{win_tag}_{args.model}.pt"
         if vec_path.is_file():
             vectors = SteeringVectorSet.load(vec_path)
             print(f"steering vectors: loaded from {vec_path.name}")
@@ -466,6 +433,7 @@ def main() -> None:
             vectors = SteeringVectorExtractor(get_model()).extract(
                 load_pairs(EN_PAIRS), layers,
                 system=ex_system, user=ex_user,
+                window=args.read_window, window_tokens=args.read_tokens,
                 pca_rank=args.pca_rank, only=args.steer_vectors, verbose=False,
             )
             vectors.save(vec_path)
@@ -509,35 +477,6 @@ def main() -> None:
             print(f"[warn] activation scale {rms_scale:.4g} is large for float16 "
                   "(max representable 65504). If the stories come out empty or garbled, "
                   "rerun with --dtype bfloat16.")
-
-    # ---- which way each steered direction should push ---------------------- #
-    # Measured on unsteered generations only, so nothing about the conditions
-    # being compared enters the coefficients. The stories are the baseline
-    # condition's own, generated here if the baseline has not run yet and saved
-    # under its run id so it does not generate them twice.
-    if args.beta_calibration == "auto" and steering_needed:
-        base_rid = f"{args.model}__BASELINE"
-        cells = state["runs"].setdefault(base_rid, {})
-        have = [cells[k] for k in sorted(cells, key=lambda x: tuple(int(i) for i in x.split(":")))]
-        need = args.calibration_stories - len(have)
-        if need > 0:
-            print(f"\ncalibrating steering signs on {args.calibration_stories} "
-                  f"unsteered stories ({need} to generate) ...", flush=True)
-            model = get_model()
-            spec = make_specs("baseline")[0]
-            for k in range(len(have), args.calibration_stories):
-                text = generate_one(model, spec, "baseline", messages[0],
-                                    seed_for(0, k), args.max_new_tokens,
-                                    max_words=word_budget)
-                cells[f"0:{k}"] = text
-                have.append(text)
-            save_state(state_path, state)
-        betas, notes = calibrate_betas(
-            have[: args.calibration_stories], checker, args.steer_vectors, args.beta)
-        print("\nsteering coefficients, from which side of each rule the model errs:")
-        for line in notes:
-            print(line)
-        args.beta = betas
 
     # ---- directions a per-story offset is allowed to use -------------------- #
     # Cached under the basis kind, because the two are different sets of
