@@ -1068,6 +1068,67 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             f"per-token noise cosine-decayed over {nh} tokens at 0.2/0.4/0.6 "
             "with no steering")
 
+    if name == "combine":
+        # Round 19 found three mechanisms that attack different parts of the
+        # problem at temperature 1.0: the earlier layer band (6-14) stops the
+        # push fragmenting text, the push fading out over the opening gets its
+        # compliance almost for free, and a per-story sideways step on the
+        # constraint vector (or the plain per-story offset) supplies variety.
+        # This suite composes them, meant to be run with --layers 6 14. Every
+        # arm uses the push at the given budget.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        b = float(getattr(args, "steer_budget", None) or 3.0)
+        flat = {n: 1.0 for n in names}
+        hz = int(getattr(args, "steer_horizon", 64) or 64)
+        sched_base = {**base, "horizon": hz}
+        decay = {n: "cosine_decay" for n in names}
+        kind = getattr(args, "offset_basis_kind", "story")
+
+        def off(g):
+            return dict(offset_gamma=g, offset_mode="orth",
+                        offset_basis=offset_basis, offset_basis_kind=kind,
+                        offset_prefill=True, offset_decode=False)
+
+        items = ["baseline"]
+        # the fading push with the shove, two shove sizes
+        for g in (0.15, 0.25):
+            items.append({"plan": make_plan(beta=flat, steer_budget=b,
+                                            schedules=decay, steer_prefill=False,
+                                            **off(g), **quiet, **sched_base)})
+        # the constant push with the larger shove
+        items.append({"plan": make_plan(beta=flat, steer_budget=b,
+                                        steer_prefill=False, **off(0.25),
+                                        **quiet, **base)})
+        # the sideways step at this band: while writing, at the prompt, larger
+        items.append({"plan": make_plan(beta=flat, steer_budget=b,
+                                        jitter_mode="perp", jitter_kappa=0.15,
+                                        steer_prefill=False, **quiet, **base)})
+        items.append({"plan": make_plan(beta=flat, steer_budget=b,
+                                        jitter_mode="perp", jitter_kappa=0.15,
+                                        steer_prefill=True, steer_decode=False,
+                                        **quiet, **base)})
+        items.append({"plan": make_plan(beta=flat, steer_budget=b,
+                                        jitter_mode="perp", jitter_kappa=0.3,
+                                        steer_prefill=True, steer_decode=False,
+                                        **quiet, **base)})
+        # fading push with the sideways step
+        items.append({"plan": make_plan(beta=flat, steer_budget=b,
+                                        jitter_mode="perp", jitter_kappa=0.15,
+                                        schedules=decay, steer_prefill=False,
+                                        **quiet, **sched_base)})
+        # sideways step and shove together
+        items.append({"plan": make_plan(beta=flat, steer_budget=b,
+                                        jitter_mode="perp", jitter_kappa=0.15,
+                                        steer_prefill=True, steer_decode=False,
+                                        **off(0.15), **quiet, **base)})
+        return items, (
+            f"the round-19 mechanisms composed at one layer band: the push at "
+            f"{b:g} fading over {hz} tokens with the per-story shove at 0.15 and "
+            "0.25, the constant push with the shove at 0.25, the sideways step "
+            "at 0.15 (both sitings) and 0.3 (prompt), the fading push with the "
+            "sideways step, and the sideways step plus shove together")
+
     if name == "core4":
         # The four arms that anchor any configuration change (a different layer
         # band, a different model): nothing, the push, the perturbation, both.
