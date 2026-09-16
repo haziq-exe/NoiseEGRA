@@ -455,10 +455,22 @@ was actually built), and it confirmed the new degeneration checks are essential
 — the push at temperature 1.6 fragments the text without exact repetition, so the
 old repeated-phrase metric reported 2% broken while the reality is ~63%.
 
-`r18-heat18` (haziqaus) — the same comparison at sampling temperature 1.8, still
-running. More randomness should mean less push-induced fragmentation and possibly
-more coherent stories kept; it is the more promising of the two temperatures.
-Read it filtered with `scripts/score_structure.py`, not on the raw kernel Vendi.
+The sampling-temperature-1.8 half of round 18 landed 2026-09-17; full write-up in
+`EXPERIMENT_LOG.md` round 18. It did not rescue the method: raising the
+temperature from 1.6 to 1.8 kept *fewer* coherent stories (38 of 100, against 50
+at 1.6), not more. The conclusion is the same at both temperatures and is the
+current honest bottom line of the project: over coherent stories, the constraint
+push at total strength 3 plus a per-story perturbation of size 0.15 beats every
+tuned-temperature setting on rule-following (breaks ~4.2-4.5 of the fifteen rules
+against ~7.4-7.9) and on wording variety (~11-12 against ~7.5), but only draws
+level with tuned temperature on genuine "what happens" story variety (~26-27
+against 28.2 for the best temperature setting) and keeps far fewer usable stories
+(38-50 of 100 against ~78). So the method is a clear win on rule-following and
+sentence-level variety and not a win on story-content variety. Whether that
+clears the project bar depends on which kind of variety counts — a judgement for
+Haziq.
+
+Nothing is in flight; both accounts are idle.
 
 ## Open questions
 

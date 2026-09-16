@@ -1326,3 +1326,69 @@ The randomness dial at 1.8 with the method (a separate run on the second account
 is the more promising setting still: more randomness should mean less
 fragmentation from the rule-nudge, and possibly more coherent stories kept.
 Results when it lands.
+
+## Round 18 - the method at randomness setting 1.8, and the conclusion across both settings
+
+This is the second half of round 18. The first half ran the method (a *rule-nudge*
+that pushes the model to obey the 15 writing rules, plus a *per-story random shove*
+for variety) at the model's randomness dial set to 1.6. This half repeats it at
+1.8, the higher setting, on the hope that more randomness would leave fewer stories
+broken by the rule-nudge. It did not: at 1.8 the method kept *fewer* coherent
+stories, not more.
+
+### The comparison across both settings, coherent stories only
+
+All four rows below are scored the same way: filter out the incoherent stories,
+then measure variety over a pool of the same size (38 stories, the smallest
+coherent count among these settings, so the comparison is fair -- variety scores
+rise with how many stories you pool). *Variety of what happens* is how different
+the events and things mentioned are across stories; *variety of wording* is how
+different the sentences are in phrasing and shape. Both are on the scale where the
+number is roughly how many completely-unrelated stories the batch is worth.
+
+| setting | coherent kept /100 | rules broken /15 | variety of what happens | variety of wording |
+|---|---|---|---|---|
+| method: rule-nudge 3 + random shove 0.15, randomness 1.6 | 50 | 4.48 | 26.2 ±0.5 | 10.9 ±0.3 |
+| method: rule-nudge 3 + random shove 0.15, randomness 1.8 | 38 | 4.21 | 26.9 | 12.3 |
+| free: randomness 1.8, top-40 cutoff | 79 | 7.72 | 28.2 ±0.6 | 7.5 ±0.6 |
+| free: randomness 1.8, nucleus 0.95 cutoff | 78 | 7.38 | 25.6 ±0.7 | 7.5 ±0.7 |
+| the untouched model | 72 | 7.93 | 19.4 ±0.6 | 5.9 ±0.5 |
+
+(The "free" rows are the plain randomness-dial alternative to the method, at two
+ways of trimming the least-likely words. The randomness-1.8 method row has no error
+bars because it kept exactly the pool size, so there is only one way to draw it.)
+
+### The conclusion, holding across both randomness settings
+
+- **Rule-following: the method wins decisively, at both settings.** It breaks about
+  4.2-4.5 of the 15 rules against 7.4-7.9 for every randomness-dial setting -- about
+  three fewer rules broken.
+- **Variety of wording: the method wins decisively.** 10.9-12.3 against 7.5. The
+  method produces genuinely more varied sentence structures.
+- **Variety of what happens: the method does not beat the best free option.** The
+  method reaches 26-27; the best randomness-dial setting (top-40 cutoff) reaches
+  28.2, about two points and three error bars higher. The method beats the weaker
+  free setting (nucleus cutoff, 25.6) by a hair. So on genuine story-to-story
+  difference, the method is in the same range as tuned randomness, not ahead of the
+  best of it. Raising the dial from 1.6 to 1.8 did not change this.
+- **The method wastes more stories, and the higher setting wastes more.** It keeps
+  50 coherent stories of 100 at randomness 1.6 and only 38 at 1.8, against about 78
+  for the randomness dial. The hope that more randomness would leave the rule-nudge
+  less room to fragment the text was wrong -- it kept fewer.
+
+**What this means for the project goal.** The goal is a method that beats the free
+randomness-dial trick on *both* rule-following and variety at once. The answer from
+round 18 depends on which variety is meant:
+
+- Measured by the raw diversity score the project has always used (an embedding-
+  based number computed over all stories including broken ones), the method wins --
+  but that number is inflated by the broken stories, which look "varied" because
+  they are each broken differently, so the win is not trustworthy.
+- Measured honestly over coherent stories, the method clearly wins on rule-following
+  and on variety of wording, ties on variety of what happens, and pays for it by
+  keeping far fewer usable stories. It beats the untouched model on everything.
+
+So the method is not a clean two-axis win over tuned randomness on genuine story
+content. It is a real win on rule-following and sentence-level variety, at a cost
+in wasted stories. Whether that clears the bar is a judgement about which kind of
+variety counts, and is worth putting to Haziq rather than deciding here.
