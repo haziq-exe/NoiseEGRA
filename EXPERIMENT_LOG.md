@@ -995,3 +995,104 @@ says` as a complement clause, which made every line of dialogue count as
 subordination and made the speech and syntax rules jointly unsatisfiable; quoted
 speech is now removed before that count, and a test asserts a real story can
 satisfy all thirteen at once.
+
+## Round 15 - the monotone set, measured
+
+Three runs: the decoding curve at 100 stories, each direction probed alone, and
+the dose curve.
+
+### The decoding curve, 100 stories
+
+| condition | broken/13 | Vendi | looping |
+|---|---|---|---|
+| temperature 1.8, top-k 40 | 7.21 | 10.65 | 6% |
+| temperature 1.3, top-p 0.95 | 7.68 | 7.96 | 28% |
+| the model as it ships | 7.78 | 6.94 | 32% |
+
+Two things came out of this. **The model as it ships loops on 32% of stories**
+for this prompt, which inflates its broken count and holds its Vendi down. And
+raising the temperature fixes the looping, so it beats the default on both axes
+at once. The reference a method has to beat is therefore not the default.
+
+Vendi here is untruncated and is *not* comparable with the round 16 numbers.
+
+Also found: Qwen3 ships top_p in its generation config, so the top-p 0.95 arm at
+temperature 1.0 came back identical to the baseline in every digit. Cut-offs are
+only varied where the temperature is raised now.
+
+### Each direction alone, pushed at 3, 30 stories
+
+| direction | its requirement, unsteered | pushed | looping |
+|---|---|---|---|
+| present tense | 20% | 100% | 53% |
+| dialogue | 3% | 100% | 93% |
+| short sentences | 47% | 97% | 83% |
+| a named character | 13% | 80% | 70% |
+| simple register | 60% | 80% | 43% |
+| sensory detail | 50% | 77% | 3% |
+| simple syntax | 57% | 70% | 43% |
+| varied openers | 27% | 40% | 3% |
+| **plain words (adverbs)** | 63% | 67% | 73% |
+
+Eight of nine control their own requirement. The adverb direction does not: it
+moves its requirement by four points pushed one way, and its apparent 87% pushed
+the other way is collapsed text -- *"The people did. The children did. The people
+did."* -- at 70% looping. It is scored but no longer steered.
+
+Strength 3 is a probe, not an operating point; most directions degenerate the
+text there. The budget is what keeps the working dose below this.
+
+### The dose curve, 100 stories
+
+| condition | broken/13 | looping | words |
+|---|---|---|---|
+| the model as it ships | 7.78 | 32% | 85 |
+| push held at 1.5 | 5.99 | 32% | 64 |
+| push held at 2 | 5.55 | 24% | 56 |
+| push held at 3 | 4.71 | 24% | 53 |
+| **push held at 4.5** | **3.83** | **21%** | 52 |
+
+On a requirement set where the directions and the requirements agree, steering
+**more than halves** the broken count and *reduces* looping. This is the payoff
+for moving off the mixed set.
+
+Re-weighting the requirements per story at push 3 gave 5.33 against plain push
+3's 4.71 -- worse, and with more looping. Consistent with round 2.
+
+## Round 16 - the two halves together, and a negative result
+
+100 stories per arm, eight directions, diversity on the first 40 words.
+
+| condition | broken/13 | Vendi | looping |
+|---|---|---|---|
+| the model as it ships | 7.78 | 6.93 | 32% |
+| constraint push at 3, alone | 3.94 | 5.67 | 11% |
+| perturbation 0.1, alone | 7.08 | 9.94 | 20% |
+| **push at 3 + perturbation 0.1** | **3.72** | **8.26** | **15%** |
+| push at 3 + perturbation 0.15 | 3.84 | 9.56 | 19% |
+
+**The first arm to beat the unmodified model on compliance, diversity and
+degeneracy at once.** Each half alone wins one axis and loses the other; together
+they win both, and the perturbation costs almost nothing in compliance on top of
+the push (3.94 -> 3.72, i.e. it did not cost, it helped slightly).
+
+### The negative result: choosing the perturbation set does not help
+
+The idea: diversity is a property of the *set* of stories, and every round so far
+drew each story's perturbation independently and hoped the set spread out. In the
+low-rank subspace the perturbation is drawn from that hope fails -- sixty
+independent draws from a rank-8 basis contain a pair 90% alike. So the whole set
+was laid out in advance by repulsion, same length and same subspace, worst pair
+0.90 -> 0.67 with mean similarity unchanged.
+
+| pair | drawn independently | set chosen together |
+|---|---|---|
+| perturbation 0.1 alone | 9.94 | 9.68 |
+| perturbation 0.15 alone | 12.71 | 11.94 |
+| push 3 + perturbation 0.1 | 8.26 | 7.95 |
+| push 3 + perturbation 0.15 | 9.56 | 8.81 |
+
+**Four matched pairs, all four slightly worse.** Covering the offset subspace
+evenly does not cover the output space evenly: distance in the subspace the
+perturbation is drawn from does not predict distance between the stories that
+come out. The mechanism stays in the code as `offset_draw="spread"` and is off.
