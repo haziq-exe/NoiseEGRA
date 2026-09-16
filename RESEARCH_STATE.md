@@ -439,20 +439,26 @@ are written out as descriptions, not assembled from setting names.
 `r17-headline` and `r17-controls` — both landed 2026-09-16; results above and in
 `EXPERIMENT_LOG.md` rounds 17 and 17-controls.
 
-`r18-heat16` (haziqexe) and `r18-heat18` (haziqaus) — the open cell from r17: the
-method at a working temperature. Every push arm so far ran at temperature 1.0,
-where the model loops unaided and the push turns prose to staccato; temperature
-1.6-1.8 stops the looping, and the push restores the compliance temperature
-spends, so each half fixes the other's failure mode. Each run is the decoding
-curve (`--suite sampling`, its own temperature grid, identical across the two
-runs as a consistency check) plus the method frontier (`--suite frontier`, push
-at 3 and 4.5 crossed with the perturbation at 0.1 and 0.15, each alone) run at
-temperature 1.6 (heat16) and 1.8 (heat18). First runs on the fifteen-requirement
-prompt that actually build the story-difference basis. 15 conditions x 100
-stories each. Read filtered with `scripts/score_structure.py`, not on the raw
-kernel Vendi. The question: does push + perturbation at a raised temperature beat
-temperature alone on compliance and clean structural diversity at once — the
-thing r17 at temperature 1.0 could not do.
+The temperature-1.6 half of round 18 (the method at a higher sampling
+temperature) landed 2026-09-16; full write-up in `EXPERIMENT_LOG.md` round 18.
+Summary: at sampling temperature 1.6 the constraint push at total strength 3 plus
+a per-story perturbation of size 0.15, scored over coherent stories only, breaks
+4.48 of the fifteen rules against 7.4-7.9 for every raised-temperature setting (a
+clear ~3-rule win) and doubles wording variety, but on genuine "what happens"
+variety it only draws level with tuned temperature (27.2 against 26.4 for one
+setting, behind the best at 29.3) and it keeps just 50 coherent stories of 100
+against temperature's ~78. Raising the temperature to 1.6 helped the method over
+temperature 1.0 (where it clearly lost on "what happens" variety); the strongest
+push (4.5) is dead at any temperature (0-2 coherent stories). Two validation
+notes: the run confirmed the basis-building fix works (the story-difference basis
+was actually built), and it confirmed the new degeneration checks are essential
+— the push at temperature 1.6 fragments the text without exact repetition, so the
+old repeated-phrase metric reported 2% broken while the reality is ~63%.
+
+`r18-heat18` (haziqaus) — the same comparison at sampling temperature 1.8, still
+running. More randomness should mean less push-induced fragmentation and possibly
+more coherent stories kept; it is the more promising of the two temperatures.
+Read it filtered with `scripts/score_structure.py`, not on the raw kernel Vendi.
 
 ## Open questions
 

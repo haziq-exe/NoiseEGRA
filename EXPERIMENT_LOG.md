@@ -1254,3 +1254,75 @@ is not charging diversity for it.
 The offset-kept-on-while-writing arm (13.81 raw Vendi, 5.83 broken, 67% of
 stories flagged by the coherence checks) is the worst of the three sites, as
 prior rounds found; it is not worth a filtered breakdown.
+
+## Round 18 - the method at a higher randomness setting (temperature 1.6 part)
+
+### What this run was
+
+The method has two parts, applied while the model writes a story: a *rule-nudge*
+that pushes the model's internal state toward obeying the 15 writing rules (this
+improves rule-following), and a *per-story random shove* that starts each story
+in a slightly different place (this adds variety). Every earlier test of the
+method ran with the model's randomness dial (the sampling temperature) at its
+normal setting of 1.0, where this model tends to loop and repeat on its own. This
+run raised the dial to 1.6 to see whether the method works better when the model
+is not already looping. The comparison, all in one run of 100 stories per
+setting: the randomness dial alone at several settings (the free alternative to
+the method), and the method at rule-nudge strengths 3 and 4.5 combined with a
+random shove of size 0.1 and 0.15. The stories were then filtered to keep only
+the coherent ones, and variety was measured two ways: *variety of what happens*
+(are the events and things mentioned genuinely different across stories?) and
+*variety of wording* (are the sentences phrased and shaped differently?). Both
+are on a scale where the number is roughly how many completely-unrelated stories
+the batch is worth.
+
+### The randomness setting stopped the looping but the rule-nudge still breaks the text
+
+At the raised randomness setting the exact-repetition rate of the steered stories
+was tiny (1-5%, against 29% for the untouched model), which looked like the
+rule-nudge no longer degrades the text. It does. Reading the stories, the
+rule-nudge collapses them into disconnected two-word fragments instead -- "Tom
+Yaks. Cat Dances. Tom Yaks. Cat Dancer." -- with broken and non-English words. The
+fragments vary slightly, so the old repeated-phrase check missed them (it reports
+2% broken) while the new checks catch them (about 63% broken). Without the new
+degeneration checks this run would have looked like a clean win and been wrong.
+
+### The decisive comparison, over coherent stories only
+
+| setting | coherent stories kept /100 | rules broken /15 | variety of what happens | variety of wording |
+|---|---|---|---|---|
+| method: rule-nudge 3 + random shove 0.15, randomness 1.6 | 50 | 4.48 | 27.2 ±0.5 | 11.1 ±0.3 |
+| free: randomness 1.8, nucleus cutoff 0.95 | 78 | 7.38 | 26.4 ±0.8 | 7.6 ±0.7 |
+| free: randomness 1.8, top-40 cutoff | 79 | 7.72 | 29.3 ±0.6 | 7.6 ±0.6 |
+| the untouched model | 72 | 7.93 | 20.0 | 6.0 |
+
+(The two "free" rows are two ways of trimming the least-likely words while
+sampling; both are the plain randomness-dial alternative to the method.)
+
+Reading this honestly:
+
+- **Rule-following: the method wins clearly.** Among coherent stories it breaks
+  4.48 of the 15 rules against about 7.4-7.9 for every randomness-dial setting --
+  roughly three fewer rules broken.
+- **Variety of wording: the method wins clearly.** 11.1 against 7.6.
+- **Variety of what happens: the method is competitive but not ahead of the best
+  free option.** It beats one randomness-dial setting (27.2 against 26.4) and
+  loses to the best (29.3 for the top-40 cutoff at randomness 1.8). So on genuine
+  story-to-story difference the method is in the same range as tuned randomness,
+  not better than it.
+- **The method wastes more stories.** It keeps 50 coherent stories of 100 against
+  about 78 for the randomness dial, so in practice you would generate more to get
+  the same number of usable ones.
+
+Compared with the same method at the normal randomness setting of 1.0 (from the
+previous run), raising the dial to 1.6 helped: at 1.0 the method clearly lost on
+variety of what happens, and at 1.6 it draws level with tuned randomness. But the
+strongest rule-nudge (strength 4.5) is dead even at the raised setting -- 0 to 2
+coherent stories of 100 -- so it is too strong at any randomness.
+
+### Still pending
+
+The randomness dial at 1.8 with the method (a separate run on the second account)
+is the more promising setting still: more randomness should mean less
+fragmentation from the rule-nudge, and possibly more coherent stories kept.
+Results when it lands.
