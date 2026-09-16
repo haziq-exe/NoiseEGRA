@@ -70,6 +70,18 @@ from noiseegra.entropy_gate import (  # noqa: E402
 
 EN_PAIRS = Path(__file__).resolve().parents[1] / "noiseegra" / "data" / "steering_pairs_en.json"
 
+# Any suite that can draw a per-story offset from an estimated basis must be
+# listed here, or the basis is never built and the offset silently falls back to
+# an isotropic draw while the run id still says `obstory`. That fault ran
+# unnoticed through r16-spread and r17-headline: `spread` and `frontier` were
+# missing, so every "story-difference basis" arm in those runs was isotropic
+# noise. `tests/test_suites_build.py` asserts every suite whose run ids name an
+# estimated basis is in this set, and the runner crashes at generation time if a
+# basis-naming run id survives with no basis built.
+BASIS_SUITES = {"offset", "story", "prompt", "main", "pareto", "select", "feedback",
+                "assemble", "headtohead", "closure", "control", "ablate",
+                "controls", "amplify", "spread", "frontier", "constdose"}
+
 
 def weights_are_cached(model_id: str) -> bool:
     """True if the full snapshot is already on local disk."""
@@ -704,7 +716,7 @@ def main() -> None:
     args.offset_basis = None
     args.amplify_basis = None
     args.amplify_mean = None
-    if {"offset", "story", "prompt", "main", "pareto", "feedback", "assemble", "headtohead", "closure", "control", "ablate", "controls", "amplify"} & set(suites_req):
+    if BASIS_SUITES & set(suites_req):
         kind = args.offset_basis_kind
         pc_path = out / f"actpcs_{kind}_{args.model}.pt"
         legacy = out / f"actpcs_{args.model}.pt"
@@ -857,6 +869,18 @@ def main() -> None:
         specs.append(spec)
         run_ids.append(rid)
         state["runs"].setdefault(rid, {})
+
+    # A run id that names an estimated basis (obstory/obprompt) while no basis was
+    # built is the silent fault that made r16 and r17 isotropic: the offset falls
+    # back to a random draw and the id lies about it. Crash instead. `obiso` and
+    # the bare `step` basis are legitimately basis-free and do not trip this.
+    if args.offset_basis is None:
+        lying = [r for r in run_ids if "__obstory" in r or "__obprompt" in r]
+        if lying:
+            raise SystemExit(
+                f"{len(lying)} condition(s) ask for an estimated offset basis but none "
+                f"was built, so the offset would silently be isotropic. First: "
+                f"{lying[0]}. Add the suite to BASIS_SUITES.")
 
     P, K = len(prompts), stories_per_prompt
     total = len(specs) * P * K

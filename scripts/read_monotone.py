@@ -174,8 +174,8 @@ def main():
     # to beat the reference on both. Steering buys compliance and spends
     # diversity; perturbation does the reverse. "wins" marks an arm that is
     # better than the reference on compliance and on diversity together.
-    print(f"\n{len(rows)} conditions, 13 monotone requirements\n")
-    print(f"{'condition':<62}{'n':>5}{'broken/13':>11}{'vs ref':>8}"
+    print(f"\n{len(rows)} conditions, {len(MONOTONE_CONSTRAINTS)} one-sided requirements\n")
+    print(f"{'condition':<62}{'n':>5}{'broken':>11}{'vs ref':>8}"
           f"{'Vendi':>8}{'vs ref':>8}{'loops':>7}{'words':>7}  ")
     print("-" * 118)
     for name, n, r, v in rows:

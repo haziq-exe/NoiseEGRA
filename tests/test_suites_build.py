@@ -80,6 +80,15 @@ def _suite_choices():
 
 SUITES = [s for s in _suite_choices() if s != "all"]
 
+# A suite that draws an offset from an estimated basis must be listed in
+# run_english_experiment.BASIS_SUITES, or the runner never builds the basis and
+# the offset silently falls back to an isotropic draw while the run id still
+# reads `obstory`. This is exactly what happened to r16-spread and r17-headline.
+# Here every suite is built with NO basis (offset_basis=None, as the runner
+# leaves it when the suite is not in the guard set) and any suite whose run ids
+# then name a story/prompt basis is required to be in the guard set.
+import run_english_experiment as _R  # noqa: E402
+
 for suite in SUITES:
     try:
         built, desc = build_suite(suite, VECS, LAYERS, list(NAMES), 1.5, ARGS)
@@ -94,6 +103,24 @@ for suite in SUITES:
           ok, "" if ok else f"{len(set(ids))} unique of {len(ids)}")
     if not desc:
         check(f"{suite} describes itself", False)
+
+# The guard-set coverage check. Build each suite with no basis at all and see
+# whether it still emits a basis-naming run id.
+NO_BASIS = types.SimpleNamespace(**{**vars(ARGS), "offset_basis": None})
+for suite in SUITES:
+    try:
+        built, _ = build_suite(suite, VECS, LAYERS, list(NAMES), 1.5, NO_BASIS)
+    except Exception:
+        continue
+    specs = make_specs(*[({"mode": it} if isinstance(it, str) else dict(it))
+                         for it in built])
+    ids = [_spec_to_run_id("Tiny", sp) for sp in specs]
+    names_basis = any("__obstory" in r or "__obprompt" in r for r in ids)
+    if names_basis:
+        check(f"{suite:<11} names an estimated basis -> is in BASIS_SUITES",
+              suite in _R.BASIS_SUITES,
+              "" if suite in _R.BASIS_SUITES else
+              f"{suite!r} emits obstory/obprompt but is not guarded")
 
 print()
 if FAILURES:
