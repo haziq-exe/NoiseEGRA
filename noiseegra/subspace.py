@@ -53,6 +53,8 @@ OFFSET_NORMS = ("energy", "raw")
 # How f(S_c) perturbs the constraint vector itself. See SteeringPlan.jitter_*.
 JITTER_MODES = ("none", "perp", "rotate", "gain", "frame")
 JITTER_DRAWS = ("iso", "basis")
+# How the constraint push is decided. See SteeringPlan.steer_mode.
+STEER_MODES = ("constant", "feedback")
 NORM_MATCH_MODES = ("energy", "none")
 SCHEDULES = ("constant", "cosine_decay", "ramp", "linear_decay", "prefix")
 
@@ -295,6 +297,7 @@ class LayerPlan:
     jitter_basis: Optional[torch.Tensor] = None   # (dim, M) directions f(S_c) may use
     jitter: Optional[torch.Tensor] = None         # (dim,) this generation's unit draw
     raw_basis: Optional[torch.Tensor] = None      # (dim, C) before orthogonalisation
+    target: Optional[torch.Tensor] = None         # (C,) where compliant text sits
 
     def steering_delta(
         self,
@@ -431,6 +434,32 @@ class SteeringPlan:
     # Off, with ``steer_prefill`` on, gives the prompt-only variant: the model is
     # pushed once while it reads the instruction and then writes unperturbed.
     steer_decode: bool = True
+    # How the constraint push is decided.
+    #
+    # ``constant`` adds the same vector to every story at every step, which is what
+    # CAA and every run here has done. It is open loop: it pushes whether or not
+    # this particular story needs pushing, and that is exactly why it buys
+    # compliance by spending diversity -- forty stories all shoved the same way end
+    # up more alike. Measured: 4.42 -> 3.88 requirements broken, 3.61 -> 3.12 Vendi.
+    #
+    # ``feedback`` measures where the story already sits on each constraint axis
+    # and pushes only the shortfall:
+    #
+    #     a_c    = h . s_c                     how much of constraint c is present
+    #     delta += beta_c * relu(tau_c - a_c) * s_c
+    #
+    # where tau_c is where text that satisfies the constraint sits, taken from the
+    # positive side of that constraint's own contrast pairs. A story already past
+    # tau_c is left alone entirely. So the correction is different for every story
+    # rather than shared by all of them, which is the property the constant version
+    # lacks, and the stories that are already fine are not homogenised toward a
+    # single compliant point.
+    steer_mode: str = "constant"
+    # Ceiling on one feedback correction, as a fraction of the hidden state's own
+    # length. Without it a story far from tau on several axes at once receives a
+    # correction large enough to break the text, which is the failure mode every
+    # over-strong constant arm has shown.
+    feedback_cap: float = 0.1
     # This generation's per-constraint gains, for ``jitter_mode="gain"``.
     gains: Optional[List[float]] = None
     # Total length of the constraint push, in units of the model's own activation
@@ -493,6 +522,9 @@ class SteeringPlan:
         jitter_draw: str = "iso",
         steer_decode: bool = True,
         steer_budget: Optional[float] = None,
+        steer_mode: str = "constant",
+        feedback_cap: float = 0.1,
+        targets: Optional[Mapping[str, Mapping[int, torch.Tensor]]] = None,
         direction_source: str = "extracted",
         gate_threshold: float = 0.0,
         gate_level: str = "none",
@@ -516,6 +548,14 @@ class SteeringPlan:
             raise ValueError(f"jitter_mode must be one of {JITTER_MODES}, got '{jitter_mode}'.")
         if jitter_draw not in JITTER_DRAWS:
             raise ValueError(f"jitter_draw must be one of {JITTER_DRAWS}, got '{jitter_draw}'.")
+        if steer_mode not in STEER_MODES:
+            raise ValueError(f"steer_mode must be one of {STEER_MODES}, got '{steer_mode}'.")
+        if steer_mode == "feedback" and not targets:
+            raise ValueError(
+                "steer_mode='feedback' needs `targets`: where text that satisfies "
+                "each constraint sits on its own axis. Re-extract the steering "
+                "vectors so the positive-side activations are stored."
+            )
         layers = sorted({int(i) for i in layers})
 
         missing = [s.name for s in specs if s.name not in vectors]
@@ -607,10 +647,27 @@ class SteeringPlan:
                                      device=ab.device if ab is not None else None)
                 report["amplify_rank"] = 0 if ab is None else ab.shape[1]
 
+            tgt = None
+            if targets:
+                missing = [sp.name for sp in specs
+                           if layer not in targets.get(sp.name, {})]
+                if missing:
+                    raise KeyError(f"no target activation for {missing} at layer {layer}")
+                # Where compliant text sits, expressed in the same orthogonalised
+                # frame the push is applied in, so the projection read at
+                # generation time and the target are the same quantity.
+                tgt = torch.stack([
+                    targets[sp.name][layer].detach().to(torch.float32).flatten()
+                    for sp in specs
+                ], dim=1)
+                if device is not None:
+                    tgt = tgt.to(basis.device)
+                tgt = (basis * tgt.to(basis.device)).sum(dim=0)
+
             layer_plans[layer] = LayerPlan(
                 layer=layer, basis=basis, protect=protect, report=report,
                 offset_basis=ob, amp_basis=ab, amp_mean=am, jitter_basis=jb,
-                raw_basis=unit_columns(raw).clone(),
+                raw_basis=unit_columns(raw).clone(), target=tgt,
             )
 
         return cls(
@@ -638,6 +695,8 @@ class SteeringPlan:
             jitter_draw=jitter_draw,
             steer_decode=bool(steer_decode),
             steer_budget=None if steer_budget is None else float(steer_budget),
+            steer_mode=steer_mode,
+            feedback_cap=float(feedback_cap),
             direction_source=direction_source,
             gate_threshold=float(gate_threshold),
             gate_level=gate_level,
@@ -670,6 +729,8 @@ class SteeringPlan:
                 lp.raw_basis = lp.raw_basis.to(device=device, dtype=dtype)
             if lp.jitter is not None:
                 lp.jitter = lp.jitter.to(device=device, dtype=dtype)
+            if lp.target is not None:
+                lp.target = lp.target.to(device=device, dtype=dtype)
         return self
 
     def resample_jitter(self) -> None:
@@ -862,7 +923,7 @@ class SteeringPlan:
 
         h = self.horizon if horizon is None else horizon
         delta = None
-        if self.steer_decode:
+        if self.steer_decode and self.steer_mode != "feedback":
             delta = self.jitter_steering(
                 layer, lp.steering_delta(t, h, self.specs, self.rms_scale,
                                          gains=self.gains, budget=self.steer_budget)
@@ -888,6 +949,56 @@ class SteeringPlan:
                 if noise is not None:
                     delta = noise if delta is None else delta + noise
 
+        return delta
+
+    def feedback_delta(
+        self,
+        layer: int,
+        state: torch.Tensor,
+        t: int = 0,
+        *,
+        horizon: Optional[int] = None,
+        device: Optional[torch.device] = None,
+    ) -> Optional[torch.Tensor]:
+        """Close each constraint's shortfall for *this* story, not for all of them.
+
+        ``state`` is one position of a block output, shape (dim,). The story's
+        current position on constraint ``c`` is ``h . s_c``; anything short of
+        ``tau_c`` is pushed up by ``beta_c`` times the gap, and anything already
+        past it is left alone. Returns None when there is nothing to correct, so a
+        story that is compliant on every axis is generated exactly as the model
+        would have generated it.
+        """
+        if self.steer_mode != "feedback":
+            return None
+        lp = self.layer_plans[layer]
+        if lp.target is None:
+            return None
+        if device is not None and lp.basis.device != device:
+            lp.basis = lp.basis.to(device)
+            lp.target = lp.target.to(device)
+
+        h = self.horizon if horizon is None else horizon
+        present = state.to(lp.basis.dtype) @ lp.basis          # (C,)
+        gap = (lp.target - present).clamp_min(0.0)
+        # A shortfall this small is floating-point residue from projecting in and
+        # out of the basis, not a constraint the story is actually failing.
+        gap = torch.where(gap > 1e-4 * self.rms_scale, gap, torch.zeros_like(gap))
+        coeffs = torch.tensor(
+            [
+                spec.beta * schedule_factor(spec.schedule, t, h)
+                * (1.0 if self.gains is None else float(self.gains[i]))
+                for i, spec in enumerate(self.specs)
+            ],
+            dtype=lp.basis.dtype, device=lp.basis.device,
+        ) * gap
+        if bool((coeffs == 0).all()):
+            return None
+        delta = lp.basis @ coeffs
+        cap = self.feedback_cap * self.rms_scale * math.sqrt(self.dim)
+        n = float(delta.norm())
+        if cap > 0 and n > cap:
+            delta = delta * (cap / n)
         return delta
 
     def amplify_delta(
@@ -964,6 +1075,8 @@ class SteeringPlan:
             "jitter_draw": self.jitter_draw,
             "steer_decode": self.steer_decode,
             "steer_budget": self.steer_budget,
+            "steer_mode": self.steer_mode,
+            "feedback_cap": self.feedback_cap,
             "direction_source": self.direction_source,
             "offset_rank": self.layer_plans[self.layers[0]].report.get("offset_rank"),
             "horizon": self.horizon,

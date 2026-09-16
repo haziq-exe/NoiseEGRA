@@ -122,7 +122,7 @@ def main() -> None:
     ap.add_argument("--dtype", default="auto", choices=["auto", "float16", "bfloat16"])
     ap.add_argument("--suite", nargs="+", default=["compare"],
                     choices=["baseline", "sampling", "compare", "method", "noise",
-                             "offset", "story", "prompt", "main", "pareto", "directions", "select", "budget",
+                             "offset", "story", "prompt", "main", "pareto", "directions", "select", "budget", "feedback",
                              "ablate", "amplify",
                              "window", "decay", "core", "ortho", "alpha", "gate",
                              "beta", "loo", "all"])
@@ -237,6 +237,16 @@ def main() -> None:
                          "switches it off in the template, 'default' leaves the "
                          "template alone. A reasoning block that appears anyway is "
                          "stripped before scoring either way")
+    ap.add_argument("--feedback-betas", nargs="*", type=float, default=[0.5, 1.0],
+                    help="gain on the shortfall for --suite feedback. 1.0 closes "
+                         "the whole gap between where the story sits on a "
+                         "constraint axis and where compliant text sits, in one "
+                         "step at every steered layer")
+    ap.add_argument("--feedback-cap", type=float, default=0.1,
+                    help="ceiling on one feedback correction, as a fraction of the "
+                         "hidden state's own length. A story far from compliant on "
+                         "several axes at once would otherwise receive a correction "
+                         "large enough to break the text")
     ap.add_argument("--steer-budget", type=float, default=None,
                     help="total length of the constraint push, in units of the "
                          "model's own activation scale, held fixed however many "
@@ -558,13 +568,23 @@ def main() -> None:
                   "(max representable 65504). If the stories come out empty or garbled, "
                   "rerun with --dtype bfloat16.")
 
+    # Where text that satisfies each constraint sits on its own axis, taken from
+    # the positive side of that constraint's contrast pairs. Only feedback steering
+    # needs it; older vector files predate it and say so rather than failing later.
+    args.targets = getattr(vectors, "positives", None) if vectors is not None else None
+    if "feedback" in suites_req and not args.targets:
+        raise SystemExit(
+            "--suite feedback needs the positive-side activations, which this "
+            "steering-vector file predates. Delete it and let the run re-extract."
+        )
+
     # ---- directions a per-story offset is allowed to use -------------------- #
     # Cached under the basis kind, because the two are different sets of
     # directions and a run that mixed them would be unreadable.
     args.offset_basis = None
     args.amplify_basis = None
     args.amplify_mean = None
-    if {"offset", "story", "prompt", "main", "pareto", "ablate", "amplify"} & set(suites_req):
+    if {"offset", "story", "prompt", "main", "pareto", "feedback", "ablate", "amplify"} & set(suites_req):
         kind = args.offset_basis_kind
         pc_path = out / f"actpcs_{kind}_{args.model}.pt"
         legacy = out / f"actpcs_{args.model}.pt"

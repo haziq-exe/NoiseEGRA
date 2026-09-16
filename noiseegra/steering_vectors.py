@@ -57,6 +57,12 @@ class SteeringVectorSet:
 
     vectors: Dict[str, Dict[int, torch.Tensor]]
     components: Dict[str, Dict[int, torch.Tensor]] = field(default_factory=dict)
+    # Mean activation of the *positive* side of each constraint's contrast pairs:
+    # what text that satisfies the constraint looks like at this layer, rather
+    # than which way to move to get there. Constant steering only needs the
+    # difference; steering that corrects a story toward compliance needs to know
+    # where compliance sits.
+    positives: Dict[str, Dict[int, torch.Tensor]] = field(default_factory=dict)
     diagnostics: Dict[str, Dict[int, Dict[str, float]]] = field(default_factory=dict)
     meta: Dict[str, object] = field(default_factory=dict)
 
@@ -83,6 +89,10 @@ class SteeringVectorSet:
                     c: {int(l): v.cpu() for l, v in per.items()}
                     for c, per in self.components.items()
                 },
+                "positives": {
+                    c: {int(l): v.cpu() for l, v in per.items()}
+                    for c, per in self.positives.items()
+                },
                 "diagnostics": self.diagnostics,
                 "meta": self.meta,
             },
@@ -98,6 +108,10 @@ class SteeringVectorSet:
             components={
                 c: {int(l): v for l, v in per.items()}
                 for c, per in blob.get("components", {}).items()
+            },
+            positives={
+                c: {int(l): v for l, v in per.items()}
+                for c, per in blob.get("positives", {}).items()
             },
             diagnostics=blob.get("diagnostics", {}),
             meta=blob.get("meta", {}),
@@ -286,6 +300,7 @@ class SteeringVectorExtractor:
 
         vectors: Dict[str, Dict[int, torch.Tensor]] = {}
         components: Dict[str, Dict[int, torch.Tensor]] = {}
+        positives: Dict[str, Dict[int, torch.Tensor]] = {}
         diagnostics: Dict[str, Dict[int, Dict[str, float]]] = {}
 
         for name in names:
@@ -299,6 +314,7 @@ class SteeringVectorExtractor:
                 print(f"[steering] extracting '{name}' from {len(pairs)} pairs ...")
 
             per_item: Dict[int, List[torch.Tensor]] = {}
+            pos_items: Dict[int, List[torch.Tensor]] = {}
             act_sq: Dict[int, List[float]] = {}
             tok_deltas: List[int] = []
             word_deltas: List[int] = []
@@ -330,12 +346,14 @@ class SteeringVectorExtractor:
                 for layer, pos_vec in side["positive"].items():
                     neg_vec = side["negative"][layer]
                     per_item.setdefault(layer, []).append(pos_vec - neg_vec)
+                    pos_items.setdefault(layer, []).append(pos_vec)
                     act_sq.setdefault(layer, []).extend(
                         [float(pos_vec.pow(2).mean().item()), float(neg_vec.pow(2).mean().item())]
                     )
 
             vectors[name] = {}
             components[name] = {}
+            positives[name] = {}
             diagnostics[name] = {}
 
             for layer, diffs in per_item.items():
@@ -351,6 +369,7 @@ class SteeringVectorExtractor:
                 )
 
                 vectors[name][layer] = mean_vec
+                positives[name][layer] = torch.stack(pos_items[layer], dim=0).mean(dim=0)
                 diagnostics[name][layer] = {
                     "norm": float(mean_vec.norm().item()),
                     "norm_over_rms": float(mean_vec.norm().item() / max(rms, 1e-12)),
@@ -374,6 +393,7 @@ class SteeringVectorExtractor:
         out = SteeringVectorSet(
             vectors=vectors,
             components=components,
+            positives=positives,
             diagnostics=diagnostics,
             meta={
                 "model": getattr(self.egra.model, "name_or_path", None)

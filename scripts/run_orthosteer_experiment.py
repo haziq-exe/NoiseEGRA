@@ -96,6 +96,9 @@ def make_plan(
     jitter_draw="iso",
     steer_decode=True,
     steer_budget=None,
+    steer_mode="constant",
+    feedback_cap=0.1,
+    targets=None,
     direction_source="extracted",
     gate_threshold=0.0,
     gate_level="none",
@@ -137,6 +140,9 @@ def make_plan(
         jitter_draw=jitter_draw,
         steer_decode=steer_decode,
         steer_budget=steer_budget,
+        steer_mode=steer_mode,
+        feedback_cap=feedback_cap,
+        targets=targets,
         direction_source=direction_source,
         gate_threshold=gate_threshold,
         gate_level=gate_level,
@@ -234,6 +240,55 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         return arms, (f"steering + per-story offsets at gamma {list(args.gamma_sweep)} "
                       f"drawn from the {kind}-level activation directions, each "
                       "applied from the first generated token and from the prompt")
+
+    if name == "feedback":
+        # Steering that corrects this story rather than biasing every story.
+        #
+        # Constant steering adds one vector to all of them. That is why it buys
+        # compliance by spending diversity: measured at 4.42 -> 3.88 requirements
+        # broken and 3.61 -> 3.12 Vendi, forty stories shoved the same way end up
+        # more alike. The correction here is a function of where the story already
+        # sits on each constraint axis, so a story that already satisfies a
+        # constraint receives nothing on that axis and two stories failing
+        # different constraints are corrected in different directions -- verified
+        # orthogonal, against cosine 1.0 for the constant version.
+        #
+        # The last arms put the per-story perturbation on top, because the point of
+        # a steering component that does not homogenise is that the diversity
+        # component no longer has to fight it.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        tg = getattr(args, "targets", None)
+        gains = list(getattr(args, "feedback_betas", [0.5, 1.0]))
+        cap = float(getattr(args, "feedback_cap", 0.1))
+        gammas = list(getattr(args, "gamma_sweep", [0.1, 0.15]))
+        kind = getattr(args, "offset_basis_kind", "story")
+        best = float(getattr(args, "combo_beta", 3.0))
+        keep = dict(getattr(args, "keep_directions", {}))
+
+        items = ["baseline"]
+        # the constant reference, at the coefficient that worked
+        if keep:
+            items.append({"plan": make_plan(
+                beta={n: keep.get(n, 0.0) * best for n in names},
+                steer_prefill=False, **quiet, **base)})
+        for g in gains:
+            items.append({"plan": make_plan(
+                beta={n: g for n in names}, steer_mode="feedback", targets=tg,
+                feedback_cap=cap, steer_prefill=False, **quiet, **base)})
+        pick = gains[-1]
+        for gamma in gammas:
+            items.append({"plan": make_plan(
+                beta={n: pick for n in names}, steer_mode="feedback", targets=tg,
+                feedback_cap=cap, offset_gamma=gamma, offset_mode="orth",
+                offset_basis=offset_basis, offset_basis_kind=kind,
+                offset_prefill=True, offset_decode=False,
+                steer_prefill=False, **quiet, **base)})
+        return items, (
+            f"steering that corrects each story's own shortfall on every "
+            f"constraint, at gain {gains} and capped at {cap:g} of the hidden "
+            f"state, against the constant push, and with the per-story "
+            f"perturbation on top at gamma {gammas}")
 
     if name == "budget":
         # Why steering more than one constraint stops working, and whether holding

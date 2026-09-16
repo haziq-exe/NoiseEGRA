@@ -794,6 +794,14 @@ class EGRA:
                                     delta = off if delta is None else delta + off
                             if delta is not None:
                                 target.add_(delta.to(target.dtype).view(1, 1, -1))
+                            if plan.steer_prefill and getattr(plan, "steer_mode", "constant") == "feedback":
+                                for pos in range(target.shape[1]):
+                                    fb = plan.feedback_delta(
+                                        layer_idx, target[0, pos, :].float(), 0,
+                                        device=target.device,
+                                    )
+                                    if fb is not None:
+                                        target[0, pos, :].add_(fb.to(target.dtype))
                             if amp_here:
                                 # Per position: each prompt position has its own
                                 # deviation from the average, so this is not one
@@ -818,6 +826,15 @@ class EGRA:
                             layer_idx, shared["cur_t"], with_noise=gate_open,
                             with_offset=gate_open, device=target.device,
                         )
+                        # Feedback steering reads this story's own position on each
+                        # constraint axis, so it cannot be precomputed the way a
+                        # constant push can.
+                        fb = plan.feedback_delta(
+                            layer_idx, target[0, -1, :].float(), shared["cur_t"],
+                            device=target.device,
+                        )
+                        if fb is not None:
+                            delta = fb if delta is None else delta + fb
                         if delta is not None:
                             target[:, -1:, :].add_(delta.to(target.dtype).view(1, 1, -1))
                         if gate_open:
