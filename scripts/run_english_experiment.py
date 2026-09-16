@@ -405,10 +405,15 @@ def main() -> None:
     for item in args.keep:
         name, _, sign = item.partition("=")
         args.keep_directions[name] = float(sign or 1.0)
+    # --keep only matters to the suites that read it. Its default names two
+    # directions, so a run that steers a different set was refused outright for a
+    # flag it never uses.
     unknown = [n for n in args.keep_directions if n not in args.steer_vectors]
-    if unknown:
+    if unknown and "select" in args.suite:
         raise SystemExit(f"--keep names {unknown} are not in --steer-vectors "
                          f"{list(args.steer_vectors)}")
+    for n in unknown:
+        args.keep_directions.pop(n)
 
     word_budget = (args.word_budget if args.word_budget is not None
                    else int(1.5 * args.max_words))
