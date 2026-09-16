@@ -7,7 +7,7 @@ Prints one row per condition sorted by requirements broken, so the reference
 curve and the method arms can be read against each other directly. `--full`
 adds the per-requirement pass rates.
 """
-import argparse, glob, json, os, re, sys
+import argparse, glob, json, math, os, re, sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from noiseegra.constraint_metrics_en import (  # noqa: E402
@@ -63,33 +63,71 @@ def load(root):
 
 
 def label(rid):
-    """A readable name, from the run id alone."""
+    """A plain description of what a condition did, from the run id alone.
+
+    Written out rather than abbreviated. A table row has to say what was done to
+    the model; naming the setting that did it only helps whoever wrote the code.
+    """
     if "BASELINE" in rid:
+        temp = re.search(r"__temp([0-9p]+)", rid)
+        topp = re.search(r"__topp([0-9p]+)", rid)
+        topk = re.search(r"__topk(\d+)", rid)
+        if not (temp or topp or topk):
+            return "the model as it ships"
         bits = []
-        for tag, fmt in (("temp", "temperature {}"), ("topp", "top-p {}"), ("topk", "top-k {}")):
-            m = re.search(rf"__{tag}([0-9p]+)", rid)
-            if m:
-                bits.append(fmt.format(m.group(1).replace("p", ".")))
-        return "sampling: " + (", ".join(bits) if bits else "plain (T=1.0)")
+        if temp:
+            bits.append(f"temperature {temp.group(1).replace('p', '.')}")
+        if topp:
+            bits.append(f"top-p {topp.group(1).replace('p', '.')}")
+        if topk:
+            bits.append(f"top-k {topk.group(1)}")
+        return ", ".join(bits)
+
+    def num(tag):
+        m = re.search(rf"__{tag}([0-9p]+)", rid)
+        return m.group(1).replace("p", ".") if m else None
+
     out = []
+    bud = num("bud")
     m = re.search(r"__b([0-9pm.-]+)__", rid)
+    coeff = None
     if m:
         first = m.group(1).split("-")[0]
-        out.append("coeff " + (("-" + first[1:]) if first.startswith("m") else first).replace("p", "."))
-    for tag, fmt in (("jperp", "sideways step {}"), ("jrotate", "turned {}"),
-                     ("jgain", "re-weighted {}"), ("jframe", "frame jitter {}")):
-        m = re.search(rf"__{tag}([0-9p]+)", rid)
-        if m:
-            out.append(fmt.format(m.group(1).replace("p", ".")))
-    m = re.search(r"__g([0-9p]+)orth", rid)
-    if m:
-        out.append(f"orthogonal offset {m.group(1).replace('p', '.')}")
-    m = re.search(r"__a([0-9p]+)", rid)
-    if m and m.group(1) not in ("0",):
-        out.append(f"noise {m.group(1).replace('p', '.')}")
+        coeff = (("-" + first[1:]) if first.startswith("m") else first).replace("p", ".")
+    if bud:
+        out.append(f"steering, total push held at {bud}")
+    elif coeff:
+        out.append(f"steering at strength {coeff}")
+    else:
+        out.append("steering")
+
+    turned = num("jrotate")
+    if turned:
+        out.append(f"push turned {math.degrees(math.atan(float(turned))):.0f} degrees "
+                   "per story, same length")
+    if num("jgain"):
+        out.append(f"requirements re-weighted per story, same total push "
+                   f"(spread {num('jgain')})")
+    if num("jperp"):
+        out.append(f"sideways step of {num('jperp')} added to the push")
+    if num("jframe"):
+        out.append(f"directions moved before being made orthogonal ({num('jframe')})")
+    if "jdbasis" in rid:
+        out.append("perturbed along the activation manifold")
+
+    g = re.search(r"__g([0-9p]+)orth", rid)
+    if g:
+        out.append(f"per-story offset {g.group(1).replace('p', '.')} orthogonal to the "
+                   "requirements, " + ("at the prompt" if "__ponly" in rid else "while writing"))
+    a = num("a")
+    if a and a != "0":
+        out.append(f"noise {a} at every step")
     if "__smerror" in rid:
-        out.append("error-driven")
-    return ", ".join(out) or rid[:40]
+        out.append("strength set by the error measured on the text so far")
+    if "cos" in rid:
+        out.append("decaying over the opening")
+    return "; ".join(out)
+
 
 
 def main():
@@ -123,7 +161,7 @@ def main():
         print("nothing scored yet")
         return
     rows.sort(key=lambda r: r[2]["mean_violations"])
-    ref = next((r for r in rows if r[0].startswith("sampling: plain")), rows[-1])
+    ref = next((r for r in rows if r[0] == "the model as it ships"), rows[-1])
     rb, rv = ref[2]["mean_violations"], ref[3]
 
     # Both columns at once, because either alone is easy to win and the goal is
@@ -131,13 +169,13 @@ def main():
     # diversity; perturbation does the reverse. "wins" marks an arm that is
     # better than the reference on compliance and on diversity together.
     print(f"\n{len(rows)} conditions, 13 monotone requirements\n")
-    print(f"{'condition':<42}{'n':>5}{'broken/13':>11}{'vs ref':>8}"
+    print(f"{'condition':<62}{'n':>5}{'broken/13':>11}{'vs ref':>8}"
           f"{'Vendi':>8}{'vs ref':>8}{'loops':>7}{'words':>7}  ")
-    print("-" * 98)
+    print("-" * 118)
     for name, n, r, v in rows:
         b = r["mean_violations"]
         win = "  wins" if (b < rb and v > rv) else ""
-        print(f"{name[:40]:<42}{n:>5}{b:>11.2f}{b - rb:>+8.2f}"
+        print(f"{name[:60]:<62}{n:>5}{b:>11.2f}{b - rb:>+8.2f}"
               f"{v:>8.2f}{v - rv:>+8.2f}"
               f"{1 - r['pass_rate']['no_repetition']:>7.0%}{r['mean_word_count']:>7.0f}{win}")
     print(f"\nreference: {ref[0]}  (broken {rb:.2f}, Vendi {rv:.2f})")
@@ -146,9 +184,9 @@ def main():
           "it beats the reference on both.")
     if a.full:
         print("\nper requirement:")
-        print(f"{'condition':<42}" + "".join(f"{CONSTRAINT_SHORT[c]:>8}" for c in MONOTONE_CONSTRAINTS))
+        print(f"{'condition':<62}" + "".join(f"{CONSTRAINT_SHORT[c]:>8}" for c in MONOTONE_CONSTRAINTS))
         for name, n, r, _d in rows:
-            print(f"{name[:40]:<42}" + "".join(f"{r['pass_rate'][c]:>7.0%} "
+            print(f"{name[:60]:<62}" + "".join(f"{r['pass_rate'][c]:>7.0%} "
                                                for c in MONOTONE_CONSTRAINTS))
 
 

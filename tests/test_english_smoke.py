@@ -558,22 +558,27 @@ snames = sorted(R.condition_label(r) for r in sstate["runs"])
 # on it: a representation-level method only beats decoding parameters if it lands
 # above the whole curve.
 check("sampling sweeps the decoding grid and keeps the plain baseline",
-      snames == ["baseline (temperature 1.3, top-k 0, top-p 0.95)",
-                 "baseline (temperature 1.3, top-k 0, top-p 1)",
-                 "baseline (temperature 1.6, top-k 0, top-p 0.95)",
+      snames == ["baseline",
+                 "baseline (temperature 1.3, top-p 0.9)",
+                 "baseline (temperature 1.3, top-p 0.95)",
+                 "baseline (temperature 1.6, top-p 0.9)",
+                 "baseline (temperature 1.6, top-p 0.95)",
                  "baseline (temperature 1.8, top-k 40)",
-                 "baseline (top-k 0, top-p 0.9)",
-                 "baseline (top-k 0, top-p 0.95)",
-                 "baseline (top-k 0, top-p 1)"], str(snames))
+                 "baseline (temperature 1.8, top-p 0.95)"], str(snames))
 # Not a formality. Qwen3 ships top_p and top_k in its generation config, so an
 # arm that leaves them unset silently inherits the checkpoint's truncation: the
 # "plain" baseline was really top-p 0.95, and the top-p 0.95 arm was the same run
 # under a different name -- both came back with identical statistics to every
 # digit across 100 stories.
-check("the untruncated arm says so rather than inheriting the checkpoint's defaults",
-      any("topp1__topk0" in r for r in sstate["runs"]), str(sorted(sstate["runs"])))
+# A cut-off is only varied where the temperature is also raised. At temperature
+# 1.0 it does nothing visible, because Qwen3 already ships top_p in its
+# generation config: an earlier grid's top-p 0.95 arm at temperature 1.0 came
+# back identical to the baseline in every digit across a hundred stories.
+check("no cut-off arm sits at the baseline temperature",
+      not any(("topp" in r and "temp" not in r) for r in sstate["runs"]),
+      str(sorted(sstate["runs"])))
 check("the sampling settings are in the run id",
-      any("temp1p3__topp0p95__topk0" in r for r in sstate["runs"])
+      any("temp1p3__topp0p95" in r for r in sstate["runs"])
       and any("temp1p8__topk40" in r for r in sstate["runs"]), str(sorted(sstate["runs"])))
 check("sampling needs no steering vectors either",
       not (SOUT / "Qwen3-8B" / "steering_Qwen3-8B.pt").exists())

@@ -182,21 +182,31 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         # diversity for compliance along a curve, and a method only beats it if
         # it lands above the whole curve rather than above one point on it. The
         # grid is swept so the curve is drawn.
-        # Every arm states its cut-off explicitly, including the plain one.
-        # Qwen3 ships top_p and top_k in its generation config, so an arm that
-        # merely leaves them unset inherits the checkpoint's own truncation: the
-        # "plain" baseline was really top-p 0.95, and the top-p 0.95 arm was a
-        # duplicate of it that came back with identical statistics to every digit.
-        # top_p 1.0 and top_k 0 are how transformers is told not to truncate.
-        grid = getattr(args, "sampling_grid", None) or ["1.0:1.0", "1.0:0.95",
-                                                        "1.0:0.9", "1.3:1.0",
-                                                        "1.3:0.95", "1.6:0.95"]
+        # The baseline is the model as it ships: temperature 1.0 and whatever
+        # cut-offs the checkpoint's own generation config sets. That is what
+        # someone running the model would get, and it is the reference.
+        #
+        # The comparison arms are the cheap way to buy diversity: turn the
+        # temperature up and truncate the tail to keep it from falling apart.
+        # Sweeping both is the point -- temperature trades diversity against
+        # compliance along a curve, and a representation-level method only beats
+        # it by landing above the whole curve rather than above one point.
+        #
+        # Worth recording: because Qwen3 ships top_p and top_k in its generation
+        # config, the baseline is not untruncated sampling. An earlier grid put a
+        # top-p 0.95 arm at temperature 1.0 and it came back identical to the
+        # baseline in every digit across a hundred stories, which is how the
+        # inherited setting was found. Cut-offs are therefore only varied where
+        # the temperature is also raised, where they do something.
+        grid = getattr(args, "sampling_grid", None) or ["1.0", "1.3:0.95", "1.6:0.95",
+                                                        "1.8:0.95", "1.3:0.9", "1.6:0.9"]
         arms, seen = [], set()
         for cell in grid:
             temp, _, p = cell.partition(":")
-            spec = {"mode": "baseline", "temperature": float(temp),
-                    "top_p": float(p) if p else 1.0, "top_k": 0}
-            key = (spec["temperature"], spec["top_p"])
+            spec = {"mode": "baseline", "temperature": float(temp)}
+            if p:
+                spec["top_p"] = float(p)
+            key = (spec["temperature"], spec.get("top_p"))
             if key in seen:
                 continue
             seen.add(key)
@@ -204,9 +214,11 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         if getattr(args, "baseline_top_k", None):
             arms.append({"mode": "baseline", "temperature": args.baseline_temperature,
                          "top_k": args.baseline_top_k})
-        return arms, ("the decoding-parameter curve: " +
-                      ", ".join(sorted(f"T{a['temperature']:g}/p{a.get('top_p', 1.0):g}"
-                                       for a in arms)))
+        return arms, ("the model as it ships, then the decoding curve: " +
+                      ", ".join(sorted(
+                          f"T{a['temperature']:g}" +
+                          (f" with top-p {a['top_p']:g}" if "top_p" in a else " (defaults)")
+                          for a in arms)))
 
     if vectors is None:
         raise ValueError(f"suite {name!r} needs steering vectors")
