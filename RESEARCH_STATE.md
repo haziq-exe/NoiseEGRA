@@ -342,6 +342,18 @@ default. An earlier attempt was stopped twice: once because the diversity was no
 length-matched, once because it was running on the thirteen-requirement set that
 rewards collapse.
 
+`r17-controls` (on the second account, haziqaus) — nine conditions x 100 stories
+answering which parts of the per-story perturbation earn their place, same model,
+prompt, fifteen requirements and 40-word truncation as `r17-headline`, with its
+own baseline and method arms inside the run so every comparison is internal.
+Three surgeries at gamma 0.15, each with and without the push at 3: the
+constraint-span projection removed (`offset_mode free`); the story-difference
+basis replaced by an isotropic draw of the same length (the control for whether
+the sampled basis, and not the mere fact of a per-story shift, carries the
+diversity); and, with the push only, the offset kept on while the model writes
+(retrying the injection-site result now that the budget and the one-sided set
+changed what steering does).
+
 ## Open questions
 
 - Does the method beat the temperature curve, or only the default? (`r17`)
