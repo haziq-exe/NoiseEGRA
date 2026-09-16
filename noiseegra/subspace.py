@@ -54,7 +54,7 @@ OFFSET_NORMS = ("energy", "raw")
 JITTER_MODES = ("none", "perp", "rotate", "gain", "frame")
 JITTER_DRAWS = ("iso", "basis")
 # How the constraint push is decided. See SteeringPlan.steer_mode.
-STEER_MODES = ("constant", "feedback")
+STEER_MODES = ("constant", "feedback", "error")
 NORM_MATCH_MODES = ("energy", "none")
 SCHEDULES = ("constant", "cosine_decay", "ramp", "linear_decay", "prefix", "tail")
 
@@ -470,6 +470,22 @@ class SteeringPlan:
     # rather than shared by all of them, which is the property the constant version
     # lacks, and the stories that are already fine are not homogenised toward a
     # single compliant point.
+    # ``error`` sets each direction's coefficient from the constraint error of
+    # the text written so far, measured by the same checks that score the finished
+    # story. A requirement currently satisfied gets a coefficient of zero and the
+    # model writes unsteered; one outside its band gets a push proportional to how
+    # far outside, in the direction that brings it back. This is the half that
+    # neither of the other two can express: a count has no "more is better"
+    # direction, so a constant coefficient sails past the target and activation
+    # feedback saturates at "quote-like enough" rather than at "two quotes".
+    # ``error`` sets each direction's coefficient from the constraint error of the
+    # text written so far, measured by the same checks that score the finished
+    # story. A requirement currently satisfied gets a coefficient of zero and the
+    # model writes unsteered; one outside its band gets a push proportional to how
+    # far outside, in the direction that brings it back. This is the half neither
+    # of the other two can express: a count has no "more is better" direction, so
+    # a constant coefficient sails past the target, and activation feedback
+    # saturates at "quote-like enough" rather than at "two quotes".
     steer_mode: str = "constant"
     # Ceiling on one feedback correction, as a fraction of the hidden state's own
     # length. Without it a story far from tau on several axes at once receives a
@@ -478,6 +494,11 @@ class SteeringPlan:
     feedback_cap: float = 0.1
     # This generation's per-constraint gains, for ``jitter_mode="gain"``.
     gains: Optional[List[float]] = None
+    # Live constraint errors, written each decode step by ConstraintProbe and read
+    # by the hook on the next one. Empty until generation starts.
+    control_state: Optional[dict] = None
+    # The object that turns the story so far into a signed error per direction.
+    controller: object = None
     # Total length of the constraint push, in units of the model's own activation
     # scale, held fixed however many constraints are steered. None sums the
     # coefficients as they are, which is what every run before this did and which
@@ -540,6 +561,8 @@ class SteeringPlan:
         steer_budget: Optional[float] = None,
         steer_mode: str = "constant",
         feedback_cap: float = 0.1,
+        control_state: Optional[dict] = None,
+        controller: object = None,
         targets: Optional[Mapping[str, Mapping[int, torch.Tensor]]] = None,
         direction_source: str = "extracted",
         gate_threshold: float = 0.0,
@@ -566,6 +589,11 @@ class SteeringPlan:
             raise ValueError(f"jitter_draw must be one of {JITTER_DRAWS}, got '{jitter_draw}'.")
         if steer_mode not in STEER_MODES:
             raise ValueError(f"steer_mode must be one of {STEER_MODES}, got '{steer_mode}'.")
+        if steer_mode == "error" and control_state is None:
+            raise ValueError(
+                "steer_mode='error' needs `control_state`, the dict a "
+                "ConstraintProbe writes the live constraint errors into."
+            )
         if steer_mode == "feedback" and not targets:
             raise ValueError(
                 "steer_mode='feedback' needs `targets`: where text that satisfies "
@@ -713,6 +741,8 @@ class SteeringPlan:
             steer_budget=None if steer_budget is None else float(steer_budget),
             steer_mode=steer_mode,
             feedback_cap=float(feedback_cap),
+            control_state=control_state,
+            controller=controller,
             direction_source=direction_source,
             gate_threshold=float(gate_threshold),
             gate_level=gate_level,
@@ -939,7 +969,7 @@ class SteeringPlan:
 
         h = self.horizon if horizon is None else horizon
         delta = None
-        if self.steer_decode and self.steer_mode != "feedback":
+        if self.steer_decode and self.steer_mode not in ("feedback", "error"):
             delta = self.jitter_steering(
                 layer, lp.steering_delta(t, h, self.specs, self.rms_scale,
                                          gains=self.gains, budget=self.steer_budget)
@@ -966,6 +996,47 @@ class SteeringPlan:
                     delta = noise if delta is None else delta + noise
 
         return delta
+
+    def error_delta(
+        self,
+        layer: int,
+        t: int = 0,
+        *,
+        horizon: Optional[int] = None,
+        device: Optional[torch.device] = None,
+    ) -> Optional[torch.Tensor]:
+        """Push each direction by how far its requirement currently sits outside.
+
+        Reads the errors the probe measured on the decoded text one step ago. A
+        direction with no error, or one the controller has no probe for, is
+        silent. With a budget set, the coefficients are renormalised so the total
+        push is the same whether one requirement is failing or four are -- what
+        changes is which way it points.
+        """
+        if self.steer_mode != "error" or not self.control_state:
+            return None
+        errs = self.control_state.get("errors") or {}
+        if not errs:
+            return None
+        lp = self.layer_plans[layer]
+        if device is not None and lp.basis.device != device:
+            lp.basis = lp.basis.to(device)
+        h = self.horizon if horizon is None else horizon
+        weights = [
+            spec.beta * float(errs.get(spec.name, 0.0))
+            * schedule_factor(spec.schedule, t, h)
+            for spec in self.specs
+        ]
+        if self.steer_budget is not None:
+            norm = math.sqrt(sum(w * w for w in weights))
+            if norm <= 1e-12:
+                return None
+            weights = [w / norm * self.steer_budget for w in weights]
+        coeffs = torch.tensor([w * self.rms_scale for w in weights],
+                              dtype=lp.basis.dtype, device=lp.basis.device)
+        if bool((coeffs == 0).all()):
+            return None
+        return lp.basis @ coeffs
 
     def feedback_delta(
         self,

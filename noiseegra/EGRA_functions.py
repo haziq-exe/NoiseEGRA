@@ -730,13 +730,29 @@ class EGRA:
         # blocked for want of a measurement.
         gate_threshold = float(getattr(plan, "gate_threshold", 0.0) or 0.0)
         entropy_state = {"entropy": float("inf"), "history": [], "open": 0, "steps": 0}
-        processors = None
+        probes = []
         if gate_threshold > 0:
-            from transformers import LogitsProcessorList
-
             from .entropy_gate import EntropyProbe
 
-            processors = LogitsProcessorList([EntropyProbe(entropy_state)])
+            probes.append(EntropyProbe(entropy_state))
+        # Error-driven steering needs to see the story so far. A logits processor
+        # is the only place in `generate` that does; it runs after the forward
+        # pass, so what it measures is read by the hooks on the next step.
+        if getattr(plan, "steer_mode", "constant") == "error":
+            from .constraint_control import ConstraintProbe
+
+            if plan.control_state is None:
+                plan.control_state = {}
+            plan.control_state["errors"] = {}
+            probes.append(ConstraintProbe(
+                self.tokenizer, plan.control_state,
+                plan.controller, inputs["input_ids"].shape[-1],
+            ))
+        processors = None
+        if probes:
+            from transformers import LogitsProcessorList
+
+            processors = LogitsProcessorList(probes)
 
         try:
             def model_pre_hook(module, inp):
@@ -835,6 +851,10 @@ class EGRA:
                         )
                         if fb is not None:
                             delta = fb if delta is None else delta + fb
+                        ed = plan.error_delta(layer_idx, shared["cur_t"],
+                                              device=target.device)
+                        if ed is not None:
+                            delta = ed if delta is None else delta + ed
                         if delta is not None:
                             target[:, -1:, :].add_(delta.to(target.dtype).view(1, 1, -1))
                         if gate_open:

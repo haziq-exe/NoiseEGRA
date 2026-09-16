@@ -122,7 +122,7 @@ def main() -> None:
     ap.add_argument("--dtype", default="auto", choices=["auto", "float16", "bfloat16"])
     ap.add_argument("--suite", nargs="+", default=["compare"],
                     choices=["baseline", "sampling", "compare", "method", "noise",
-                             "offset", "story", "prompt", "main", "pareto", "directions", "select", "budget", "feedback", "assemble", "headtohead", "closure",
+                             "offset", "story", "prompt", "main", "pareto", "directions", "select", "budget", "feedback", "assemble", "headtohead", "closure", "control",
                              "ablate", "amplify",
                              "window", "decay", "core", "ortho", "alpha", "gate",
                              "beta", "loo", "all"])
@@ -237,6 +237,8 @@ def main() -> None:
                          "switches it off in the template, 'default' leaves the "
                          "template alone. A reasoning block that appears anyway is "
                          "stripped before scoring either way")
+    ap.add_argument("--control-betas", nargs="*", type=float, default=[1.0, 2.0],
+                    help="gain on the constraint error in --suite control")
     ap.add_argument("--closure-betas", nargs="*", type=float, default=[2.0, 4.0],
                     help="strength of the closure push in --suite closure")
     ap.add_argument("--closure-horizon", type=int, default=80,
@@ -585,13 +587,24 @@ def main() -> None:
             "steering-vector file predates. Delete it and let the run re-extract."
         )
 
+    # The controller reads the same thresholds the checker scores against, so the
+    # quantity being steered and the quantity being reported cannot drift apart.
+    from noiseegra.constraint_control import ConstraintController  # noqa: E402
+
+    args.controller = ConstraintController(
+        word_range=checker.word_range,
+        sentence_range=checker.sentence_range,
+        sentence_word_range=checker.sentence_word_range,
+        n_quotes=checker.n_quotes,
+    )
+
     # ---- directions a per-story offset is allowed to use -------------------- #
     # Cached under the basis kind, because the two are different sets of
     # directions and a run that mixed them would be unreadable.
     args.offset_basis = None
     args.amplify_basis = None
     args.amplify_mean = None
-    if {"offset", "story", "prompt", "main", "pareto", "feedback", "assemble", "headtohead", "closure", "ablate", "amplify"} & set(suites_req):
+    if {"offset", "story", "prompt", "main", "pareto", "feedback", "assemble", "headtohead", "closure", "control", "ablate", "amplify"} & set(suites_req):
         kind = args.offset_basis_kind
         pc_path = out / f"actpcs_{kind}_{args.model}.pt"
         legacy = out / f"actpcs_{args.model}.pt"

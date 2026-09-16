@@ -241,6 +241,54 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                       f"drawn from the {kind}-level activation directions, each "
                       "applied from the first generated token and from the prompt")
 
+    if name == "control":
+        # Steering whose coefficient is the constraint error of the story so far.
+        #
+        # Steering doubles compliance on the monotone requirements and cuts the
+        # counting ones from 23% to 6%. A count has no "more is better"
+        # direction, so a constant coefficient sails past the target: pushing
+        # "more dialogue" takes the exactly-two rule from 4% to 0%. Feedback on
+        # activations does not fix it either -- it saturates at "quote-like
+        # enough", which is what the contrast examples encode, not at "two
+        # quotes".
+        #
+        # The generation loop can count. Each decode step the tokens produced so
+        # far are decoded and the same checks that score the finished story are
+        # run over them, giving a signed error per requirement. A requirement
+        # inside its band gets a coefficient of zero and the model writes
+        # unsteered.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        b = float(getattr(args, "steer_budget", 3.0) or 3.0)
+        gains = list(getattr(args, "control_betas", [1.0, 2.0]))
+        gammas = list(getattr(args, "gamma_sweep", [0.1, 0.15]))
+        kind = getattr(args, "offset_basis_kind", "story")
+        ctl = getattr(args, "controller", None)
+        flat = {n: 1.0 for n in names}
+
+        items = ["baseline"]
+        # the constant arm at the same budget, which is what this has to beat
+        items.append({"plan": make_plan(beta=flat, steer_budget=b,
+                                        steer_prefill=False, **quiet, **base)})
+        for g in gains:
+            items.append({"plan": make_plan(
+                beta={n: g for n in names}, steer_mode="error",
+                control_state={}, controller=ctl, steer_budget=b,
+                steer_prefill=False, **quiet, **base)})
+        pick = gains[-1]
+        for gamma in gammas:
+            items.append({"plan": make_plan(
+                beta={n: pick for n in names}, steer_mode="error",
+                control_state={}, controller=ctl, steer_budget=b,
+                offset_gamma=gamma, offset_mode="orth", offset_basis=offset_basis,
+                offset_basis_kind=kind, offset_prefill=True, offset_decode=False,
+                steer_prefill=False, **quiet, **base)})
+        return items, (
+            f"steering whose coefficient is the constraint error of the story so "
+            f"far, at gain {gains} and a total push of {b:g}, against the constant "
+            f"arm at the same push, with the per-story perturbation on top at "
+            f"gamma {gammas}")
+
     if name == "closure":
         # Can a counting constraint be steered if the *controller* counts?
         #
