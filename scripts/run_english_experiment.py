@@ -315,6 +315,13 @@ def main() -> None:
                     help="where to put the diversity embedding model: 'auto' picks a "
                          "GPU with room and falls back to the CPU, which is what you "
                          "want while an 8B model is holding the card")
+    ap.add_argument("--shard", default=None, metavar="I/N",
+                    help="run only conditions I, I+N, I+2N ... of the suite. A "
+                         "Kaggle kernel has two T4s and one model uses one of "
+                         "them, so two shards pinned to a GPU each halve the wall "
+                         "clock for the same quota. Each shard writes its own "
+                         "output directory; the tables are merged when they are "
+                         "scored")
     ap.add_argument("--out", default="/kaggle/working/english")
     ap.add_argument("--dry-run", action="store_true",
                     help="parse the arguments, print the conditions the suite would "
@@ -679,6 +686,17 @@ def main() -> None:
         d.setdefault("max_new_tokens_plan", args.max_new_tokens)
         d.setdefault("max_new_tokens_story", args.max_new_tokens)
         normalised.append(d)
+
+    if args.shard:
+        try:
+            idx, total = (int(x) for x in args.shard.split("/"))
+        except ValueError:
+            raise SystemExit(f"--shard wants I/N, got {args.shard!r}")
+        if not (0 <= idx < total):
+            raise SystemExit(f"--shard {args.shard}: I must be in [0, N)")
+        kept = normalised[idx::total]
+        print(f"shard {idx} of {total}: {len(kept)} of {len(normalised)} conditions")
+        normalised = kept
 
     specs, run_ids, seen = [], [], set()
     for spec in make_specs(*normalised):

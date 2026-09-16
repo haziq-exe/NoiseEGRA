@@ -22,41 +22,33 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
-NAME="${1:?usage: kaggle_run.sh <name> [--profile NAME] -- <runner args...>}"; shift
+NAME="${1:?usage: kaggle_run.sh <name> [--profile NAME] [--shards N] -- <runner args...>}"; shift
 PROFILE=""
-if [ "${1:-}" = "--profile" ]; then PROFILE="$2"; shift 2; fi
-[ "${1:-}" = "--" ] && shift
+SHARDS=2
+while :; do
+  case "${1:-}" in
+    --profile) PROFILE="$2"; shift 2 ;;
+    --shards)  SHARDS="$2";  shift 2 ;;
+    --) shift; break ;;
+    *) break ;;
+  esac
+done
 ARGS="$*"
 
 VENV="$HOME/.cache/noiseegra-harness/venv/bin/python"
-# The Kaggle client reads credentials.json out of KAGGLE_CONFIG_DIR, so a second
-# account is a second config directory rather than a second machine.
-CFG="$HOME/.kaggle"
-[ -n "$PROFILE" ] && CFG="$HOME/.kaggle-$PROFILE"
-if [ ! -f "$CFG/credentials.json" ]; then
-  echo "no credentials at $CFG/credentials.json"
-  if [ -n "$PROFILE" ]; then
-    echo "  to add this account, with that person logged in on this machine:"
-    echo "    mkdir -p $CFG"
-    echo "    KAGGLE_CONFIG_DIR=$CFG $VENV -m kaggle auth login"
-  fi
+# Which account to run on. The Kaggle client hard-codes its OAuth credentials to
+# ~/.kaggle/credentials.json, so a second account cannot be selected by an
+# environment variable; kaggle_token.py reads whichever credentials file it is
+# told to and mints from that, caching the token because minting is itself
+# rate-limited.
+if ! "$VENV" scripts/kaggle_token.py --profile "${PROFILE:-default}" --whoami >/dev/null 2>&1; then
+  echo "no credentials for profile '${PROFILE:-default}'"
+  echo "  add an account with:  scripts/kaggle_add_account.sh <name>"
   exit 1
 fi
-export KAGGLE_CONFIG_DIR="$CFG"
-
-# Minting a token is itself a rate-limited API call, so it is cached and refreshed
-# on a timer rather than taken fresh for every command. Minting per call earns a
-# 429 within a few minutes of polling.
-TOKCACHE="/tmp/.kaggle-token-${PROFILE:-default}"
-TOKAGE=2400          # 40 minutes; the token itself lasts hours
-tok() {
-  if [ ! -s "$TOKCACHE" ] || [ $(( $(date +%s) - $(stat -f %m "$TOKCACHE" 2>/dev/null || echo 0) )) -gt $TOKAGE ]; then
-    local t
-    t="$("$VENV" -m kaggle auth print-access-token 2>/dev/null | tr -d '\n')"
-    [ -n "$t" ] && printf '%s' "$t" > "$TOKCACHE"
-  fi
-  cat "$TOKCACHE" 2>/dev/null
-}
+ACCOUNT=$("$VENV" scripts/kaggle_token.py --profile "${PROFILE:-default}" --whoami)
+echo "running as $ACCOUNT (profile ${PROFILE:-default})"
+tok() { "$VENV" scripts/kaggle_token.py --profile "${PROFILE:-default}"; }
 kh()  { KAGGLE_API_TOKEN="$(tok)" python scripts/kaggle_harness.py "$@"; }
 
 LOG="/tmp/${NAME}.log"
@@ -66,8 +58,12 @@ LIVE="/tmp/${NAME}.live"
 # Reject a bad flag here rather than after a session start and a model download.
 python scripts/run_english_experiment.py $ARGS --dry-run || { echo "ARGS REJECTED"; exit 1; }
 
-kh run --name "$NAME" --max-minutes 420 --no-wait -- \
-   scripts/run_english_experiment.py $ARGS | tee -a "$LOG"
+if [ "$SHARDS" -gt 1 ]; then
+  RUNCMD="scripts/run_sharded.sh {OUT} $SHARDS -- $ARGS"
+else
+  RUNCMD="scripts/run_english_experiment.py $ARGS"
+fi
+kh run --name "$NAME" --max-minutes 420 --no-wait -- $RUNCMD | tee -a "$LOG"
 
 ( while true; do
     kh follow --name "$NAME" --timeout 600 >> "$LIVE" 2>/dev/null
