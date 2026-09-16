@@ -64,8 +64,53 @@ def main() -> None:
         t.join(timeout=30)
         codes.append(p.returncode)
 
+    merge(Path(out))
     print(f"=== {shards} shard(s) finished, exit codes {codes} ===", flush=True)
     sys.exit(max(codes) if codes else 0)
+
+
+def merge(out: Path) -> None:
+    """Fold the shard directories back into the single tree everything expects.
+
+    Two reasons. Kaggle's output download returned one shard's subtree and
+    silently dropped the other, so half a run's conditions never came back; one
+    tree with every condition in it is both smaller and the shape the scorer and
+    the resume path already read. And a resumed run needs one state file: with
+    the results still split by shard, re-running the same command would find no
+    record of the conditions the other GPU produced and generate them again.
+    """
+    import json
+    import shutil
+
+    states = sorted(out.glob("shard*/*/state.json"))
+    if not states:
+        print("  nothing to merge", flush=True)
+        return
+    model_dir = out / states[0].parent.name
+    model_dir.mkdir(parents=True, exist_ok=True)
+
+    merged, task = {}, None
+    extra = {"rms_scale": {}, "entropy": {}}
+    for sp in states:
+        blob = json.loads(sp.read_text())
+        task = task or blob.get("task")
+        for key in extra:
+            extra[key].update(blob.get(key, {}) or {})
+        for rid, cells in blob.get("runs", {}).items():
+            merged.setdefault(rid, {}).update(cells)
+        for f in sp.parent.iterdir():
+            if f.is_file() and f.name != "state.json":
+                dest = model_dir / f.name
+                if not dest.exists():          # the shards duplicate the vectors
+                    shutil.copy2(f, dest)
+
+    (model_dir / "state.json").write_text(
+        json.dumps({"task": task, "runs": merged, **extra}, indent=0))
+    for d in out.glob("shard*"):
+        shutil.rmtree(d, ignore_errors=True)
+    n = sum(len(v) for v in merged.values())
+    print(f"  merged {len(states)} shards -> {len(merged)} conditions, "
+          f"{n} stories in {model_dir}", flush=True)
 
 
 if __name__ == "__main__":

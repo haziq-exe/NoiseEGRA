@@ -974,9 +974,16 @@ class SteeringPlan:
         lp = self.layer_plans[layer]
         if lp.target is None:
             return None
-        if device is not None and lp.basis.device != device:
-            lp.basis = lp.basis.to(device)
-            lp.target = lp.target.to(device)
+        # Relocate against the state we were handed, not against a `device`
+        # argument, and check each tensor on its own. Keying the move off
+        # `lp.basis.device` left `lp.target` on the CPU whenever some other path
+        # had already moved the basis, which is a crash at the first decode step
+        # under device_map="auto".
+        want = state.device
+        if lp.basis.device != want:
+            lp.basis = lp.basis.to(want)
+        if lp.target.device != want:
+            lp.target = lp.target.to(want)
 
         h = self.horizon if horizon is None else horizon
         present = state.to(lp.basis.dtype) @ lp.basis          # (C,)

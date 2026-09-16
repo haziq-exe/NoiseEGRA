@@ -27,3 +27,27 @@ assert "--shard 0/2" in r.stdout and "--shard 1/2" in r.stdout
 assert "/out/shard0" in r.stdout and "/out/shard1" in r.stdout
 assert r.returncode == 3, f"a failing shard must fail the run, got {r.returncode}"
 print("shard wrapper OK: two pinned processes, distinct shards and out dirs, failure propagates")
+
+# --- the shards are folded back into one tree before the kernel ends ---------
+import json, shutil, tempfile
+sys.path.insert(0, str(ROOT / "scripts"))
+from run_sharded import merge  # noqa: E402
+
+tmp2 = Path(tempfile.mkdtemp())
+for i, rids in enumerate((["A", "C"], ["B", "D"])):
+    d = tmp2 / f"shard{i}" / "Qwen3-1.7B"
+    d.mkdir(parents=True)
+    (d / "state.json").write_text(json.dumps({
+        "task": {"stories": 24}, "rms_scale": {f"k{i}": 1.5}, "entropy": {},
+        "runs": {r: {"0:0": "story"} for r in rids}}))
+    (d / f"{rids[0]}.csv").write_text("x")
+    (d / "steering.pt").write_text("shared")
+merge(tmp2)
+st = json.loads((tmp2 / "Qwen3-1.7B" / "state.json").read_text())
+assert sorted(st["runs"]) == ["A", "B", "C", "D"], st["runs"].keys()
+assert st["rms_scale"] == {"k0": 1.5, "k1": 1.5}, "per-shard calibration must survive"
+assert not list(tmp2.glob("shard*")), "the shard directories must be gone"
+assert (tmp2 / "Qwen3-1.7B" / "A.csv").is_file()
+assert (tmp2 / "Qwen3-1.7B" / "B.csv").is_file()
+shutil.rmtree(tmp2)
+print("merge OK: every condition in one state file, csvs kept, shard dirs removed")
