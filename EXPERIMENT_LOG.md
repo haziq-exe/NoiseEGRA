@@ -756,3 +756,125 @@ proportional to the shortfall saturates when the shortfall reaches zero.
   compliant story receives nothing at all, and two stories failing different
   constraints are corrected in orthogonal directions, against cosine 1.0 between
   any two stories under the constant push.
+
+## Rounds 9 to 11: why steering only works one way, and what counts
+
+### The split that was hiding inside the aggregate
+
+Forty stories a condition, thirteen requirements, Qwen3-1.7B. Separating the
+requirements by *shape* rather than by name:
+
+* **monotone** -- present tense, simple vocabulary, varied sentence openings.
+  More of the property is always better.
+* **banded** -- fifty to sixty-five words, six to eight sentences, every sentence
+  four to ten words, exactly two quoted lines. Compliance is an interval.
+
+| condition | broken /13 | loops | monotone | banded |
+|---|---|---|---|---|
+| baseline | 8.05 | 5% | **25%** | **23%** |
+| constant steering, budget 3 | 7.50 | 43% | **60%** | 6% |
+| feedback steering, gain 0.5 | 7.67 | **12%** | 57% | 6% |
+
+Steering more than doubles compliance on the monotone requirements and cuts the
+banded ones to a quarter. The two move in opposite directions and nearly cancel,
+which is why eight rounds of aggregate scores showed a gain of half a requirement
+and no sign that anything interesting was happening underneath.
+
+A steering vector adds a fixed displacement whose first-order effect is a
+monotone tilt: more of property P. For a monotone requirement more-P *is*
+more-compliant, so a tilt is the right control signal. For a band, compliance is
+an interval in P and a constant tilt cannot say *stop when you get there*.
+Pushing "more dialogue" takes the exactly-two rule from 4% to 0% -- the mechanism
+working exactly as designed and the requirement failing anyway.
+
+**Feedback on activations does not fix it, and the reason is instructive.** The
+correction closes the gap between where the story sits on a constraint axis and
+where the positive contrast examples sit. Those examples are local text
+containing quoted speech, so the correction saturates at "quote-like enough". It
+never saturates at "I have written two". The direction encodes a local property;
+the requirement is a global count. Measured: banded 6% under feedback, the same
+as under the constant push.
+
+### Feedback steering earns its place on a different axis
+
+| method | broken /13 | loops | words |
+|---|---|---|---|
+| baseline | 8.05 | 5% | 55 |
+| constant, one direction | 7.67 | **10/24 = 42%** | 82 |
+| constant, five under a budget | 7.50 | 43% | 68 |
+| **feedback** | 7.67 | **12%** | **50** |
+
+Steering has been buying part of its compliance with broken text, and the twelve
+requirements could not see it: within-story repetition was not among them, so
+only the word cap caught any of it. Feedback loops three to four times less than
+either constant arm at the same compliance, and is the only steered arm that does
+not inflate length. That is the mechanism behaving as intended -- it stops
+pushing a story that is already compliant, so it never drives one off a cliff.
+`no_repetition` is now the thirteenth scored requirement.
+
+### Diversity, established
+
+Length matched at 55 words, degenerate stories filtered by the same rule in every
+arm, equal group size, twelve paired random draws:
+
+| condition | Vendi | beats baseline |
+|---|---|---|
+| baseline | 5.64 | |
+| constant steering | 4.49 | 0/12 |
+| feedback steering alone | 4.94 | 0/12 |
+| **feedback + per-story perturbation 0.10** | **6.17** | **12/12 (+0.54)** |
+| **feedback + per-story perturbation 0.15** | **6.60** | **12/12 (+0.96)** |
+
+Neither component alone beats the baseline on diversity -- both lose, 0 of 12.
+Only the combination wins, and it wins every draw. A first raw reading of this
+was inflated by degeneration: the best-looking arm contained "I am going to the
+store" eight times. The numbers above survive removing it.
+
+### Closure: a brake, not a counter
+
+A direction meaning "bring it to an end", on a schedule silent for eighty tokens
+and rising after -- a legal story is about seventy-five tokens, so a compliant
+one is never touched.
+
+| condition | broken /13 | loops | banded | words | sentences |
+|---|---|---|---|---|---|
+| baseline | 8.05 | 5% | 23% | 55 | 11.3 |
+| closure alone | 8.00 | 3% | 24% | 54 | 10.9 |
+| five directions | 7.60 | **48%** | 7% | **73** | **41.9** |
+| five + closure | **7.28** | **15%** | 6% | 48 | 20.8 |
+
+The prediction was wrong: closure alone does nothing, and giving the *schedule* a
+clock does not fix a counting requirement. What it does instead is undo the
+damage steering causes. Five directions send the model to 73 words and 41.9
+sentences against a six-to-eight rule, looping in 48% of stories; adding closure
+brings that to 48 words, 20.8 sentences and 15%, and improves compliance further.
+A principled brake on steering-induced degeneration, which is worth more than the
+post-hoc n-gram filter it replaces.
+
+The sharper statement about counting requirements is not that they cannot be
+steered. Unsteered, the model already manages length 55% and sentence band 28%.
+Steered, those fall to 25% and 0%. **Steering destroys counting requirements the
+model could otherwise satisfy.** The exactly-two-quotes rule sits at 0% even
+unsteered, carries no signal at all, and should be loosened or dropped.
+
+### What the literature does, read critically
+
+*Closing the Loop: PID Feedback Control for Activation Steering* (2606.18790)
+drives its controller from "the mean magnitude of the top-N target features" --
+an activation proxy for whether the steering survives sparsification. It
+regulates the actuator, not the output. Both controlled properties, pitch and
+duration, are monotone continuous quantities. Its headline is 72.65 semitones
+against 72.30 static at n=40 with no error bars, which is not a demonstrated
+effect; the credible result is efficiency, average lambda 1.15 against 3.0. It
+concedes "sample sizes (n=40) are modest, and perceptual validation is absent".
+
+In-Distribution Steering and DIRECTER adapt steering strength from model-internal
+plausibility or token probability, not from a measured constraint error. Length
+steering exists as a separate vector per length target, still open loop.
+
+Nothing found closes the loop on a deterministic checker run over the partial
+decoded text, which is what `noiseegra/constraint_control.py` does: each decode
+step the story so far is decoded and the same checks that score the finished text
+are run over it, giving a signed error per requirement. Inside its band a
+requirement gets a coefficient of zero and the model writes unsteered. `--suite
+control` is the test.
