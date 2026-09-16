@@ -122,7 +122,7 @@ def main() -> None:
     ap.add_argument("--dtype", default="auto", choices=["auto", "float16", "bfloat16"])
     ap.add_argument("--suite", nargs="+", default=["compare"],
                     choices=["baseline", "sampling", "compare", "method", "noise",
-                             "offset", "story", "prompt", "main", "pareto", "directions", "select", "budget", "feedback", "assemble", "headtohead",
+                             "offset", "story", "prompt", "main", "pareto", "directions", "select", "budget", "feedback", "assemble", "headtohead", "closure",
                              "ablate", "amplify",
                              "window", "decay", "core", "ortho", "alpha", "gate",
                              "beta", "loo", "all"])
@@ -237,6 +237,13 @@ def main() -> None:
                          "switches it off in the template, 'default' leaves the "
                          "template alone. A reasoning block that appears anyway is "
                          "stripped before scoring either way")
+    ap.add_argument("--closure-betas", nargs="*", type=float, default=[2.0, 4.0],
+                    help="strength of the closure push in --suite closure")
+    ap.add_argument("--closure-horizon", type=int, default=80,
+                    help="decode steps before the closure push starts. A story of "
+                         "50 to 65 words is about 75 tokens, so the default leaves "
+                         "a legal story untouched and presses only on one running "
+                         "over")
     ap.add_argument("--feedback-betas", nargs="*", type=float, default=[0.5, 1.0],
                     help="gain on the shortfall for --suite feedback. 1.0 closes "
                          "the whole gap between where the story sits on a "
@@ -584,7 +591,7 @@ def main() -> None:
     args.offset_basis = None
     args.amplify_basis = None
     args.amplify_mean = None
-    if {"offset", "story", "prompt", "main", "pareto", "feedback", "assemble", "headtohead", "ablate", "amplify"} & set(suites_req):
+    if {"offset", "story", "prompt", "main", "pareto", "feedback", "assemble", "headtohead", "closure", "ablate", "amplify"} & set(suites_req):
         kind = args.offset_basis_kind
         pc_path = out / f"actpcs_{kind}_{args.model}.pt"
         legacy = out / f"actpcs_{args.model}.pt"

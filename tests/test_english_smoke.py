@@ -64,9 +64,9 @@ class Tiny(EGRA):
 
 print("== task setup ==")
 pairs = load_pairs(ROOT / "noiseegra" / "data" / "steering_pairs_en.json")
-check("English pair file holds the five steerable directions",
-      sorted(pairs) == ["dialogue", "present_tense", "simple_register", "terse",
-                        "varied_openers"], f"{sorted(pairs)}")
+check("English pair file holds the six steerable directions",
+      sorted(pairs) == ["closure", "dialogue", "present_tense", "simple_register",
+                        "terse", "varied_openers"], f"{sorted(pairs)}")
 
 # The first pair set was length-confounded: three of its four directions had a
 # positive side 11 to 14 words shorter than the negative, so "simple register"

@@ -56,7 +56,7 @@ JITTER_DRAWS = ("iso", "basis")
 # How the constraint push is decided. See SteeringPlan.steer_mode.
 STEER_MODES = ("constant", "feedback")
 NORM_MATCH_MODES = ("energy", "none")
-SCHEDULES = ("constant", "cosine_decay", "ramp", "linear_decay", "prefix")
+SCHEDULES = ("constant", "cosine_decay", "ramp", "linear_decay", "prefix", "tail")
 
 
 # --------------------------------------------------------------------------- #
@@ -72,6 +72,10 @@ def schedule_factor(kind: str, t: int, horizon: int) -> float:
                       the closure direction: push the model to wrap up *more* the
                       longer the story has run.
     ``linear_decay``  1.0 at t=0 falling linearly to 0.0 at t>=horizon.
+    ``tail``          0.0 for the first ``horizon`` decode steps, then rising to
+                      1.0 over the next ``horizon``. For a constraint about when
+                      to stop: silent while the story is still within its budget
+                      and pressing harder the longer it runs over.
     ``prefix``        1.0 for the first ``horizon`` decode steps and 0.0 after.
                       A story's premise -- who it is about, where it happens,
                       what goes wrong -- is chosen in its first few dozen tokens.
@@ -89,6 +93,18 @@ def schedule_factor(kind: str, t: int, horizon: int) -> float:
         return _cosine_noise_decay(t, horizon)
     if kind == "prefix":
         return 1.0 if t < horizon else 0.0
+    if kind == "tail":
+        # Nothing until the story has run as long as it is allowed to, then rising.
+        #
+        # The counting constraints -- a word band, a sentence band, exactly two
+        # quoted lines -- are the ones steering makes *worse*: 23% at baseline and
+        # 6% steered. They are about when to stop, and a coefficient that is the
+        # same at token five and token ninety cannot express that. The model has no
+        # representation of "how many words so far", but the generation loop does,
+        # so the controller can count even though the model cannot.
+        if t < horizon:
+            return 0.0
+        return float(min(1.0, (t - horizon) / max(horizon, 1)))
     frac = min(t, horizon) / horizon
     if kind == "ramp":
         return float(frac)

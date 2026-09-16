@@ -241,6 +241,51 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                       f"drawn from the {kind}-level activation directions, each "
                       "applied from the first generated token and from the prompt")
 
+    if name == "closure":
+        # Can a counting constraint be steered if the *controller* counts?
+        #
+        # Steering more than doubles compliance on the monotone constraints -- 25%
+        # to 62% -- and cuts the counting ones from 23% to 6%. Word count, sentence
+        # count and exactly-two-quoted-lines are all about when to stop, and a
+        # coefficient that is the same at token five and token ninety cannot say
+        # that. The model has no representation of "how many words so far". The
+        # generation loop does.
+        #
+        # So: a direction meaning "bring it to an end", on a schedule that is
+        # silent while the story is inside its budget and presses harder the longer
+        # it runs over. A 50-to-65-word story is about 75 tokens, which is where
+        # the horizon goes.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        base = {k: v for k, v in base.items() if k != "horizon"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        b = float(getattr(args, "steer_budget", 3.0) or 3.0)
+        h = int(getattr(args, "closure_horizon", 80))
+        betas = list(getattr(args, "closure_betas", [2.0, 4.0]))
+        others = [n for n in names if n != "closure"]
+        if "closure" not in names:
+            raise SystemExit("--suite closure needs 'closure' in --steer-vectors")
+
+        items = ["baseline"]
+        # the rest of the set as it stands, so the closure arms are read against it
+        items.append({"plan": make_plan(
+            beta={n: (1.0 if n in others else 0.0) for n in names},
+            steer_budget=b, horizon=200, steer_prefill=False, **quiet, **base)})
+        for cb in betas:
+            # closure alone, to see what it does to the counting constraints
+            items.append({"plan": make_plan(
+                beta={n: (cb if n == "closure" else 0.0) for n in names},
+                schedules={"closure": "tail"}, horizon=h,
+                steer_prefill=False, **quiet, **base)})
+            # and on top of the rest
+            items.append({"plan": make_plan(
+                beta={n: (cb if n == "closure" else 1.0) for n in names},
+                schedules={"closure": "tail"}, horizon=h,
+                steer_prefill=False, **quiet, **base)})
+        return items, (
+            f"a closure direction on a schedule that stays silent for {h} tokens "
+            f"and then presses harder the longer the story runs, at beta {betas}, "
+            "alone and with the other five directions")
+
     if name == "headtohead":
         # The head-to-head, now that repetition is scored.
         #

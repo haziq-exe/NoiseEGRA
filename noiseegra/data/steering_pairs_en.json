@@ -320,6 +320,70 @@
           "negative": "Ana sees stones under the water. Ana takes off her shoes. Ana feels the cold. Ana steps back."
         }
       ]
+    },
+    "closure": {
+      "pairs": [
+        {
+          "prefix": "The girl reaches the gate.",
+          "positive": "She waves goodbye. The gate shuts behind her. That is the end.",
+          "negative": "She waves at it. The gate creaks a little. Then something else moves."
+        },
+        {
+          "prefix": "The bread is out of the oven.",
+          "positive": "They eat it warm. Nobody says a word. Everyone goes to bed.",
+          "negative": "They eat it warm. Then the phone rings. Somebody is at the door."
+        },
+        {
+          "prefix": "The kite comes down at last.",
+          "positive": "He rolls the string up. They walk home together. The day is over.",
+          "negative": "He rolls the string up. A gust lifts it again. The string pulls hard."
+        },
+        {
+          "prefix": "The cat is found.",
+          "positive": "She carries it inside. The door closes softly. They both fall asleep.",
+          "negative": "She carries it inside. It jumps down again. Now it wants the garden."
+        },
+        {
+          "prefix": "The last box is packed.",
+          "positive": "They lock the front door. The van pulls away. Nothing is left behind.",
+          "negative": "They lock the front door. Then he remembers the shed. There is more inside."
+        },
+        {
+          "prefix": "The rain finally stops.",
+          "positive": "Puddles dry on the path. The sun sets slowly. Everyone goes home.",
+          "negative": "Puddles dry on the path. Clouds gather again quickly. Another storm is coming."
+        },
+        {
+          "prefix": "The race is finished.",
+          "positive": "He catches his breath. Someone hands him water. It is all done.",
+          "negative": "He catches his breath. The next race starts. He has to run."
+        },
+        {
+          "prefix": "The song ends.",
+          "positive": "People clap for a while. The lights come up. Everybody files out.",
+          "negative": "People clap for a while. The band starts another. Nobody leaves the room."
+        },
+        {
+          "prefix": "The puzzle is nearly whole.",
+          "positive": "She sets the last piece. The picture is complete. She sits back happily.",
+          "negative": "She sets the last piece. One is still missing. She looks under the sofa."
+        },
+        {
+          "prefix": "The soup is ready.",
+          "positive": "They share the whole pot. The bowls are empty. The evening is quiet.",
+          "negative": "They share the whole pot. Somebody knocks quite loudly. The evening is not quiet."
+        },
+        {
+          "prefix": "The boat reaches the shore.",
+          "positive": "He ties it up firmly. The water goes still. The trip is over.",
+          "negative": "He ties it up firmly. The rope snaps apart. The boat drifts away again."
+        },
+        {
+          "prefix": "The lesson is over.",
+          "positive": "Books go into bags. The room empties out. The teacher turns the light off.",
+          "negative": "Books go into bags. Then the teacher speaks again. Nobody is leaving yet."
+        }
+      ]
     }
   }
 }
