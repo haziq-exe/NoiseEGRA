@@ -1557,3 +1557,25 @@ Replication with fresh random seeds (stories 101-200 for the champion's run and
 the combination run), and the transfer test: the same four anchor settings on
 the eight-billion-parameter Qwen3-8B at its proportional layer band (8-18 of 36
 layers).
+
+## Round 21b - the champion replicates on fresh random seeds
+
+The champion configuration (layers 6-14, constraint push at total strength 3,
+per-story perturbation 0.15 at the prompt, sampling temperature 1.0) was extended
+from 100 to 200 stories; stories 101-200 use new random seeds, so the second
+hundred is an independent replication. Scored identically (coherent stories only,
+refusals and leaked plans excluded, variety over a 40-story pool):
+
+| | first hundred | fresh hundred |
+|---|---|---|
+| champion: coherent kept /100 | 87 | 86 |
+| champion: rules broken /15 | 5.46 | 5.78 |
+| champion: variety of what happens | 26.0 ±0.8 | 26.3 ±0.9 |
+| champion: variety of wording | 11.8 | 12.8 |
+| untouched model, same fresh seeds: kept / broken / happens / wording | 72 / 7.93 / 20.0 / 6.0 | 66 / 7.85 / 21.7 / 7.1 |
+
+Every margin holds on unseen seeds and sits far outside the seed-to-seed wobble
+the baseline itself shows. Found in passing and fixed: a resumed, sharded run's
+merged story file repeats the checkpointed history once per shard, which would
+have double-counted stories in any CSV-based scoring; the reader now
+deduplicates by story key (the checkpoint itself was never affected).
