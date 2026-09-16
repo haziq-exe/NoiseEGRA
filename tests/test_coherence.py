@@ -285,6 +285,17 @@ IN_STORY = ('Mia drops the cup. "I\'m sorry," she says. Mom smiles and helps her
 check("a character apologising is not a refusal",
       "refusal" not in filt.check(IN_STORY).reasons, filt.check(IN_STORY).reason)
 
+PLAN = ("Okay, let's see. The user wants me to create a short Story for a Young "
+        "Child. The story should be simple, Use of Common Words. Let me start "
+        "with a beginning. Maybe a character named Lily.")
+check("leaked planning monologue is flagged", "leaked_plan" in filt.check(PLAN).reasons,
+      filt.check(PLAN).reason)
+OKAY_STORY = ('"Okay," says Mia, "one more game." She rolls the ball across the '
+              'grass and the puppy chases it into the shade. They play until the '
+              'light softens and Mom calls them in for dinner.')
+check("a story that opens with 'Okay,' in dialogue passes",
+      "leaked_plan" not in filt.check(OKAY_STORY).reasons, filt.check(OKAY_STORY).reason)
+
 print("\n== the leading preamble is trimmed ==")
 lead, n = trim_lead("Certainly! Here's a short story for young readers:\n\n" + GOOD)
 check("preamble removed", lead == GOOD and n > 0, f"removed {n} words")

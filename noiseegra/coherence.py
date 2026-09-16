@@ -249,6 +249,26 @@ def is_refusal(text: str) -> bool:
     return bool(_REFUSAL.match(text))
 
 
+# The model's planning monologue leaking into the output instead of the story:
+# "Okay, let's see. The user wants me to create a short Story ...". Fluent,
+# varied English, so every statistical check above passes it, and a set of leaked
+# plans scores as highly "diverse". Seen when a large per-story perturbation
+# knocks the model into its reasoning register even with thinking disabled.
+# Two signals, kept precise: any mention of "the user" (no children's story
+# says that), or an opening interjection followed by planning talk.
+_META_ANY = re.compile(r"\bthe user\b|\bword count\b|\brequirements?\b.{0,30}\bmet\b", re.I)
+_META_OPEN = re.compile(
+    r"^\s*\W{0,8}(?:okay|alright|all right|hmm|so)\b[^.!?\n]{0,60}"
+    r"\b(?:let'?s see|let me|i'?m trying|i need|i want to|the story should|"
+    r"i am going to write|figure out)", re.I)
+
+
+def is_leaked_plan(text: str) -> bool:
+    """True when the text is the model planning the story rather than the story."""
+    head = text[:400]
+    return bool(_META_ANY.search(head) or _META_OPEN.match(text))
+
+
 def quote_density(text: str) -> float:
     """Quotation-mark characters per sentence.
 
@@ -642,6 +662,8 @@ class CoherenceFilter:
             reasons.append("dangling_end")
         if is_refusal(text):
             reasons.append("refusal")
+        if is_leaked_plan(text):
+            reasons.append("leaked_plan")
         we = scores["window_entropy"]
         if we == we and we < t.min_window_entropy:
             reasons.append("vocab_loop")
