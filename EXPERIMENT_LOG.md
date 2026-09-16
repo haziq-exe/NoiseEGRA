@@ -1489,3 +1489,71 @@ they compose: the earlier layer band (6-14) stops the fragmentation, the fading
 schedule gets compliance almost for free, and the sideways step (or the plain
 shove) supplies variety. The dose sweep at layers 6-14 is in flight; the
 combination run follows it.
+
+## Rounds 20-21 - the dose, the combinations, and two contaminations caught by reading
+
+All at layers 6-14 (the band round 19 found), sampling temperature 1.0, 100
+stories per setting, scored over coherent stories only, variety rarefied to a
+40-story pool. "Nudge" is the constraint push toward the 15 writing rules held
+at a fixed total strength; "shove" is the per-story random perturbation applied
+while the model reads the instruction; "sideways step" is a per-story
+perturbation of the constraint vector itself, so each story is pushed toward the
+rules from a slightly different angle.
+
+### Two contaminations the statistical checks passed and reading caught
+
+**Refusals.** The shove at 0.25 sometimes knocks the model into assistant mode:
+"I'm sorry, but I can't generate content that includes...". Fluent English, so
+nothing flagged it. About 6 stories in 100 at shove 0.25, none at 0.15.
+
+**Leaked planning.** Worse: about a quarter of the stories in every arm with a
+large perturbation (shove 0.25, sideways step 0.3) are the model's planning
+monologue instead of a story - "Okay, let's see. The user wants me to create a
+short Story for a Young Child..." - even with the model's thinking mode off.
+Each leaked plan reads differently, so a set of them scores as highly diverse,
+and the variety numbers first computed for those arms were inflated by it. Both
+failure shapes are now detected (`refusal` and `leaked_plan` in the coherence
+checks; zero false fires on the baseline and champion arms) and every number
+below excludes them.
+
+### The dose (round 20)
+
+The nudge at strength 4.5 is past the optimum even at the gentle band: it keeps
+30 of 100 coherent AND breaks more rules than strength 3 (5.97 against 5.61) -
+more push is pure damage on both axes. Strength 3 is the operating point.
+
+### The honest frontier after cleanup (rounds 20-21 together)
+
+| setting, layers 6-14, temperature 1.0 | kept /100 | rules broken /15 | variety of what happens | variety of wording |
+|---|---|---|---|---|
+| untouched model | 72 | 7.93 | 20.0 ±0.6 | 6.0 |
+| **nudge 3 + shove 0.15** | **87** | **5.46** | **26.0 ±0.8** | **11.8** |
+| sideways step 0.15 alone, at the prompt | 83 | 8.41 | 29.6 ±0.7 | 17.2 |
+| nudge 3 + shove 0.25 | 62 | 6.66 | 30.5 ±0.5 | 19.3 |
+| nudge 3 fading + shove 0.25 | 62 | 7.37 | 31.4 ±0.5 | 20.3 |
+| sideways step 0.15 + shove 0.15 | 62 | 8.26 | 32.2 ±0.7 | 20.3 |
+| sideways step 0.3 alone, at the prompt | 50 | 8.72 | 34.0 ±0.5 | 23.2 |
+
+**The champion is unchanged and clean**: the nudge at 3 with the shove at 0.15
+is the only setting that beats the untouched model on all four axes at once, it
+contains zero refusals and zero leaked plans, and its margins are wide - 15 more
+coherent stories per hundred, two and a half fewer rules broken, +30% variety of
+what happens, +97% variety of wording. It also matches or beats round 18's
+raised-temperature reference on three of four axes (coherence, compliance,
+wording) and sits about two points behind the best raised-temperature setting on
+variety of what happens - at the base temperature Haziq requires.
+
+Below the champion the frontier trades coherence and compliance for variety.
+The fading schedule that helped at layers 10-18 does not help at 6-14 (77 kept
+with the shove against the constant nudge's 87): at the band where the push does
+not accumulate damage, easing it off just loses compliance. Combining the
+sideways step with the shove adds variety but drops coherence to 62 and gives
+back all the compliance, and every arm past the champion pays one axis or
+another.
+
+### In flight
+
+Replication with fresh random seeds (stories 101-200 for the champion's run and
+the combination run), and the transfer test: the same four anchor settings on
+the eight-billion-parameter Qwen3-8B at its proportional layer band (8-18 of 36
+layers).
