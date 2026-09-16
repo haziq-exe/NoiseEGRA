@@ -303,17 +303,38 @@ class LayerPlan:
         specs: Sequence[ConstraintSpec],
         rms_scale: float,
         gains: Optional[Sequence[float]] = None,
+        budget: Optional[float] = None,
     ) -> Optional[torch.Tensor]:
         """Sum_c beta_c * g_c * f_c(t) * rms_scale * s_c  ->  a single (dim,) vector.
 
         ``gains`` are this generation's per-constraint multipliers, 1.0 each unless
-        the plan is jittering the mix (``jitter_mode="gain"``).
+        the plan is reallocating the mix per story.
+
+        ``budget``, when given, is the total length of the push in units of the
+        model's own activation scale, and the coefficients are renormalised to meet
+        it. Without it, steering ``k`` constraints at coefficient ``beta`` gives a
+        push of length ``beta * sqrt(k) * rms``, so *adding a constraint silently
+        raises the dose*. That is not a detail: one direction at 3 is a push of
+        4.52 and helps, two directions at 3 is a push of 6.39 and does not, and a
+        single direction at 4.5 is a push of 6.78 and breaks the text outright. The
+        two-direction arm was never compared against the one-direction arm at the
+        same strength. With a budget, adding a constraint redistributes the push
+        instead of enlarging it, and the number of constraints and the strength of
+        the intervention stop being the same knob.
         """
+        weights = [
+            spec.beta * (1.0 if gains is None else float(gains[i]))
+            for i, spec in enumerate(specs)
+        ]
+        if budget is not None:
+            norm = math.sqrt(sum(w * w for w in weights))
+            if norm <= 1e-12:
+                return None
+            weights = [w / norm * budget for w in weights]
         coeffs = torch.tensor(
             [
-                spec.beta * schedule_factor(spec.schedule, t, horizon) * rms_scale
-                * (1.0 if gains is None else float(gains[i]))
-                for i, spec in enumerate(specs)
+                w * schedule_factor(spec.schedule, t, horizon) * rms_scale
+                for w, spec in zip(weights, specs)
             ],
             dtype=self.basis.dtype,
             device=self.basis.device,
@@ -412,6 +433,11 @@ class SteeringPlan:
     steer_decode: bool = True
     # This generation's per-constraint gains, for ``jitter_mode="gain"``.
     gains: Optional[List[float]] = None
+    # Total length of the constraint push, in units of the model's own activation
+    # scale, held fixed however many constraints are steered. None sums the
+    # coefficients as they are, which is what every run before this did and which
+    # makes "steer one more constraint" mean "push harder" as a side effect.
+    steer_budget: Optional[float] = None
     # Where the constraint directions came from. "extracted" is the real thing;
     # "random" is the control that replaces each direction with a Gaussian draw of
     # the same norm, so a run can say whether the extracted direction meant
@@ -466,6 +492,7 @@ class SteeringPlan:
         jitter_mode: str = "none",
         jitter_draw: str = "iso",
         steer_decode: bool = True,
+        steer_budget: Optional[float] = None,
         direction_source: str = "extracted",
         gate_threshold: float = 0.0,
         gate_level: str = "none",
@@ -610,6 +637,7 @@ class SteeringPlan:
             jitter_mode=jitter_mode,
             jitter_draw=jitter_draw,
             steer_decode=bool(steer_decode),
+            steer_budget=None if steer_budget is None else float(steer_budget),
             direction_source=direction_source,
             gate_threshold=float(gate_threshold),
             gate_level=gate_level,
@@ -760,7 +788,8 @@ class SteeringPlan:
                 lp.jitter = lp.jitter.to(device)
         h = self.horizon if horizon is None else horizon
         return self.jitter_steering(
-            layer, lp.steering_delta(t, h, self.specs, self.rms_scale, gains=self.gains)
+            layer, lp.steering_delta(t, h, self.specs, self.rms_scale,
+                                     gains=self.gains, budget=self.steer_budget)
         )
 
     def resample_offset(self) -> None:
@@ -835,7 +864,8 @@ class SteeringPlan:
         delta = None
         if self.steer_decode:
             delta = self.jitter_steering(
-                layer, lp.steering_delta(t, h, self.specs, self.rms_scale, gains=self.gains)
+                layer, lp.steering_delta(t, h, self.specs, self.rms_scale,
+                                         gains=self.gains, budget=self.steer_budget)
             )
 
         # The per-story offset is a perturbation, so it is gated with the noise
@@ -933,6 +963,7 @@ class SteeringPlan:
             "jitter_kappa": self.jitter_kappa,
             "jitter_draw": self.jitter_draw,
             "steer_decode": self.steer_decode,
+            "steer_budget": self.steer_budget,
             "direction_source": self.direction_source,
             "offset_rank": self.layer_plans[self.layers[0]].report.get("offset_rank"),
             "horizon": self.horizon,

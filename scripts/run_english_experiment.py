@@ -122,7 +122,7 @@ def main() -> None:
     ap.add_argument("--dtype", default="auto", choices=["auto", "float16", "bfloat16"])
     ap.add_argument("--suite", nargs="+", default=["compare"],
                     choices=["baseline", "sampling", "compare", "method", "noise",
-                             "offset", "story", "prompt", "main", "pareto", "directions", "select",
+                             "offset", "story", "prompt", "main", "pareto", "directions", "select", "budget",
                              "ablate", "amplify",
                              "window", "decay", "core", "ortho", "alpha", "gate",
                              "beta", "loo", "all"])
@@ -228,6 +228,23 @@ def main() -> None:
                          "direction over")
     ap.add_argument("--combo-beta", type=float, default=3.0,
                     help="coefficient the kept directions are combined at")
+    ap.add_argument("--steer-budget", type=float, default=None,
+                    help="total length of the constraint push, in units of the "
+                         "model's own activation scale, held fixed however many "
+                         "constraints are steered. Without it, steering k "
+                         "constraints at coefficient beta gives a push of "
+                         "beta*sqrt(k)*rms, so adding a constraint raises the dose "
+                         "as a side effect and the number of constraints and the "
+                         "strength of the intervention are the same knob")
+    ap.add_argument("--budget-sweep", nargs="*", type=float, default=[2.0, 3.0, 4.5],
+                    help="budgets --suite budget tries")
+    ap.add_argument("--realloc-kappa", type=float, default=0.6,
+                    help="spread of the per-story reallocation of the budget across "
+                         "constraints. The total push is unchanged; only how it is "
+                         "divided between the constraints moves, so the "
+                         "perturbation never leaves the constraint subspace")
+    ap.add_argument("--steer-horizon", type=int, default=32,
+                    help="tokens the steering decays over when a schedule is used")
     ap.add_argument("--probe-beta", nargs="*", type=float, default=[3.0],
                     help="how hard --suite directions pushes a single direction "
                          "when it checks whether that direction moves its own "

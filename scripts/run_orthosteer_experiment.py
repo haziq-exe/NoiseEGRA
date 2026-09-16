@@ -95,6 +95,7 @@ def make_plan(
     jitter_mode="none",
     jitter_draw="iso",
     steer_decode=True,
+    steer_budget=None,
     direction_source="extracted",
     gate_threshold=0.0,
     gate_level="none",
@@ -135,6 +136,7 @@ def make_plan(
         jitter_mode=jitter_mode,
         jitter_draw=jitter_draw,
         steer_decode=steer_decode,
+        steer_budget=steer_budget,
         direction_source=direction_source,
         gate_threshold=gate_threshold,
         gate_level=gate_level,
@@ -232,6 +234,60 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         return arms, (f"steering + per-story offsets at gamma {list(args.gamma_sweep)} "
                       f"drawn from the {kind}-level activation directions, each "
                       "applied from the first generated token and from the prompt")
+
+    if name == "budget":
+        # Why steering more than one constraint stops working, and whether holding
+        # the total push fixed repairs it.
+        #
+        # Summing k directions at coefficient beta gives a push of length
+        # beta*sqrt(k)*rms, so "steer one more constraint" means "push harder" as a
+        # side effect. Measured on Qwen3-8B: one direction at 3 is a push of 4.52
+        # and helps; two directions at 3 is 6.39 and does not; one direction at 4.5
+        # is 6.78 and breaks the text outright. The two-direction arm was never
+        # compared against the one-direction arm at the same strength.
+        #
+        # With a budget the push is renormalised to a fixed length, so adding a
+        # constraint redistributes it rather than enlarging it, and the number of
+        # constraints stops being a strength knob.
+        #
+        # The last two arms are the point. Under a fixed budget the *allocation*
+        # across constraints can be redrawn per story while the total stays
+        # identical: every story gets the same amount of constraint pressure spent
+        # differently. That is a perturbation that never leaves the constraint
+        # subspace at all, so unlike every noise arm here it has no off-manifold
+        # component to cost fluency.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        budgets = list(getattr(args, "budget_sweep", [2.0, 3.0, 4.5]))
+        pick = float(getattr(args, "steer_budget", 3.0) or 3.0)
+        kappa = float(getattr(args, "realloc_kappa", 0.6))
+        h = int(getattr(args, "steer_horizon", 32) or 32)
+        keep = dict(getattr(args, "keep_directions", {}))
+        flat = {n: 1.0 for n in names}
+
+        items = ["baseline"]
+        # the broken reference: every direction at 1, summed as before
+        items.append({"plan": make_plan(beta=flat, steer_prefill=False, **quiet, **base)})
+        for b in budgets:
+            items.append({"plan": make_plan(beta=flat, steer_budget=b,
+                                            steer_prefill=False, **quiet, **base)})
+        if keep:
+            items.append({"plan": make_plan(beta={n: keep.get(n, 0.0) for n in names},
+                                            steer_budget=pick, steer_prefill=False,
+                                            **quiet, **base)})
+        items.append({"plan": make_plan(beta=flat, steer_budget=pick,
+                                        jitter_mode="gain", jitter_kappa=kappa,
+                                        steer_prefill=False, **quiet, **base)})
+        items.append({"plan": make_plan(
+            beta=flat, steer_budget=pick, jitter_mode="gain", jitter_kappa=kappa,
+            schedules={n: "cosine_decay" for n in names}, horizon=h,
+            steer_prefill=False, **{k: v for k, v in base.items() if k != "horizon"},
+            **quiet)})
+        return items, (
+            f"every direction summed as before, then held to a fixed total push of "
+            f"{budgets}, then the same budget with the allocation redrawn per story "
+            f"(spread {kappa:g}), with and without the push decaying over the first "
+            f"{h} tokens")
 
     if name == "select":
         # Keep the directions that are measured to help, at the coefficient that

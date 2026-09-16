@@ -68,6 +68,28 @@ _NHORIZON = re.compile(r"__nh(\d+)")
 _NSCHED = re.compile(r"__nsch([a-z])")
 _AMP = re.compile(rf"__amp(?P<val>m?{_FLOAT})")
 _JIT = re.compile(rf"__j(?P<val>m?{_FLOAT})(?P<mode>perp|rotate|gain)")
+_BUDGET = re.compile(rf"__bud(?P<val>m?{_FLOAT})")
+# The per-constraint steering schedule, as codes: c constant, d cosine decay,
+# r ramp, l linear decay, p prefix. Not to be confused with __nsch, which is the
+# *noise* schedule.
+_SSCHED = re.compile(r"__sch(?!eme)([a-z](?:-[a-z])*)(?![a-z])")
+_SSCHED_NAME = {"d": "decaying over the opening", "r": "ramping up over the story",
+                "l": "falling away over the story", "p": "only over the opening"}
+
+
+def _steer_schedule(run_id: str) -> str:
+    """How the constraint push is shaped over the story, when it is not flat."""
+    m = _SSCHED.search(run_id)
+    if not m:
+        return ""
+    codes = set(m.group(1).split("-"))
+    if len(codes) != 1:
+        # Mixed per-constraint schedules have no short name, and the older runs
+        # that used them (closure ramping while the rest stayed flat) already have
+        # their schedules described in the table header.
+        return ""
+    code = codes.pop()
+    return "" if code == "c" else ", " + _SSCHED_NAME.get(code, f"schedule {code}")
 _ORTHONORM = re.compile(r"__(lowdin|gram_schmidt|none)__")
 
 
@@ -212,19 +234,35 @@ def label_run(run_id: str) -> RunLabel:
             return RunLabel(f"per-token noise a={_fmt(v)} ({mode})"
                             f"{_noise_window(rid)}{site}{gate_txt}",
                             "per-token", v, rid)
+        bud = _BUDGET.search(rid)
+        bud_txt = ""
+        if bud:
+            n_on = 0
+            m = _BETAS.search(rid)
+            if m:
+                n_on = sum(1 for t in m.group(1).split("-") if untag_float(t) != 0)
+            bud_txt = (f", {n_on} direction{'s' if n_on != 1 else ''}, total push held "
+                       f"at {_fmt(untag_float(bud.group('val')))}")
         j = _JIT.search(rid)
         if j:
             v = untag_float(j.group("val"))
             mode = j.group("mode")
             draw = ", drawn in the activation subspace" if "__jdbasis" in rid else ""
             if mode == "gain":
-                text = f"f(S_c): constraint mix jittered, spread {_fmt(v)}"
+                text = (f"the constraint budget reallocated per story, spread {_fmt(v)}"
+                        if bud else f"constraint mix jittered, spread {_fmt(v)}")
             elif mode == "rotate":
                 text = f"f(S_c): constraint vector turned, kappa={_fmt(v)}"
             else:
                 text = f"f(S_c): sideways step on the constraint vector, kappa={_fmt(v)}"
-            return RunLabel(f"{text}{draw}{site}{gate_txt}", "f(Sc)", v, rid)
-        return RunLabel(f"steering only, no perturbation{site}", "steer", 0.0, rid)
+            if mode == "gain" and bud:
+                text += bud_txt
+                text += _steer_schedule(rid)
+            return RunLabel(f"{text}{bud_txt if mode != 'gain' else ''}{draw}{site}{gate_txt}",
+                            "f(Sc)", v, rid)
+        return RunLabel(
+            f"steering only, no perturbation{bud_txt}{_steer_schedule(rid)}{site}",
+            "steer", 0.0, rid)
 
     if "BASELINE" in up:
         sampling = _sampling_suffix(rid)
