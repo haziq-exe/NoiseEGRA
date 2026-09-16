@@ -436,20 +436,23 @@ are written out as descriptions, not assembled from setting names.
 
 ## In flight
 
-`r17-headline` — landed 2026-09-16; results above and in `EXPERIMENT_LOG.md`
-round 17.
+`r17-headline` and `r17-controls` — both landed 2026-09-16; results above and in
+`EXPERIMENT_LOG.md` rounds 17 and 17-controls.
 
-`r17-controls` (on the second account, haziqaus) — nine conditions x 100 stories
-answering which parts of the per-story perturbation earn their place, same model,
-prompt, fifteen requirements and 40-word truncation as `r17-headline`, with its
-own baseline and method arms inside the run so every comparison is internal.
-Three surgeries at gamma 0.15, each with and without the push at 3: the
-constraint-span projection removed (`offset_mode free`); the story-difference
-basis replaced by an isotropic draw of the same length (the control for whether
-the sampled basis, and not the mere fact of a per-story shift, carries the
-diversity); and, with the push only, the offset kept on while the model writes
-(retrying the injection-site result now that the budget and the one-sided set
-changed what steering does).
+`r18-heat16` (haziqexe) and `r18-heat18` (haziqaus) — the open cell from r17: the
+method at a working temperature. Every push arm so far ran at temperature 1.0,
+where the model loops unaided and the push turns prose to staccato; temperature
+1.6-1.8 stops the looping, and the push restores the compliance temperature
+spends, so each half fixes the other's failure mode. Each run is the decoding
+curve (`--suite sampling`, its own temperature grid, identical across the two
+runs as a consistency check) plus the method frontier (`--suite frontier`, push
+at 3 and 4.5 crossed with the perturbation at 0.1 and 0.15, each alone) run at
+temperature 1.6 (heat16) and 1.8 (heat18). First runs on the fifteen-requirement
+prompt that actually build the story-difference basis. 15 conditions x 100
+stories each. Read filtered with `scripts/score_structure.py`, not on the raw
+kernel Vendi. The question: does push + perturbation at a raised temperature beat
+temperature alone on compliance and clean structural diversity at once — the
+thing r17 at temperature 1.0 could not do.
 
 ## Open questions
 
