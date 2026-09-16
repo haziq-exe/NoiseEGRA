@@ -129,7 +129,7 @@ def main() -> None:
     ap.add_argument("--suite", nargs="+", default=["compare"],
                     choices=["baseline", "sampling", "compare", "method", "noise",
                              "offset", "story", "prompt", "main", "pareto", "directions", "select", "budget", "feedback", "assemble", "headtohead", "closure", "control",
-                             "ablate", "amplify", "constdose",
+                             "ablate", "amplify", "constdose", "spread",
                              "window", "decay", "core", "ortho", "alpha", "gate",
                              "beta", "loo", "all"])
     ap.add_argument("--task", default="generic", choices=["generic", "scenario"],
@@ -328,6 +328,13 @@ def main() -> None:
                          "is already broken past recovery, so continuing cannot turn "
                          "the sample into a pass. 0 disables it")
     ap.add_argument("--temperature", type=float, default=1.0)
+    ap.add_argument("--offset-draw", choices=("iid", "spread"), default="iid",
+                    help="'iid' draws each story's perturbation independently, which is "
+                         "what every round so far did. 'spread' lays the whole set out "
+                         "in advance so they repel one another: same length, same "
+                         "subspace, same expected direction, but no two stories get "
+                         "near-identical perturbations. A hundred independent draws from "
+                         "a rank-8 basis contain pairs 95% alike.")
     ap.add_argument("--top-p", type=float, default=None,
                     help="nucleus cut-off for EVERY condition, steered ones included. "
                          "Unset leaves the checkpoint's own generation config in force, "
@@ -889,6 +896,12 @@ def main() -> None:
     print("-" * len(live_header), flush=True)
 
     for spec, rid in zip(specs, run_ids):
+        # Lay this condition's whole set of per-story perturbations out before any
+        # of them is used, so they can be chosen to cover the subspace instead of
+        # colliding by chance. A no-op unless the plan asked for it.
+        plan = getattr(spec, "steering_plan", None)
+        if plan is not None and hasattr(plan, "plan_offsets"):
+            plan.plan_offsets(K, seed=0)
         missing = [(p_idx, k) for k in range(K) for p_idx in range(P)
                    if f"{p_idx}:{k}" not in state["runs"][rid]]
         if missing:
@@ -897,7 +910,7 @@ def main() -> None:
             for p_idx, k in missing:
                 text = generate_one(model, spec, mode, messages[p_idx],
                                     seed_for(p_idx, k), args.max_new_tokens,
-                                    max_words=word_budget)
+                                    max_words=word_budget, story_index=k)
                 state["runs"][rid][f"{p_idx}:{k}"] = text
                 save_state(state_path, state)
                 done += 1

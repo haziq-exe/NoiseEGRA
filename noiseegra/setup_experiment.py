@@ -187,6 +187,8 @@ def _ortho_tag(model_name: str, spec: ExperimentSpec) -> str:
             parts.append("__ponly")
         if getattr(plan, "offset_norm", "energy") != "energy":
             parts.append(f"__on{plan.offset_norm}")
+        if getattr(plan, "offset_draw", "iid") != "iid":
+            parts.append(f"__od{plan.offset_draw}")
     if getattr(plan, "steer_budget", None):
         parts.append(f"__bud{_float_tag(plan.steer_budget)}")
     # How the coefficient is decided, not just how large it is. Without this a

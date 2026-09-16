@@ -86,7 +86,8 @@ def write_csvs(out: Path, state: dict) -> None:
                 writer.writerow([text])
 
 
-def generate_one(model, spec, mode, story_prompt, seed, max_new_tokens, max_words=None):
+def generate_one(model, spec, mode, story_prompt, seed, max_new_tokens, max_words=None,
+                 story_index=None):
     """``max_words`` stops a generation that has run far past what the task allows.
 
     A perturbed arm that stops terminating runs to the token cap on every sample
@@ -98,7 +99,7 @@ def generate_one(model, spec, mode, story_prompt, seed, max_new_tokens, max_word
             story_prompt, spec.steering_plan,
             max_new_tokens=max_new_tokens, do_sample=spec.do_sample,
             temperature=spec.temperature, top_p=spec.top_p, top_k=spec.top_k, seed=seed,
-            max_words=max_words,
+            max_words=max_words, story_index=story_index,
         )
     if mode == "residual_stream_noise":
         return model.generate_with_residual_stream_noise(

@@ -363,6 +363,39 @@ class LayerPlan:
         return self.basis @ coeffs
 
 
+def _spread_on_sphere(pts: torch.Tensor, iters: int = 400,
+                      step: float = 0.05) -> torch.Tensor:
+    """Push unit vectors apart until they are as evenly spread as they get.
+
+    Riesz energy: every pair repels with a force falling off as the inverse cube
+    of the distance between them, and the points are renormalised back onto the
+    sphere after each step. Signs are free -- a direction and its negative are the
+    same axis for this purpose -- so the repulsion is computed on absolute
+    similarity, which lets ``n`` points settle onto ``n`` orthogonal axes when the
+    rank allows instead of onto antipodal pairs.
+
+    This is a deterministic layout, not a sample. Two hundred points in a rank-32
+    subspace cannot all be orthogonal, but they can be spread far better than
+    independent draws manage, and the gap is exactly the diversity that iid
+    sampling leaves on the table.
+    """
+    n, r = pts.shape
+    if n < 2:
+        return pts
+    for _ in range(iters):
+        # (n, n) cosine similarities; the sign-free version, so antipodes attract
+        # no more than duplicates.
+        sim = pts @ pts.t()
+        sim.fill_diagonal_(0.0)
+        # Force on i from j, along the component of j that i does not already
+        # have, weighted by how close they are. sim^3 concentrates the force on
+        # the pairs that are actually colliding.
+        weight = sim.sign() * sim.abs().pow(3.0)
+        push = pts - weight @ pts / max(n - 1, 1) * step * n
+        pts = push / push.norm(dim=1, keepdim=True).clamp_min(1e-12)
+    return pts
+
+
 @dataclass
 class SteeringPlan:
     """Everything the generation hook needs, precomputed once per run."""
@@ -391,6 +424,20 @@ class SteeringPlan:
     # components of individual decode-step activations, "story" the components of
     # whole-story mean activations.
     offset_basis_kind: str = "step"
+    # How the set of per-story offsets is chosen. "iid" draws each one
+    # independently, which is what every round so far has done. "spread" lays the
+    # whole set out in advance so the offsets repel one another, and story i takes
+    # the i-th of them.
+    #
+    # The difference is not a re-aiming of one story's perturbation -- turning a
+    # push of constant length was measured and is a null, +0.12 Vendi. It is a
+    # choice about the *set*, and diversity is a property of the set. Independent
+    # draws in a low-rank subspace collide: a hundred draws from a rank-8 basis
+    # contain pairs 95% identical, so several stories are perturbed the same way
+    # and the diversity that was paid for is not collected. Every offset keeps the
+    # same length and the same subspace, so the constraint cost is unchanged by
+    # construction; only the collisions go.
+    offset_draw: str = "iid"
     # Whether the per-story offset is added during decode at all. Turning it off
     # while `offset_prefill` is on gives a prompt-only offset: the model is moved
     # somewhere else before it writes a token and then decodes completely
@@ -546,6 +593,7 @@ class SteeringPlan:
         offset_mode: str = "none",
         offset_norm: str = "energy",
         offset_basis_kind: str = "step",
+        offset_draw: str = "iid",
         offset_prefill: bool = False,
         offset_basis: Optional[Mapping[int, torch.Tensor]] = None,
         offset_decode: bool = True,
@@ -732,6 +780,7 @@ class SteeringPlan:
             amplify_lambda=float(amplify_lambda),
             amplify_prefill=bool(amplify_prefill),
             offset_basis_kind=offset_basis_kind,
+            offset_draw=offset_draw,
             offset_prefill=bool(offset_prefill),
             noise_horizon=None if noise_horizon is None else int(noise_horizon),
             jitter_kappa=float(jitter_kappa),
@@ -899,7 +948,49 @@ class SteeringPlan:
                                      gains=self.gains, budget=self.steer_budget)
         )
 
-    def resample_offset(self) -> None:
+    def plan_offsets(self, n_stories: int, seed: int = 0) -> None:
+        """Lay out every story's perturbation at once, spread as far apart as they go.
+
+        The perturbations are drawn from the subspace the model's own states
+        occupy, which is low rank -- a few dozen directions out of a couple of
+        thousand. Drawn independently, ``n`` points in a rank-``r`` subspace clump:
+        for ``n`` of the order of ``r`` the expected largest pairwise similarity is
+        far from the smallest it could be, so several stories get nearly the same
+        perturbation and the diversity that was paid for is not collected. The
+        high-dimensional intuition that two random vectors are near-orthogonal is
+        true in the full stream and false here, which is the whole point of
+        drawing on the manifold in the first place.
+
+        So the set is chosen rather than sampled. The coefficients are spread over
+        the sphere by minimising a Riesz energy -- points repel, the configuration
+        settles into the most even one it can find -- and story ``i`` takes point
+        ``i``. When ``n <= r`` this converges to a mutually orthogonal set, the
+        furthest apart ``n`` directions can be; beyond that it degrades gracefully
+        towards a well-separated covering.
+
+        Every perturbation has the same length as before, drawn from the same
+        subspace, and is still projected clear of the constraint directions, so
+        the constraint cost is unchanged by construction. What changes is only
+        that the stories no longer collide with one another by chance.
+
+        Costs a few hundred iterations on an ``n x r`` matrix, once per run.
+        """
+        self._offset_plan = None
+        if (self.offset_draw != "spread" or self.offset_mode == "none"
+                or self.offset_gamma <= 0 or n_stories <= 1):
+            return
+        ranks = {lyr: (lp.offset_basis.shape[1] if lp.offset_basis is not None
+                       else self.dim)
+                 for lyr, lp in self.layer_plans.items()}
+        gen = torch.Generator(device="cpu").manual_seed(int(seed))
+        plan = {}
+        for lyr, r in ranks.items():
+            pts = torch.randn(n_stories, r, generator=gen, dtype=torch.float32)
+            pts = pts / pts.norm(dim=1, keepdim=True).clamp_min(1e-12)
+            plan[lyr] = _spread_on_sphere(pts)
+        self._offset_plan = plan
+
+    def resample_offset(self, story_index: Optional[int] = None) -> None:
         """Draw a fresh constant offset for the next generation.
 
         Call once per story, after seeding. Unlike per-token noise this is held
@@ -914,13 +1005,24 @@ class SteeringPlan:
                 lp.offset = None
             return
 
-        for lp in self.layer_plans.values():
+        laid_out = getattr(self, "_offset_plan", None)
+        for lyr, lp in self.layer_plans.items():
             dev, dt = lp.basis.device, lp.basis.dtype
+            # A coefficient vector: taken from the spread-out layout when one has
+            # been planned and this story's index is known, drawn independently
+            # otherwise.
+            if laid_out is not None and story_index is not None and lyr in laid_out:
+                pts = laid_out[lyr]
+                coeff = pts[int(story_index) % pts.shape[0]].to(device=dev, dtype=dt)
+            else:
+                coeff = None
             if lp.offset_basis is not None:
-                coeff = torch.randn(lp.offset_basis.shape[1], dtype=dt, device=dev)
+                if coeff is None:
+                    coeff = torch.randn(lp.offset_basis.shape[1], dtype=dt, device=dev)
                 vec = lp.offset_basis @ coeff
             else:
-                vec = torch.randn(self.dim, dtype=dt, device=dev)
+                vec = coeff if coeff is not None else torch.randn(self.dim, dtype=dt,
+                                                                  device=dev)
                 if self.offset_mode == "orth" and lp.protect is not None:
                     vec = vec - lp.protect @ (lp.protect.t() @ vec)
             if self.offset_norm == "energy":

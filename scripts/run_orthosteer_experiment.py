@@ -83,6 +83,7 @@ def make_plan(
     offset_mode="none",
     offset_norm="energy",
     offset_basis_kind="step",
+    offset_draw="iid",
     offset_prefill=False,
     offset_basis=None,
     offset_decode=True,
@@ -129,6 +130,7 @@ def make_plan(
         offset_mode=offset_mode,
         offset_norm=offset_norm,
         offset_basis_kind=offset_basis_kind,
+        offset_draw=offset_draw,
         offset_prefill=offset_prefill,
         offset_basis=offset_basis,
         offset_decode=offset_decode,
@@ -647,6 +649,61 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             f"one direction at a time at beta +/-{probes}, scored on the "
             f"requirement it was extracted to serve, then the whole block at "
             f"{block} times the calibrated coefficients")
+
+    if name == "spread":
+        # The complete method, its ablation, and the arms it has to beat.
+        #
+        # Compliance comes from the constraint push held to a fixed budget, so the
+        # number of requirements does not set the strength. Diversity comes from a
+        # per-story perturbation drawn from the subspace the model's own states
+        # occupy and projected clear of the constraint directions, applied at the
+        # prompt positions -- the best exchange rate any round has found, about
+        # +1.1 Vendi for +0.4 requirements.
+        #
+        # The new part is that the perturbations are chosen as a set rather than
+        # drawn one at a time. This is not a re-aiming of a single story's push:
+        # turning a push of constant length was measured in round 2 and moved
+        # Vendi by +0.12, and re-weighting the requirements moved it by -0.43.
+        # Both are nulls, because the diversity a story gets is not a function of
+        # where its own perturbation points. It is a property of the *set*, and
+        # every round so far has drawn the set independently and hoped it spread.
+        # In a rank-8 subspace a hundred independent draws contain pairs 95%
+        # alike, so several stories are perturbed almost identically and the
+        # diversity paid for is not collected.
+        #
+        # Every perturbation keeps its length, its subspace and its projection
+        # clear of the constraints, so the constraint cost is unchanged by
+        # construction. The iid arms at the same gamma are the ablation: any
+        # difference between them and the spread arms is the set-level choice
+        # alone.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        bud = float(getattr(args, "steer_budget", 3.0) or 3.0)
+        kind = getattr(args, "offset_basis_kind", "story")
+        flat = {n: 1.0 for n in names}
+        gammas = list(getattr(args, "gamma_sweep", [0.1, 0.15]))
+
+        def offset(g, draw, steered):
+            return {"plan": make_plan(
+                beta=flat if steered else {n: 0.0 for n in names},
+                steer_budget=bud if steered else None,
+                offset_gamma=g, offset_mode="orth", offset_basis=offset_basis,
+                offset_basis_kind=kind, offset_draw=draw,
+                steer_prefill=False, offset_prefill=True, offset_decode=False,
+                **quiet, **base)}
+
+        items = ["baseline"]
+        # compliance alone: the push, no perturbation
+        items.append({"plan": make_plan(beta=flat, steer_budget=bud,
+                                        steer_prefill=False, **quiet, **base)})
+        for g in gammas:
+            items.append(offset(g, "iid", False))       # perturbation alone, as before
+            items.append(offset(g, "spread", False))    # perturbation alone, set chosen
+            items.append(offset(g, "iid", True))        # the pair, drawn independently
+            items.append(offset(g, "spread", True))     # the complete method
+        return items, (
+            f"the constraint push held at {bud:g} and a per-story perturbation at "
+            f"gamma {gammas}, drawn independently and then chosen as a set")
 
     if name == "constdose":
         # Diversity at a constant steering dose.

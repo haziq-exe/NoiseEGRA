@@ -657,6 +657,7 @@ class EGRA:
     def generate_with_orthogonal_steering(
         self, prompt, plan,
         max_new_tokens=500, do_sample=True, temperature=1.0, top_p=None, top_k=None, seed=None,
+        story_index=None,
         max_words=None,
     ):
         """
@@ -696,8 +697,14 @@ class EGRA:
 
         # A fresh constant offset per story: drawn after seeding, so it is
         # reproducible, and held fixed for the whole generation.
+        # ``story_index`` matters when the plan has laid the whole set of
+        # perturbations out in advance: it says which of them this story takes.
+        # Without it the plan falls back to drawing one independently.
         if hasattr(plan, "resample_offset"):
-            plan.resample_offset()
+            try:
+                plan.resample_offset(story_index=story_index)
+            except TypeError:
+                plan.resample_offset()
 
         chat_text = self.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
         device = self._input_device()
