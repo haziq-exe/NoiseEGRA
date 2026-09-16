@@ -274,6 +274,17 @@ check("quote density is low on prose", quote_density(GOOD) < 1.5,
 check("quote density is high on salad", quote_density(SALAD) > 3.0,
       f"{quote_density(SALAD):.2f}")
 
+print("\n== refusals are not stories ==")
+REFUSAL = ("I'm sorry, but I can't generate content that includes the words you "
+           "asked for. Would you like me to write something else instead?")
+check("a refusal is flagged", "refusal" in filt.check(REFUSAL).reasons,
+      filt.check(REFUSAL).reason)
+IN_STORY = ('Mia drops the cup. "I\'m sorry," she says. Mom smiles and helps her '
+            'clean the floor. They laugh together and pour another glass of milk. '
+            'The kitchen is warm and the day goes on.')
+check("a character apologising is not a refusal",
+      "refusal" not in filt.check(IN_STORY).reasons, filt.check(IN_STORY).reason)
+
 print("\n== the leading preamble is trimmed ==")
 lead, n = trim_lead("Certainly! Here's a short story for young readers:\n\n" + GOOD)
 check("preamble removed", lead == GOOD and n > 0, f"removed {n} words")

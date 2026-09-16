@@ -235,6 +235,20 @@ def tiny_sentence_run(text: str) -> int:
     return best
 
 
+# The model declining or talking about the task instead of writing the story.
+# Fluent English, so nothing above flags it; seen from a large per-story
+# perturbation knocking the model into assistant mode. Only the opening is
+# checked: a story in which a character says "I'm sorry" is a story.
+_REFUSAL = re.compile(
+    r"^\s*\W{0,8}(?:i['’]m sorry|i am sorry|i can(?:no|')t|i cannot|"
+    r"i apologi[sz]e|as an ai|i'm not able|unfortunately,? i)\b", re.I)
+
+
+def is_refusal(text: str) -> bool:
+    """True when the text opens by declining the task rather than telling a story."""
+    return bool(_REFUSAL.match(text))
+
+
 def quote_density(text: str) -> float:
     """Quotation-mark characters per sentence.
 
@@ -626,6 +640,8 @@ class CoherenceFilter:
             reasons.append("run_on")
         if ends_mid_sentence(text) and len(words) >= t.min_words:
             reasons.append("dangling_end")
+        if is_refusal(text):
+            reasons.append("refusal")
         we = scores["window_entropy"]
         if we == we and we < t.min_window_entropy:
             reasons.append("vocab_loop")
