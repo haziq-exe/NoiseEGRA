@@ -173,6 +173,34 @@ def main() -> None:
                          "Steering directions are known to degrade out of "
                          "distribution. 'generic' is the old behaviour, kept so the "
                          "difference can be measured rather than assumed")
+    ap.add_argument("--beta-sweep", nargs="*", type=float, default=[0.25, 0.5, 1.0, 2.0, 4.0],
+                    help="in --suite directions, multipliers on the calibrated "
+                         "coefficients for the whole block")
+    ap.add_argument("--gamma-sweep", nargs="*", type=float, default=[0.05, 0.15, 0.4],
+                    help="per-story offset magnitudes used by --suite offset")
+    ap.add_argument("--offset-rank", type=int, default=64,
+                    help="how many activation principal components offsets may use")
+    ap.add_argument("--offset-basis", dest="offset_basis_kind", default="prompt",
+                    choices=["step", "story", "prompt"],
+                    help="which directions a per-story offset is drawn from. 'prompt' "
+                         "takes the principal components of the instruction's own "
+                         "hidden states in a single forward pass, so nothing has to "
+                         "be generated first. 'story' samples stories and takes the "
+                         "components across their mean activations, so the offset "
+                         "moves along an axis the model's own stories already differ "
+                         "on -- stronger, but it costs a sampling pass. 'step' takes "
+                         "them over individual decode steps, whose leading directions "
+                         "describe token position rather than content")
+    ap.add_argument("--offset-basis-stories", type=int, default=32,
+                    help="unsteered stories sampled to estimate the story-level basis")
+    ap.add_argument("--offset-basis-tokens", type=int, default=120,
+                    help="tokens generated per sample while estimating either basis")
+    ap.add_argument("--noise-horizon", type=int, default=24,
+                    help="decode steps the perturbation covers in --suite window, and "
+                         "the cosine horizon it fades out over in --suite decay. Kept "
+                         "separate from --horizon, which drives the constraint "
+                         "schedules: a 24-token noise window must not also compress "
+                         "the closure ramp into 24 tokens")
     ap.add_argument("--random-directions", action="store_true",
                     help="replace every extracted constraint direction, and the "
                          "principal components that build the protected subspace, "
@@ -261,7 +289,20 @@ def main() -> None:
                          "GPU with room and falls back to the CPU, which is what you "
                          "want while an 8B model is holding the card")
     ap.add_argument("--out", default="/kaggle/working/english")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="parse the arguments, print the conditions the suite would "
+                         "run, and stop. A typo in a flag name costs a Kaggle "
+                         "session start, a model download and several minutes "
+                         "before argparse rejects it; this catches it locally in a "
+                         "second")
     args = ap.parse_args()
+
+    if args.dry_run:
+        print("arguments parse. suites requested: " + " ".join(args.suite))
+        print(f"model {args.model}, {args.stories} stories, "
+              f"constraints {len(args.constraints)}, "
+              f"steer vectors {list(args.steer_vectors)}")
+        return
 
     out = Path(args.out) / args.model
     out.mkdir(parents=True, exist_ok=True)
