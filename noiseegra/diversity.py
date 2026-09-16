@@ -67,12 +67,25 @@ def read_run_csv(path: Path | str) -> Tuple[List[str], List[int]]:
         reader = csv.DictReader(fh)
         if reader.fieldnames and "story" in reader.fieldnames:
             has_idx = "prompt_index" in reader.fieldnames
+            has_sidx = "story_index" in (reader.fieldnames or [])
+            # A resumed, sharded run's merged CSV repeats the checkpointed
+            # history once per shard, so the same (prompt, story) key can appear
+            # several times. Counting a story twice silently deflates every
+            # diversity number, so keep the last copy of each key. Keyless files
+            # cannot be deduplicated and are passed through as they are.
+            seen: dict = {}
             for row in reader:
                 text = (row.get("story") or "").strip()
                 if not text:
                     continue
-                stories.append(text)
-                prompts.append(int(row["prompt_index"]) if has_idx else 0)
+                p = int(row["prompt_index"]) if has_idx else 0
+                if has_sidx and row.get("story_index") not in (None, ""):
+                    seen[(p, int(row["story_index"]))] = text
+                else:
+                    seen[(p, len(seen))] = text
+            for (p, _k) in sorted(seen):
+                prompts.append(p)
+            stories = [seen[k] for k in sorted(seen)]
             return stories, prompts
     with path.open(encoding="utf-8") as fh:
         for row in csv.reader(fh):
