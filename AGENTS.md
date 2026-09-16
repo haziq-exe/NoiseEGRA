@@ -31,6 +31,17 @@ downloads; every expensive dependency is stubbed.
 here decide what goes in a paper, so a number that is wrong is worse than no
 number.
 
+**Write for a reader who has not read the code or the earlier updates.** Every
+message, log entry and doc section the human reads must stand on its own. Never
+put a code-internal short name in that prose: not suite names (`frontier`,
+`spread`, `select`, `controls`, `sampling`), not run-id tags (`obstory`, `bud3`,
+`g0p15`, `ponly`), not variable or flag names. Say what the condition does to the
+model in ordinary words — "the constraint push held to a fixed total strength of
+3 with a per-story perturbation of size 0.15 added at the prompt", not the tag
+that encodes it. Do not refer back to "the method" or "the best arm" as if the
+reader remembers it; restate what it is each time. Say what every number
+measures. This is a hard requirement from the human, not a style preference.
+
 ## Layout
 
     noiseegra/            the library
