@@ -241,6 +241,53 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                       f"drawn from the {kind}-level activation directions, each "
                       "applied from the first generated token and from the prompt")
 
+    if name == "headtohead":
+        # The head-to-head, now that repetition is scored.
+        #
+        # Steering buys compliance partly by breaking text, and until this round
+        # nothing measured that: the baseline loops two stories in twenty-four,
+        # steering five directions under a budget loops six, and a single constant
+        # direction loops ten. Feedback steering loops three while keeping most of
+        # the gain, which is what it was built to do -- a correction proportional
+        # to the shortfall stops when the shortfall does, so it cannot drive a
+        # story that is already compliant off a cliff.
+        #
+        # So: the two steering mechanisms against each other at matched strength,
+        # each with and without the per-story perturbation, scored on thirteen
+        # requirements including the one that catches looping.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        b = float(getattr(args, "steer_budget", 3.0) or 3.0)
+        fb = list(getattr(args, "feedback_betas", [0.5]))
+        cap = float(getattr(args, "feedback_cap", 0.1))
+        gammas = list(getattr(args, "gamma_sweep", [0.1, 0.15]))
+        kind = getattr(args, "offset_basis_kind", "story")
+        tg = getattr(args, "targets", None)
+        flat = {n: 1.0 for n in names}
+
+        def arm(steer, gamma=None):
+            extra = dict(offset_gamma=gamma, offset_mode="orth",
+                         offset_basis=offset_basis, offset_basis_kind=kind,
+                         offset_prefill=True, offset_decode=False) if gamma else {}
+            return {"plan": make_plan(steer_prefill=False, **steer, **extra,
+                                      **quiet, **base)}
+
+        constant = dict(beta=flat, steer_budget=b)
+        items = ["baseline"]
+        items.append(arm(constant))
+        for g in gammas:
+            items.append(arm(constant, g))
+        for gain in fb:
+            feedback = dict(beta={n: gain for n in names}, steer_mode="feedback",
+                            targets=tg, feedback_cap=cap)
+            items.append(arm(feedback))
+            for g in gammas:
+                items.append(arm(feedback, g))
+        return items, (
+            f"constant steering at a fixed push of {b:g} against feedback steering "
+            f"at gain {fb}, each alone and with the per-story perturbation at gamma "
+            f"{gammas}, scored on thirteen requirements")
+
     if name == "assemble":
         # Both halves together, at the settings each was measured at.
         #
