@@ -300,6 +300,42 @@ among the scored requirements and every table prints a degeneracy column, but
 neither catches everything — reading the stories is what caught the collapse
 described above (`scripts/read_stories.py`, or index into the state file).
 
+**The n-gram looping rules undercount degeneration, and they undercount it most
+in the steered arms.** Read on 2026-09-16: stories that pass the repeated-n-gram
+rules and every coherence heuristic of the time include loops whose unit varies
+each pass (*'The leaves sang," Tommy said.'* with rotating names — the vocabulary
+is tiny but no five-gram repeats), stalls that change one word per repeat (*"She
+felt happy. She was happy. She felt good."*), collapse into fragments too short
+to hold an n-gram (*"Mia. Balloon. Fly."*), and broken dialogue with quote marks
+opening and closing at random. Four checks now catch these (`noiseegra/coherence.py`:
+windowed vocabulary entropy, near-duplicate-sentence ratio, tiny-sentence runs,
+quote density), thresholds calibrated on hand-read stories from this project's
+own runs — zero fires on the two clean conditions read (the sensory-direction
+probe and temperature 1.8), and every flagged story that was read in the baseline
+and method arms was genuinely broken. On r16's saved stories the full checker
+flags **46-49% of the best arm's stories** (push 3 + perturbation) against the
+15-19% the looping column reported, and 41% of the baseline's against 32%. Any
+diversity number over unfiltered stories inherits that gap; the r16 headline
+Vendi has not been re-scored under the filter, and r17 should be read with
+`scripts/score_structure.py` (locally, no GPU) alongside the kernel's Vendi.
+
+**One embedding Vendi cannot say what kind of variety it is counting.**
+`noiseegra/structure.py` splits it: structural diversity (each story reduced to
+its set of content lemmas, names excluded — what happens in it) and syntactic
+diversity (part-of-speech trigram profiles — how its sentences are shaped).
+Diagnostic on r16's coherent stories at 40-word truncation, rarefied to 51 per
+condition (prompt asked for thirteen requirements, so this is not a headline
+table): the perturbation alone raises structural diversity from the baseline's
+22.6 to 28-32; the push alone lowers it to 19.2; push plus perturbation lands at
+21.6-23.6, near the baseline. Syntactic diversity nearly doubles under the
+method (5.1 → 9.2-9.9). So on that round the method's measured Vendi gain over
+baseline is carried more by phrasing variety and by degenerate outliers than by
+different things happening — the question r17 should answer on the
+fifteen-requirement prompt. `vendi_from_embeddings` also now takes a Rényi
+order `q` (default 1, the published form): quoting q=1 beside q=2 says whether
+a gain lives in the bulk of the stories or in a few outliers, since broken
+stories enter q=1 at full weight and q=2 barely.
+
 **Vendi rises with length.** Steering shortens the stories — 47 words against the
 baseline's 85 — so an untruncated comparison partly measures that. Always pass
 `--truncate-words 40`, and never compare a Vendi measured under one truncation
