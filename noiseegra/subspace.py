@@ -1015,48 +1015,93 @@ class SteeringPlan:
         """
         if self.steer_mode != "error" or not self.control_state:
             return None
-        errs = self.control_state.get("errors") or {}
-        if not errs:
-            return None
         lp = self.layer_plans[layer]
         if device is not None and lp.basis.device != device:
             lp.basis = lp.basis.to(device)
         h = self.horizon if horizon is None else horizon
-        # A direction the controller watches is scaled by its error, so it goes
-        # silent once its requirement is inside the band. A direction the
-        # controller has no probe for keeps its constant coefficient.
-        #
-        # That difference is the whole design. The requirements split by shape:
-        # more present tense and simpler vocabulary are always better, and a
-        # constant push is the right control for them -- it took them from 25% to
-        # 64%. Word count, sentence count and exactly-two-quoted-lines are bands,
-        # where a constant push sails through the target and took them from 23%
-        # down to 3%. Running the controller over every direction fixed the second
-        # half and lost the first: banded went to 14% and monotone fell back to
-        # 28%, because the three monotone directions have no error signal and were
-        # never pushed at all. Each mechanism on the requirements it suits.
-        weights = []
-        for spec in self.specs:
-            err = errs.get(spec.name)
-            gain = 1.0 if err is None else float(err)
-            weights.append(spec.beta * gain * schedule_factor(spec.schedule, t, h))
-        coeffs = torch.tensor([w * self.rms_scale for w in weights],
-                              dtype=lp.basis.dtype, device=lp.basis.device)
-        if bool((coeffs == 0).all()):
+        errs = self.control_state.get("errors") or {}
+        # No probe has reported anything. Treating that as "nothing is watched"
+        # would quietly turn this into a constant push over every direction, which
+        # is the arm this mode exists to differ from, so it stays silent. The
+        # probe seeds a zero for each requirement it watches before the first
+        # token, so in a real run this is never the state during decoding.
+        if not errs:
             return None
-        delta = lp.basis @ coeffs
-        # The budget is a ceiling here, not a target. Renormalising to a fixed
-        # length is right for a constant push -- it stops the number of
-        # constraints setting the strength -- and destroys this one: it hands a
-        # story one word over its limit exactly the same shove as a story fifty
-        # over, which is a constant push pointed by the sign of the error rather
-        # than a proportional controller. It also divides the gain out entirely,
-        # so two runs at different gains came back byte-identical.
-        if self.steer_budget is not None:
-            cap = self.steer_budget * self.rms_scale
-            n = float(delta.norm())
-            if n > cap:
-                delta = delta * (cap / n)
+
+        # The requirements split by shape and the two halves want opposite
+        # controls, so the push is built as two components with separate budgets.
+        #
+        # A direction the controller watches is scaled by how far its requirement
+        # currently sits outside its band, and goes silent inside it. A direction
+        # the controller has no probe for -- more present tense, simpler
+        # vocabulary, where there is no such thing as enough -- keeps a constant
+        # coefficient.
+        #
+        # The budgets have to be separate. Sharing one ceiling over the sum let a
+        # large banded error scale the whole vector down, monotone components
+        # included, so the constant half's dose moved inversely with how wrong the
+        # banded half happened to be: monotone came back at 35% against the 64% a
+        # constant push alone reaches. Each half now gets its own dose and neither
+        # can rob the other.
+        watched = [i for i, s in enumerate(self.specs) if s.name in errs]
+        free = [i for i, s in enumerate(self.specs) if s.name not in errs]
+
+        def component(idx, weights, budget, renormalise):
+            """Assemble one half of the push, at its own budget."""
+            if not idx:
+                return None
+            if budget is not None and renormalise:
+                norm = math.sqrt(sum(w * w for w in weights))
+                if norm <= 1e-12:
+                    return None
+                weights = [w / norm * budget for w in weights]
+            full = [0.0] * len(self.specs)
+            for i, w in zip(idx, weights):
+                full[i] = w * self.rms_scale
+            coeffs = torch.tensor(full, dtype=lp.basis.dtype, device=lp.basis.device)
+            if bool((coeffs == 0).all()):
+                return None
+            d = lp.basis @ coeffs
+            if budget is not None and not renormalise:
+                # A ceiling, not a target. Renormalising the error-driven half
+                # would hand a story one word over its limit the same shove as a
+                # story fifty over -- a constant push pointed by the sign of the
+                # error rather than a proportional controller -- and would divide
+                # the gain out entirely: two runs at different gains once came
+                # back byte-identical.
+                cap = budget * self.rms_scale
+                n = float(d.norm())
+                if n > cap:
+                    d = d * (cap / n)
+            return d
+
+        parts = []
+        # Constant half: fixed dose, renormalised so the number of directions
+        # does not set the strength. Present from the first token, before the
+        # probe has decoded anything.
+        const = component(
+            free,
+            [self.specs[i].beta * schedule_factor(self.specs[i].schedule, t, h)
+             for i in free],
+            self.steer_budget,
+            True,
+        )
+        if const is not None:
+            parts.append(const)
+        # Error-driven half: proportional to the measured shortfall, capped.
+        err_part = component(
+            watched,
+            [self.specs[i].beta * float(errs[self.specs[i].name])
+             * schedule_factor(self.specs[i].schedule, t, h)
+             for i in watched],
+            self.steer_budget,
+            False,
+        )
+        if err_part is not None:
+            parts.append(err_part)
+        if not parts:
+            return None
+        delta = parts[0] if len(parts) == 1 else parts[0] + parts[1]
         return delta
 
     def feedback_delta(

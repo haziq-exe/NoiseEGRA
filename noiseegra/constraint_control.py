@@ -92,6 +92,14 @@ class ConstraintController:
     # against closure there says nothing about whether it will end short.
     warmup: float = 0.6
 
+    # The requirements this controller can measure on partial text. A direction
+    # named here is steered by its error; one that is not has no error signal and
+    # is steered by a constant coefficient instead.
+    WATCHED = ("closure", "terse", "dialogue")
+
+    def watched(self) -> Sequence[str]:
+        return self.WATCHED
+
     def errors(self, text: str) -> Dict[str, float]:
         st = read_partial(text)
         lo_w, hi_w = self.word_range
@@ -156,7 +164,11 @@ class ConstraintProbe:
         self.prompt_len = prompt_len
         self.every = max(int(every), 1)
         self.calls = 0
-        state.setdefault("errors", {})
+        # Seed every watched requirement at zero error before a token exists, so
+        # the steering plan can tell a direction the controller watches (and must
+        # not push constantly) from one it has no probe for, from the very first
+        # step rather than from the probe's first firing.
+        state["errors"] = {name: 0.0 for name in controller.watched()}
         state.setdefault("text", "")
 
     def __call__(self, input_ids, scores):
