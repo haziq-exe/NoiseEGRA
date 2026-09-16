@@ -124,6 +124,7 @@ EN_TASK_CONSTRAINTS = (
     "length", "present_tense", "simple_register", "dialogue",
     "easy_opening", "sentence_band", "sentence_count", "short_words",
     "one_name", "varied_openers", "plain_punctuation", "spelled_number",
+    "no_repetition",
 )
 
 # Back-compatible alias: older callers used this for the steering names.

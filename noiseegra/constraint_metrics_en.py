@@ -72,6 +72,14 @@ DEFAULT_SENTENCE_RANGE = (6, 8)
 DEFAULT_MAX_SYLLABLES = 2
 DEFAULT_MIN_NAME_USES = 3
 DEFAULT_MAX_OPENER_USES = 2
+# Share of a story's five-word sequences that are repeats. A perturbation strong
+# enough to buy diversity is often strong enough to send the model into a loop,
+# and a set of forty differently-broken stories scores as *more* diverse than
+# forty good ones, because differently-broken text really is mutually
+# dissimilar. Without this in the scored list, an arm can win the headline number
+# by producing worse writing: steering at the measured optimum tripled the rate
+# of looping stories, from two in twenty-four to six, and no column said so.
+DEFAULT_MAX_REPEAT = 0.15
 
 # Kept so callers that still pass the old single-sided thresholds keep working.
 DEFAULT_MAX_WORDS = DEFAULT_WORD_RANGE[1]
@@ -80,6 +88,7 @@ CONSTRAINT_NAMES = (
     "length", "present_tense", "simple_register", "dialogue",
     "easy_opening", "sentence_band", "sentence_count", "short_words",
     "one_name", "varied_openers", "plain_punctuation", "spelled_number",
+    "no_repetition",
 )
 
 # Short column headers for wide tables, and the full text for the legend.
@@ -183,6 +192,21 @@ def count_syllables(word: str) -> int:
     if w.endswith("e") and not w.endswith(("le", "ee", "ye")) and n > 1:
         n -= 1
     return max(n, 1)
+
+
+def repeated_ngram_share(words: Sequence[str], n: int = 5) -> float:
+    """Share of a story's ``n``-word sequences that are not unique.
+
+    Zero for ordinary prose and close to one for a story that loops. Five words
+    is long enough that a repeated phrase is deliberate rather than incidental --
+    "she runs to the" recurring twice is not a degenerate story, and "I am going
+    to the store" eight times is.
+    """
+    w = [x.lower() for x in words]
+    if len(w) < 2 * n:
+        return 0.0
+    grams = [" ".join(w[i:i + n]) for i in range(len(w) - n + 1)]
+    return 1.0 - len(set(grams)) / len(grams)
 
 
 def flesch_kincaid_grade(words: Sequence[str], n_sentences: int) -> float:
@@ -322,6 +346,7 @@ class StoryMetrics:
     n_digits: int
     n_hard_punct: int
     n_number_words: int
+    repeat_share: float
     n_names: int
     name_uses: int
     max_opener_uses: int
@@ -359,6 +384,7 @@ class EnglishConstraintChecker:
         max_syllables: int = DEFAULT_MAX_SYLLABLES,
         min_name_uses: int = DEFAULT_MIN_NAME_USES,
         max_opener_uses: int = DEFAULT_MAX_OPENER_USES,
+        max_repeat: float = DEFAULT_MAX_REPEAT,
         backend: str = "auto",
         constraints: Sequence[str] = CONSTRAINT_NAMES,
     ):
@@ -387,6 +413,7 @@ class EnglishConstraintChecker:
         self.max_syllables = int(max_syllables)
         self.min_name_uses = int(min_name_uses)
         self.max_opener_uses = int(max_opener_uses)
+        self.max_repeat = float(max_repeat)
         self.constraints = tuple(constraints)
 
         if backend == "spacy":
@@ -440,6 +467,8 @@ class EnglishConstraintChecker:
                                  "exclamation marks, apostrophes and quotation marks",
             "spelled_number": "the story counts something: a number of two or more "
                               "appears, written as a word and never as a digit",
+            "no_repetition": "it does not repeat itself: no run of five words appears "
+                             "twice",
         }
 
     def requirements_short(self) -> Dict[str, str]:
@@ -462,6 +491,7 @@ class EnglishConstraintChecker:
             "varied_openers": f"no opener used over {self.max_opener_uses} times",
             "plain_punctuation": "one paragraph, simple punctuation",
             "spelled_number": "a number word, no digits",
+            "no_repetition": "no repeated five-word run",
         }
 
     # -- measurement --------------------------------------------------------- #
@@ -497,6 +527,8 @@ class EnglishConstraintChecker:
         hard_punct = len(_HARD_PUNCT.findall(text))
         number_words = [w for w in words if w.lower() in _NUMBER_WORDS]
 
+        repeat_share = repeated_ngram_share(words)
+
         names = self._name_counts(text)
         n_names = len(names)
         name_uses = max(names.values()) if names else 0
@@ -523,6 +555,7 @@ class EnglishConstraintChecker:
                                  and not _LIST_OR_HEADING.search(text)
                                  and hard_punct == 0,
             "spelled_number": bool(number_words) and digits == 0,
+            "no_repetition": repeat_share <= self.max_repeat,
         }
         violations = sum(1 for c in self.constraints if checks[c] is False)
 
@@ -544,6 +577,7 @@ class EnglishConstraintChecker:
             n_digits=digits,
             n_hard_punct=hard_punct,
             n_number_words=len(number_words),
+            repeat_share=round(repeat_share, 4),
             n_names=n_names,
             name_uses=name_uses,
             max_opener_uses=opener_uses,

@@ -133,14 +133,14 @@ for text, want in [
 
 print("\n== the twelve-requirement task ==")
 full = EnglishConstraintChecker(backend="regex")
-check("twelve requirements by default", len(full.constraints) == 12, str(len(full.constraints)))
+check("thirteen requirements by default", len(full.constraints) == 13, str(len(full.constraints)))
 check("every requirement has prompt text and a short label",
       set(full.requirements()) >= set(full.constraints)
       and set(full.requirements_short()) >= set(full.constraints))
 generic = wp.build_generic_messages(full.requirements(), full.constraints)
 body = generic[1]["content"]
 check("the generic prompt carries one line per requirement",
-      body.count("\n- ") == 12, str(body.count("\n- ")))
+      body.count("\n- ") == 13, str(body.count("\n- ")))
 check("the generic prompt states the actual thresholds",
       f"{full.max_words} words" in body and f"grade-{full.max_grade_level:g}" in body)
 check("the generic prompt supplies no scenario",
@@ -175,6 +175,11 @@ for name, story, want in [
     ("sentence_band", COMPLIANT + " Go on.", False),
     ("dialogue", COMPLIANT.replace('"Now you stay here," she says.', "She says so."), False),
     ("dialogue", COMPLIANT + ' "One more," she says.', False),
+    # A perturbation strong enough to buy diversity can send the model into a
+    # loop, and a set of differently-broken stories scores as more diverse than a
+    # set of good ones. Without this in the list an arm wins by writing worse.
+    ("no_repetition", "I am going to the store. " * 8, False),
+    ("no_repetition", COMPLIANT, True),
 ]:
     got = full.evaluate(story).checks[name]
     check(f"{name} catches its violation", got is want, f"got {got}")
