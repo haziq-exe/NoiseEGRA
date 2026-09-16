@@ -633,3 +633,51 @@ Keep what is measured to help, at the coefficient that helps most, drop the rest
 The last two are the point of the exercise: for the first time the perturbation
 is added on top of a steering configuration that is better than the baseline
 rather than worse.
+
+## Round 5: a coefficient curve, and the shape of the problem
+
+The two directions round 4 measured as helpful, swept over coefficient, then
+combined, then with the per-story perturbation on top. 24 stories per condition,
+Qwen3-8B, directions extracted in the task context.
+
+| condition | broken /12 | vs baseline | words | Vendi |
+|---|---|---|---|---|
+| baseline | 4.42 | | 41 | 3.61 |
+| simple language +1.5 | 4.21 | -0.21 | 44 | 3.33 |
+| **simple language +3** | **3.88** | **-0.54** | 47 | 3.12 |
+| simple language +4.5 | 4.25 | -0.17 | 50 | 2.89 |
+| simple language +6 | 4.71 | +0.29 | 51 | 3.84 |
+| varied openings -1.5 | 4.71 | +0.29 | 46 | 3.38 |
+| varied openings -3 | 4.21 | -0.21 | 46 | 3.00 |
+| varied openings -4.5 | 5.96 | +1.54 | 149 | 2.54 |
+| varied openings -6 | 6.29 | +1.88 | 184 | 2.54 |
+| both together at 3 | 4.33 | -0.08 | 53 | 3.07 |
+| both + per-story offset 0.15 | 5.62 | +1.21 | 74 | 5.25 |
+| both + per-story offset 0.25 | 7.88 | +3.46 | 137 | 8.95 |
+
+**The curve for `simple_register` is a clean inverted U**: -0.21, -0.54, -0.17,
++0.29 at 1.5, 3, 4.5 and 6. A smooth optimum is far better evidence that the
+effect is real than the single point round 4 had. This is the first steering
+configuration in the project that beats the baseline on constraint following.
+
+**Two good directions together are worse than the better one alone**, 4.33 against
+3.88. They interfere. "Steer every constraint that has a direction" was wrong in
+principle and not only in its signs; what works is one direction at its own
+optimum.
+
+**`varied_openers` is fragile.** It helps at -3 and destroys the text at -4.5 and
+-6, where the stories run to 149 and 184 words against a 50-to-65-word rule. The
+useful band is narrow.
+
+**And the two levers pull against each other from both ends.** Steering buys
+compliance and spends diversity: 4.42 -> 3.88 broken, 3.61 -> 3.12 Vendi. The
+perturbation buys diversity and spends compliance. Read off the round-3 dose
+curve, the best available combination -- steering at its optimum plus the
+smallest useful perturbation, gamma about 0.10 -- lands near 4.3 broken and 4.6
+Vendi: constraint following level with the baseline, diversity up by about a
+quarter. That is "as good as baseline on constraints and clearly better on
+diversity", which is not yet "better on both".
+
+Closing the gap needs a steering gain larger than 0.54 of a requirement. That is
+what round 6 tests, on a model where the steered requirements are not already
+satisfied.
