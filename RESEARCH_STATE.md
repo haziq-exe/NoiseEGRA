@@ -26,19 +26,28 @@ extension of the original architecture — **constraint steering plus noise** �
 not a replacement for it.
 
 Diversity is the Vendi score: the effective number of distinct stories in a set.
-Compliance is the mean number of requirements broken per story, out of thirteen.
+Compliance is the mean number of requirements broken per story, out of fifteen.
 
 ## Current best result
 
 100 stories per condition, Qwen3-1.7B, the thirteen monotone requirements,
 diversity measured on the first 40 words of each story.
 
-| condition | broken/13 | Vendi | looping |
+| condition | broken/13 | Vendi | any degeneracy |
 |---|---|---|---|
-| the model as it ships | 7.78 | 6.93 | 32% |
-| constraint push at 3, alone | 3.94 | 5.67 | 11% |
-| perturbation at 0.1, alone | 7.08 | 9.94 | 20% |
-| **constraint push at 3 + perturbation at 0.1** | **3.72** | **8.26** | **15%** |
+| the model as it ships | 7.78 | 6.93 | 64% |
+| constraint push at 3, alone | 3.94 | 5.67 | 54% |
+| perturbation at 0.1, alone | 7.08 | 9.94 | 41% |
+| **constraint push at 3 + perturbation at 0.1** | **3.72** | **8.26** | **33%** |
+
+Scored on the thirteen requirements in force at the time. Two more were added
+afterwards — no sentence written twice, no opening reused more than three times —
+because the thirteen could be satisfied by collapsed text. Re-scored on all
+fifteen the ordering holds, 4.61 broken against 8.60, and this is the arm that
+loses one of the two new rules: on duplicate sentences the unmodified model passes
+71% and the push passes 28%. The perturbation is what pulls that back to 38%.
+"Any degeneracy" is the share of stories with a repeated three-gram above 25%, a
+repeated five-gram above 15%, or an opening used four or more times.
 
 The last row is the first arm in the project to beat the unmodified model on
 compliance, diversity and degeneracy at once. Each half alone wins one axis and
@@ -102,6 +111,12 @@ matched pairs and was slightly *worse* in all four (9.94→9.68, 12.71→11.94,
 8.26→7.95, 9.56→8.81). Covering the offset subspace evenly does not cover the
 output space evenly. Implemented as `offset_draw="spread"`; leave it off.
 
+**The requirement set must be checked for what collapse does to it.** Thirteen of
+the fifteen get *easier* as the writing falls apart — short sentences, short
+words, a plain opening, no subordinate clauses. Any new requirement has to be
+tested against a deliberately collapsed story, and
+`tests/test_english_smoke.py` does that.
+
 **Eight of nine directions control their own requirement**, verified one at a
 time (`--suite directions`): present tense 20→100%, dialogue 3→100%, short
 sentences 47→97%, a named character 13→80%, simple register 60→80%, sensory
@@ -158,9 +173,12 @@ are written out as descriptions, not assembled from setting names.
 
 ## In flight
 
-`r17-headline` — the decoding grid and the method's frontier in one command under
-one truncation, 18 conditions x 100 stories. Settles whether the method beats
-tuned decoding rather than only the default.
+`r17-headline` — the decoding grid and the method's frontier in one command, on
+the fifteen requirements, all scored at 40-word truncation. 18 conditions x 100
+stories. Settles whether the method beats tuned decoding rather than only the
+default. An earlier attempt was stopped twice: once because the diversity was not
+length-matched, once because it was running on the thirteen-requirement set that
+rewards collapse.
 
 ## Open questions
 
