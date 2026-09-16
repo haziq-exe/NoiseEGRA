@@ -419,6 +419,19 @@ no basis and asserts any that names one is guarded. What this costs: the r16
 basis is really a measurement of isotropic noise. That is not fatal, because
 r17-controls shows the two are nearly the same (below), but the labels were wrong.
 
+**Fluent non-stories pass every statistical check.** (Found 2026-09-17 by
+reading.) Two shapes: the model declining the task ("I'm sorry, but I can't
+generate content that includes..."), and the model's planning monologue leaking
+into the output even with thinking off ("Okay, let's see. The user wants me to
+create a short Story..."). Both are fluent, varied English, so the repetition,
+entropy and fragment checks all pass them, and a set of leaked plans scores as
+highly *diverse* — about a quarter of every arm with a per-story perturbation of
+0.25 or a sideways step of 0.3 was leaked plans, inflating those arms' variety.
+Now detected (`refusal`, `leaked_plan` in the coherence checks; zero false fires
+on the baseline and on perturbation-0.15 arms). The lesson repeats: every new
+perturbation strength introduces a new failure register, and only reading finds
+it first.
+
 **Run ids must record every setting that differs.** Two arms whose ids collide
 share a file and the second silently overwrites the first — a wrong answer with
 no error. `tests/test_suites_build.py` builds every suite in the runner's
@@ -478,24 +491,32 @@ sentence-level variety and not a win on story-content variety. Whether that
 clears the project bar depends on which kind of variety counts — a judgement for
 Haziq.
 
-In flight (launched 2026-09-17, all at temperature 1.0, all on the fifteen
-requirements, all with live story-peeking and automatic early abort of arms whose
-first twelve stories are nearly all broken):
+## The current champion (rounds 19-21, 2026-09-17)
 
-- `r19-tame` (haziqexe): twelve conditions testing ways to keep the constraint
-  push at strength 3 from fragmenting the text — the push fading out over the
-  first 64 generated words, on for the first 64 only, applied at the prompt
-  only, at the smaller strength 2, and with the two directions that loop worst
-  (dialogue, short-sentences) dropped — each alone and with the per-story
-  perturbation of size 0.15.
-- `r19-fsc` (haziqaus): the perturbation applied to the constraint vector itself
-  (a per-story sideways step at 0.15/0.3, or the vector turned at unchanged
-  length by 0.5/1.0), which has never run on this model or under a strength
-  budget; plus the original paper's method — per-token Gaussian noise with no
-  steering — fading over the first 64 words at strengths 0.2/0.4/0.6.
-- `r19-band14-22` (haziqcsv, third account): the four anchor conditions
-  (nothing, push, perturbation, both) with the intervention moved from layers
-  10-18 to layers 14-22, the first layer-band change on this model.
+At sampling temperature 1.0 on Qwen3-1.7B, the intervention moved to **layers
+6-14** (the discovery of round 19: at the usual 10-18 the push fragments half
+the stories, at 14-22 it kills all of them, at 6-14 it stops breaking text),
+the constraint push held at total strength 3 with the per-story perturbation of
+size 0.15 at the prompt positions:
+
+| | untouched model | the method |
+|---|---|---|
+| coherent stories /100 | 72 | **87** |
+| rules broken /15 | 7.93 | **5.46** |
+| variety of what happens | 20.0 ±0.6 | **26.0 ±0.8** |
+| variety of wording | 6.0 | **11.8** |
+
+The only configuration to beat the untouched model on all four axes at once, at
+the base temperature; zero refusals and zero leaked planning monologues (two
+contaminations that inflate variety in every larger-perturbation arm — see the
+measurement-fault section). Stronger pushes (4.5) lose both coherence AND
+compliance; larger shoves (0.25) and the constraint-vector sideways step buy
+more variety (up to 34.0) but pay in coherence or compliance. Full frontier in
+`EXPERIMENT_LOG.md` rounds 19-21. One run of 100 stories per arm so far.
+
+In flight: replication with fresh seeds (stories 101-200) for the champion and
+the combination arms, and the transfer test on Qwen3-8B at its proportional
+layer band (8-18 of 36).
 
 ## Open questions
 
