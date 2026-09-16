@@ -99,10 +99,25 @@ def merge(out: Path) -> None:
         for rid, cells in blob.get("runs", {}).items():
             merged.setdefault(rid, {}).update(cells)
         for f in sp.parent.iterdir():
-            if f.is_file() and f.name != "state.json":
-                dest = model_dir / f.name
-                if not dest.exists():          # the shards duplicate the vectors
+            if not f.is_file() or f.name == "state.json":
+                continue
+            dest = model_dir / f.name
+            if f.suffix == ".csv":
+                # Per-condition scores: each shard writes only the conditions it
+                # ran, so these have to be concatenated. Letting the first one win
+                # -- which is what the `not dest.exists()` rule below does, and
+                # did -- silently dropped the other GPU's diversity numbers, and a
+                # missing row reads exactly like a condition that was never run.
+                rows = f.read_text().splitlines()
+                if dest.exists():
+                    prev = dest.read_text().splitlines()
+                    header = prev[0] if prev else (rows[0] if rows else "")
+                    body = prev[1:] + rows[1:]
+                    dest.write_text("\n".join([header] + body) + "\n")
+                else:
                     shutil.copy2(f, dest)
+            elif not dest.exists():            # the shards duplicate the vectors
+                shutil.copy2(f, dest)
 
     (model_dir / "state.json").write_text(
         json.dumps({"task": task, "runs": merged, **extra}, indent=0))
