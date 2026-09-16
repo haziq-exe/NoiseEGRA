@@ -76,8 +76,24 @@ def mint(path: Path) -> tuple[str, datetime]:
         expires = expires.replace(tzinfo=timezone.utc)
     # Write the refreshed token back, so the account's own file stays current and
     # the next process does not have to mint again.
+    #
+    # The SDK rewrites the file with only the three token fields, which drops the
+    # `username` key that --whoami reads, so anything else already in the file is
+    # put back afterwards. Without this, a profile reports "?" for its account name
+    # once its token has been refreshed, and two profiles become impossible to tell
+    # apart without pushing a kernel and reading who owns it.
     try:
+        before = {}
+        try:
+            before = json.loads(path.read_text())
+        except Exception:
+            pass
         creds.save(str(path))
+        after = json.loads(path.read_text())
+        missing = {k: v for k, v in before.items() if k not in after}
+        if missing:
+            after.update(missing)
+            path.write_text(json.dumps(after))
     except Exception:
         pass
     return token, expires
