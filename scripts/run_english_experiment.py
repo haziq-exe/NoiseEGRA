@@ -228,6 +228,15 @@ def main() -> None:
                          "direction over")
     ap.add_argument("--combo-beta", type=float, default=3.0,
                     help="coefficient the kept directions are combined at")
+    ap.add_argument("--thinking", default="off", choices=["off", "on", "default"],
+                    help="whether the model is allowed to emit a <think> block "
+                         "before the story. Qwen3's chat template leaves this on, "
+                         "and a small model can spend its whole token budget "
+                         "reasoning and never reach the story -- slow to generate, "
+                         "and the reasoning text is then what gets scored. 'off' "
+                         "switches it off in the template, 'default' leaves the "
+                         "template alone. A reasoning block that appears anyway is "
+                         "stripped before scoring either way")
     ap.add_argument("--steer-budget", type=float, default=None,
                     help="total length of the constraint push, in units of the "
                          "model's own activation scale, held fixed however many "
@@ -283,9 +292,10 @@ def main() -> None:
                          "diversity is often strong enough to stop the model "
                          "terminating, and such a sample runs to the token cap every "
                          "time -- about six times slower than every other condition, "
-                         "for output already scored as failed. Default is three times "
-                         "the longest legal story, so nothing a well-behaved arm "
-                         "produces is ever cut. 0 disables it")
+                         "for output already scored as failed. Default is half again "
+                         "the longest legal story: at that length the word-count rule "
+                         "is already broken past recovery, so continuing cannot turn "
+                         "the sample into a pass. 0 disables it")
     ap.add_argument("--temperature", type=float, default=1.0)
     ap.add_argument("--baseline-temperature", type=float, default=1.8,
                     help="temperature for the sampling baselines in --suite sampling")
@@ -375,7 +385,7 @@ def main() -> None:
                          f"{list(args.steer_vectors)}")
 
     word_budget = (args.word_budget if args.word_budget is not None
-                   else 3 * args.max_words)
+                   else int(1.5 * args.max_words))
     word_budget = word_budget if word_budget > 0 else None
 
     print(f"model       : {model_id}")
@@ -447,6 +457,9 @@ def main() -> None:
                 )
             print("", flush=True)
             m = build_model(model_id, dtype=dtype_arg, wrapper_for=hf_id)
+            if args.thinking != "default":
+                m.enable_thinking = (args.thinking == "on")
+                print(f"  reasoning blocks: {'allowed' if m.enable_thinking else 'off'}")
             d = next(m.model.parameters()).dtype
             if torch.cuda.is_available() and d not in (torch.float16, torch.bfloat16):
                 raise SystemExit(f"model loaded in {d}; upgrade transformers (>=4.56).")

@@ -1,4 +1,5 @@
 from transformers import AutoModelForCausalLM, AutoTokenizer
+import re
 import torch
 import csv
 from pathlib import Path
@@ -12,6 +13,28 @@ def _cosine_noise_decay(t: int, max_noise_tokens: int) -> float:
     if max_noise_tokens <= 0:
         return 0.0
     return 0.5 * (1 + math.cos(math.pi * min(t, max_noise_tokens) / max_noise_tokens))
+
+
+
+_THINK = re.compile(r"<think>.*?</think>\s*", re.S)
+_OPEN_THINK = re.compile(r"^\s*<think>.*$", re.S)
+
+
+def strip_reasoning(text: str) -> str:
+    """Remove a reasoning block from generated text.
+
+    Qwen3 and other reasoning models emit ``<think> ... </think>`` before the
+    answer and their chat templates leave that on by default. Left in, it is
+    scored as if it were the story: the word count, the sentence count and the
+    readability grade all describe the model's deliberation rather than what it
+    wrote. An unclosed block means the model spent the whole budget thinking and
+    never produced a story, which is a failed generation and is returned empty
+    rather than as a page of reasoning.
+    """
+    if "<think>" not in text:
+        return text
+    out = _THINK.sub("", text)
+    return "" if _OPEN_THINK.match(out) else out.strip()
 
 
 class EGRA:
@@ -94,17 +117,36 @@ class EGRA:
                 kwargs["top_k"] = top_k
         return kwargs
 
+    # Reasoning models emit a <think> block before the answer. Qwen3's chat
+    # template leaves that switched on by default, so the model may spend the whole
+    # token budget reasoning and never reach the story -- which costs generation
+    # time and puts the reasoning text into what is scored.
+    enable_thinking = None       # None leaves the template's own default alone
+
     def apply_chat_template(self, messages, tokenize=False, add_generation_prompt=False):
         """
         Central chat-template entry point for all EGRA generation methods.
         Subclasses can override this to support tokenizers/models without a
         built-in chat template implementation.
         """
-        return self.tokenizer.apply_chat_template(
-            messages,
-            tokenize=tokenize,
-            add_generation_prompt=add_generation_prompt,
-        )
+        kwargs = {}
+        if self.enable_thinking is not None:
+            kwargs["enable_thinking"] = bool(self.enable_thinking)
+        try:
+            return self.tokenizer.apply_chat_template(
+                messages,
+                tokenize=tokenize,
+                add_generation_prompt=add_generation_prompt,
+                **kwargs,
+            )
+        except TypeError:
+            # The tokeniser's template does not take the argument; the model has
+            # no reasoning mode to switch off and the default is what we want.
+            return self.tokenizer.apply_chat_template(
+                messages,
+                tokenize=tokenize,
+                add_generation_prompt=add_generation_prompt,
+            )
 
     # ---- runaway generations ------------------------------------------- #
 
@@ -174,9 +216,9 @@ class EGRA:
             ),
         )
         generated_ids = outputs[0][inputs["input_ids"].shape[-1]:]
-        text = self.tokenizer.decode(generated_ids, skip_special_tokens=True)
+        text = strip_reasoning(self.tokenizer.decode(generated_ids, skip_special_tokens=True))
 
-        return text
+        return strip_reasoning(text)
 
     def zero_shot(
         self,
@@ -472,7 +514,7 @@ class EGRA:
                     pass
 
         generated_ids = outputs[0][input_ids.shape[-1]:]
-        return self.tokenizer.decode(generated_ids, skip_special_tokens=True)
+        return strip_reasoning(self.tokenizer.decode(generated_ids, skip_special_tokens=True))
 
 
     def generate_with_residual_stream_noise(self, prompt, residual_layers, residual_noise_std, 
@@ -610,7 +652,7 @@ class EGRA:
                     pass
     
         generated_ids = outputs[0][input_ids.shape[-1]:]
-        return self.tokenizer.decode(generated_ids, skip_special_tokens=True)
+        return strip_reasoning(self.tokenizer.decode(generated_ids, skip_special_tokens=True))
 
     def generate_with_orthogonal_steering(
         self, prompt, plan,
@@ -817,7 +859,7 @@ class EGRA:
                     pass
 
         generated_ids = outputs[0][input_ids.shape[-1]:]
-        text = self.tokenizer.decode(generated_ids, skip_special_tokens=True)
+        text = strip_reasoning(self.tokenizer.decode(generated_ids, skip_special_tokens=True))
         if gate_threshold > 0 and entropy_state["steps"]:
             self.last_gate_rate = entropy_state["open"] / entropy_state["steps"]
         else:
@@ -1028,7 +1070,7 @@ class EGRA:
                     pass
 
         generated_ids = outputs[0][input_ids.shape[-1]:]
-        return self.tokenizer.decode(generated_ids, skip_special_tokens=True)
+        return strip_reasoning(self.tokenizer.decode(generated_ids, skip_special_tokens=True))
 
 
     @torch.no_grad()
@@ -1249,7 +1291,7 @@ class EGRA:
                     pass
 
         generated_ids = outputs[0][input_ids.shape[-1]:]
-        return self.tokenizer.decode(generated_ids, skip_special_tokens=True)
+        return strip_reasoning(self.tokenizer.decode(generated_ids, skip_special_tokens=True))
 
 
     def generate_with_embedding_noise(
@@ -1368,7 +1410,7 @@ class EGRA:
                     pass
 
         generated_ids = outputs[0][input_ids.shape[-1]:]
-        return self.tokenizer.decode(generated_ids, skip_special_tokens=True)
+        return strip_reasoning(self.tokenizer.decode(generated_ids, skip_special_tokens=True))
 
     def twoStage_residual_noise(
         self, residual_noise_std, residual_noise_decay, residual_layers, logits_noise_std = 0.0, logits_noise_decay = 0.0,
