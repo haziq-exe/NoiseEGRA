@@ -1027,16 +1027,24 @@ class SteeringPlan:
             * schedule_factor(spec.schedule, t, h)
             for spec in self.specs
         ]
-        if self.steer_budget is not None:
-            norm = math.sqrt(sum(w * w for w in weights))
-            if norm <= 1e-12:
-                return None
-            weights = [w / norm * self.steer_budget for w in weights]
         coeffs = torch.tensor([w * self.rms_scale for w in weights],
                               dtype=lp.basis.dtype, device=lp.basis.device)
         if bool((coeffs == 0).all()):
             return None
-        return lp.basis @ coeffs
+        delta = lp.basis @ coeffs
+        # The budget is a ceiling here, not a target. Renormalising to a fixed
+        # length is right for a constant push -- it stops the number of
+        # constraints setting the strength -- and destroys this one: it hands a
+        # story one word over its limit exactly the same shove as a story fifty
+        # over, which is a constant push pointed by the sign of the error rather
+        # than a proportional controller. It also divides the gain out entirely,
+        # so two runs at different gains came back byte-identical.
+        if self.steer_budget is not None:
+            cap = self.steer_budget * self.rms_scale
+            n = float(delta.norm())
+            if n > cap:
+                delta = delta * (cap / n)
+        return delta
 
     def feedback_delta(
         self,

@@ -106,7 +106,7 @@ only_closure = p.error_delta(2)
 B = p.layer_plans[2].basis
 comp = only_closure @ B
 check("only the failing requirement is pushed",
-      abs(float(comp[0])) > 2.9 and abs(float(comp[1])) < 1e-5 and abs(float(comp[2])) < 1e-5,
+      abs(float(comp[0])) > 0.9 and abs(float(comp[1])) < 1e-5 and abs(float(comp[2])) < 1e-5,
       f"{[round(float(x), 3) for x in comp]}")
 check("and the constant arm would have pushed all three",
       float((plan().delta_for(2, 0) @ B).abs().min()) > 0.4)
@@ -117,9 +117,30 @@ check("the sign of the error sets the direction of the push",
 
 state["errors"] = {"closure": 1.0, "terse": 1.0, "dialogue": 1.0}
 three_failing = p.error_delta(2)
-check("the total push is the budget whether one requirement fails or three",
-      abs(float(three_failing.norm()) - float(only_closure.norm())) < 1e-4,
+check("three failing requirements push harder than one, up to the ceiling",
+      float(three_failing.norm()) >= float(only_closure.norm()) - 1e-4,
       f"{float(three_failing.norm()):.3f} vs {float(only_closure.norm()):.3f}")
+
+# The point of a proportional controller is that a small error gets a small
+# push. Renormalising the coefficients to a fixed length removes exactly that,
+# and divides the gain out with it: two runs at different gains came back
+# byte-identical and looped in three stories out of four.
+state["errors"] = {"closure": 0.1, "terse": 0.0, "dialogue": 0.0}
+small = p.error_delta(2)
+state["errors"] = {"closure": 1.0, "terse": 0.0, "dialogue": 0.0}
+big = p.error_delta(2)
+check("a story barely outside its band is barely pushed",
+      float(small.norm()) < float(big.norm()) / 5,
+      f"{float(small.norm()):.3f} against {float(big.norm()):.3f}")
+half = plan(steer_mode="error", control_state=state, controller=C, steer_budget=3.0)
+half.specs = [ConstraintSpec(n, beta=0.5) for n in NAMES]
+check("and the gain still does something",
+      abs(float(half.error_delta(2).norm()) - float(big.norm()) / 2) < 1e-3,
+      f"{float(half.error_delta(2).norm()):.3f} vs {float(big.norm()) / 2:.3f}")
+state["errors"] = {"closure": 9.0, "terse": 9.0, "dialogue": 9.0}
+check("but the ceiling still holds",
+      float(p.error_delta(2).norm()) <= 3.0 * 1.0 + 1e-4,
+      f"{float(p.error_delta(2).norm()):.3f}")
 
 print("\n== the probe reads the generated tokens, not the prompt ==")
 
