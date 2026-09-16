@@ -61,10 +61,24 @@ ARGS = types.SimpleNamespace(
     baseline_temperature=1.8, baseline_top_p=0.95, baseline_top_k=40,
 )
 
-SUITES = ["baseline", "sampling", "noise", "offset", "story", "prompt", "main",
-          "pareto", "directions", "select", "budget", "feedback", "assemble",
-          "headtohead", "closure", "control", "ablate", "amplify", "window",
-          "decay", "ortho", "alpha", "gate", "beta"]
+# Taken from the runner's own --suite choices rather than listed here, so a suite
+# cannot be added without this test covering it. A hardcoded list let `constdose`
+# through, and the run-id collision this test exists to catch is exactly the kind
+# of thing a new suite introduces: two arms that differ in a setting the id does
+# not record share a file, and the second silently overwrites the first.
+def _suite_choices():
+    import re
+
+    import run_english_experiment as R
+
+    src = open(R.__file__).read()
+    m = re.search(r'--suite[^)]*?choices=\[(.*?)\]', src, re.S)
+    if not m:
+        raise SystemExit("could not read the --suite choices from the runner")
+    return [x.strip().strip('"\'') for x in m.group(1).split(",") if x.strip()]
+
+
+SUITES = [s for s in _suite_choices() if s != "all"]
 
 for suite in SUITES:
     try:

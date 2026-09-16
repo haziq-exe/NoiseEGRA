@@ -129,7 +129,7 @@ def main() -> None:
     ap.add_argument("--suite", nargs="+", default=["compare"],
                     choices=["baseline", "sampling", "compare", "method", "noise",
                              "offset", "story", "prompt", "main", "pareto", "directions", "select", "budget", "feedback", "assemble", "headtohead", "closure", "control",
-                             "ablate", "amplify",
+                             "ablate", "amplify", "constdose",
                              "window", "decay", "core", "ortho", "alpha", "gate",
                              "beta", "loo", "all"])
     ap.add_argument("--task", default="generic", choices=["generic", "scenario"],
@@ -328,6 +328,17 @@ def main() -> None:
                          "is already broken past recovery, so continuing cannot turn "
                          "the sample into a pass. 0 disables it")
     ap.add_argument("--temperature", type=float, default=1.0)
+    ap.add_argument("--turn-sweep", nargs="*", type=float, default=[0.15, 0.3, 0.5],
+                    help="how far the constraint push is turned, in --suite constdose: "
+                         "the angle is atan(kappa), so 0.3 is 17 degrees. The length of "
+                         "the push is unchanged whatever this is.")
+    ap.add_argument("--realloc-sweep", nargs="*", type=float, default=[0.3, 0.6, 1.0],
+                    help="spread of the per-story re-weighting across requirements, in "
+                         "--suite constdose. The total push is renormalised afterwards, "
+                         "so this changes the split and not the dose.")
+    ap.add_argument("--frame-sweep", nargs="*", type=float, default=[0.1, 0.2],
+                    help="how far each direction is moved before the directions are made "
+                         "orthogonal, in --suite constdose")
     ap.add_argument("--sampling-grid", nargs="*", default=None,
                     help="decoding settings for --suite sampling, as TEMP or TEMP:TOP_P "
                          "(e.g. 1.0 1.0:0.95 1.3 1.6:0.95). Default sweeps six, which is "

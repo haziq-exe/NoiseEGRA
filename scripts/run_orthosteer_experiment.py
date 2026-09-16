@@ -632,6 +632,70 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             f"requirement it was extracted to serve, then the whole block at "
             f"{block} times the calibrated coefficients")
 
+    if name == "constdose":
+        # Diversity at a constant steering dose.
+        #
+        # Every arm run so far has bought one of the two things and spent the
+        # other. Steering takes the monotone requirements from 25% to 64% and
+        # takes Vendi from 7.56 down to 6.17. Perturbation does the reverse. The
+        # reason is that the two mechanisms are separate vectors: the perturbation
+        # is energy added on top of the push, so it either moves a requirement or
+        # it costs fluency, and in both cases the steering is no longer the amount
+        # of steering that was chosen.
+        #
+        # These arms perturb the constraint vector itself, at a length that does
+        # not change. Under a budget the coefficients are renormalised after the
+        # per-story draw, so every story is written under a push of exactly the
+        # budgeted length, aimed somewhere different:
+        #
+        #   turning       f(S) = |S| * (S/|S| + kappa*j)/sqrt(1+kappa^2), j
+        #                 perpendicular to S. The length is unchanged exactly; the
+        #                 push is turned by atan(kappa).
+        #   re-weighting  a lognormal gain per requirement per story, mean 1, then
+        #                 renormalised to the budget. Nothing leaves the constraint
+        #                 span at all -- each story is written under a different
+        #                 emphasis of the same requirements at the same total
+        #                 pressure.
+        #
+        # Both hold the dose fixed by construction rather than by tuning, which is
+        # the thing the temperature baselines cannot say: raising the temperature
+        # buys variation by changing the whole output distribution and pays for it
+        # in compliance.
+        #
+        # The sideways step is included as the version that does *not* preserve
+        # the dose, so the comparison says whether holding it fixed is what
+        # matters or whether any perturbation of the vector would do. The frame
+        # arms perturb each direction before the directions are made orthogonal,
+        # so what varies per story is the frame the push is expressed in rather
+        # than the push inside a fixed frame.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        bud = float(getattr(args, "steer_budget", 3.0) or 3.0)
+        flat = {n: 1.0 for n in names}
+        fixed = dict(beta=flat, steer_budget=bud, steer_prefill=False, **quiet, **base)
+
+        items = ["baseline", {"plan": make_plan(**fixed)}]
+        for mode, sweep in (("rotate", getattr(args, "turn_sweep", [0.15, 0.3, 0.5])),
+                            ("gain", getattr(args, "realloc_sweep", [0.3, 0.6, 1.0])),
+                            ("perp", getattr(args, "kappa_sweep", [0.1, 0.2])),
+                            ("frame", getattr(args, "frame_sweep", [0.1, 0.2]))):
+            for k in sweep:
+                items.append({"plan": make_plan(jitter_mode=mode, jitter_kappa=float(k),
+                                                **fixed)})
+        # One arm with the sideways direction drawn from the subspace the model's
+        # own states occupy rather than isotropically, so the turned vector stays
+        # on that manifold.
+        if offset_basis is not None:
+            items.append({"plan": make_plan(
+                jitter_mode="rotate", jitter_kappa=float(getattr(args, "turn_sweep",
+                                                                 [0.3])[len(getattr(args, "turn_sweep", [0.3])) // 2]),
+                jitter_draw="basis", offset_basis=offset_basis,
+                offset_basis_kind=getattr(args, "offset_basis_kind", "story"), **fixed)})
+        return items, (
+            f"the constraint push held at a total length of {bud:g} and aimed "
+            f"differently for each story: turned, re-weighted, stepped sideways, "
+            f"and expressed in a per-story frame")
+
     if name == "pareto":
         # Round 2 said three things. Every useful arm costs about one requirement
         # of twelve, so the question is no longer "does a perturbation buy
