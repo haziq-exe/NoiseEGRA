@@ -328,6 +328,12 @@ def main() -> None:
                          "is already broken past recovery, so continuing cannot turn "
                          "the sample into a pass. 0 disables it")
     ap.add_argument("--temperature", type=float, default=1.0)
+    ap.add_argument("--top-p", type=float, default=None,
+                    help="nucleus cut-off for EVERY condition, steered ones included. "
+                         "Unset leaves the checkpoint's own generation config in force, "
+                         "which for Qwen3 is not untruncated sampling.")
+    ap.add_argument("--top-k", type=int, default=None,
+                    help="top-k cut-off for every condition, steered ones included")
     ap.add_argument("--turn-sweep", nargs="*", type=float, default=[0.15, 0.3, 0.5],
                     help="how far the constraint push is turned, in --suite constdose: "
                          "the angle is atan(kappa), so 0.3 is 17 degrees. The length of "
@@ -810,6 +816,16 @@ def main() -> None:
     for it in items:
         d = {"mode": it} if isinstance(it, str) else dict(it)
         d.setdefault("temperature", args.temperature)
+        # Decoding settings apply to the steered conditions too. Every steered run
+        # so far was at temperature 1.0, where this model loops on 32% of stories;
+        # steering was being measured in the degenerate regime, against a baseline
+        # that was also in it. Raising the temperature both stops the looping and
+        # triples the diversity, so the honest question is what steering adds on
+        # top of a decoding setting worth using, not on top of the default.
+        if args.top_p is not None:
+            d.setdefault("top_p", args.top_p)
+        if args.top_k is not None:
+            d.setdefault("top_k", args.top_k)
         d.setdefault("max_new_tokens_plan", args.max_new_tokens)
         d.setdefault("max_new_tokens_story", args.max_new_tokens)
         normalised.append(d)
