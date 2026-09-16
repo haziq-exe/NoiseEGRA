@@ -59,7 +59,7 @@ LIVE="/tmp/${NAME}.live"
 python scripts/run_english_experiment.py $ARGS --dry-run || { echo "ARGS REJECTED"; exit 1; }
 
 if [ "$SHARDS" -gt 1 ]; then
-  RUNCMD="scripts/run_sharded.sh {OUT} $SHARDS -- $ARGS"
+  RUNCMD="scripts/run_sharded.py {OUT} $SHARDS -- $ARGS"
 else
   RUNCMD="scripts/run_english_experiment.py $ARGS"
 fi
