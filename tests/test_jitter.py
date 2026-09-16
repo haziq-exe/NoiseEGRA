@@ -116,6 +116,33 @@ check("the gains average 1, so the expected constraint push is unchanged",
       abs(mean - 1.0) < 0.1, f"mean {mean:.4f}")
 check("the gains actually vary", max(flat) / min(flat) > 2, f"{min(flat):.3f}-{max(flat):.3f}")
 
+# This is what the method claims: the story-to-story variation is bought without
+# changing how hard the requirements are pushed. Under a budget the coefficients
+# are renormalised after the gains are drawn, so the total push has exactly the
+# budgeted length for every story while the split across requirements is
+# different each time. Diversity at a constant dose, by construction rather than
+# by tuning -- which no sampling-temperature baseline can say, because raising the
+# temperature changes the whole output distribution.
+print("\n== gain under a budget: same dose every story, spent differently ==")
+gb = plan(jitter_mode="gain", jitter_kappa=0.6, steer_budget=3.0)
+lens, cosines, first = [], [], None
+for sd in range(200):
+    torch.manual_seed(sd); gb.resample_offset()
+    d = gb.delta_for(L, 0)
+    lens.append(float(d.norm()))
+    if first is None:
+        first = d
+    else:
+        cosines.append(float((d @ first) / (d.norm() * first.norm())))
+want = 3.0 * RMS
+check("every story's push has exactly the budgeted length",
+      max(abs(x - want) for x in lens) < 1e-3,
+      f"spread {min(lens):.6f}-{max(lens):.6f}, want {want:.6f}")
+check("but the push points somewhere different each time",
+      max(cosines) < 0.999, f"most similar pair: cos {max(cosines):.4f}")
+check("and the spread of aims is wide, not a jitter around one point",
+      min(cosines) < 0.95, f"least similar pair: cos {min(cosines):.4f}")
+
 print("\n== perturbing the directions before they are made orthogonal ==")
 # Everything above perturbs the summed constraint vector after the five
 # directions have been made mutually orthogonal, so the frame is identical for
