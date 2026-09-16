@@ -123,7 +123,8 @@ def main() -> None:
     ap.add_argument("--dtype", default="auto", choices=["auto", "float16", "bfloat16"])
     ap.add_argument("--suite", nargs="+", default=["compare"],
                     choices=["baseline", "sampling", "compare", "method", "noise",
-                             "offset", "story", "prompt", "main", "pareto", "ablate", "amplify",
+                             "offset", "story", "prompt", "main", "pareto", "directions",
+                             "ablate", "amplify",
                              "window", "decay", "core", "ortho", "alpha", "gate",
                              "beta", "loo", "all"])
     ap.add_argument("--task", default="generic", choices=["generic", "scenario"],
@@ -163,6 +164,16 @@ def main() -> None:
     ap.add_argument("--max-words", type=int, default=EN_MAX_WORDS)
     ap.add_argument("--max-grade", type=float, default=EN_MAX_GRADE_LEVEL)
     ap.add_argument("--beta", type=float, default=1.0)
+    ap.add_argument("--extraction-context", default="task", choices=["task", "generic"],
+                    help="the conversation the contrast activations are read in. "
+                         "'task' uses the real instruction the stories are written "
+                         "to, which is what steering_vectors.py says it does and "
+                         "what it did not do: directions were measured under 'You "
+                         "are a creative writer / write a short story' and applied "
+                         "under a twelve-requirement children's-reading prompt. "
+                         "Steering directions are known to degrade out of "
+                         "distribution. 'generic' is the old behaviour, kept so the "
+                         "difference can be measured rather than assumed")
     ap.add_argument("--beta-calibration", default="fixed", choices=["fixed", "auto"],
                     help="'fixed' pushes every steered direction positively at "
                          "--beta, which assumes the model errs on one particular "
@@ -177,7 +188,9 @@ def main() -> None:
     ap.add_argument("--calibration-stories", type=int, default=24,
                     help="unsteered stories the sign calibration is measured on; "
                          "reused from the baseline condition when it is already run")
-    ap.add_argument("--beta-sweep", nargs="*", type=float, default=[0.25, 0.5, 1.0, 2.0, 4.0])
+    ap.add_argument("--beta-sweep", nargs="*", type=float, default=[0.25, 0.5, 1.0, 2.0, 4.0],
+                    help="in --suite directions, multipliers on the calibrated "
+                         "coefficients for the whole block")
     ap.add_argument("--gamma-sweep", nargs="*", type=float, default=[0.05, 0.15, 0.4],
                     help="per-story offset magnitudes used by --suite offset")
     ap.add_argument("--offset-rank", type=int, default=64,
@@ -211,6 +224,12 @@ def main() -> None:
                          "push of that size do the same?' -- if the random arm moves "
                          "the requirements as much as the real one, the extraction "
                          "is not what is doing the work")
+    ap.add_argument("--probe-beta", type=float, default=3.0,
+                    help="how hard --suite directions pushes a single direction "
+                         "when it checks whether that direction moves its own "
+                         "requirement. Large on purpose: a probe that is too gentle "
+                         "to move anything cannot tell a bad direction from a small "
+                         "one")
     ap.add_argument("--kappa-sweep", nargs="*", type=float, default=[0.1, 0.15],
                     help="f(S_c) sideways-step magnitudes used by --suite pareto")
     ap.add_argument("--main-gamma", type=float, default=0.15,
@@ -235,6 +254,15 @@ def main() -> None:
     ap.add_argument("--horizon", type=int, default=200)
     ap.add_argument("--steer-prefill", action="store_true")
     ap.add_argument("--max-new-tokens", type=int, default=400)
+    ap.add_argument("--word-budget", type=int, default=None,
+                    help="stop a generation once it has written this many words and "
+                         "record it as it stands. A perturbation strong enough to buy "
+                         "diversity is often strong enough to stop the model "
+                         "terminating, and such a sample runs to the token cap every "
+                         "time -- about six times slower than every other condition, "
+                         "for output already scored as failed. Default is three times "
+                         "the longest legal story, so nothing a well-behaved arm "
+                         "produces is ever cut. 0 disables it")
     ap.add_argument("--temperature", type=float, default=1.0)
     ap.add_argument("--baseline-temperature", type=float, default=1.8,
                     help="temperature for the sampling baselines in --suite sampling")
@@ -301,9 +329,17 @@ def main() -> None:
               "  --allow-task-change if you are certain you want them mixed."
         )
 
+    word_budget = (args.word_budget if args.word_budget is not None
+                   else 3 * args.max_words)
+    word_budget = word_budget if word_budget > 0 else None
+
     print(f"model       : {model_id}")
     print(f"layers      : {layers}")
     print(f"constraints : {args.constraints}")
+    print(f"word budget : "
+          + (f"{word_budget} words, then the generation is stopped where it is "
+             f"({3 * args.max_words // args.max_words}x the longest legal story)"
+             if word_budget else "none; generations run to the token cap"))
     print(f"out         : {out}")
     print(f"resuming    : {sum(len(v) for v in state['runs'].values())} stories already saved\n")
 
@@ -392,15 +428,25 @@ def main() -> None:
         print("\nbaseline only: skipping steering-vector extraction and activation "
               "scale calibration.")
     if steering_needed:
-        vec_path = out / f"steering_{args.model}.pt"
+        # The context is part of what the direction *is*, so it is part of the
+        # cache key. Reusing a file extracted under a different conversation would
+        # silently answer a question nobody asked.
+        ctx_tag = "" if args.extraction_context == "generic" else f"_{args.extraction_context}"
+        vec_path = out / f"steering{ctx_tag}_{args.model}.pt"
         if vec_path.is_file():
             vectors = SteeringVectorSet.load(vec_path)
             print(f"steering vectors: loaded from {vec_path.name}")
         else:
             print("steering vectors: extracting (once) ...")
+            if args.extraction_context == "task":
+                ex_system = messages[0][0]["content"]
+                ex_user = messages[0][1]["content"]
+            else:
+                ex_system, ex_user = wp.SYSTEM_PROMPT, wp.EXTRACTION_PROMPT
+            print(f"  read in the {args.extraction_context} context")
             vectors = SteeringVectorExtractor(get_model()).extract(
                 load_pairs(EN_PAIRS), layers,
-                system=wp.SYSTEM_PROMPT, user=wp.EXTRACTION_PROMPT,
+                system=ex_system, user=ex_user,
                 pca_rank=args.pca_rank, only=args.steer_vectors, verbose=False,
             )
             vectors.save(vec_path)
@@ -462,7 +508,8 @@ def main() -> None:
             spec = make_specs("baseline")[0]
             for k in range(len(have), args.calibration_stories):
                 text = generate_one(model, spec, "baseline", messages[0],
-                                    seed_for(0, k), args.max_new_tokens)
+                                    seed_for(0, k), args.max_new_tokens,
+                                    max_words=word_budget)
                 cells[f"0:{k}"] = text
                 have.append(text)
             save_state(state_path, state)
@@ -657,7 +704,8 @@ def main() -> None:
             mode = _spec_mode(spec)
             for p_idx, k in missing:
                 text = generate_one(model, spec, mode, messages[p_idx],
-                                    seed_for(p_idx, k), args.max_new_tokens)
+                                    seed_for(p_idx, k), args.max_new_tokens,
+                                    max_words=word_budget)
                 state["runs"][rid][f"{p_idx}:{k}"] = text
                 save_state(state_path, state)
                 done += 1

@@ -233,6 +233,43 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                       f"drawn from the {kind}-level activation directions, each "
                       "applied from the first generated token and from the prompt")
 
+    if name == "directions":
+        # Does each extracted direction move its own requirement, and which way?
+        #
+        # Nothing so far has asked. Steering has been run as a block of five
+        # directions at one coefficient, and it costs both compliance and
+        # diversity: 4.65 requirements broken against a 4.55 baseline, with Vendi
+        # 3.27 against 4.00. A block that loses on both cannot be fixed by tuning
+        # what is added on top of it, and "the block does not work" does not say
+        # which of the five is at fault, or whether any of them work.
+        #
+        # So: one direction at a time, pushed hard in both directions, scored on
+        # the requirement that direction was extracted to serve. A direction that
+        # moves its own requirement is usable and its sign and size can be tuned.
+        # One that does not is a bad direction and no amount of tuning will help.
+        # Then the block itself at three sizes, to see whether the failure is the
+        # directions or the dose.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        probe = float(getattr(args, "probe_beta", 3.0))
+        block = list(getattr(args, "beta_sweep", [1.0, 2.0, 4.0]))
+        nominal = args.beta if isinstance(args.beta, dict) else {n: args.beta for n in names}
+
+        items = ["baseline"]
+        for target in names:
+            for sign in (+1.0, -1.0):
+                betas = {n: (sign * probe if n == target else 0.0) for n in names}
+                items.append({"plan": make_plan(beta=betas, steer_prefill=False,
+                                                **quiet, **base)})
+        for scale in block:
+            betas = {n: scale * v for n, v in nominal.items()}
+            items.append({"plan": make_plan(beta=betas, steer_prefill=False,
+                                            **quiet, **base)})
+        return items, (
+            f"one direction at a time at beta +/-{probe:g}, scored on the "
+            f"requirement it was extracted to serve, then the whole block at "
+            f"{block} times the calibrated coefficients")
+
     if name == "pareto":
         # Round 2 said three things. Every useful arm costs about one requirement
         # of twelve, so the question is no longer "does a perturbation buy

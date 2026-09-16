@@ -86,12 +86,19 @@ def write_csvs(out: Path, state: dict) -> None:
                 writer.writerow([text])
 
 
-def generate_one(model, spec, mode, story_prompt, seed, max_new_tokens):
+def generate_one(model, spec, mode, story_prompt, seed, max_new_tokens, max_words=None):
+    """``max_words`` stops a generation that has run far past what the task allows.
+
+    A perturbed arm that stops terminating runs to the token cap on every sample
+    and is several times slower than every other condition, for output already
+    scored as failed. None keeps the old behaviour.
+    """
     if mode == "orthogonal_steering":
         return model.generate_with_orthogonal_steering(
             story_prompt, spec.steering_plan,
             max_new_tokens=max_new_tokens, do_sample=spec.do_sample,
             temperature=spec.temperature, top_p=spec.top_p, top_k=spec.top_k, seed=seed,
+            max_words=max_words,
         )
     if mode == "residual_stream_noise":
         return model.generate_with_residual_stream_noise(
@@ -108,6 +115,7 @@ def generate_one(model, spec, mode, story_prompt, seed, max_new_tokens):
         return model.generate(
             story_prompt, max_new_tokens=max_new_tokens, do_sample=spec.do_sample,
             temperature=spec.temperature, top_p=spec.top_p, top_k=spec.top_k, seed=seed,
+            max_words=max_words,
         )
     raise ValueError(f"kaggle_orthosteer does not handle mode '{mode}'")
 

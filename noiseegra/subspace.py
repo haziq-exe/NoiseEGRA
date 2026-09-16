@@ -51,7 +51,7 @@ NOISE_MODES = ("none", "iso", "orth", "para")
 OFFSET_MODES = ("none", "orth", "free")
 OFFSET_NORMS = ("energy", "raw")
 # How f(S_c) perturbs the constraint vector itself. See SteeringPlan.jitter_*.
-JITTER_MODES = ("none", "perp", "rotate", "gain")
+JITTER_MODES = ("none", "perp", "rotate", "gain", "frame")
 JITTER_DRAWS = ("iso", "basis")
 NORM_MATCH_MODES = ("energy", "none")
 SCHEDULES = ("constant", "cosine_decay", "ramp", "linear_decay", "prefix")
@@ -294,6 +294,7 @@ class LayerPlan:
     amp_mean: Optional[torch.Tensor] = None       # (dim,) what they differ *from*
     jitter_basis: Optional[torch.Tensor] = None   # (dim, M) directions f(S_c) may use
     jitter: Optional[torch.Tensor] = None         # (dim,) this generation's unit draw
+    raw_basis: Optional[torch.Tensor] = None      # (dim, C) before orthogonalisation
 
     def steering_delta(
         self,
@@ -582,6 +583,7 @@ class SteeringPlan:
             layer_plans[layer] = LayerPlan(
                 layer=layer, basis=basis, protect=protect, report=report,
                 offset_basis=ob, amp_basis=ab, amp_mean=am, jitter_basis=jb,
+                raw_basis=unit_columns(raw).clone(),
             )
 
         return cls(
@@ -636,6 +638,8 @@ class SteeringPlan:
                 lp.amp_mean = lp.amp_mean.to(device=device, dtype=dtype)
             if lp.jitter_basis is not None:
                 lp.jitter_basis = lp.jitter_basis.to(device=device, dtype=dtype)
+            if lp.raw_basis is not None:
+                lp.raw_basis = lp.raw_basis.to(device=device, dtype=dtype)
             if lp.jitter is not None:
                 lp.jitter = lp.jitter.to(device=device, dtype=dtype)
         return self
@@ -664,6 +668,30 @@ class SteeringPlan:
                 lp.jitter = None
             return
 
+        if self.jitter_mode == "frame":
+            # Perturb each constraint direction *before* the set is made mutually
+            # orthogonal, rather than perturbing the summed vector afterwards.
+            # Everything else here jitters one vector and leaves the orthogonal
+            # frame identical for every story; this gives every story its own
+            # frame. Where the perturbation lands is then decided by the
+            # orthogonalisation, which redistributes it across the constraints
+            # instead of letting it sit wherever it was drawn.
+            self.gains = None
+            k = self.jitter_kappa
+            for lp in self.layer_plans.values():
+                if lp.raw_basis is None:
+                    continue
+                dev, dt = lp.raw_basis.device, lp.raw_basis.dtype
+                d = lp.raw_basis
+                g = torch.randn(d.shape, dtype=dt, device=dev)
+                # Only the part of each draw perpendicular to its own direction
+                # matters: a component along it just rescales a unit column.
+                g = g - d * (d * g).sum(dim=0, keepdim=True)
+                g = g / g.norm(dim=0, keepdim=True).clamp_min(1e-12)
+                lp.basis, _ = orthonormalize(d + g * k, method=self.orthogonalize)
+                lp.jitter = None
+            return
+
         self.gains = None
         for lp in self.layer_plans.values():
             dev, dt = lp.basis.device, lp.basis.dtype
@@ -688,6 +716,8 @@ class SteeringPlan:
         if delta is None or self.jitter_kappa <= 0:
             return delta
         if self.jitter_mode not in ("perp", "rotate"):
+            # "gain" acts on the coefficients and "frame" on the basis itself, so
+            # by the time the vector is summed both are already applied.
             return delta
         lp = self.layer_plans[layer]
         if lp.jitter is None:

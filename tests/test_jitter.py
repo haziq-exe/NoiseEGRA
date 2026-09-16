@@ -116,6 +116,31 @@ check("the gains average 1, so the expected constraint push is unchanged",
       abs(mean - 1.0) < 0.1, f"mean {mean:.4f}")
 check("the gains actually vary", max(flat) / min(flat) > 2, f"{min(flat):.3f}-{max(flat):.3f}")
 
+print("\n== perturbing the directions before they are made orthogonal ==")
+# Everything above perturbs the summed constraint vector after the five
+# directions have been made mutually orthogonal, so the frame is identical for
+# every story. This perturbs each direction first and orthogonalises the
+# perturbed set, giving every story its own frame.
+f = plan(jitter_mode="frame", jitter_kappa=0.3)
+torch.manual_seed(21); f.resample_offset()
+b1 = f.layer_plans[L].basis.clone()
+torch.manual_seed(22); f.resample_offset()
+b2 = f.layer_plans[L].basis.clone()
+check("every story gets a different frame", not torch.allclose(b1, b2, atol=1e-5))
+check("the frame is still orthonormal",
+      float((b1.t() @ b1 - torch.eye(len(NAMES))).abs().max()) < 1e-4,
+      f"{float((b1.t() @ b1 - torch.eye(len(NAMES))).abs().max()):.3g}")
+check("the summed push is turned away from the unjittered one",
+      abs(float((f.delta_for(L, 0) @ S) / (f.delta_for(L, 0).norm() * S.norm()))) < 0.999)
+check("and is constant within a story",
+      torch.allclose(f.delta_for(L, 0), f.delta_for(L, 9), atol=1e-6))
+check("kappa=0 leaves the frame alone",
+      torch.allclose(plan(jitter_mode="frame", jitter_kappa=0.0).layer_plans[L].basis,
+                     plain.layer_plans[L].basis, atol=1e-6))
+check("the raw directions are kept so the frame can be rebuilt each story",
+      f.layer_plans[L].raw_basis is not None
+      and f.layer_plans[L].raw_basis.shape == (DIM, len(NAMES)))
+
 print("\n== one draw per story, held for the whole story ==")
 p = plan(jitter_mode="perp", jitter_kappa=0.3)
 torch.manual_seed(11); p.resample_offset()

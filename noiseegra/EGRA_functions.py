@@ -106,7 +106,49 @@ class EGRA:
             add_generation_prompt=add_generation_prompt,
         )
 
-    def generate(self, prompt, max_new_tokens=100, do_sample=True, temperature=1.0, top_p=None, top_k=None, seed=None):
+    # ---- runaway generations ------------------------------------------- #
+
+    def _word_budget_stopper(self, prompt_len: int, max_words, every: int = 16):
+        """Stop a generation once it has written far more than the task allows.
+
+        A perturbation strong enough to buy diversity is often strong enough to
+        stop the model terminating: the per-token-noise arm wrote 159 words and 78
+        sentences against a 65-word, eight-sentence rule and ran to the token cap
+        every single time, which made it about six times slower than every other
+        condition for output that was already scored as failed. Waiting for the cap
+        buys nothing -- a story twice over the word limit has broken the length
+        rule and cannot un-break it by continuing.
+
+        The text is decoded every ``every`` steps rather than every step, because
+        decoding is the expensive part and a few tokens of overshoot do not matter.
+        Returns None when there is no budget, so the normal path is untouched.
+        """
+        if not max_words or max_words <= 0:
+            return None
+        try:
+            from transformers import StoppingCriteria, StoppingCriteriaList
+        except Exception:
+            return None
+
+        tokenizer = self.tokenizer
+
+        class _WordBudget(StoppingCriteria):
+            def __init__(self):
+                self.calls = 0
+
+            def __call__(self, input_ids, scores, **kwargs):
+                self.calls += 1
+                if self.calls % every:
+                    return False
+                new = input_ids[0][prompt_len:]
+                if new.numel() < max_words:      # cannot be over the budget yet
+                    return False
+                text = tokenizer.decode(new, skip_special_tokens=True)
+                return len(text.split()) > max_words
+
+        return StoppingCriteriaList([_WordBudget()])
+
+    def generate(self, prompt, max_new_tokens=100, do_sample=True, temperature=1.0, top_p=None, top_k=None, seed=None, max_words=None):
         """
         prompt should always be a list of dicts of the form [ {"role" : "system", "content" : system_prompt},
                                               {"role" : "user", "content" : user_prompt}  ]
@@ -119,9 +161,11 @@ class EGRA:
         device = self._input_device()
         inputs = self.tokenizer(chat_text, return_tensors="pt").to(device)
         inputs.pop("token_type_ids", None)
+        stopper = self._word_budget_stopper(inputs["input_ids"].shape[-1], max_words)
         outputs = self.model.generate(
             **inputs,
             max_new_tokens=max_new_tokens,
+            **({"stopping_criteria": stopper} if stopper is not None else {}),
             **self._sampling_kwargs(
                 do_sample=do_sample,
                 temperature=temperature,
@@ -571,6 +615,7 @@ class EGRA:
     def generate_with_orthogonal_steering(
         self, prompt, plan,
         max_new_tokens=500, do_sample=True, temperature=1.0, top_p=None, top_k=None, seed=None,
+        max_words=None,
     ):
         """
         Constraint steering with direction-constrained noise, injected at the same
@@ -752,6 +797,9 @@ class EGRA:
             )
             if processors is not None:
                 gen_kwargs["logits_processor"] = processors
+            stopper = self._word_budget_stopper(inputs["input_ids"].shape[-1], max_words)
+            if stopper is not None:
+                gen_kwargs["stopping_criteria"] = stopper
             outputs = self.model.generate(
                 **inputs, max_new_tokens=max_new_tokens, **gen_kwargs
             )
