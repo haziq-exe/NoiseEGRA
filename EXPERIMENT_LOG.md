@@ -878,3 +878,120 @@ step the story so far is decoded and the same checks that score the finished tex
 are run over it, giving a signed error per requirement. Inside its band a
 requirement gets a coefficient of zero and the model writes unsteered. `--suite
 control` is the test.
+
+## Round 12 - each mechanism on the requirements it suits, and the dose confound
+
+`--suite control`, Qwen3-1.7B, 40 stories per arm, thirteen mixed requirements.
+
+| condition | broken/13 | vs baseline | looping | monotone | banded |
+|---|---|---|---|---|---|
+| constant push, coefficient 1, budget 2 | 7.53 | -0.53 | 5% | **64%** | 3% |
+| baseline | 8.05 | - | 5% | 25% | 23% |
+| error-driven, gain 0.5 | 8.32 | +0.27 | 12% | 28% | 14% |
+| error-driven, gain 2 | 8.85 | +0.80 | 57% | 25% | 9% |
+
+Two clean facts. A constant push takes the monotone requirements from 25% to 64%
+and the banded ones from 23% to 3%. The error-driven controller does the reverse
+in miniature: banded recovers to 14%, monotone falls back to 28%.
+
+The controller's monotone collapse was a bug, not a finding. It watches three
+requirements -- closure, terse, dialogue -- and scales each direction by its
+measured error. The other three directions have no probe, so their error read as
+zero and they were never pushed at all. The error-driven arm was silently
+steering three directions instead of six.
+
+## Round 13 - the hybrid, and one budget shared by two halves
+
+Fix: a direction the controller watches is scaled by its error; one it has no
+probe for keeps its constant coefficient. One push, each requirement controlled
+the way its shape allows.
+
+| condition | broken/13 | monotone | banded |
+|---|---|---|---|
+| constant push, coefficient 1 | 7.53 | 64% | 3% |
+| baseline | 8.05 | 25% | 23% |
+| hybrid, coefficient 2 | 8.10 | 35% | 12% |
+| hybrid, coefficient 1 | 8.12 | 35% | 12% |
+
+Both halves present, both weak: monotone 35% against the 64% a constant push
+reaches alone. The cause was one ceiling covering the sum of the two halves. A
+story forty words over its limit makes a large closure error, the combined vector
+exceeds the cap, and the whole thing is scaled down -- constant components with
+it. The dose on "more present tense" moved inversely with how badly the word
+count happened to be doing.
+
+## Round 14 - two budgets
+
+The constant half is renormalised to its own fixed budget; the error-driven half
+is capped at its own. Neither can rob the other. The probe also seeds a zero for
+every requirement it watches before the first token, so the plan can tell a
+watched direction from an unwatched one at step one.
+
+| condition | broken/13 | vs baseline | looping | monotone | banded |
+|---|---|---|---|---|---|
+| **hybrid, coefficient 1** | **7.38** | **-0.68** | 32% | **66%** | 9% |
+| constant push, coefficient 1 | 7.53 | -0.53 | 5% | 64% | 3% |
+| hybrid, coefficient 2 + offset 0.15 | 7.60 | -0.45 | 30% | 68% | 6% |
+| hybrid, coefficient 2 | 7.85 | -0.20 | 60% | 66% | 5% |
+| baseline | 8.05 | - | 5% | 25% | 23% |
+
+The fix worked as diagnosed: monotone 35% -> 66%, and the hybrid now beats the
+constant push on both families at once (66% against 64%, 9% against 3%). Best
+aggregate on the mixed set so far.
+
+Two things it does not do. Banded is still far below the 23% the model reaches
+unsteered -- **across all thirty-six steered conditions run to date, none has
+improved a banded requirement over leaving the model alone.** And the hybrid buys
+part of its win with degenerate text: 32% of its stories loop against 5% for the
+constant push. That cost is already priced into the 7.38, because repetition is
+one of the thirteen scored requirements, but it is the next thing to fix on this
+line.
+
+## Round 15 - a requirement set where steering and the requirement agree
+
+A negative result about banded requirements is not a paper. The main comparison
+moves to thirteen requirements that are all one-sided, so a push along a
+direction and the requirement it serves agree about which way is better.
+
+Seven are new or reshaped: every sentence at most eight words; at least three
+lines of speech (not exactly two); at most two adverbs; at least two words saying
+how something looks, sounds, feels, smells or tastes; at most one subordinate
+clause; no word leaned on more than three times; a named character. Each is a
+rule someone writing for children would actually be given rather than one
+reverse-engineered from a steering direction.
+
+Every threshold was set by measuring the candidate on forty stories written
+*without* being asked for it and keeping the level that passed between 5% and
+50%:
+
+| requirement | unprompted | requirement | unprompted |
+|---|---|---|---|
+| present tense | 2% | at most 2 adverbs | 50% |
+| grade 2.5 or easier | 72% | 2+ sensory words | 18% |
+| no word over 2 syllables | 50% | at most 1 subordinate clause | 80% |
+| first sentence at most 5 words | 38% | no word used over 3 times | 42% |
+| every sentence at most 8 words | 65% | a name, used 3+ times | 48% |
+| 3+ quoted lines | 48% | no repeated five-word run | 95% |
+| no opener used over 3 times | 15% | | |
+
+Nothing sits at 0% or 100%, so every requirement has room to be lost and room to
+be won.
+
+Four new directions come with it -- plain verbs over adverbs, sensory detail,
+simple syntax, a named character -- twelve length-matched pairs each, each
+checked to move its own metric and not the others:
+
+| direction | positive side | negative side |
+|---|---|---|
+| plain verbs over adverbs | 0.25 adverbs | 2.33 |
+| sensory detail | 4.00 sensory words | 0.08 |
+| simple syntax | 0.00 subordinate clauses | 2.75 |
+| a named character | 2.33 name uses | 0.08 |
+
+Two conflicts inside the set had to be settled. Using the character's name three
+times against using no word more than three times left only the single value
+three, so names are exempt from the second. And spaCy parses `"Come here," Mira
+says` as a complement clause, which made every line of dialogue count as
+subordination and made the speech and syntax rules jointly unsatisfiable; quoted
+speech is now removed before that count, and a test asserts a real story can
+satisfy all thirteen at once.
