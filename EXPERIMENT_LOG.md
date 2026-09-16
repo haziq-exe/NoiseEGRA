@@ -681,3 +681,78 @@ diversity", which is not yet "better on both".
 Closing the gap needs a steering gain larger than 0.54 of a requirement. That is
 what round 6 tests, on a model where the steered requirements are not already
 satisfied.
+
+## Round 7: the steering bottleneck, and when a direction can work at all
+
+Three runs in parallel, one per account, each across both of a kernel's T4s.
+Qwen3-1.7B, 24 stories a condition, reasoning blocks switched off. Thirteen
+minutes a run, against two and a half hours before.
+
+### The dose was the confound
+
+Summing k directions at coefficient beta gives a push of length beta*sqrt(k)*rms.
+"Steer one more constraint" therefore meant "push harder", and the two-direction
+arm was never compared against the one-direction arm at the same strength.
+
+| condition | broken /12 | vs baseline | Vendi |
+|---|---|---|---|
+| baseline | 8.08 | | 6.46 |
+| all five summed at 1, as before | 7.21 | -0.87 | 5.05 |
+| all five, total push held at 2 | 7.21 | -0.87 | 5.58 |
+| all five, total push held at 3 | 6.83 | **-1.25** | 4.91 |
+| all five, total push held at 4.5 | 6.75 | **-1.33** | 3.83 |
+| **two** directions, total push held at 3 | 7.75 | -0.33 | 5.26 |
+| all five, budget 3, reallocated per story | 6.92 | -1.16 | **5.65** |
+| all five, budget 3, reallocated, decayed | 6.88 | -1.20 | 5.48 |
+
+Steering now removes 1.33 requirements of twelve, a sixth of the violations. And
+**at the same total push, five directions beat two by 0.92 requirements**. The
+answer to a multi-constraint method that stops working is not to steer fewer
+constraints; it is to stop letting the number of constraints set the strength.
+
+Reallocating the budget per story -- same total push, drawn differently for each
+story, never leaving the constraint subspace -- buys **+0.74 Vendi for +0.09
+requirements** against the constant push at the same budget. That is the best
+exchange rate in the project so far. It is still below the baseline's diversity,
+so steering continues to homogenise; it just homogenises less.
+
+### Why some directions cannot work, and it is not the extraction
+
+One direction at a time, on a model that actually fails these requirements:
+
+| direction | push | its own requirement | baseline | steered | total broken |
+|---|---|---|---|---|---|
+| **present tense** | +3 | present tense | **0%** | **96%** | -0.21 |
+| **simple language** | +3 | grade 2.5 or easier | 71% | **100%** | -0.42 |
+| **varied openings** | +3 | no opener used three times | 4% | **17%** | +0.92 |
+| dialogue | +3 | exactly two quoted lines | 4% | 0% | +1.08 |
+| short sentences | +3 | every sentence four to ten words | 8% | 0% | +0.42 |
+
+Present tense goes from 0% to 96%. The extraction was never the problem: on
+Qwen3-8B that requirement already passed at 92%, so the direction had nothing to
+win and only side effects to show. Three of five directions clearly control the
+requirement they were extracted for.
+
+The two that fail share a property. `dialogue` asks for **exactly two** quoted
+lines and `sentence_band` for sentences **between four and ten** words. Both are
+two-sided. A constant push has no notion of *enough*: it keeps pushing after the
+constraint is satisfied and straight out the other side, which is why pushing
+"more dialogue" takes the exactly-two rule from 4% to 0%. The three that work are
+all monotone -- more present tense, simpler language, more varied openings are
+never wrong.
+
+**So constant steering is the right tool for monotone constraints and the wrong
+tool for banded ones**, and that is a property of the mechanism rather than of
+the vectors. It is also exactly what a feedback correction fixes: a push
+proportional to the shortfall saturates when the shortfall reaches zero.
+
+### What is running
+
+* `assemble` -- budget steering plus the per-story perturbation, the first time
+  the perturbation starts from a steering configuration that is winning rather
+  than losing. Steering has 1.25 requirements of slack for it to spend.
+* `feedback` -- steering that reads where the story already sits on each
+  constraint axis and closes only its own shortfall. Verified on CPU: a
+  compliant story receives nothing at all, and two stories failing different
+  constraints are corrected in orthogonal directions, against cosine 1.0 between
+  any two stories under the constant push.

@@ -122,7 +122,7 @@ def main() -> None:
     ap.add_argument("--dtype", default="auto", choices=["auto", "float16", "bfloat16"])
     ap.add_argument("--suite", nargs="+", default=["compare"],
                     choices=["baseline", "sampling", "compare", "method", "noise",
-                             "offset", "story", "prompt", "main", "pareto", "directions", "select", "budget", "feedback",
+                             "offset", "story", "prompt", "main", "pareto", "directions", "select", "budget", "feedback", "assemble",
                              "ablate", "amplify",
                              "window", "decay", "core", "ortho", "alpha", "gate",
                              "beta", "loo", "all"])
@@ -584,7 +584,7 @@ def main() -> None:
     args.offset_basis = None
     args.amplify_basis = None
     args.amplify_mean = None
-    if {"offset", "story", "prompt", "main", "pareto", "feedback", "ablate", "amplify"} & set(suites_req):
+    if {"offset", "story", "prompt", "main", "pareto", "feedback", "assemble", "ablate", "amplify"} & set(suites_req):
         kind = args.offset_basis_kind
         pc_path = out / f"actpcs_{kind}_{args.model}.pt"
         legacy = out / f"actpcs_{args.model}.pt"

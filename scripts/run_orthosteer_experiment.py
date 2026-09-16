@@ -241,6 +241,45 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                       f"drawn from the {kind}-level activation directions, each "
                       "applied from the first generated token and from the prompt")
 
+    if name == "assemble":
+        # Both halves together, at the settings each was measured at.
+        #
+        # Steering under a fixed budget now buys 1.25 to 1.33 requirements of
+        # twelve on Qwen3-1.7B, which is slack the diversity half can spend. Every
+        # earlier attempt to add a perturbation started from a steering
+        # configuration that was already losing, so the perturbation had to pay for
+        # the steering's mistakes before it could buy anything.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        b = float(getattr(args, "steer_budget", 3.0) or 3.0)
+        kappa = float(getattr(args, "realloc_kappa", 0.6))
+        gammas = list(getattr(args, "gamma_sweep", [0.1, 0.15, 0.25]))
+        kind = getattr(args, "offset_basis_kind", "story")
+        flat = {n: 1.0 for n in names}
+
+        def offset(g, realloc):
+            extra = dict(jitter_mode="gain", jitter_kappa=kappa) if realloc else {}
+            return {"plan": make_plan(
+                beta=flat, steer_budget=b, offset_gamma=g, offset_mode="orth",
+                offset_basis=offset_basis, offset_basis_kind=kind,
+                offset_prefill=True, offset_decode=False, steer_prefill=False,
+                **extra, **quiet, **base)}
+
+        items = ["baseline"]
+        items.append({"plan": make_plan(beta=flat, steer_budget=b,
+                                        steer_prefill=False, **quiet, **base)})
+        items.append({"plan": make_plan(beta=flat, steer_budget=b,
+                                        jitter_mode="gain", jitter_kappa=kappa,
+                                        steer_prefill=False, **quiet, **base)})
+        for g in gammas:
+            items.append(offset(g, False))
+        for g in gammas[:2]:
+            items.append(offset(g, True))
+        return items, (
+            f"steering at a fixed total push of {b:g}, with and without the budget "
+            f"reallocated per story, and the per-story perturbation on top at gamma "
+            f"{gammas}")
+
     if name == "feedback":
         # Steering that corrects this story rather than biasing every story.
         #
