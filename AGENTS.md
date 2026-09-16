@@ -6,6 +6,12 @@ that still satisfies hard constraints. The Arabic study is published (arXiv
 2604.03380); the current work generalises it to English on the
 `english-generalization` branch.
 
+**Start with `RESEARCH_STATE.md`.** It says what the project is trying to show,
+what is already known, what the current best result is, and which measurement
+traps have already produced wrong numbers here. `METHODS_TRIED.md` lists every
+condition ever run — check it before proposing a mechanism, because one was
+nearly re-run thirteen rounds after it had been shown to be a null.
+
 ## Ground rules
 
 **Never `git add -A`.** `.gitignore` in this repo is *untracked* — it is a local
