@@ -35,38 +35,84 @@ not a replacement for it.
 Diversity is the Vendi score: the effective number of distinct stories in a set.
 Compliance is the mean number of requirements broken per story, out of fifteen.
 
-## The best-scoring condition so far
+## Where the headline comparison stands (r17, 2026-09-16)
 
-*r16. Qwen3-1.7B, layers 10-18, the 13 one-sided requirements, eight directions,
-100 stories per condition, diversity on the first 40 words. One run; not repeated,
-and not measured on any other model.*
+*r17-headline. Qwen3-1.7B, layers 10-18, the fifteen one-sided requirements all
+asked for in the prompt, 100 stories per condition, Vendi on the first 40 words,
+the decoding grid and the method's frontier in one run. One run, one model.*
 
-| condition | broken/13 | Vendi | any degeneracy |
-|---|---|---|---|
-| the model as it ships | 7.78 | 6.93 | 64% |
-| constraint push at 3, alone | 3.94 | 5.67 | 54% |
-| perturbation at 0.1, alone | 7.08 | 9.94 | 41% |
-| **constraint push at 3 + perturbation at 0.1** | **3.72** | **8.26** | **33%** |
+Raw, the method looks like the answer: push 3 + perturbation 0.15 scores 4.94
+broken and Vendi 9.73 against the default's 8.43 and 6.64, and push 4.5 +
+perturbation 0.25 (5.01, 12.74) beats every decoding arm on both axes. **The raw
+winners are broken text.** The coherence checks added the same day flag 100 of
+100 stories in every push-4.5 arm ("Mia runs. Mia! Mia. Mia. Lily. Lily."), 48-58
+of 100 in the push-3 arms, and 19-32 of 100 in the decoding arms. Scored only
+over stories that pass the checks, at matched group size (full tables in
+`EXPERIMENT_LOG.md`, round 17):
 
-Scored on the thirteen requirements in force at the time. Two more were added
-afterwards — no sentence written twice, no opening reused more than three times —
-because the thirteen could be satisfied by collapsed text. Re-scored on all
-fifteen the ordering holds, 4.61 broken against 8.60, and this is the arm that
-loses one of the two new rules: on duplicate sentences the unmodified model passes
-71% and the push passes 28%. The perturbation is what pulls that back to 38%.
-"Any degeneracy" is the share of stories with a repeated three-gram above 25%, a
-repeated five-gram above 15%, or an opening used four or more times.
+- the compliance win is real: push-3 arms break 4.3-5.5 of fifteen among clean
+  stories against 7.4-7.9 for every decoding arm;
+- the clean structural-diversity win is not: temperature 1.8 reaches 21.5-23.3
+  effective structurally-distinct stories, the best push arm 21.6, the headline
+  arm 16.8 (baseline 16.4). The method's raw Vendi advantage was degenerate
+  outliers plus phrasing variety;
+- the perturbation alone lifts structural diversity to 20-24 at a decoding-arm
+  keep rate; the push alone drops it to 13.9 and halves the keep rate;
+- the method still beats the *unmodified default* on both axes however scored,
+  but it keeps 42-51 coherent stories per 100 where the temperatures keep 73-81.
 
-The last row is the only condition so far that scored better than the unmodified
-model on compliance, diversity and degeneracy in the same run. In this run each
-half alone scored better on one of compliance and diversity and worse or level on
-the other.
+So against tuned decoding the method wins compliance by three requirements and
+loses clean structural diversity: neither dominates. Every push arm ran at
+temperature 1.0, the regime where the model loops unaided; the method at
+temperature 1.6-1.8 — each half fixing the other's failure mode — has never been
+run and is the open cell.
 
-How it compares with tuned decoding is not yet measured on comparable numbers.
-Temperature 1.8 with top-k 40 gave 7.21 broken and Vendi 10.65 in r15, also ahead
-of the default on both — but that Vendi was untruncated and this one is truncated
-at 40 words, and Vendi rises with length. `r17-headline` puts the decoding grid and
-the method in one run under one truncation.
+**Caveat that reframes the mechanism, not the trade.** Every perturbation arm in
+r17-headline ran with the isotropic-fallback bug above, so what the table calls
+the "story-difference basis" was isotropic noise. The compliance column is
+unaffected (the push drives it), and the diversity conclusions stand for
+*isotropic* perturbation. Whether the sampled basis does better is answered by
+r17-controls, next.
+
+## The sampled basis does not beat isotropic noise (r17-controls, 2026-09-16)
+
+*Nine conditions x 100 stories, same model/prompt/requirements/truncation as
+r17-headline, and the first run to actually build the story-difference basis.
+Diversity from `scripts/score_structure.py` over coherent stories, rarefied to 40
+per condition, 40 draws; "structural" = Vendi over each story's content-lemma set
+(names excluded), "syntactic" = Vendi over its part-of-speech trigram profile.*
+
+The perturbation at gamma 0.15, three ways, alone and under the push at 3:
+
+| arm | kept/100 | broken/15 | structural | syntactic |
+|---|---|---|---|---|
+| story-difference basis, alone | 70 | 8.25 | 27.70 ±0.63 | 12.62 |
+| isotropic draw, alone | 75 | 8.22 | 25.93 ±0.87 | 14.08 |
+| projection removed, alone | 78 | 8.57 | 27.07 ±0.93 | 14.00 |
+| story-difference basis + push 3 | 52 | 4.84 | 20.41 ±0.73 | 9.92 |
+| isotropic draw + push 3 | 48 | 4.94 | 20.34 ±0.40 | 8.90 |
+| projection removed + push 3 | 48 | 5.32 | 22.37 ±0.62 | 9.76 |
+
+Two findings, both against the method's story so far.
+
+**The sampled basis buys essentially nothing over an isotropic draw.** Alone it
+is 1.8 structural-diversity points ahead (27.70 against 25.93) but keeps fewer
+coherent stories (70 against 75) and is *lower* on syntactic diversity; under the
+push the two are identical (20.41 against 20.34). The between-generation basis is
+the object the novelty claim rests on ([[egra-novelty-tension]]), and on the
+first run that actually uses it, a random direction of the same length does as
+well. The earlier claim that the basis performs better (Vendi 8.57 against 6.53)
+came from a Qwen3-8B run whose basis construction was not verified and may carry
+the same fallback.
+
+**The projection buys compliance, not diversity.** Removing it (the "free" arm)
+leaves diversity equal or higher — 22.37 against 20.41 structural under the push —
+while compliance falls, 4.84 to 5.32 broken. That is the cleanest read yet of
+what the projection is for: it protects the requirements the offset would
+otherwise disturb (r2 found the same on Qwen3-8B, less cleanly), and it is not
+paying for that protection in diversity. So of the two ideas that make the
+perturbation more than plain noise, one (the projection) earns its ~0.5
+requirement and the other (the sampled basis) does not earn anything measurable.
 
 ## The method
 
@@ -346,6 +392,25 @@ not set them inherits them, so the "plain" baseline is not untruncated sampling.
 A top-p 0.95 arm at temperature 1.0 once came back identical to the baseline in
 every digit across a hundred stories.
 
+**The story-difference basis was never built for r16-spread or r17-headline, so
+their "story-basis" arms were isotropic noise.** (Found 2026-09-16.) The runner
+builds the sampled activation basis only when the requested suite is in a
+hardcoded guard set, and that set had drifted: `spread`, `frontier` and `select`
+were all missing from it. When the guard did not fire, `args.offset_basis` stayed
+`None`, and a per-story offset with no basis falls back to an isotropic draw
+projected clear of the constraints — while the run id still reads `obstory`. So
+every arm labelled "per-story offset drawn from the story-difference subspace" in
+r16-spread and r17-headline was in fact an isotropic perturbation. Proof: the
+r17-controls run (which does build the basis) reproduces r17-headline's
+"story-basis" arm byte-for-byte from its *isotropic* arm, 100 stories of 100,
+while its real story-basis arm differs. Fixed: `BASIS_SUITES` is now module-level
+with the three suites added, the runner crashes if any `obstory`/`obprompt` run id
+survives with no basis, and `tests/test_suites_build.py` builds every suite with
+no basis and asserts any that names one is guarded. What this costs: the r16
+"best result" and every r17-headline diversity number attributed to the story
+basis is really a measurement of isotropic noise. That is not fatal, because
+r17-controls shows the two are nearly the same (below), but the labels were wrong.
+
 **Run ids must record every setting that differs.** Two arms whose ids collide
 share a file and the second silently overwrites the first — a wrong answer with
 no error. `tests/test_suites_build.py` builds every suite in the runner's
@@ -371,12 +436,8 @@ are written out as descriptions, not assembled from setting names.
 
 ## In flight
 
-`r17-headline` — the decoding grid and the method's frontier in one command, on
-the fifteen requirements, all scored at 40-word truncation. 18 conditions x 100
-stories. Settles whether the method beats tuned decoding rather than only the
-default. An earlier attempt was stopped twice: once because the diversity was not
-length-matched, once because it was running on the thirteen-requirement set that
-rewards collapse.
+`r17-headline` — landed 2026-09-16; results above and in `EXPERIMENT_LOG.md`
+round 17.
 
 `r17-controls` (on the second account, haziqaus) — nine conditions x 100 stories
 answering which parts of the per-story perturbation earn their place, same model,
@@ -392,7 +453,14 @@ changed what steering does).
 
 ## Open questions
 
-- Does the method beat the temperature curve, or only the default? (`r17`)
+- r17 answered "does the method beat the temperature curve" with a trade:
+  compliance yes by three requirements, clean structural diversity no, and the
+  push at temperature 1.0 degenerates half its stories. The open cell is the
+  method at temperature 1.6-1.8, where the model does not loop unaided —
+  untested, and the natural r18.
+- The push at 4.5 collapses every story at temperature 1.0 on the fifteen-
+  requirement prompt. Whether a higher temperature revives it is part of the
+  same cell.
 - The perturbation is applied at the prompt only. Applying it while writing was
   worse in earlier rounds, but has not been retried since the budget and the
   monotone set changed what steering does.

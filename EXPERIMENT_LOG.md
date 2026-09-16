@@ -1096,3 +1096,161 @@ was laid out in advance by repulsion, same length and same subspace, worst pair
 evenly does not cover the output space evenly: distance in the subspace the
 perturbation is drawn from does not predict distance between the stories that
 come out. The mechanism stays in the code as `offset_draw="spread"` and is off.
+
+## Round 17 - the headline run, and what filtering does to it
+
+`r17-headline`: the decoding grid and the method's frontier in one command, so
+every number shares one prompt (all fifteen requirements asked for), one scorer,
+and one truncation (Vendi over the first 40 words). Qwen3-1.7B, layers 10-18,
+100 stories per condition, eight directions. The push is the constraint sum held
+at a total budget; the perturbation is the per-story offset at the prompt
+positions only. (Correction added after r17-controls: the offset in this run drew
+from an *isotropic* direction, not the story-difference basis its run ids claim.
+The basis was never built -- see the measurement-fault note in RESEARCH_STATE and
+round 17-controls below. The compliance column is unaffected; the diversity is
+that of an isotropic perturbation.)
+
+### The raw table, as the kernel scored it
+
+| condition | broken/15 | Vendi@40 | words |
+|---|---|---|---|
+| the model as it ships | 8.43 | 6.64 | 83 |
+| temperature 1.3, top-p 0.95 | 8.45 | 8.40 | 80 |
+| temperature 1.6, top-p 0.95 | 8.18 | 9.20 | 81 |
+| temperature 1.8, top-p 0.95 | 7.65 | 9.52 | 78 |
+| temperature 1.8, top-k 40 | 8.03 | 10.69 | 80 |
+| push 3 alone | 4.79 | 5.32 | 48 |
+| push 4.5 alone | 4.25 | 6.29 | 50 |
+| push 3 + perturbation 0.1 | 4.57 | 8.15 | 48 |
+| push 3 + perturbation 0.15 | 4.94 | 9.73 | 58 |
+| push 3 + perturbation 0.25 | 6.15 | 14.51 | 73 |
+| push 4.5 + perturbation 0.1 | 4.51 | 7.79 | 58 |
+| push 4.5 + perturbation 0.15 | 4.49 | 9.33 | 61 |
+| push 4.5 + perturbation 0.25 | 5.01 | 12.74 | 62 |
+| perturbation 0.1 alone | 7.88 | 10.47 | 82 |
+| perturbation 0.15 alone | 8.22 | 12.67 | 83 |
+| perturbation 0.25 alone | 8.99 | 18.29 | 89 |
+
+Read raw, this looks like the answer: push 4.5 + perturbation 0.25 beats every
+decoding arm on both axes at once, and push 3 + perturbation 0.25 does too.
+
+### The raw winners are broken text
+
+The same day's coherence checks (the four added after reading r16's stories:
+windowed vocabulary entropy, near-duplicate sentences, tiny-sentence runs,
+quote density, plus the existing heuristics) flag **every single story in every
+push-4.5 arm** - 100 of 100, in all four. Reading confirms it; a typical
+"winning" story is
+
+    Mia runs. She runs. Mia jumps. Mia laughs. Mia! Mia. Mia.
+    Lilly looks. Lily. Lily. Lily. "Look at the tree!" Call. "Tree." "Tree."
+
+35-43 "sentences" in fifty-odd words. The 4.25-5.01 broken counts are collapse
+satisfying one-sided requirements, and the Vendi is differently-broken stories
+embedding far apart. Push 4.5 is dead at temperature 1.0, and the two arms the
+raw table crowns are fake. The push-3 arms are half-broken (48-58 of 100
+flagged); the decoding arms lose 19-32 of 100.
+
+### Scored only over stories that pass the checks
+
+`scripts/score_structure.py`, structural diversity = Vendi over each story's set
+of content lemmas (names excluded - what happens in it), syntactic = Vendi over
+part-of-speech trigram profiles (how its sentences are shaped); both over the
+first 40 words of coherent stories, every condition rarefied to 30. Compliance
+re-scored over the same kept stories.
+
+| condition | kept/100 | broken/15, clean | structural | syntactic |
+|---|---|---|---|---|
+| the model as it ships | 72 | 7.93 | 16.4 | 5.5 |
+| temperature 1.6, top-p 0.95 | 81 | 7.91 | 20.4 | 6.3 |
+| temperature 1.8, top-p 0.95 | 78 | 7.38 | 21.5 | 6.8 |
+| temperature 1.8, top-k 40 | 79 | 7.72 | 23.3 | 6.8 |
+| push 3 alone | 51 | 4.86 | 13.9 | 6.1 |
+| push 3 + perturbation 0.1 | 51 | 4.55 | 16.0 | 8.8 |
+| push 3 + perturbation 0.15 | 48 | 4.31 | 16.8 | 8.1 |
+| push 3 + perturbation 0.25 | 42 | 5.52 | 21.6 | 11.2 |
+| perturbation 0.1 alone | 75 | 7.24 | 20.3 | 10.3 |
+| perturbation 0.15 alone | 75 | 7.83 | 21.4 | 12.5 |
+| perturbation 0.25 alone | 73 | 8.89 | 24.3 | 17.8 |
+
+Four things this settles.
+
+**The compliance win is real, not collapse.** Among stories that read fine, the
+push-3 arms break 4.3-5.5 of fifteen against 7.4-7.9 for every decoding arm.
+Filtering barely moves the pushed arms' broken counts (4.94 -> 4.31), so the
+advantage was never carried by the broken half.
+
+**The method does not beat tuned decoding on clean structural diversity.**
+Temperature 1.8 reaches 21.5-23.3 effective structurally-distinct stories;
+the best method arm reaches 21.6 (push 3 + perturbation 0.25) and the headline
+arm 16.8. Raw Vendi said the method wins; the win was degenerate outliers plus
+phrasing variety (syntactic 8-11 against the temperatures' 6.3-6.8).
+
+**The perturbation works, and it is the push that degenerates.** The offset
+alone lifts structural diversity 16.4 -> 20-24 at a keep rate no worse than the
+temperatures'. The push alone drops it to 13.9 and halves the keep rate. Their
+sum inherits both.
+
+**Temperature buys structure too.** The claim from the diversity-injection
+literature that temperature only buys token-level variety is not what this
+measures: 16.4 -> 23.3 structural is a real gain in what happens in the
+stories. What temperature does not buy is compliance (7.4-7.9 everywhere) or
+syntactic variety (flat at 5.5-6.8).
+
+### Verdict on the round's question, and what it opens
+
+Against the unmodified default the method still wins both axes filtered or not
+(4.31 broken against 7.93; embedding Vendi 9.73 against 6.64 unfiltered,
+structural 16.8 against 16.4 - level - with syntactic 8.1 against 5.5). Against
+the decoding curve it wins compliance by three requirements and loses clean
+structural diversity. Neither dominates: the honest statement is a trade, plus
+a cost column the tables did not have - the method keeps 42-51 coherent stories
+of 100 where the temperatures keep 73-81.
+
+The obvious untested cell: **the method at a working temperature.** Every push
+arm above ran at temperature 1.0, the regime where this model loops on a third
+of unmodified stories and the push turns prose to staccato. Temperature 1.6-1.8
+is known to stop the looping (r15, and the keep rates above); the push is known
+to restore the compliance temperature spends. Each half fixes the other's
+failure mode, and no run has ever combined them.
+
+## Round 17-controls - which parts of the perturbation earn their place, and the basis bug that made the question answerable
+
+Nine conditions on the second account, added to test three surgeries on the
+perturbation: the constraint-span projection removed, the sampled story-difference
+basis replaced by an isotropic draw, and the offset kept on while the model
+writes. Adding the suite to the runner's basis-construction guard set is what
+made this the first run since r15 to actually build the story-difference basis --
+and comparing it against r17-headline is what exposed that r16-spread and
+r17-headline never built one at all (the `spread` and `frontier` suites were
+missing from the guard, so their "story-basis" offsets were isotropic noise with
+a mislabelled run id). Details and the fix are in RESEARCH_STATE's measurement-
+fault section; `tests/test_suites_build.py` now catches a fourth affected suite,
+`select`, before it can run.
+
+Scored over coherent stories only (`scripts/score_structure.py`), gamma 0.15,
+rarefied to 40 per condition, 40 draws:
+
+| arm | kept/100 | broken/15 | structural | syntactic |
+|---|---|---|---|---|
+| story-difference basis, alone | 70 | 8.25 | 27.70 | 12.62 |
+| isotropic draw, alone | 75 | 8.22 | 25.93 | 14.08 |
+| projection removed, alone | 78 | 8.57 | 27.07 | 14.00 |
+| story-difference basis + push 3 | 52 | 4.84 | 20.41 | 9.92 |
+| isotropic draw + push 3 | 48 | 4.94 | 20.34 | 8.90 |
+| projection removed + push 3 | 48 | 5.32 | 22.37 | 9.76 |
+
+**The sampled basis does not beat an isotropic draw.** +1.8 structural alone at
+a worse keep rate and lower syntactic diversity, and dead level under the push.
+The between-generation basis is the part of the method that is not already
+published; on the first run that genuinely uses it, plain noise of the same
+length does as well.
+
+**The projection buys compliance, not diversity.** Removing it holds or raises
+diversity (22.37 against 20.41 structural under the push) while compliance falls
+0.5 of a requirement (4.84 to 5.32). It protects what it was built to protect and
+is not charging diversity for it.
+
+The offset-kept-on-while-writing arm (13.81 raw Vendi, 5.83 broken, 67% of
+stories flagged by the coherence checks) is the worst of the three sites, as
+prior rounds found; it is not worth a filtered breakdown.
