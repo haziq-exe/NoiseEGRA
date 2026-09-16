@@ -650,6 +650,54 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             f"requirement it was extracted to serve, then the whole block at "
             f"{block} times the calibrated coefficients")
 
+    if name == "frontier":
+        # The method at several operating points, to be run in the same command as
+        # --suite sampling so every condition is scored identically. Diversity is
+        # length-sensitive and steering shortens the stories, so a Vendi measured
+        # under one truncation cannot be compared with one measured under another;
+        # the headline comparison therefore has to be a single run.
+        #
+        # Two knobs, and they trade against each other. The size of the constraint
+        # push sets compliance: at a total push of 3 the broken count is 4.7 of 13
+        # against a baseline of 7.8, and at 4.5 it is 3.8. The size of the
+        # per-story perturbation sets diversity: gamma 0.1 gives Vendi 8.3 and
+        # gamma 0.15 gives 9.6, and each step costs a little compliance back.
+        # Sweeping both draws the frontier the decoding curve has to be compared
+        # against.
+        #
+        # The perturbation is drawn independently per story. Choosing the set
+        # jointly so the perturbations repel was tried and is a null: four matched
+        # pairs, all four slightly worse. Covering the offset subspace evenly does
+        # not cover the output space evenly.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        kind = getattr(args, "offset_basis_kind", "story")
+        flat = {n: 1.0 for n in names}
+        budgets = list(getattr(args, "budget_sweep", [3.0, 4.5]))
+        gammas = list(getattr(args, "gamma_sweep", [0.1, 0.15, 0.25]))
+
+        items = []
+        for b in budgets:
+            # the push alone, so the perturbation's contribution is readable
+            items.append({"plan": make_plan(beta=flat, steer_budget=b,
+                                            steer_prefill=False, **quiet, **base)})
+            for g in gammas:
+                items.append({"plan": make_plan(
+                    beta=flat, steer_budget=b, offset_gamma=g, offset_mode="orth",
+                    offset_basis=offset_basis, offset_basis_kind=kind,
+                    steer_prefill=False, offset_prefill=True, offset_decode=False,
+                    **quiet, **base)})
+        # the perturbation alone, as the other end of the frontier
+        for g in gammas:
+            items.append({"plan": make_plan(
+                beta={n: 0.0 for n in names}, offset_gamma=g, offset_mode="orth",
+                offset_basis=offset_basis, offset_basis_kind=kind,
+                steer_prefill=False, offset_prefill=True, offset_decode=False,
+                **quiet, **base)})
+        return items, (
+            f"the constraint push at {budgets} crossed with a per-story "
+            f"perturbation at gamma {gammas}, plus each alone")
+
     if name == "spread":
         # The complete method, its ablation, and the arms it has to beat.
         #

@@ -114,6 +114,12 @@ def label(rid):
         out.append(f"directions moved before being made orthogonal ({num('jframe')})")
     if "jdbasis" in rid:
         out.append("perturbed along the activation manifold")
+    # Which is the ablation: whether the whole set of per-story perturbations was
+    # chosen together or each drawn on its own.
+    if "__odspread" in rid:
+        out.append("set chosen together")
+    elif re.search(r"__g[0-9p]+orth", rid):
+        out.append("each drawn independently")
 
     g = re.search(r"__g([0-9p]+)orth", rid)
     if g:
