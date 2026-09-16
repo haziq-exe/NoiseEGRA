@@ -300,22 +300,24 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         # directions or the dose.
         base = {k: v for k, v in common.items() if k != "steer_prefill"}
         quiet = dict(noise_mode="none", noise_alpha=0.0)
-        probe = float(getattr(args, "probe_beta", 3.0))
+        probes = getattr(args, "probe_beta", [3.0])
+        probes = [float(p) for p in (probes if isinstance(probes, (list, tuple)) else [probes])]
         block = list(getattr(args, "beta_sweep", [1.0, 2.0, 4.0]))
         nominal = args.beta if isinstance(args.beta, dict) else {n: args.beta for n in names}
 
         items = ["baseline"]
         for target in names:
-            for sign in (+1.0, -1.0):
-                betas = {n: (sign * probe if n == target else 0.0) for n in names}
-                items.append({"plan": make_plan(beta=betas, steer_prefill=False,
-                                                **quiet, **base)})
+            for probe in probes:
+                for sign in (+1.0, -1.0):
+                    betas = {n: (sign * probe if n == target else 0.0) for n in names}
+                    items.append({"plan": make_plan(beta=betas, steer_prefill=False,
+                                                    **quiet, **base)})
         for scale in block:
             betas = {n: scale * v for n, v in nominal.items()}
             items.append({"plan": make_plan(beta=betas, steer_prefill=False,
                                             **quiet, **base)})
         return items, (
-            f"one direction at a time at beta +/-{probe:g}, scored on the "
+            f"one direction at a time at beta +/-{probes}, scored on the "
             f"requirement it was extracted to serve, then the whole block at "
             f"{block} times the calibrated coefficients")
 

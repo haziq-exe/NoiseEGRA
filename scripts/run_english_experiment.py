@@ -200,12 +200,14 @@ def main() -> None:
                          "direction over")
     ap.add_argument("--combo-beta", type=float, default=3.0,
                     help="coefficient the kept directions are combined at")
-    ap.add_argument("--probe-beta", type=float, default=3.0,
+    ap.add_argument("--probe-beta", nargs="*", type=float, default=[3.0],
                     help="how hard --suite directions pushes a single direction "
                          "when it checks whether that direction moves its own "
-                         "requirement. Large on purpose: a probe that is too gentle "
-                         "to move anything cannot tell a bad direction from a small "
-                         "one")
+                         "requirement. More than one magnitude separates 'this "
+                         "direction does not help' from 'this much of it is too "
+                         "much': a single large probe cannot tell them apart, and "
+                         "round 4 could not say whether beta 3 was simply past the "
+                         "point where the text starts to suffer")
     ap.add_argument("--kappa-sweep", nargs="*", type=float, default=[0.1, 0.15],
                     help="f(S_c) sideways-step magnitudes used by --suite pareto")
     ap.add_argument("--main-gamma", type=float, default=0.15,
