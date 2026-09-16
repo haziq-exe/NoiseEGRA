@@ -233,6 +233,55 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                       f"drawn from the {kind}-level activation directions, each "
                       "applied from the first generated token and from the prompt")
 
+    if name == "select":
+        # Keep the directions that are measured to help, at the coefficient that
+        # helps most, and drop the rest.
+        #
+        # The per-direction probe found that three of the five directions raise the
+        # total violation count at both signs, and that the two that lower it were
+        # both mis-set by the earlier "steer what fails" rule. `simple_register`
+        # had been switched off entirely because its own requirement already passes
+        # at 100%, and it turns out to be the single most useful direction in the
+        # set -- not through its own requirement but through the ones it drags with
+        # it, word count +21% and the spelled-number rule +29%. `varied_openers`
+        # had been set to +1 when -3 is what helps.
+        #
+        # The lesson is that a direction's value is not what it was extracted for.
+        # It is its measured effect on the whole requirement list, and that has to
+        # be measured rather than assumed from the name on the contrast pairs.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        keep = dict(getattr(args, "keep_directions", {"simple_register": 1.0,
+                                                      "varied_openers": -1.0}))
+        mags = list(getattr(args, "tune_betas", [1.5, 3.0, 4.5, 6.0]))
+        combo = float(getattr(args, "combo_beta", 3.0))
+        gammas = list(getattr(args, "gamma_sweep", [0.15, 0.25]))
+        kind = getattr(args, "offset_basis_kind", "story")
+        offs = offset_basis
+
+        items = ["baseline"]
+        for target, sign in keep.items():
+            for m in mags:
+                betas = {n: (sign * m if n == target else 0.0) for n in names}
+                items.append({"plan": make_plan(beta=betas, steer_prefill=False,
+                                                **quiet, **base)})
+        combo_betas = {n: keep.get(n, 0.0) * combo for n in names}
+        items.append({"plan": make_plan(beta=combo_betas, steer_prefill=False,
+                                        **quiet, **base)})
+        # The whole point of fixing the steering was to put a perturbation on top
+        # of a starting point better than the baseline rather than worse.
+        for g in gammas:
+            items.append({"plan": make_plan(
+                beta=combo_betas, offset_gamma=g, offset_mode="orth",
+                offset_basis=offs, offset_basis_kind=kind,
+                offset_prefill=True, offset_decode=False,
+                steer_prefill=False, **quiet, **base)})
+        kept = ", ".join(f"{n} {'+' if v > 0 else '-'}" for n, v in keep.items())
+        return items, (
+            f"the directions measured to help ({kept}) swept over {mags}, the two "
+            f"together at {combo:g}, and the per-story offset at the prompt on top "
+            f"at gamma {gammas}")
+
     if name == "directions":
         # Does each extracted direction move its own requirement, and which way?
         #

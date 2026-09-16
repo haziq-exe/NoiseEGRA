@@ -561,3 +561,75 @@ by assumption.
 Dropped: flat noise (degenerate and six times slower), `rotate` and `gain` (null).
 The gamma 0.15 and kappa 0.15 points are directly comparable to round 2, so the
 effect of the sign fix is readable off the same two rows.
+
+## Round 4: does each direction move anything, and in which direction?
+
+Steering had been run only ever as a block of five directions at one coefficient,
+and the block lost on both axes: 4.65 requirements broken against a 4.55 baseline,
+with diversity 3.27 against 4.00. A block that loses on both cannot be repaired by
+tuning what is added on top of it, and "the block does not work" does not say
+which of the five is at fault.
+
+So: one direction at a time, pushed hard both ways (beta +/-3), 24 stories each,
+scored on the **whole** requirement list rather than only on the requirement the
+direction was extracted to serve. Directions re-extracted in the real task
+context, which is a fix in its own right -- they had been measured under "You are
+a creative writer / write a short story" and applied under the twelve-requirement
+children's-reading prompt, which is exactly the out-of-distribution use the
+extraction module's own docstring warns against.
+
+| direction | push | broken /12 | change | what moved by 8 points or more |
+|---|---|---|---|---|
+| baseline | | 4.42 | | |
+| present tense | +3 | 5.00 | +0.58 | words +38, tense -21, syllables -25, number -21 |
+| present tense | -3 | 5.12 | +0.71 | tense -92, syllables -33, number +21 |
+| **simple register** | **+3** | **3.88** | **-0.54** | **words +21, number +29** |
+| simple register | -3 | 6.25 | +1.83 | easy opening -100, syllables -92, varied +38 |
+| dialogue | +3 | 5.88 | +1.46 | quotes -54, opening -21 |
+| dialogue | -3 | 5.00 | +0.58 | words +38, quotes -38, syllables -25 |
+| short sentences | +3 | 5.92 | +1.50 | words +62, opening -83, count -21 |
+| short sentences | -3 | 5.25 | +0.83 | quotes -29, band -17, number -37 |
+| varied openings | +3 | 4.71 | +0.29 | words +54, band +25, syllables -88 |
+| **varied openings** | **-3** | **4.21** | **-0.21** | words +17, tense +8, count -17 |
+
+The whole block at the calibrated signs: 4.96 at 1x, 5.92 at 2x, 8.62 at 4x (204
+words, degenerate). Worse at every size.
+
+**The directions work. Three of them are harmful.** This is not a sign problem
+and not a dose problem. `present_tense` at -3 drops present-tense compliance from
+92% to 0% -- the stories come back in the past tense, and they are perfectly
+readable while doing it -- so the direction is a strong, clean controller of the
+property it was extracted for. It simply does not follow that controlling that
+property helps, and for three of the five it does not help at either sign.
+
+**Both of the directions that do help were mis-set by the previous rule.**
+
+* `simple_register` was switched **off** by the calibration, because its own
+  requirement already passes at 100% and the rule was "steer only what fails". It
+  is the single most useful direction in the set: at +3 it takes the total from
+  4.42 to 3.88, the first time anything has beaten the baseline. It does that
+  almost entirely through requirements that are not its own -- word count +21
+  points and the spelled-number rule +29 -- while its own requirement drifts down
+  four points.
+* `varied_openers` was set to +1 by the rule, and -3 is what helps.
+
+So the rule was wrong, and wrong in an instructive way. **A direction's value is
+not the requirement it was extracted for.** Constraint directions have large
+cross-effects, and the only thing worth selecting on is the measured change in
+the whole violation count. "Steer what fails, in the direction it fails" sounds
+principled and is not: it cannot see that pushing an already-satisfied property
+harder is what buys the two hardest requirements in the list.
+
+### Round 5
+
+Keep what is measured to help, at the coefficient that helps most, drop the rest.
+`--suite select`, twelve conditions, 24 stories each:
+
+* `simple_register` alone at +1.5, +3, +4.5, +6;
+* `varied_openers` alone at -1.5, -3, -4.5, -6;
+* the two together;
+* the two together plus the per-story offset at the prompt at gamma 0.15 and 0.25.
+
+The last two are the point of the exercise: for the first time the perturbation
+is added on top of a steering configuration that is better than the baseline
+rather than worse.

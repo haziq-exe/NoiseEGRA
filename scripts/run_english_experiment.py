@@ -123,7 +123,7 @@ def main() -> None:
     ap.add_argument("--dtype", default="auto", choices=["auto", "float16", "bfloat16"])
     ap.add_argument("--suite", nargs="+", default=["compare"],
                     choices=["baseline", "sampling", "compare", "method", "noise",
-                             "offset", "story", "prompt", "main", "pareto", "directions",
+                             "offset", "story", "prompt", "main", "pareto", "directions", "select",
                              "ablate", "amplify",
                              "window", "decay", "core", "ortho", "alpha", "gate",
                              "beta", "loo", "all"])
@@ -224,6 +224,16 @@ def main() -> None:
                          "push of that size do the same?' -- if the random arm moves "
                          "the requirements as much as the real one, the extraction "
                          "is not what is doing the work")
+    ap.add_argument("--keep", nargs="*", default=["simple_register=+1",
+                                                  "varied_openers=-1"],
+                    help="NAME=SIGN for each direction --suite select keeps, with "
+                         "the sign measured by --suite directions rather than "
+                         "guessed from what the direction was extracted for")
+    ap.add_argument("--tune-betas", nargs="*", type=float, default=[1.5, 3.0, 4.5, 6.0],
+                    help="coefficient magnitudes --suite select sweeps each kept "
+                         "direction over")
+    ap.add_argument("--combo-beta", type=float, default=3.0,
+                    help="coefficient the kept directions are combined at")
     ap.add_argument("--probe-beta", type=float, default=3.0,
                     help="how hard --suite directions pushes a single direction "
                          "when it checks whether that direction moves its own "
@@ -328,6 +338,15 @@ def main() -> None:
               "  comparable. Either point --out at a fresh directory, or pass\n"
               "  --allow-task-change if you are certain you want them mixed."
         )
+
+    args.keep_directions = {}
+    for item in args.keep:
+        name, _, sign = item.partition("=")
+        args.keep_directions[name] = float(sign or 1.0)
+    unknown = [n for n in args.keep_directions if n not in args.steer_vectors]
+    if unknown:
+        raise SystemExit(f"--keep names {unknown} are not in --steer-vectors "
+                         f"{list(args.steer_vectors)}")
 
     word_budget = (args.word_budget if args.word_budget is not None
                    else 3 * args.max_words)
