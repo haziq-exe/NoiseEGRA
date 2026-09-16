@@ -1392,3 +1392,100 @@ So the method is not a clean two-axis win over tuned randomness on genuine story
 content. It is a real win on rule-following and sentence-level variety, at a cost
 in wasted stories. Whether that clears the bar is a judgement about which kind of
 variety counts, and is worth putting to Haziq rather than deciding here.
+
+## Round 19 - three attacks on the fragmentation problem, all at temperature 1.0
+
+The problem from round 18, restated: the method's rule-nudge (a vector pushed
+into the model's internal state at every generated word, steering it toward the
+15 writing rules) buys rule-following but shatters half the stories into
+fragments, because the push accumulates over the story. Round 19 ran three
+parallel runs at the model's normal randomness (temperature 1.0), each 100
+stories per setting, scored over coherent stories only, variety rarefied to a
+40-story pool. Two tooling changes made this round cheaper and more watchable:
+each setting's first eight stories are printed to the live log as they generate,
+and a setting whose first twelve stories nearly all fail the coherence checks is
+skipped automatically (it costs 12 stories instead of 100).
+
+### Run 1: which layers the intervention touches (third account, two small runs)
+
+Everything so far ran at layers 10-18 of the model's 28. Moving the intervention
+LATER (layers 14-22): both nudge settings died instantly (12 of 12 opening
+stories broken, auto-skipped) and the per-story random shove kept fewer coherent
+stories (52 of 100 against 70 at layers 10-18). Moving it EARLIER (layers 6-14)
+is the discovery of the round:
+
+| setting at layers 6-14 | coherent kept /100 | rules broken /15 | variety of what happens | variety of wording |
+|---|---|---|---|---|
+| untouched model | 72 | 7.93 | 20.0 ±0.6 | 6.0 |
+| random shove 0.15 alone | 81 | 8.59 | 28.6 ±0.6 | 16.7 |
+| rule-nudge at 3 alone | 80 | 5.61 | 17.0 ±0.7 | 5.7 |
+| **nudge 3 + shove 0.15** | **87** | **5.46** | **26.0 ±0.8** | **11.8** |
+
+At the earlier layers the nudge simply stops breaking text (80 kept against 51
+at layers 10-18), and the combined setting beats the untouched model on ALL FOUR
+axes at once - more coherent stories than the baseline itself, two and a half
+fewer rules broken, and both varieties up - at temperature 1.0. Reading the
+stories confirms it: genuinely different premises (a teddy bear, a beach rock, a
+found star that laughs), mostly complete little narratives, with mild Title-Case
+drift in some. The compliance is weaker than the 10-18 push achieved (5.46
+against 4.3) - the earlier-layer nudge is gentler per unit of strength - so a
+dose sweep at layers 6-14 is running now.
+
+### Run 2: reshaping the push in time (first account)
+
+At layers 10-18, five ways to get the push's compliance without its
+accumulation, each alone and with the shove (three settings crashed on a device
+bug, now fixed, rerunning; the nine that finished):
+
+| setting at layers 10-18 | kept /100 | broken /15 | happens | wording |
+|---|---|---|---|---|
+| untouched model | 72 | 7.93 | 20.0 | 6.0 |
+| nudge 3, constant (the old way) | 51 | 4.86 | 16.2 | 6.5 |
+| nudge 3 fading out over the first 64 words | 71 | 4.62 | 18.8 | 7.0 |
+| **nudge 3 fading + shove 0.15** | **69** | **4.74** | **22.3 ±0.8** | **9.5** |
+| nudge 3, first 64 words only then off | 59 | 4.66 | 16.4 | 6.6 |
+| nudge 3 at the prompt only | 67 | 4.76 | 19.8 | 6.7 |
+| nudge 3, worst two directions dropped | 80 | 5.90 | 15.9 | 5.0 |
+| nudge at strength 2 | 71 | 5.73 | 18.6 | 4.6 |
+
+**Fading the push out over the opening is close to free compliance.** It keeps
+71 of 100 coherent against the constant push's 51, at slightly BETTER
+rule-following (4.62 against 4.86): the push's whole compliance effect is earned
+in the opening words, and everything after is pure damage. With the shove on
+top it beats the untouched model on all four axes at layers 10-18 too - the
+second setting ever to do that at temperature 1.0.
+
+### Run 3: perturbing the constraint vector itself, and the original method (second account)
+
+At layers 10-18. The original paper's mechanism - per-token Gaussian noise, no
+steering - with the noise fading over the first 64 words: **it does not
+transfer to this model.** At strength 0.4 every opening story was broken
+(auto-skipped); at 0.6 it kept 19 of 100; at 0.2 it kept 47 and matched the
+baseline's variety exactly (20.0), gaining nothing. A clean negative.
+
+Perturbing the constraint vector itself (a per-story sideways step added to the
+push, so each story is pushed toward the rules from a different angle):
+
+| setting | kept /100 | broken /15 | happens | wording |
+|---|---|---|---|---|
+| sideways step 0.15, at the prompt only | 67 | 6.40 | 24.7 ±0.9 | 9.3 |
+| sideways step 0.3, at the prompt only | 66 | 8.55 | **33.3 ±0.6** | **18.9** |
+| vector turned 27 degrees (0.5), while writing | 67 | 5.21 | 16.5 | 6.7 |
+| vector turned 45 degrees (1.0), while writing | 77 | 6.08 | 17.6 | 4.8 |
+
+The sideways step at 0.3 reaches the highest genuine story-content variety ever
+measured in this project - 33.3, above even the raised-temperature settings of
+round 18 (28-29) - while keeping two thirds of stories coherent at temperature
+1.0. It pays with compliance (8.55, baseline level: the step is large enough to
+wash out the push's aim) and part of the variety is format drift (markdown
+titles appear, which the prompt forbids). At 0.15 it is a balanced point: +1.5
+rules better than baseline, +4.7 variety. Turning the vector is still not worth
+much, matching the old large-model result.
+
+### What round 21 combines
+
+Three mechanisms now demonstrably attack different parts of the problem, and
+they compose: the earlier layer band (6-14) stops the fragmentation, the fading
+schedule gets compliance almost for free, and the sideways step (or the plain
+shove) supplies variety. The dose sweep at layers 6-14 is in flight; the
+combination run follows it.
