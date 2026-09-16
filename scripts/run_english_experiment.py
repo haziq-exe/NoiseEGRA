@@ -80,7 +80,8 @@ EN_PAIRS = Path(__file__).resolve().parents[1] / "noiseegra" / "data" / "steerin
 # basis-naming run id survives with no basis built.
 BASIS_SUITES = {"offset", "story", "prompt", "main", "pareto", "select", "feedback",
                 "assemble", "headtohead", "closure", "control", "ablate",
-                "controls", "amplify", "spread", "frontier", "constdose"}
+                "controls", "tame", "core4", "amplify", "spread", "frontier",
+                "constdose"}
 
 
 def weights_are_cached(model_id: str) -> bool:
@@ -141,7 +142,8 @@ def main() -> None:
     ap.add_argument("--suite", nargs="+", default=["compare"],
                     choices=["baseline", "sampling", "compare", "method", "noise",
                              "offset", "story", "prompt", "main", "pareto", "directions", "select", "budget", "feedback", "assemble", "headtohead", "closure", "control",
-                             "ablate", "controls", "amplify", "constdose", "spread", "frontier",
+                             "ablate", "controls", "tame", "fsc", "core4",
+                             "amplify", "constdose", "spread", "frontier",
                              "window", "decay", "core", "ortho", "alpha", "gate",
                              "beta", "loo", "all"])
     ap.add_argument("--task", default="generic", choices=["generic", "scenario"],
@@ -295,6 +297,22 @@ def main() -> None:
                          "constraints. The total push is unchanged; only how it is "
                          "divided between the constraints moves, so the "
                          "perturbation never leaves the constraint subspace")
+    ap.add_argument("--peek-stories", type=int, default=8,
+                    help="print the opening of each condition's first N stories to "
+                         "the log as they are generated, so a broken arm is visible "
+                         "from the live output instead of after the run. 0 disables.")
+    ap.add_argument("--abort-broken-arms", action="store_true",
+                    help="after a condition's first few stories, run the cheap "
+                         "coherence checks on them; if nearly all are broken, skip "
+                         "the rest of that condition instead of paying for 100 "
+                         "stories of rubbish. The check point and threshold are "
+                         "--abort-check-at and --abort-flag-frac.")
+    ap.add_argument("--abort-check-at", type=int, default=12,
+                    help="how many stories to generate before judging an arm")
+    ap.add_argument("--abort-flag-frac", type=float, default=0.9,
+                    help="abort when at least this fraction of the first stories "
+                         "fail the coherence checks. 0.9 of 12 means 11 broken; "
+                         "ordinary imperfect arms (a third broken) are never touched")
     ap.add_argument("--steer-horizon", type=int, default=32,
                     help="tokens the steering decays over when a schedule is used")
     ap.add_argument("--probe-beta", nargs="*", type=float, default=[3.0],
@@ -919,6 +937,27 @@ def main() -> None:
     print("\n" + live_header)
     print("-" * len(live_header), flush=True)
 
+    # The cheap coherence heuristics (no model, milliseconds a story), used to
+    # peek at arms as they generate and to abort ones that are plainly dead. The
+    # judgement is deliberately blunt: it only ever fires on an arm where nearly
+    # every story is broken, never on an ordinarily imperfect one.
+    from noiseegra.coherence import CoherenceFilter as _CoherenceFilter
+    _arm_filter = _CoherenceFilter()
+
+    def _arm_is_dead(rid):
+        """True when almost every story generated so far in this arm is broken."""
+        texts = list(state["runs"][rid].values())
+        if len(texts) < args.abort_check_at:
+            return False
+        flagged = sum(1 for t in texts if not _arm_filter.check(t).ok)
+        frac = flagged / len(texts)
+        if frac >= args.abort_flag_frac:
+            print(f"  [ABORTED] {rid[-60:]}: {flagged} of {len(texts)} opening "
+                  f"stories fail the coherence checks; skipping the rest of this "
+                  f"condition", flush=True)
+            return True
+        return False
+
     for spec, rid in zip(specs, run_ids):
         # Lay this condition's whole set of per-story perturbations out before any
         # of them is used, so they can be chosen to cover the subspace instead of
@@ -928,6 +967,9 @@ def main() -> None:
             plan.plan_offsets(K, seed=0)
         missing = [(p_idx, k) for k in range(K) for p_idx in range(P)
                    if f"{p_idx}:{k}" not in state["runs"][rid]]
+        # A resumed arm that already failed the abort check stays aborted.
+        if missing and args.abort_broken_arms and _arm_is_dead(rid):
+            missing = []
         if missing:
             model = get_model()
             mode = _spec_mode(spec)
@@ -941,6 +983,13 @@ def main() -> None:
                 rate = (time.time() - t0) / max(done - started, 1)
                 print(f"  [{done:>4}/{total}] {rid[-34:]:<34} prompt {p_idx:>2} story {k:>2}"
                       f" | {rate:5.1f}s | ETA {(total - done) * rate / 60:6.1f} min", flush=True)
+                if args.peek_stories and p_idx == 0 and k < args.peek_stories:
+                    body = " ".join(text.split())
+                    print(f"  [peek] {rid[-34:]} story {k}: {body[:170]}", flush=True)
+                if (args.abort_broken_arms
+                        and len(state["runs"][rid]) == args.abort_check_at
+                        and _arm_is_dead(rid)):
+                    break
             torch.cuda.empty_cache()
 
         cells = state["runs"][rid]

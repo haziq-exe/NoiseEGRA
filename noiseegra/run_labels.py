@@ -215,14 +215,23 @@ def label_run(run_id: str) -> RunLabel:
             return RunLabel(
                 f"story-difference amplified x{_fmt(v)}{where}{gate_txt}",
                 "amplify", v, rid)
-        # Whether a constraint push rides under the perturbation, and how large.
-        # Said in the row because one run can hold the same perturbation with and
-        # without the push (frontier, controls) and the two must not share a
-        # name. Only budgeted pushes are named: the pre-budget runs steered under
-        # every perturbed arm, so their labels stay as the older tables printed
-        # them.
+        # Whether a constraint push rides under the perturbation, and how it is
+        # shaped. Said in the row because one run can hold the same perturbation
+        # over different pushes (with and without, fewer directions, a schedule)
+        # and those must not share a name. Only budgeted pushes are named: the
+        # pre-budget runs steered under every perturbed arm, so their labels stay
+        # as the older tables printed them.
         bud = _BUDGET.search(rid)
-        push_txt = f" + push at {_fmt(untag_float(bud.group('val')))}" if bud else ""
+        push_txt = ""
+        if bud:
+            push_txt = f" + push at {_fmt(untag_float(bud.group('val')))}"
+            m = _BETAS.search(rid)
+            if m:
+                betas_ = m.group(1).split("-")
+                n_on = sum(1 for t in betas_ if untag_float(t) != 0)
+                if 0 < n_on < len(betas_):
+                    push_txt += f" on {n_on} directions"
+            push_txt += _steer_schedule(rid)
 
         g = _G.search(rid)
         if g and g.group("mode") != "none" and untag_float(g.group("val")) > 0:

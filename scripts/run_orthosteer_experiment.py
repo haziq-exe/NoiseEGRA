@@ -955,6 +955,142 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             "replaced by an isotropic draw, and the offset kept on while the "
             f"model writes -- each against the push at {b:g} and the baseline")
 
+    if name == "tame":
+        # The constraint push at its working dose fragments the text at
+        # temperature 1.0: a constant vector added at every decode step
+        # accumulates over the story, and the stories collapse into staccato
+        # two-word fragments (half of them, by the coherence checks). Every arm
+        # here is one way of getting the push's compliance without the
+        # accumulation, at temperature 1.0, each alone and with the per-story
+        # perturbation on top:
+        #   * the push fading out over the opening (cosine decay over
+        #     ~steer_horizon tokens): set the style early, then let go;
+        #   * the push on for the opening only, then off (prefix schedule);
+        #   * the push applied to the prompt positions only, decoding untouched;
+        #   * a smaller dose (budget 2);
+        #   * the two directions that loop worst when pushed alone (dialogue at
+        #     93%, short-sentences at 83% in the r15 probes) dropped, the
+        #     remaining six renormalised to the same total push.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        b = float(getattr(args, "steer_budget", None) or 3.0)
+        g = float(getattr(args, "main_gamma", 0.15))
+        flat = {n: 1.0 for n in names}
+        six = {n: (0.0 if n in ("dialogue", "terse") else 1.0) for n in names}
+        hz = int(getattr(args, "steer_horizon", 64) or 64)
+        sched_base = {**base, "horizon": hz}
+        decay = {n: "cosine_decay" for n in names}
+        prefix = {n: "prefix" for n in names}
+        off = dict(offset_gamma=g, offset_mode="orth", offset_basis=offset_basis,
+                   offset_basis_kind=getattr(args, "offset_basis_kind", "story"),
+                   offset_prefill=True, offset_decode=False)
+
+        items = ["baseline"]
+        # anchors: the push as it stands, alone and with the perturbation
+        items.append({"plan": make_plan(beta=flat, steer_budget=b,
+                                        steer_prefill=False, **quiet, **base)})
+        items.append({"plan": make_plan(beta=flat, steer_budget=b,
+                                        steer_prefill=False, **off, **quiet, **base)})
+        # fading out over the opening
+        items.append({"plan": make_plan(beta=flat, steer_budget=b, schedules=decay,
+                                        steer_prefill=False, **quiet, **sched_base)})
+        items.append({"plan": make_plan(beta=flat, steer_budget=b, schedules=decay,
+                                        steer_prefill=False, **off, **quiet, **sched_base)})
+        # on for the opening, then off
+        items.append({"plan": make_plan(beta=flat, steer_budget=b, schedules=prefix,
+                                        steer_prefill=False, **quiet, **sched_base)})
+        # at the prompt only
+        items.append({"plan": make_plan(beta=flat, steer_budget=b, steer_prefill=True,
+                                        steer_decode=False, **quiet, **base)})
+        items.append({"plan": make_plan(beta=flat, steer_budget=b, steer_prefill=True,
+                                        steer_decode=False, **off, **quiet, **base)})
+        # a smaller dose
+        items.append({"plan": make_plan(beta=flat, steer_budget=2.0,
+                                        steer_prefill=False, **quiet, **base)})
+        items.append({"plan": make_plan(beta=flat, steer_budget=2.0,
+                                        steer_prefill=False, **off, **quiet, **base)})
+        # the two worst-looping directions dropped
+        items.append({"plan": make_plan(beta=six, steer_budget=b,
+                                        steer_prefill=False, **quiet, **base)})
+        items.append({"plan": make_plan(beta=six, steer_budget=b,
+                                        steer_prefill=False, **off, **quiet, **base)})
+        return items, (
+            f"ways to keep the push at {b:g} from fragmenting the text at "
+            f"temperature 1.0: fading over the first {hz} tokens, on for the "
+            f"first {hz} tokens only, prompt-only, budget 2, and the two "
+            "worst-looping directions dropped -- each alone and with the "
+            f"per-story perturbation at {g:g}")
+
+    if name == "fsc":
+        # Two families Haziq asked to bring to this model, at temperature 1.0.
+        #
+        # f(S_c): the perturbation applied to the constraint vector itself
+        # rather than added beside it -- `perp` adds a per-story sideways step
+        # while keeping the net push along the constraint vector fixed, `rotate`
+        # turns the vector at unchanged length. Measured only on Qwen3-8B with
+        # an unnormalised push (round 2); never with a budget or on this model.
+        #
+        # The original paper's mechanism: per-token Gaussian noise, no steering
+        # at all, cosine-decayed over the opening -- the schedule that was the
+        # surprise of round 2 (a large win at matched strength). `iso` because
+        # the original method had no constraint directions to protect.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        b = float(getattr(args, "steer_budget", None) or 3.0)
+        flat = {n: 1.0 for n in names}
+        zero = {n: 0.0 for n in names}
+        nh = int(getattr(args, "noise_horizon", 64) or 64)
+
+        items = ["baseline"]
+        # the push alone, so every f(S_c) arm is readable against it
+        items.append({"plan": make_plan(beta=flat, steer_budget=b,
+                                        steer_prefill=False, **quiet, **base)})
+        # the original method, cosine-decayed, three strengths
+        for a in (0.2, 0.4, 0.6):
+            items.append({"plan": make_plan(
+                beta=zero, noise_mode="iso", noise_alpha=a,
+                noise_schedule="cosine_decay", noise_horizon=nh,
+                steer_prefill=False, **base)})
+        # f(S_c) sideways step, while writing and at the prompt
+        for kappa, prompt_only in ((0.15, False), (0.15, True), (0.3, True)):
+            items.append({"plan": make_plan(
+                beta=flat, steer_budget=b, jitter_mode="perp", jitter_kappa=kappa,
+                steer_prefill=prompt_only, steer_decode=not prompt_only,
+                **quiet, **base)})
+        # f(S_c) turned at unchanged length
+        for kappa in (0.5, 1.0):
+            items.append({"plan": make_plan(
+                beta=flat, steer_budget=b, jitter_mode="rotate", jitter_kappa=kappa,
+                steer_prefill=False, **quiet, **base)})
+        return items, (
+            f"f(S_c) on this model under a budget of {b:g} (sideways step at "
+            "0.15 and 0.3, turned at 0.5 and 1.0), and the original paper's "
+            f"per-token noise cosine-decayed over {nh} tokens at 0.2/0.4/0.6 "
+            "with no steering")
+
+    if name == "core4":
+        # The four arms that anchor any configuration change (a different layer
+        # band, a different model): nothing, the push, the perturbation, both.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        b = float(getattr(args, "steer_budget", None) or 3.0)
+        g = float(getattr(args, "main_gamma", 0.15))
+        flat = {n: 1.0 for n in names}
+        zero = {n: 0.0 for n in names}
+        off = dict(offset_gamma=g, offset_mode="orth", offset_basis=offset_basis,
+                   offset_basis_kind=getattr(args, "offset_basis_kind", "story"),
+                   offset_prefill=True, offset_decode=False)
+        items = ["baseline"]
+        items.append({"plan": make_plan(beta=flat, steer_budget=b,
+                                        steer_prefill=False, **quiet, **base)})
+        items.append({"plan": make_plan(beta=zero, **off,
+                                        steer_prefill=False, **quiet, **base)})
+        items.append({"plan": make_plan(beta=flat, steer_budget=b, **off,
+                                        steer_prefill=False, **quiet, **base)})
+        return items, (
+            f"the four anchor arms: baseline, the push at {b:g}, the per-story "
+            f"perturbation at {g:g} alone, and both together")
+
     if name == "main":
         # The head-to-head. Every perturbed arm has an unperturbed control at the
         # same injection site, so a difference cannot be read as "the prompt is a
