@@ -215,26 +215,41 @@ def label_run(run_id: str) -> RunLabel:
             return RunLabel(
                 f"story-difference amplified x{_fmt(v)}{where}{gate_txt}",
                 "amplify", v, rid)
+        # Whether a constraint push rides under the perturbation, and how large.
+        # Said in the row because one run can hold the same perturbation with and
+        # without the push (frontier, controls) and the two must not share a
+        # name. Only budgeted pushes are named: the pre-budget runs steered under
+        # every perturbed arm, so their labels stay as the older tables printed
+        # them.
+        bud = _BUDGET.search(rid)
+        push_txt = f" + push at {_fmt(untag_float(bud.group('val')))}" if bud else ""
+
         g = _G.search(rid)
         if g and g.group("mode") != "none" and untag_float(g.group("val")) > 0:
             v = untag_float(g.group("val"))
             mode = SUBSPACE_MODES.get(g.group("mode"), g.group("mode"))
+            # An offset with no estimated basis is a random direction of the same
+            # length -- the control for whether the story-difference basis, and
+            # not the mere fact of a per-story shift, is where the diversity
+            # comes from. Said in the row because a run can mix the two.
+            if "__obiso" in rid:
+                mode += ", random direction"
             if "__ponly" in rid:
                 where = ", at the prompt only"
             elif "__opre" in rid:
                 where = ", from the prompt onward"
             else:
                 where = ""
-            return RunLabel(f"per-story offset g={_fmt(v)} ({mode}){where}{site}{gate_txt}",
-                            "per-story", v, rid)
+            return RunLabel(
+                f"per-story offset g={_fmt(v)} ({mode}){where}{push_txt}{site}{gate_txt}",
+                "per-story", v, rid)
         a = _NZ.search(rid)
         if a and a.group("mode") != "none" and untag_float(a.group("val")) > 0:
             v = untag_float(a.group("val"))
             mode = SUBSPACE_MODES.get(a.group("mode"), a.group("mode"))
             return RunLabel(f"per-token noise a={_fmt(v)} ({mode})"
-                            f"{_noise_window(rid)}{site}{gate_txt}",
+                            f"{_noise_window(rid)}{push_txt}{site}{gate_txt}",
                             "per-token", v, rid)
-        bud = _BUDGET.search(rid)
         bud_txt = ""
         if bud:
             n_on = 0
@@ -361,7 +376,7 @@ def plan_summary(run_ids: Sequence[str]) -> List[str]:
         out.append("perturbation is applied at every decode step (no entropy gate)")
 
     def _basis_kind(rid: str) -> str:
-        for tag in ("story", "prompt"):
+        for tag in ("story", "prompt", "iso"):
             if f"__ob{tag}" in rid:
                 return tag
         return "step"
@@ -372,6 +387,8 @@ def plan_summary(run_ids: Sequence[str]) -> List[str]:
             "per-story offsets are drawn from the directions along which "
             + {"story": "whole stories differ from one another",
                "prompt": "the instruction's own token positions differ from one another",
+               "iso": "nothing in particular: an isotropic random draw, the "
+                      "control for the estimated basis",
                "step": "one decode step differs from another"}[kinds.pop()]
         )
 

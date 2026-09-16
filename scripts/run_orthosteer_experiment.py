@@ -891,6 +891,70 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                       "subspace projected out of it and with it left in, at the "
                       "decode steps and at the prompt")
 
+    if name == "controls":
+        # Which parts of the perturbation earn their place. Three surgeries on
+        # the method's diversity half, run in one command so every arm is scored
+        # identically:
+        #
+        #   * the constraint-span projection removed ("free"): the offset is the
+        #     same draw from the same story-difference basis at the same length,
+        #     but nothing keeps it off the constraint directions. If compliance
+        #     falls with diversity unchanged, the projection is load-bearing; if
+        #     nothing moves, it is decoration and should be dropped.
+        #   * the story-difference basis replaced by an isotropic draw of the
+        #     same length ("iso", still projected clear): if diversity falls,
+        #     the sampled basis is where the diversity comes from, not the mere
+        #     fact of a per-story shift.
+        #   * the offset kept on while the model writes rather than held to the
+        #     prompt: retried because the last measurement of this predates the
+        #     steering budget and the one-sided requirement set.
+        #
+        # Each surgery appears with the constraint push (does it change the
+        # method?) and, for the first two, without it (is the change a property
+        # of the perturbation or of the pair?). The push alone and the baseline
+        # anchor the comparison inside this run.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        kind = getattr(args, "offset_basis_kind", "story")
+        g = float(getattr(args, "main_gamma", 0.15))
+        b = float(getattr(args, "steer_budget", None) or 3.0)
+        flat = {n: 1.0 for n in names}
+        zero = {n: 0.0 for n in names}
+        prompt_only = dict(offset_prefill=True, offset_decode=False)
+
+        items = ["baseline"]
+        # the push alone: what every perturbed arm here adds to
+        items.append({"plan": make_plan(beta=flat, steer_budget=b,
+                                        steer_prefill=False, **quiet, **base)})
+        for betas in (flat, zero):
+            bud = b if betas is flat else None
+            # the method as it stands: story basis, projected clear, prompt only
+            items.append({"plan": make_plan(
+                beta=betas, steer_budget=bud, offset_gamma=g, offset_mode="orth",
+                offset_basis=offset_basis, offset_basis_kind=kind,
+                steer_prefill=False, **prompt_only, **quiet, **base)})
+            # projection removed, everything else identical
+            items.append({"plan": make_plan(
+                beta=betas, steer_budget=bud, offset_gamma=g, offset_mode="free",
+                offset_basis=offset_basis, offset_basis_kind=kind,
+                steer_prefill=False, **prompt_only, **quiet, **base)})
+            # basis removed: isotropic draw at the same length, still projected
+            items.append({"plan": make_plan(
+                beta=betas, steer_budget=bud, offset_gamma=g, offset_mode="orth",
+                offset_basis=None, offset_basis_kind="iso",
+                steer_prefill=False, **prompt_only, **quiet, **base)})
+        # the offset kept on while the model writes, with the push
+        items.append({"plan": make_plan(
+            beta=flat, steer_budget=b, offset_gamma=g, offset_mode="orth",
+            offset_basis=offset_basis, offset_basis_kind=kind,
+            offset_prefill=True, offset_decode=True,
+            steer_prefill=False, **quiet, **base)})
+        return items, (
+            f"ablations of the per-story perturbation at gamma={g:g}: the "
+            "constraint-span projection removed, the story-difference basis "
+            "replaced by an isotropic draw, and the offset kept on while the "
+            f"model writes -- each against the push at {b:g} and the baseline")
+
     if name == "main":
         # The head-to-head. Every perturbed arm has an unperturbed control at the
         # same injection site, so a difference cannot be read as "the prompt is a
