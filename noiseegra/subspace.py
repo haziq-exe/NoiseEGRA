@@ -1008,6 +1008,17 @@ class SteeringPlan:
         laid_out = getattr(self, "_offset_plan", None)
         for lyr, lp in self.layer_plans.items():
             dev, dt = lp.basis.device, lp.basis.dtype
+            # Relocate the tensors this draw touches to where the steering basis
+            # lives, checking each on its own. Whether they were already moved
+            # depends on which other code path ran first, and one combination
+            # (steering at the prompt only, offset at the prompt) reached here
+            # with the offset basis still on the CPU while the coefficient was
+            # created on the GPU -- a crash at the first story, same failure
+            # family as the feedback_delta relocation above.
+            if lp.offset_basis is not None and lp.offset_basis.device != dev:
+                lp.offset_basis = lp.offset_basis.to(dev)
+            if lp.protect is not None and lp.protect.device != dev:
+                lp.protect = lp.protect.to(dev)
             # A coefficient vector: taken from the spread-out layout when one has
             # been planned and this story's index is known, drawn independently
             # otherwise.
