@@ -182,16 +182,21 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         # diversity for compliance along a curve, and a method only beats it if
         # it lands above the whole curve rather than above one point on it. The
         # grid is swept so the curve is drawn.
-        grid = getattr(args, "sampling_grid", None) or ["1.0", "1.0:0.95",
-                                                        "1.0:0.9", "1.3",
+        # Every arm states its cut-off explicitly, including the plain one.
+        # Qwen3 ships top_p and top_k in its generation config, so an arm that
+        # merely leaves them unset inherits the checkpoint's own truncation: the
+        # "plain" baseline was really top-p 0.95, and the top-p 0.95 arm was a
+        # duplicate of it that came back with identical statistics to every digit.
+        # top_p 1.0 and top_k 0 are how transformers is told not to truncate.
+        grid = getattr(args, "sampling_grid", None) or ["1.0:1.0", "1.0:0.95",
+                                                        "1.0:0.9", "1.3:1.0",
                                                         "1.3:0.95", "1.6:0.95"]
         arms, seen = [], set()
         for cell in grid:
             temp, _, p = cell.partition(":")
-            spec = {"mode": "baseline", "temperature": float(temp)}
-            if p:
-                spec["top_p"] = float(p)
-            key = (spec["temperature"], spec.get("top_p"))
+            spec = {"mode": "baseline", "temperature": float(temp),
+                    "top_p": float(p) if p else 1.0, "top_k": 0}
+            key = (spec["temperature"], spec["top_p"])
             if key in seen:
                 continue
             seen.add(key)
@@ -200,8 +205,7 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             arms.append({"mode": "baseline", "temperature": args.baseline_temperature,
                          "top_k": args.baseline_top_k})
         return arms, ("the decoding-parameter curve: " +
-                      ", ".join(sorted(f"T{a['temperature']:g}" +
-                                       (f"/p{a['top_p']:g}" if "top_p" in a else "")
+                      ", ".join(sorted(f"T{a['temperature']:g}/p{a.get('top_p', 1.0):g}"
                                        for a in arms)))
 
     if vectors is None:
