@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Dict, Tuple
 
+from .constraint_metrics_en import MONOTONE_CONSTRAINTS
+
 # RMS noise calibration: std = RMS_ALPHA * median(block RMS)
 RMS_ALPHA = 0.175
 
@@ -126,6 +128,25 @@ EN_TASK_CONSTRAINTS = (
     "one_name", "varied_openers", "plain_punctuation", "spelled_number",
     "no_repetition",
 )
+
+# The monotone set: every requirement one-sided, so a push along its direction
+# and the requirement itself agree about which way is better. This is the set the
+# main comparison runs against. See constraint_metrics_en.MONOTONE_CONSTRAINTS
+# for why the banded requirements are not in it.
+EN_MONOTONE_CONSTRAINTS = MONOTONE_CONSTRAINTS
+
+# Nine directions, one per monotone requirement that has a local, token-level
+# form. `easy_opening` and `short_words` ride on `terse` and `simple_register`;
+# `no_repetition` is a guard rail rather than something to steer toward. There is
+# no `closure` here because nothing in this set counts words.
+EN_MONOTONE_STEER_VECTORS = (
+    "present_tense", "simple_register", "dialogue", "terse", "varied_openers",
+    "plain_words", "sensory", "simple_syntax", "named_character",
+)
+
+# No word may begin more than three sentences. The old level of two sat at 0%
+# under the prompt and contributed a constant to every condition.
+EN_MONOTONE_MAX_OPENER_USES = 3
 
 # Back-compatible alias: older callers used this for the steering names.
 EN_CONSTRAINTS = EN_STEER_VECTORS

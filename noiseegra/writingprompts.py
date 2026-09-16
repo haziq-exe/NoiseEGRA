@@ -157,18 +157,30 @@ def constraint_block(
     max_words: int = 150,
     max_grade: float = 6.0,
 ) -> str:
+    # Anything CONSTRAINT_TEXT does not carry is described by the checker itself,
+    # which is the only place a requirement's wording and its threshold are
+    # written down together. CONSTRAINT_TEXT predates that and is kept only so the
+    # early four-constraint runs still reproduce; every requirement added since is
+    # defined once, in the scorer.
+    from .constraint_metrics_en import EnglishConstraintChecker
+    fallback = EnglishConstraintChecker(
+        max_words=max_words, max_grade_level=max_grade, backend="regex",
+    ).requirements()
+
     lines, seen = [], set()
     for name in constraints:
         key = as_constraint(name)
-        if key not in CONSTRAINT_TEXT:
+        if key not in CONSTRAINT_TEXT and key not in fallback:
             raise KeyError(
                 f"no prompt text for '{name}' (resolved to '{key}'); "
-                f"known: {sorted(CONSTRAINT_TEXT)}"
+                f"known: {sorted(set(CONSTRAINT_TEXT) | set(fallback))}"
             )
         if key in seen:
             continue
         seen.add(key)
-        lines.append("- " + CONSTRAINT_TEXT[key].format(max_words=max_words, max_grade=max_grade))
+        text = (CONSTRAINT_TEXT[key].format(max_words=max_words, max_grade=max_grade)
+                if key in CONSTRAINT_TEXT else fallback[key])
+        lines.append("- " + text)
     return "\n".join(lines)
 
 

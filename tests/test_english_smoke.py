@@ -16,7 +16,10 @@ from transformers import BatchEncoding, LlamaConfig, LlamaForCausalLM  # noqa: E
 
 from noiseegra import writingprompts as wp  # noqa: E402
 from noiseegra.EGRA_functions import EGRA  # noqa: E402
-from noiseegra.constraint_metrics_en import EnglishConstraintChecker  # noqa: E402
+from noiseegra.constraint_metrics_en import (  # noqa: E402
+    MONOTONE_CONSTRAINTS,
+    EnglishConstraintChecker,
+)
 from noiseegra.steering_vectors import SteeringVectorExtractor, load_pairs  # noqa: E402
 
 FAILURES = []
@@ -64,9 +67,10 @@ class Tiny(EGRA):
 
 print("== task setup ==")
 pairs = load_pairs(ROOT / "noiseegra" / "data" / "steering_pairs_en.json")
-check("English pair file holds the six steerable directions",
-      sorted(pairs) == ["closure", "dialogue", "present_tense", "simple_register",
-                        "terse", "varied_openers"], f"{sorted(pairs)}")
+check("English pair file holds the ten steerable directions",
+      sorted(pairs) == ["closure", "dialogue", "named_character", "plain_words",
+                        "present_tense", "sensory", "simple_register",
+                        "simple_syntax", "terse", "varied_openers"], f"{sorted(pairs)}")
 
 # The first pair set was length-confounded: three of its four directions had a
 # positive side 11 to 14 words shorter than the negative, so "simple register"
@@ -131,16 +135,27 @@ for text, want in [
     check(f"{want} sentence(s) in {text[:34]!r}", len(got) == want,
           f"got {len(got)}: {got}")
 
-print("\n== the twelve-requirement task ==")
+print("\n== the thirteen-requirement task ==")
 full = EnglishConstraintChecker(backend="regex")
-check("thirteen requirements by default", len(full.constraints) == 13, str(len(full.constraints)))
+check("thirteen requirements are scored by default", len(full.constraints) == 13,
+      str(len(full.constraints)))
+check("and thirteen in the monotone set", len(MONOTONE_CONSTRAINTS) == 13,
+      str(len(MONOTONE_CONSTRAINTS)))
+# The whole point of the monotone set is that no requirement in it is a band, so
+# a push along a direction and the requirement it serves agree about which way is
+# better. A banded one slipping in would be invisible in the aggregate and would
+# reintroduce the failure the set exists to avoid.
+check("no banded requirement is in the monotone set",
+      not ({"length", "sentence_count", "sentence_band", "dialogue", "one_name"}
+           & set(MONOTONE_CONSTRAINTS)),
+      str(sorted(set(MONOTONE_CONSTRAINTS))))
 check("every requirement has prompt text and a short label",
       set(full.requirements()) >= set(full.constraints)
       and set(full.requirements_short()) >= set(full.constraints))
 generic = wp.build_generic_messages(full.requirements(), full.constraints)
 body = generic[1]["content"]
 check("the generic prompt carries one line per requirement",
-      body.count("\n- ") == 13, str(body.count("\n- ")))
+      body.count("\n- ") == len(full.constraints), str(body.count("\n- ")))
 check("the generic prompt states the actual thresholds",
       f"{full.max_words} words" in body and f"grade-{full.max_grade_level:g}" in body)
 check("the generic prompt supplies no scenario",
@@ -156,6 +171,25 @@ broken = [c for c in full.constraints if mc.checks[c] is False]
 check("a story written to the rules breaks none of the checkable ones",
       broken == [], f"broken: {broken}  words={mc.word_count} sents={mc.n_sentences} "
                     f"grade={mc.grade_level} quotes={mc.n_quoted_spans}")
+
+# The monotone set has to be jointly satisfiable, and by a story a person would
+# actually write. Thirteen rules chosen one at a time can easily contradict each
+# other -- "use the name three times" against "use no word more than three times"
+# did, until names were exempted -- and a set nothing can satisfy would read as a
+# method failure in every condition.
+MONO_COMPLIANT = (
+    'Rain taps the glass. "Come see," Mira says. A frog sits on the wet step. '
+    '"It is cold," says Mira. She gets a warm cloth. The frog hops to her hand. '
+    'Soft green skin feels smooth. "Now go home," Mira says. It jumps to the grass.'
+)
+mono = EnglishConstraintChecker(backend="spacy", constraints=MONOTONE_CONSTRAINTS,
+                                max_opener_uses=3)
+mm = mono.evaluate(MONO_COMPLIANT)
+mbroken = [c for c in mono.constraints if mm.checks[c] is False]
+check("the monotone set can all be satisfied at once", mbroken == [],
+      f"broken: {mbroken}  words={mm.word_count} adverbs={mm.n_adverbs} "
+      f"sensory={mm.n_sensory} subordinate={mm.n_subordinate} "
+      f"quotes={mm.n_quoted_spans} name_uses={mm.name_uses}")
 
 # Every rule is two-sided or exact, so each one has a violation on both sides where
 # that is meaningful. A one-sided rule the model always satisfies measures nothing.
@@ -520,12 +554,19 @@ with contextlib.redirect_stdout(io.StringIO()):
     R.main()
 sstate = json.loads((SOUT / "Qwen3-8B" / "state.json").read_text())
 snames = sorted(R.condition_label(r) for r in sstate["runs"])
-check("sampling gives the plain baseline plus two decoding baselines",
+# The grid draws the temperature/compliance curve rather than sampling one point
+# on it: a representation-level method only beats decoding parameters if it lands
+# above the whole curve.
+check("sampling sweeps the decoding grid and keeps the plain baseline",
       snames == ["baseline",
+                 "baseline (temperature 1.3)",
+                 "baseline (temperature 1.3, top-p 0.95)",
+                 "baseline (temperature 1.6, top-p 0.95)",
                  "baseline (temperature 1.8, top-k 40)",
-                 "baseline (temperature 1.8, top-p 0.95)"], str(snames))
+                 "baseline (top-p 0.9)",
+                 "baseline (top-p 0.95)"], str(snames))
 check("the sampling settings are in the run id",
-      any("temp1p8__topp0p95" in r for r in sstate["runs"])
+      any("temp1p3__topp0p95" in r for r in sstate["runs"])
       and any("temp1p8__topk40" in r for r in sstate["runs"]), str(sorted(sstate["runs"])))
 check("sampling needs no steering vectors either",
       not (SOUT / "Qwen3-8B" / "steering_Qwen3-8B.pt").exists())
@@ -535,8 +576,8 @@ sys.argv = ["x", "--model", "Qwen3-8B", "--suite", "sampling", "--task", "generi
             "--baseline-top-k", "-1", "--no-diversity", "--allow-task-change"]
 with contextlib.redirect_stdout(io.StringIO()):
     R.main()
-check("a negative cut-off drops that arm",
-      len(json.loads((SOUT / "Qwen3-8B" / "state.json").read_text())["runs"]) == 3)
+check("a negative cut-off drops the top-k arm",
+      len(json.loads((SOUT / "Qwen3-8B" / "state.json").read_text())["runs"]) == 7)
 
 shutil.rmtree(SOUT, ignore_errors=True)
 shutil.rmtree(BOUT, ignore_errors=True)

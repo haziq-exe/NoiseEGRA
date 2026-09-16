@@ -31,8 +31,14 @@ from noiseegra import writingprompts as wp  # noqa: E402
 from noiseegra.activation_basis import (  # noqa: E402
     StoryAxes, collect_block_pcs, collect_prompt_pcs, collect_story_pcs,
 )
-from noiseegra.constraint_metrics_en import EnglishConstraintChecker  # noqa: E402
+from noiseegra.constraint_metrics_en import (  # noqa: E402
+    DEFAULT_MAX_OPENER_USES,
+    EnglishConstraintChecker,
+)
 from noiseegra.defaults import (  # noqa: E402
+    EN_MONOTONE_CONSTRAINTS,
+    EN_MONOTONE_MAX_OPENER_USES,
+    EN_MONOTONE_STEER_VECTORS,
     EN_STEER_VECTORS,
     EN_TASK_CONSTRAINTS,
     EN_MAX_GRADE_LEVEL,
@@ -150,6 +156,12 @@ def main() -> None:
     ap.add_argument("--with-baseline", action="store_true",
                     help="prepend an unsteered baseline condition to whichever suite is run "
                          "(already included in `compare` and `noise`)")
+    ap.add_argument("--constraint-set", choices=("mixed", "monotone"), default="mixed",
+                    help="'monotone': the thirteen one-sided requirements, steered along "
+                         "nine directions. 'mixed': the earlier set, which includes the "
+                         "banded requirements (word count, sentence count, exactly-N "
+                         "quoted lines). Sets --constraints and --steer-vectors unless "
+                         "those are given explicitly.")
     ap.add_argument("--constraints", nargs="*", default=list(EN_TASK_CONSTRAINTS),
                     help="what the prompt asks for and the scorer checks")
     ap.add_argument("--steer-vectors", nargs="*", default=list(EN_STEER_VECTORS),
@@ -316,6 +328,11 @@ def main() -> None:
                          "is already broken past recovery, so continuing cannot turn "
                          "the sample into a pass. 0 disables it")
     ap.add_argument("--temperature", type=float, default=1.0)
+    ap.add_argument("--sampling-grid", nargs="*", default=None,
+                    help="decoding settings for --suite sampling, as TEMP or TEMP:TOP_P "
+                         "(e.g. 1.0 1.0:0.95 1.3 1.6:0.95). Default sweeps six, which is "
+                         "enough to draw the temperature/compliance curve a "
+                         "representation-level method has to sit above.")
     ap.add_argument("--baseline-temperature", type=float, default=1.8,
                     help="temperature for the sampling baselines in --suite sampling")
     ap.add_argument("--baseline-top-p", type=float, default=0.95,
@@ -349,6 +366,16 @@ def main() -> None:
                          "before argparse rejects it; this catches it locally in a "
                          "second")
     args = ap.parse_args()
+
+    if args.constraint_set == "monotone":
+        # Only override what the caller left at its default, so an explicit
+        # --constraints or --steer-vectors still wins.
+        if list(args.constraints) == list(EN_TASK_CONSTRAINTS):
+            args.constraints = list(EN_MONOTONE_CONSTRAINTS)
+        if list(args.steer_vectors) == list(EN_STEER_VECTORS):
+            args.steer_vectors = list(EN_MONOTONE_STEER_VECTORS)
+        args.max_opener_uses = EN_MONOTONE_MAX_OPENER_USES
+
 
     if args.dry_run:
         # Parsing the flags is the easy half. Two runs have now reached Kaggle,
@@ -480,6 +507,7 @@ def main() -> None:
     checker = EnglishConstraintChecker(
         min_words=args.min_words, max_words=args.max_words,
         max_grade_level=args.max_grade,
+        max_opener_uses=getattr(args, "max_opener_uses", DEFAULT_MAX_OPENER_USES),
         constraints=list(args.constraints),
     )
 

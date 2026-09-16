@@ -81,6 +81,39 @@ DEFAULT_MAX_OPENER_USES = 2
 # of looping stories, from two in twenty-four to six, and no column said so.
 DEFAULT_MAX_REPEAT = 0.15
 
+# Thresholds for the monotone requirements. Each was chosen by measuring the
+# candidate on forty baseline stories written *without* being asked for it, and
+# keeping the level that passed between 5% and 50% of them. A rule the model
+# already satisfies unasked measures nothing, and one it never satisfies measures
+# nothing either; the levels below leave the prompted rate somewhere in the
+# middle, where a perturbation has room to cost something and an intervention has
+# room to win something.
+DEFAULT_MAX_SENTENCE_WORDS = 8     # unprompted 65%
+DEFAULT_MIN_QUOTES = 3             # unprompted 48%
+DEFAULT_MAX_ADVERBS = 2            # unprompted 50%
+DEFAULT_MIN_SENSORY = 2            # unprompted 18%
+DEFAULT_MAX_SUBORDINATE = 1        # unprompted 78%
+DEFAULT_MAX_WORD_USES = 3          # unprompted 32%, i.e. no content word four times
+
+# Words a five-year-old would call seeing, hearing, smelling, tasting or
+# touching. "Use the senses" is one of the oldest pieces of advice given to
+# people writing for children, and unlike most such advice it is countable.
+_SENSORY_WORDS = frozenset("""
+see sees seeing saw look looks looking watch watches watching peek peeks
+hear hears hearing heard listen listens listening sound sounds
+smell smells smelling sniff sniffs taste tastes tasting
+touch touches touching feel feels feeling felt pat pats
+soft warm cold hot bright dark loud quiet sweet shiny wet dry rough smooth
+sunny cool fresh crunchy sticky fuzzy crisp salty sour fluffy sparkly
+buzz buzzes hum hums crunch crunches splash splashes whisper whispers
+shout shouts giggle giggles rustle rustles thump thumps
+""".split())
+
+# Adverbs that are not really modifiers of manner and that no writing guide asks
+# anyone to remove: the negation, the existential "there", and the "so" that
+# starts a sentence.
+_FREE_ADVERBS = frozenset(["not", "n't", "there", "so"])
+
 # Kept so callers that still pass the old single-sided thresholds keep working.
 DEFAULT_MAX_WORDS = DEFAULT_WORD_RANGE[1]
 
@@ -88,6 +121,29 @@ CONSTRAINT_NAMES = (
     "length", "present_tense", "simple_register", "dialogue",
     "easy_opening", "sentence_band", "sentence_count", "short_words",
     "one_name", "varied_openers", "plain_punctuation", "spelled_number",
+    "no_repetition",
+    # Monotone requirements: more of the property is never worse. They are
+    # additions rather than replacements so that every earlier run re-scores to
+    # the same numbers it did when it was produced.
+    "short_sentences", "dialogue_min", "plain_words", "sensory",
+    "simple_syntax", "fresh_words", "named_character",
+)
+
+# What a checker scores unless told otherwise: the original thirteen. The
+# monotone requirements are additions, and making them default would silently
+# change what every existing caller measures.
+DEFAULT_CONSTRAINTS = CONSTRAINT_NAMES[:13]
+
+# The monotone set, which is what the main comparison is run against. A band --
+# "between 50 and 65 words", "exactly two quoted lines" -- has no token-level
+# direction meaning "stop here", and steering along one reliably makes it worse:
+# across thirty steered conditions not one improved a banded requirement over
+# leaving the model alone. These thirteen are all one-sided, so a push along the
+# direction and the requirement agree about which way is better.
+MONOTONE_CONSTRAINTS = (
+    "present_tense", "simple_register", "short_words", "easy_opening",
+    "short_sentences", "dialogue_min", "varied_openers", "plain_words",
+    "sensory", "simple_syntax", "fresh_words", "named_character",
     "no_repetition",
 )
 
@@ -98,6 +154,9 @@ CONSTRAINT_SHORT = {
     "sentence_count": "count", "short_words": "syll", "one_name": "name",
     "varied_openers": "varied", "plain_punctuation": "punct",
     "spelled_number": "number",
+    "short_sentences": "short", "dialogue_min": "speech", "plain_words": "adverb",
+    "sensory": "sense", "simple_syntax": "syntax", "fresh_words": "fresh",
+    "named_character": "named", "no_repetition": "norep",
 }
 
 _WORD = re.compile(r"[A-Za-z]+(?:'[A-Za-z]+)?")
@@ -250,9 +309,42 @@ class _Spacy:
         cls._failed = True
         return False
 
+    _cache_key = None
+    _cache_doc = None
+
     @classmethod
     def doc(cls, text: str):
-        return cls._nlp(text)
+        """One parse per story, shared by every check that needs one.
+
+        Four checks now want a parsed document. Without this each of them parsed
+        the story again, and parsing is the slowest thing the scorer does.
+        """
+        if text != cls._cache_key:
+            cls._cache_key, cls._cache_doc = text, cls._nlp(text)
+        return cls._cache_doc
+
+    @classmethod
+    def adverb_count(cls, text: str) -> int:
+        return sum(1 for t in cls.doc(text)
+                   if t.pos_ == "ADV" and t.text.lower() not in _FREE_ADVERBS)
+
+    @classmethod
+    def subordinate_count(cls, text: str) -> int:
+        """Clauses hanging off another clause: relative, adverbial, complement.
+
+        "The dog runs" is one clause. "The dog that barks runs" and "She says
+        that the dog runs" are two, and the second clause is the thing a
+        grade-two reader has to hold in mind while finishing the first.
+
+        Quoted speech is removed before parsing. ``"Come here," Mira says`` makes
+        the quoted words a complement clause of "says", so every line of dialogue
+        scored as a subordinate clause -- which put this requirement in direct
+        contradiction with the one asking for three lines of speech, and no story
+        could satisfy both. Reported speech is not the syntactic load this rule is
+        about; a child reads the quoted sentence as its own sentence.
+        """
+        return sum(1 for t in cls.doc(_QUOTED.sub(" it ", text))
+                   if t.dep_ in ("advcl", "relcl", "ccomp", "acl"))
 
     @classmethod
     def tense_counts(cls, text: str) -> Dict[str, int]:
@@ -296,6 +388,24 @@ def _regex_tense_counts(words: Sequence[str]) -> Dict[str, int]:
         elif w.endswith("ed") and len(w) > 4:
             past += 1
     return {"present": present, "past": past}
+
+
+_SUBORDINATORS = frozenset("""
+because when while although though since unless until after before whenever
+wherever that which who whom whose if as
+""".split())
+
+
+def _regex_adverb_count(words: Sequence[str]) -> int:
+    """Words ending in -ly, which is most manner adverbs and a few adjectives.
+
+    "Lonely" and "friendly" are counted wrongly here. Install spaCy.
+    """
+    return sum(1 for w in words if len(w) > 4 and w.lower().endswith("ly"))
+
+
+def _regex_subordinate_count(words: Sequence[str]) -> int:
+    return sum(1 for w in words if w.lower() in _SUBORDINATORS)
 
 
 def _heuristic_name_counts(text: str) -> Dict[str, int]:
@@ -347,6 +457,10 @@ class StoryMetrics:
     n_hard_punct: int
     n_number_words: int
     repeat_share: float
+    n_adverbs: int
+    n_sensory: int
+    n_subordinate: int
+    max_word_uses: int
     n_names: int
     name_uses: int
     max_opener_uses: int
@@ -385,8 +499,14 @@ class EnglishConstraintChecker:
         min_name_uses: int = DEFAULT_MIN_NAME_USES,
         max_opener_uses: int = DEFAULT_MAX_OPENER_USES,
         max_repeat: float = DEFAULT_MAX_REPEAT,
+        max_sentence_words: int = DEFAULT_MAX_SENTENCE_WORDS,
+        min_quotes: int = DEFAULT_MIN_QUOTES,
+        max_adverbs: int = DEFAULT_MAX_ADVERBS,
+        min_sensory: int = DEFAULT_MIN_SENSORY,
+        max_subordinate: int = DEFAULT_MAX_SUBORDINATE,
+        max_word_uses: int = DEFAULT_MAX_WORD_USES,
         backend: str = "auto",
-        constraints: Sequence[str] = CONSTRAINT_NAMES,
+        constraints: Sequence[str] = DEFAULT_CONSTRAINTS,
     ):
         if backend not in ("auto", "spacy", "regex"):
             raise ValueError("backend must be 'auto', 'spacy' or 'regex'.")
@@ -414,6 +534,12 @@ class EnglishConstraintChecker:
         self.min_name_uses = int(min_name_uses)
         self.max_opener_uses = int(max_opener_uses)
         self.max_repeat = float(max_repeat)
+        self.max_sentence_words = int(max_sentence_words)
+        self.min_quotes = int(min_quotes)
+        self.max_adverbs = int(max_adverbs)
+        self.min_sensory = int(min_sensory)
+        self.max_subordinate = int(max_subordinate)
+        self.max_word_uses = int(max_word_uses)
         self.constraints = tuple(constraints)
 
         if backend == "spacy":
@@ -469,6 +595,21 @@ class EnglishConstraintChecker:
                               "appears, written as a word and never as a digit",
             "no_repetition": "it does not repeat itself: no run of five words appears "
                              "twice",
+            "short_sentences": f"every sentence is short: at most {self.max_sentence_words} words",
+            "dialogue_min": f"at least {self.min_quotes} lines of speech appear inside "
+                            "quotation marks",
+            "plain_words": "it tells the story with verbs rather than adverbs: at most "
+                           f"{self.max_adverbs} adverb{'s' if self.max_adverbs != 1 else ''} "
+                           "in the whole story",
+            "sensory": f"at least {self.min_sensory} words say how something looks, "
+                       "sounds, feels, smells or tastes",
+            "simple_syntax": "the sentences are simple: at most "
+                             f"{self.max_subordinate} of them joins a second clause on "
+                             "with a word like because, when, that or which",
+            "fresh_words": "it does not lean on one word: no word of four letters or "
+                           f"more is used more than {self.max_word_uses} times",
+            "named_character": "a character is given a name, and that name is used at "
+                               f"least {self.min_name_uses} times",
         }
 
     def requirements_short(self) -> Dict[str, str]:
@@ -492,6 +633,13 @@ class EnglishConstraintChecker:
             "plain_punctuation": "one paragraph, simple punctuation",
             "spelled_number": "a number word, no digits",
             "no_repetition": "no repeated five-word run",
+            "short_sentences": f"every sentence at most {self.max_sentence_words} words",
+            "dialogue_min": f"{self.min_quotes}+ quoted lines",
+            "plain_words": f"at most {self.max_adverbs} adverbs",
+            "sensory": f"{self.min_sensory}+ sensory words",
+            "simple_syntax": f"at most {self.max_subordinate} subordinate clauses",
+            "fresh_words": f"no word used over {self.max_word_uses} times",
+            "named_character": f"a name, used {self.min_name_uses}+ times",
         }
 
     # -- measurement --------------------------------------------------------- #
@@ -529,7 +677,22 @@ class EnglishConstraintChecker:
 
         repeat_share = repeated_ngram_share(words)
 
+        if self.backend == "spacy":
+            n_adverbs = _Spacy.adverb_count(text)
+            n_subordinate = _Spacy.subordinate_count(text)
+        else:
+            n_adverbs = _regex_adverb_count(words)
+            n_subordinate = _regex_subordinate_count(words)
+        n_sensory = sum(1 for w in words if w.lower() in _SENSORY_WORDS)
+
         names = self._name_counts(text)
+        # Four letters or more, so "the", "a", "and" and "was" are not what fails
+        # the rule, and not the character's name, which another requirement asks
+        # to be used at least three times -- between them those two would leave
+        # only the single value three, which is a band and not what this is.
+        content = [w.lower() for w in words
+                   if len(w) >= 4 and w.lower() not in names]
+        max_word_uses = max((content.count(w) for w in set(content)), default=0)
         n_names = len(names)
         name_uses = max(names.values()) if names else 0
 
@@ -556,6 +719,13 @@ class EnglishConstraintChecker:
                                  and hard_punct == 0,
             "spelled_number": bool(number_words) and digits == 0,
             "no_repetition": repeat_share <= self.max_repeat,
+            "short_sentences": bool(sentences) and max(sent_words) <= self.max_sentence_words,
+            "dialogue_min": n_quotes >= self.min_quotes,
+            "plain_words": n_adverbs <= self.max_adverbs,
+            "sensory": n_sensory >= self.min_sensory,
+            "simple_syntax": n_subordinate <= self.max_subordinate,
+            "fresh_words": max_word_uses <= self.max_word_uses,
+            "named_character": n_names >= 1 and name_uses >= self.min_name_uses,
         }
         violations = sum(1 for c in self.constraints if checks[c] is False)
 
@@ -578,6 +748,10 @@ class EnglishConstraintChecker:
             n_hard_punct=hard_punct,
             n_number_words=len(number_words),
             repeat_share=round(repeat_share, 4),
+            n_adverbs=n_adverbs,
+            n_sensory=n_sensory,
+            n_subordinate=n_subordinate,
+            max_word_uses=max_word_uses,
             n_names=n_names,
             name_uses=name_uses,
             max_opener_uses=opener_uses,

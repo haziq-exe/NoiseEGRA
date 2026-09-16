@@ -172,20 +172,37 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         return (["baseline"], "unmodified generation, no steering and no perturbation")
 
     if name == "sampling":
-        # The decoding-parameter comparison from the published study: raising the
-        # temperature and truncating the tail is the obvious way to buy diversity
-        # without touching the representation, so it is the reference any
-        # representation-level method has to beat. Same magnitudes as the paper.
-        t = args.baseline_temperature
-        arms = [{"mode": "baseline"}]
-        if args.baseline_top_p is not None:
-            arms.append({"mode": "baseline", "temperature": t,
-                         "top_p": args.baseline_top_p})
-        if args.baseline_top_k is not None:
-            arms.append({"mode": "baseline", "temperature": t,
+        # The decoding-parameter comparison. Turning the temperature up and
+        # truncating the tail is the obvious way to buy diversity without
+        # touching the representation, and it costs nothing, so it is the
+        # reference a representation-level method has to beat -- not the greedy
+        # baseline, which no one deploying a story generator would use.
+        #
+        # A single setting is not enough to compare against: temperature trades
+        # diversity for compliance along a curve, and a method only beats it if
+        # it lands above the whole curve rather than above one point on it. The
+        # grid is swept so the curve is drawn.
+        grid = getattr(args, "sampling_grid", None) or ["1.0", "1.0:0.95",
+                                                        "1.0:0.9", "1.3",
+                                                        "1.3:0.95", "1.6:0.95"]
+        arms, seen = [], set()
+        for cell in grid:
+            temp, _, p = cell.partition(":")
+            spec = {"mode": "baseline", "temperature": float(temp)}
+            if p:
+                spec["top_p"] = float(p)
+            key = (spec["temperature"], spec.get("top_p"))
+            if key in seen:
+                continue
+            seen.add(key)
+            arms.append(spec)
+        if getattr(args, "baseline_top_k", None):
+            arms.append({"mode": "baseline", "temperature": args.baseline_temperature,
                          "top_k": args.baseline_top_k})
-        return arms, (f"unmodified generation, plus sampling baselines at "
-                      f"temperature {t:g}")
+        return arms, ("the decoding-parameter curve: " +
+                      ", ".join(sorted(f"T{a['temperature']:g}" +
+                                       (f"/p{a['top_p']:g}" if "top_p" in a else "")
+                                       for a in arms)))
 
     if vectors is None:
         raise ValueError(f"suite {name!r} needs steering vectors")
