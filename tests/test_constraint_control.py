@@ -142,6 +142,34 @@ check("but the ceiling still holds",
       float(p.error_delta(2).norm()) <= 3.0 * 1.0 + 1e-4,
       f"{float(p.error_delta(2).norm()):.3f}")
 
+print("\n== each requirement gets the mechanism that suits its shape ==")
+# The requirements split by shape. More present tense and simpler vocabulary are
+# always better, and a constant push is the right control: it took them from 25%
+# to 64%. Word count and exactly-two-quoted-lines are bands, where a constant push
+# sails through the target and took them from 23% to 3%. Running the controller
+# over everything fixed the second half and lost the first, because the monotone
+# directions have no error signal and were never pushed at all.
+MIXED = ["present_tense", "closure", "dialogue"]
+torch.manual_seed(1)
+mv = {n: {l: torch.randn(DIM) for l in LAYERS} for n in MIXED}
+mstate = {"errors": {}}
+mp = SteeringPlan.build(mv, LAYERS, [ConstraintSpec(n) for n in MIXED], rms_scale=1.0,
+                        noise_mode="none", noise_alpha=0.0, steer_mode="error",
+                        control_state=mstate, controller=C, steer_budget=3.0)
+MB = mp.layer_plans[2].basis
+mstate["errors"] = {"closure": 0.0, "dialogue": 0.0}
+inside = mp.error_delta(2) @ MB
+check("a direction the controller does not watch keeps its constant push",
+      float(inside[0]) > 0.9, f"{float(inside[0]):+.2f}")
+check("and the watched ones go silent inside their bands",
+      abs(float(inside[1])) < 1e-5 and abs(float(inside[2])) < 1e-5,
+      f"{[round(float(x), 3) for x in inside]}")
+mstate["errors"] = {"closure": 1.0, "dialogue": 0.0}
+over = mp.error_delta(2) @ MB
+check("a watched one that errs is pushed, the unwatched one is unchanged",
+      float(over[1]) > 0.9 and abs(float(over[0]) - float(inside[0])) < 1e-5,
+      f"{[round(float(x), 3) for x in over]}")
+
 print("\n== the probe reads the generated tokens, not the prompt ==")
 
 

@@ -1022,11 +1022,24 @@ class SteeringPlan:
         if device is not None and lp.basis.device != device:
             lp.basis = lp.basis.to(device)
         h = self.horizon if horizon is None else horizon
-        weights = [
-            spec.beta * float(errs.get(spec.name, 0.0))
-            * schedule_factor(spec.schedule, t, h)
-            for spec in self.specs
-        ]
+        # A direction the controller watches is scaled by its error, so it goes
+        # silent once its requirement is inside the band. A direction the
+        # controller has no probe for keeps its constant coefficient.
+        #
+        # That difference is the whole design. The requirements split by shape:
+        # more present tense and simpler vocabulary are always better, and a
+        # constant push is the right control for them -- it took them from 25% to
+        # 64%. Word count, sentence count and exactly-two-quoted-lines are bands,
+        # where a constant push sails through the target and took them from 23%
+        # down to 3%. Running the controller over every direction fixed the second
+        # half and lost the first: banded went to 14% and monotone fell back to
+        # 28%, because the three monotone directions have no error signal and were
+        # never pushed at all. Each mechanism on the requirements it suits.
+        weights = []
+        for spec in self.specs:
+            err = errs.get(spec.name)
+            gain = 1.0 if err is None else float(err)
+            weights.append(spec.beta * gain * schedule_factor(spec.schedule, t, h))
         coeffs = torch.tensor([w * self.rms_scale for w in weights],
                               dtype=lp.basis.dtype, device=lp.basis.device)
         if bool((coeffs == 0).all()):
