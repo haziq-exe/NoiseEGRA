@@ -40,6 +40,7 @@ from noiseegra.constraint_metrics_en import (  # noqa: E402
 from noiseegra.defaults import (  # noqa: E402
     EN_MIDDLE_CONSTRAINTS,
     EN_MIDDLE_MAX_NEW_TOKENS,
+    EN_MIDDLE_MAX_OPENER_USES,
     EN_MIDDLE_MAX_WORDS,
     EN_MIDDLE_MAX_WORD_USES,
     EN_MIDDLE_REGISTER_STEER_VECTORS,
@@ -460,6 +461,10 @@ def main() -> None:
                          "second")
     args = ap.parse_args()
 
+    # How many sentences one word may begin. Each rule set below sets its own
+    # level; this is the value for the original mixed set, which sets none.
+    args.max_opener_uses = DEFAULT_MAX_OPENER_USES
+
     if args.constraint_set == "monotone":
         # Only override what the caller left at its default, so an explicit
         # --constraints or --steer-vectors still wins.
@@ -485,7 +490,7 @@ def main() -> None:
             args.steer_vectors = list(EN_MIDDLE_REGISTER_STEER_VECTORS
                                       if args.pairs == "middle"
                                       else EN_MIDDLE_STEER_VECTORS)
-        args.max_opener_uses = EN_MONOTONE_MAX_OPENER_USES
+        args.max_opener_uses = EN_MIDDLE_MAX_OPENER_USES
         # Four settings that have to move together with this rule set, and were
         # passed by hand on the command line for the first three rounds of it.
         # Leaving one of them out silently produces a different task: the story
@@ -595,22 +600,30 @@ def main() -> None:
         # pair sets give different directions, so stories from each are no more
         # comparable than stories written to different instructions.
         "pairs": args.pairs,
+        # Every threshold below is written into the requirement list the model is
+        # given -- "no word begins more than N sentences" names its N in the
+        # prompt. Changing one changes the instruction, so stories written before
+        # and after are not comparable. They were missing from this dict, so that
+        # change would have been made silently.
+        "max_opener_uses": args.max_opener_uses,
+        "max_word_uses": args.max_word_uses,
+        "min_grade": args.min_grade,
+        "story_target": args.story_target,
     }
-    # A checkpoint written before a setting existed does not carry it. Comparing
-    # it raw would refuse every resume of an older run the first time a key is
-    # added, so a key the checkpoint has never heard of counts as its default.
-    TASK_DEFAULTS = {"pairs": "children"}
-
-    def _same(prev: dict, now: dict) -> bool:
-        return all(prev.get(k, TASK_DEFAULTS.get(k, object())) == v for k, v in now.items())
-
+    # A checkpoint written before a setting was recorded does not carry it, and
+    # there is no way to know what that run used. Comparing such a key would
+    # refuse every resume of an older run the first time a key is added, so only
+    # keys the checkpoint actually holds are compared. The merged setup is
+    # written back, so the first run after a key is added records it and every
+    # run after that is held to it.
     prev = state.get("task")
     if prev is None:
         state["task"] = task
         save_state(state_path, state)
-    elif not _same(prev, task) and not args.allow_task_change:
-        changed = [f"    {k}: {prev.get(k, TASK_DEFAULTS.get(k))!r} -> {task[k]!r}"
-                   for k in task if prev.get(k, TASK_DEFAULTS.get(k, object())) != task[k]]
+    elif any(prev[k] != v for k, v in task.items() if k in prev) \
+            and not args.allow_task_change:
+        changed = [f"    {k}: {prev[k]!r} -> {task[k]!r}"
+                   for k in task if k in prev and prev[k] != task[k]]
         raise SystemExit(
             f"{state_path} holds stories generated under a different task setup:\n"
             + "\n".join(changed)
@@ -618,6 +631,11 @@ def main() -> None:
               "  comparable. Either point --out at a fresh directory, or pass\n"
               "  --allow-task-change if you are certain you want them mixed."
         )
+    else:
+        # Record any setting this checkpoint predates, so it is pinned from now on.
+        if any(k not in prev for k in task):
+            state["task"] = {**prev, **task}
+            save_state(state_path, state)
 
     args.keep_directions = {}
     for item in args.keep:

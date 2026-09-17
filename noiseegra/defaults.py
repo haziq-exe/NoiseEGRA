@@ -190,6 +190,23 @@ EN_MIDDLE_MAX_WORD_USES = 5
 #   the token cap. A 150-word story with dialogue runs past 400 tokens often
 #   enough that the cap, not the model, was ending a fifth of them.
 EN_MIDDLE_MAX_NEW_TOKENS = 600
+#   how many sentences one word may begin. At the children's-task level of three
+#   this rule is broken by 92% of untouched stories on the middle-school task and
+#   99% under the constraint push, so it separates almost nothing while adding a
+#   near-constant penalty to every condition -- the same fault the grade-6
+#   reading floor had in round 24, found the same way. Three is right for an
+#   eight-sentence story and unreachable for a twenty-sentence one: in the
+#   untouched model's stories the commonest opening word begins a median of five
+#   sentences. Five is the level at which the untouched model passes 51%, chosen
+#   by the convention used for every other threshold here.
+#
+#   Note what this rule cannot see. It counts openings rather than measuring
+#   their share, so a condition that writes more sentences breaks it more
+#   readily whatever its prose is like. Under the constraint push the commonest
+#   opening word covers 20% of sentences against the untouched model's 29% --
+#   proportionally more varied -- while breaking the rule far more often, because
+#   it writes twice as many sentences. Report the share alongside the pass rate.
+EN_MIDDLE_MAX_OPENER_USES = 5
 
 # Back-compatible alias: older callers used this for the steering names.
 EN_CONSTRAINTS = EN_STEER_VECTORS
