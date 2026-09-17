@@ -2121,3 +2121,27 @@ near-orthogonal to the explicit simplicity directions, so nothing in the
 geometry shows it -- and that it is visible only as damage to a *different*
 scored requirement than the one being steered. Whether that earns a section or a
 footnote depends on what the runs now say.
+
+### A mechanism to test once the ladders are read: what the perturbation hits
+
+The per-story perturbation is a single fixed vector added to **every** prefill
+position (`EGRA_functions.py`, the prefill branch: `target.add_(delta.view(1,1,-1))`
+over the whole sequence). That includes the chat template's control tokens --
+the turn marker and the newline that tell the model a response starts here --
+not only the instruction the tokens spell out.
+
+Those are the positions that carry the conventions of the reply's *form*, and
+the perturbation's characteristic failure on this task is a failure of form: a
+tenth of its stories stop capitalising their sentences and run on without
+boundaries. Leaving the last few prefill positions unperturbed, so the offset
+shifts how the instruction is read but not the scaffolding of the reply, is a
+cheap thing to try and has never been tried. The number of positions to skip
+should be computed at run time from the difference between the template with and
+without the generation prompt, not guessed.
+
+The competing explanation is that nothing is broken at all and the offset simply
+moves the model into a lowercase, run-on, consciously poetic register -- the
+flagged stories read that way ("the wind howled through the trees like a
+thousand angry voices whispering secrets to the earth"). If that is what it is,
+skipping the control tokens will not help, and the fix is a smaller dose. The
+two are told apart by whether the skip changes the rate at all.
