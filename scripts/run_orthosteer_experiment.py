@@ -1129,6 +1129,39 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             "at 0.15 (both sitings) and 0.3 (prompt), the fading push with the "
             "sideways step, and the sideways step plus shove together")
 
+    if name == "dose":
+        # A dose-response ladder for the constraint push, to be run twice: once
+        # with the extracted directions and once with `--random-directions`,
+        # which replaces every direction with a Gaussian draw of the same length.
+        #
+        # This is the control the project never ran. Every compliance gain so far
+        # has been attributed to the extracted directions, but a constant offset
+        # of this size added to the residual stream might shorten and simplify
+        # the prose whichever way it points -- and on the children's task, where
+        # most requirements reward short simple sentences, that alone would look
+        # like the method working. If the two ladders lie on top of each other,
+        # the extraction is not what is doing the work.
+        #
+        # A ladder rather than a single strength, because the interesting
+        # question is not whether the curves differ at one point but whether the
+        # extracted one has a usable window -- a strength that buys compliance
+        # before it starts flattening the prose.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        flat = {n: 1.0 for n in names}
+        ladder = [float(x) for x in (getattr(args, "budget_sweep", None)
+                                     or (1.0, 2.0, 3.0))]
+        items = ["baseline"]
+        for b in ladder:
+            items.append({"plan": make_plan(beta=flat, steer_budget=b,
+                                            steer_prefill=False, **quiet, **base)})
+        return items, (
+            "a dose ladder for the constraint push at total strength "
+            + ", ".join(f"{b:g}" for b in ladder)
+            + ", against the untouched model. Run a second time with "
+              "--random-directions to separate what the extracted directions do "
+              "from what any push of that size does")
+
     if name == "core4":
         # The four arms that anchor any configuration change (a different layer
         # band, a different model): nothing, the push, the perturbation, both.
