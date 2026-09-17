@@ -39,6 +39,10 @@ from noiseegra.constraint_metrics_en import (  # noqa: E402
 )
 from noiseegra.defaults import (  # noqa: E402
     EN_MIDDLE_CONSTRAINTS,
+    EN_MIDDLE_MAX_NEW_TOKENS,
+    EN_MIDDLE_MAX_WORDS,
+    EN_MIDDLE_MAX_WORD_USES,
+    EN_MIDDLE_REGISTER_STEER_VECTORS,
     EN_MIDDLE_STEER_VECTORS,
     EN_MONOTONE_CONSTRAINTS,
     EN_MONOTONE_MAX_OPENER_USES,
@@ -72,7 +76,20 @@ from noiseegra.entropy_gate import (  # noqa: E402
     GATE_LEVELS, collect_decode_entropies, describe as describe_gate, gate_threshold,
 )
 
-EN_PAIRS = Path(__file__).resolve().parents[1] / "noiseegra" / "data" / "steering_pairs_en.json"
+_DATA = Path(__file__).resolve().parents[1] / "noiseegra" / "data"
+EN_PAIRS = _DATA / "steering_pairs_en.json"
+
+# Which set of contrast pairs the directions are extracted from. Both sets use
+# the same within-item design; they differ in the register both sides are
+# written in. "children" is the original: every pair, positive and negative
+# alike, is a sentence from a book for a five-year-old. "middle" rewrites all of
+# them at twelve to twenty words a sentence and adds a direction for developed
+# prose, because directions measured inside a four-word-sentence world were
+# being applied to a task that asks for real sentences.
+PAIR_SETS = {
+    "children": EN_PAIRS,
+    "middle": _DATA / "steering_pairs_en_middle.json",
+}
 
 # Any suite that can draw a per-story offset from an estimated basis must be
 # listed here, or the basis is never built and the offset silently falls back to
@@ -203,6 +220,14 @@ def main() -> None:
                     help="the word count --constraint-set middle asks the model to "
                          "aim for in the prompt")
     ap.add_argument("--beta", type=float, default=1.0)
+    ap.add_argument("--pairs", default="children", choices=sorted(PAIR_SETS),
+                    help="which contrast-pair file the steering directions are "
+                         "extracted from. 'children' is the original set, whose "
+                         "every pair is written on both sides in the register of a "
+                         "book for a five-year-old. 'middle' is the same design "
+                         "rewritten at middle-school sentence length, with a "
+                         "direction for developed prose that the children's set "
+                         "has no counterpart for")
     ap.add_argument("--extraction-context", default="task", choices=["task", "generic"],
                     help="the conversation the contrast activations are read in. "
                          "'task' uses the real instruction the stories are written "
@@ -453,8 +478,29 @@ def main() -> None:
         if list(args.constraints) == list(EN_TASK_CONSTRAINTS):
             args.constraints = list(EN_MIDDLE_CONSTRAINTS)
         if list(args.steer_vectors) == list(EN_STEER_VECTORS):
-            args.steer_vectors = list(EN_MIDDLE_STEER_VECTORS)
+            # With the middle-school pairs there are two more directions to
+            # steer: the reading floor itself, which the children's pairs cannot
+            # express, and verbs-rather-than-adverbs, whose requirement is in
+            # this rule list.
+            args.steer_vectors = list(EN_MIDDLE_REGISTER_STEER_VECTORS
+                                      if args.pairs == "middle"
+                                      else EN_MIDDLE_STEER_VECTORS)
         args.max_opener_uses = EN_MONOTONE_MAX_OPENER_USES
+        # Four settings that have to move together with this rule set, and were
+        # passed by hand on the command line for the first three rounds of it.
+        # Leaving one of them out silently produces a different task: the story
+        # length the model is allowed, the point at which an over-long
+        # generation is cut off, and how often a word may be reused all reach
+        # the prompt or the generation. A run that omitted `--max-words 200`
+        # stopped every story at 97 words while the instruction asked for 150,
+        # and its numbers were not comparable with the rounds before it.
+        # Anything given explicitly still wins; these only fill in defaults.
+        if args.max_words == EN_MAX_WORDS:
+            args.max_words = EN_MIDDLE_MAX_WORDS
+        if args.max_word_uses == DEFAULT_MAX_WORD_USES:
+            args.max_word_uses = EN_MIDDLE_MAX_WORD_USES
+        if args.max_new_tokens == ap.get_default("max_new_tokens"):
+            args.max_new_tokens = EN_MIDDLE_MAX_NEW_TOKENS
 
 
     if args.dry_run:
@@ -472,6 +518,16 @@ def main() -> None:
         print(f"model {args.model}, {args.stories} stories, "
               f"constraints {len(args.constraints)}, "
               f"steer vectors {list(args.steer_vectors)}")
+        # The settings that reach the prompt or the generation but are not named
+        # by any flag on a typical command line. A launch that left one of them
+        # at the children's-task default cut every story off at 97 words while
+        # the instruction asked for 150, and nothing said so until the run was
+        # twenty minutes in.
+        print(f"directions from the {args.pairs} contrast pairs; "
+              f"story target {args.story_target} words, length rule "
+              f"{args.max_words} words, generation stopped at "
+              f"{int(1.5 * args.max_words)} words or {args.max_new_tokens} tokens, "
+              f"a word may be reused {args.max_word_uses} times")
         _lo, _hi = args.layers if args.layers else EN_MODEL_LAYER_RANGES[args.model]
         _layers = list(range(_lo, _hi))
         _dim, _rank = 64, max(args.protect_rank, 1)
@@ -535,14 +591,26 @@ def main() -> None:
         "prompt_split": args.prompt_split,
         "max_new_tokens": args.max_new_tokens,
         "temperature": args.temperature,
+        # Not part of the prompt, but part of what the steered stories are: two
+        # pair sets give different directions, so stories from each are no more
+        # comparable than stories written to different instructions.
+        "pairs": args.pairs,
     }
+    # A checkpoint written before a setting existed does not carry it. Comparing
+    # it raw would refuse every resume of an older run the first time a key is
+    # added, so a key the checkpoint has never heard of counts as its default.
+    TASK_DEFAULTS = {"pairs": "children"}
+
+    def _same(prev: dict, now: dict) -> bool:
+        return all(prev.get(k, TASK_DEFAULTS.get(k, object())) == v for k, v in now.items())
+
     prev = state.get("task")
     if prev is None:
         state["task"] = task
         save_state(state_path, state)
-    elif prev != task and not args.allow_task_change:
-        changed = [f"    {k}: {prev.get(k)!r} -> {task[k]!r}"
-                   for k in task if prev.get(k) != task[k]]
+    elif not _same(prev, task) and not args.allow_task_change:
+        changed = [f"    {k}: {prev.get(k, TASK_DEFAULTS.get(k))!r} -> {task[k]!r}"
+                   for k in task if prev.get(k, TASK_DEFAULTS.get(k, object())) != task[k]]
         raise SystemExit(
             f"{state_path} holds stories generated under a different task setup:\n"
             + "\n".join(changed)
@@ -679,7 +747,12 @@ def main() -> None:
         # silently answer a question nobody asked.
         ctx_tag = "" if args.extraction_context == "generic" else f"_{args.extraction_context}"
         win_tag = "" if args.read_window == "all" else f"_{args.read_window}{args.read_tokens}"
-        vec_path = out / f"steering{ctx_tag}{win_tag}_{args.model}.pt"
+        # The pair file is part of what the direction is, exactly as the context
+        # is. Without it in the name, a run asking for the middle-school pairs
+        # would load a cached file extracted from the children's pairs and report
+        # the result under the new name.
+        pair_tag = "" if args.pairs == "children" else f"_{args.pairs}"
+        vec_path = out / f"steering{ctx_tag}{win_tag}{pair_tag}_{args.model}.pt"
         if vec_path.is_file():
             vectors = SteeringVectorSet.load(vec_path)
             print(f"steering vectors: loaded from {vec_path.name}")
@@ -692,7 +765,7 @@ def main() -> None:
                 ex_system, ex_user = wp.SYSTEM_PROMPT, wp.EXTRACTION_PROMPT
             print(f"  read in the {args.extraction_context} context")
             vectors = SteeringVectorExtractor(get_model()).extract(
-                load_pairs(EN_PAIRS), layers,
+                load_pairs(PAIR_SETS[args.pairs]), layers,
                 system=ex_system, user=ex_user,
                 window=args.read_window, window_tokens=args.read_tokens,
                 pca_rank=args.pca_rank, only=args.steer_vectors, verbose=False,

@@ -157,6 +157,40 @@ EN_MIDDLE_STEER_VECTORS = (
     "present_tense", "dialogue", "varied_openers", "sensory", "named_character",
 )
 
+# The set to steer when the directions come from the middle-school contrast
+# pairs rather than the children's ones. Two additions, both of which the
+# children's pair file cannot supply.
+#
+# `mature_register` is the direction for the reading floor itself: its two sides
+# carry the same content in the same number of words and differ only in whether
+# it arrives as developed sentences or as a run of clipped ones. The children's
+# file has no such pair, and its `simple_register` points the opposite way -- it
+# was built for a task where the reading level was a ceiling.
+#
+# `plain_words` is the verbs-not-adverbs requirement. It exists in the children's
+# file too but was left out of the steered set; the requirement is in the
+# middle-school rule list, so the direction belongs with it.
+EN_MIDDLE_REGISTER_STEER_VECTORS = (
+    "present_tense", "mature_register", "dialogue", "varied_openers",
+    "plain_words", "sensory", "named_character",
+)
+
+# The middle-school task asks for a story of roughly 150 words, against the
+# children's task's 50 to 65, and these three follow from that. They were passed
+# by hand for the first three rounds; leaving one out changes the task without
+# changing anything that looks like the task.
+#
+#   the longest story the length rule allows. The generation is stopped once it
+#   has written half as many words again, so this also sets where an over-long
+#   story is cut off (300 words, twice what the prompt asks for).
+EN_MIDDLE_MAX_WORDS = 200
+#   how often a word of four letters or more may be reused. Three is right for a
+#   60-word story and unreachably strict for a 150-word one.
+EN_MIDDLE_MAX_WORD_USES = 5
+#   the token cap. A 150-word story with dialogue runs past 400 tokens often
+#   enough that the cap, not the model, was ending a fifth of them.
+EN_MIDDLE_MAX_NEW_TOKENS = 600
+
 # Back-compatible alias: older callers used this for the steering names.
 EN_CONSTRAINTS = EN_STEER_VECTORS
 
