@@ -448,6 +448,36 @@ on the baseline and on perturbation-0.15 arms). The lesson repeats: every new
 perturbation strength introduces a new failure register, and only reading finds
 it first.
 
+**The reading-grade metric has two inputs and can be moved by either.** (Measured
+2026-09-17.) Flesch-Kincaid grade is `0.39 x words-per-sentence + 11.8 x
+syllables-per-word - 15.59`, so sentence length and syllable count are the only
+things it sees. Measured on constructed cases with this project's own scorer:
+natural children's prose scores 0.2; the same sentences cut into fragments score
+-2.3; an adult note in short words ("the bank will seize the funds") scores -0.8;
+"Grandmother celebrated my birthday" scores 24.3; a degenerate loop of "Mia.
+Balloon. Fly." scores 0.5. Its syllable counter is a heuristic that scores "Mia"
+as one syllable and "idea" as two.
+
+Three consequences for numbers in this project. Three of the fifteen children's
+requirements (grade at most 2.5, sentences at most eight words, words at most two
+syllables) push on its two inputs, so a method that satisfies those requirements
+moves the metric almost mechanically. It moves the wrong way on fragmentation,
+which is the characteristic failure of the constraint push. And on the
+middle-school prompt the model's whole range is grade 0.7 to 5.0, so prose that
+reads as middle-school work scores near 2. `noiseegra/readability.py` adds
+`uncommon_word_share` -- the share of a story's ordinary words outside the
+commonest 3000 in English, proper nouns skipped, the idea behind the Dale-Chall
+familiar-word list built from a redistributable corpus -- which chopping does not
+change. Quote the two together with mean words per sentence.
+
+**A resumed sharded run's merged story file repeats its history once per shard.**
+(Found 2026-09-17.) Each shard writes its own tree and the trees are folded
+together at the end, so a resumed run's merged CSV can contain the same
+(prompt, story) key several times; counting a story twice deflates every
+diversity number computed from that file. `read_run_csv` now keeps the last copy
+of each key. The checkpoint (`state.json`) was never affected, and is the safer
+source to read stories from.
+
 **Run ids must record every setting that differs.** Two arms whose ids collide
 share a file and the second silently overwrites the first — a wrong answer with
 no error. `tests/test_suites_build.py` builds every suite in the runner's
@@ -552,30 +582,49 @@ hundred stories give 86 kept / 5.78 broken / 26.3 happens / 12.8 wording against
 the same-seed baseline's 66 / 7.85 / 21.7 / 7.1 — every margin holds — and every
 frontier arm lands within noise of its first hundred.
 
-**Where the method helps, and where it does not** (rounds 22-25, 2026-09-17).
-The champion above is measured on the children's fifteen-rule task, where the
-untouched model loops on about a third of its attempts. Two further tasks say
-the advantage is not general:
+**The same settings measured on two other setups** (rounds 22-25, 2026-09-17).
+The champion above is measured on the children's fifteen-rule task with
+Qwen3-1.7B. Two further measurements, each scored the same way:
 
-* **A looser task** (middle-school reader, no short-sentence rules, ~150 words):
-  the untouched model writes cleanly, 100 of 100 coherent, and the method loses.
-  It buys a third more variety of what happens (46.2 to 62.1 at perturbation
-  0.1, 99 of 100 coherent) but improves no requirement, and raised temperature
-  beats it on compliance, coherence and variety at once. Cause, from the
-  per-rule breakdown: the steering directions were extracted from pairs written
-  for children's writing, so they carry *write simply* with them and drag the
-  prose below the reading floor this task requires (57% to 4%), even with the
-  simple-register direction removed from the steered set. New directions for the
-  new register are the fix and have not been built.
-* **A larger model** (Qwen3-8B at the proportional early band, layers 8-17 of
-  36): each half transfers -- the nudge improves compliance at 29 of 30 stories
-  coherent, the perturbation lifts both varieties -- and together they reach the
-  best compliance and variety in that table while keeping only 20 stories of 30.
-  The dose that is free on a 1.7B model is expensive on an 8B.
+*A looser task* — middle-school reader, the four rules that force short prose
+removed, reading level a floor rather than a ceiling, roughly 150 words asked
+for. Qwen3-1.7B, layers 6-13, temperature 1.0, 100 stories per setting, eleven
+rules, variety pooled at 81:
 
-So: **the method's value tracks how badly the base model degenerates on the
-task, and its dose must be tuned to the model and the task.** Full tables in
-`EXPERIMENT_LOG.md` rounds 22, 24 and 25.
+| setting | coherent /100 | broken /11 | what happens | wording | uncommon words |
+|---|---|---|---|---|---|
+| untouched model | 100 | 3.99 | 46.2 | 8.9 | 14.2% |
+| temperature 1.8, nucleus 0.95 | 100 | 3.85 | 63.3 | 13.8 | 15.5% |
+| nudge 3 + perturbation 0.1 | 99 | 4.61 | 62.1 | 13.3 | 29.1% |
+| nudge 3 + perturbation 0.15 | 93 | 4.86 | 66.3 | 19.4 | 27.6% |
+| nudge 3 alone | 99 | 4.63 | 53.7 | 11.3 | 29.0% |
+
+Per-rule, against the untouched model, the nudge alone moves: speech on the page
+78% to 96%, a named character 70% to 93%, the grade-3 floor 57% to 4%, no
+sentence written twice 98% to 79%, fresh openings 96% to 71%, no word leaned on
+84% to 72%. Mean words per sentence and the uncommon-word share move in opposite
+directions (sentences shorter, vocabulary richer).
+
+*A larger model* — Qwen3-8B at layers 8-17 of 36, the same fifth-to-half of
+network depth as 6-13 of 28, children's task, temperature 1.0, 30 stories per
+setting, variety pooled at 20:
+
+| setting | coherent /30 | broken /15 | what happens | wording |
+|---|---|---|---|---|
+| untouched model | 30 | 4.07 | 9.5 | 5.3 |
+| rule-nudge 3 alone | 29 | 3.45 | 8.6 | 4.5 |
+| perturbation 0.15 alone | 28 | 3.96 | 11.2 | 6.0 |
+| nudge 3 + perturbation 0.15 | 20 | 3.35 | 11.3 | 6.2 |
+
+*A hypothesis these three are consistent with, not yet tested as such:* that the
+method's margin depends on how much the unmodified model degenerates on the task
+— large on the children's task, where the unmodified model loops on about a
+third of its attempts, and absent on the middle-school task, where it does not.
+Testing it would need tasks that vary degeneration deliberately, which has not
+been run. The observation that the steering directions were extracted from pairs
+written for children's writing, and that on the middle-school task they lose the
+reading floor, is likewise an explanation that fits rather than one that has been
+isolated by ablation.
 
 In flight: a dose sweep on Qwen3-8B at its proportional early band (layers
 8-18 of 36), 30 stories per anchor setting (the big model costs ~140 s a story

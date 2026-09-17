@@ -1625,7 +1625,7 @@ is the paper's thesis in one table.
 ("Genuinely different stories" counts stories more similar than the 99th
 percentile of cross-condition pairs as the same story, at matched group size.)
 
-## Round 22 - the transfer test on the eight-billion-parameter model (partial)
+## Round 22 - the transfer test on the eight-billion-parameter model (partial; superseded by the complete table below)
 
 The four anchor settings on Qwen3-8B at its proportionally-matched early band
 (layers 8-17 of 36, the same fifth-to-half depth as the champion's 6-13 of 28),
@@ -1693,7 +1693,7 @@ compared against the others' 78). And the order-2 column, which weights the bulk
 of the set rather than its tail, preserves the ordering, so the method's lead
 does not rest on a handful of unusual stories.
 
-## Round 24 - the middle-school task, and where the method's advantage actually comes from
+## Round 24 - the middle-school task, first attempt (one rule mis-calibrated)
 
 Haziq's change: drop every rule that forces the prose to be as small as possible
 (sentences at most eight words, a five-word opening, no word over two syllables,
@@ -1735,24 +1735,19 @@ sentence length and syllables.
 | the champion: nudge 3 + shove 0.15 | 92 | 4.53 | 68.4 | 17.1 |
 | shove 0.15 alone | 86 | 4.53 | 65.6 | **23.8** |
 
-**The champion does not win this task, and the reason is the finding.** It lifts
+**The champion does not win this task.** It lifts
 both varieties far above the untouched model (51.4 to 68.4, 10.9 to 17.1), but
 it costs eight coherent stories per hundred and slightly worsens rule-following
 (4.53 against 4.26). Raised temperature beats it outright here: same variety,
 better rule-following, and not one incoherent story.
 
-The children's task told the opposite story - there the champion kept 86 stories
-per hundred against the untouched model's 69 - and the difference between the two
-tasks explains it. **The method's advantage is largest exactly where the
-unmodified model degenerates.** The children's task is so tightly constrained
-that the unmodified model loops on about a third of its attempts, and most of
-what the method won there was repairing that. Loosen the task until the
-unmodified model writes cleanly, and there is far less to repair: what remains is
-a real and large variety gain bought with a small amount of coherence.
-
-That is a sharper and more defensible claim than "the method improves
-everything", and it is testable: it predicts the method helps in proportion to
-how much the unmodified model degenerates on a task.
+The children's task measured the opposite: there the champion kept 86 stories per
+hundred against the untouched model's 69. One difference between the two tasks is
+that the children's task is tight enough that the unmodified model loops on about
+a third of its attempts, while on this one it does not loop at all. Whether that
+difference is what drives the reversal is a hypothesis these two rounds are
+consistent with; it has not been tested, and testing it would need tasks that
+vary degeneration deliberately.
 
 Two smaller observations. The rule-nudge on this task pushes prose *simpler*
 even though the simple-register direction was dropped from the steered set -
@@ -1810,7 +1805,7 @@ layout and the workers read another, so the second attempt regenerated all 120
 stories), and the merge rebuilt its state from the workers alone, which would
 have overwritten the three completed conditions the checkpoint held.
 
-## Round 25 - the middle-school task done properly, and why the method loses it
+## Round 25 - the middle-school task with the reading floor calibrated
 
 The same task as round 24 with the reading floor calibrated in the prompt as well
 as the scorer (grade 3, which 37% of untouched stories reach, rather than the
@@ -1865,24 +1860,27 @@ roughly doubles the share of uncommon words, 14.2% to 29.0%. It is making the
 *words* richer while making the *sentences* shorter, and Flesch-Kincaid, which
 counts only sentence length and syllables, reads the net as simpler.
 
-**So the method is not task-agnostic.** Its directions are a register, and
-applied to a task that wants a different register they fight the requirements.
-Making this work on the middle-school task needs directions extracted for that
-register - contrastive pairs of plain against rich prose - not the children's
-ones re-used. That is the obvious next piece of work and has not been done.
+This is an explanation that fits the per-rule numbers rather than one isolated by
+ablation: the directions were extracted from pairs written for children's
+writing, and on this task the largest compliance loss is the reading floor. What
+would test it is extracting directions from contrastive pairs of plain against
+rich prose and re-running; that has not been done.
 
-### Where this leaves the claim
+### The three measurements side by side
 
-Three results now sit together, and they tell one story rather than three:
+* Children's task, Qwen3-1.7B: the method beats the untouched model on coherence,
+  compliance and both varieties at once; the untouched model loops on about a
+  third of its attempts (rounds 19-21).
+* Middle-school task, Qwen3-1.7B: the method lifts variety of what happens from
+  46.2 to 62.1 at perturbation 0.1, keeps 99 stories of 100, improves no
+  requirement, and is beaten by raised temperature on compliance, coherence and
+  variety together; the untouched model does not loop (rounds 24-25).
+* Children's task, Qwen3-8B: each half reproduces, and the pair at the small
+  model's dose keeps 20 stories of 30 against the untouched model's 30
+  (round 22).
 
-* On the children's task, where the untouched model loops on about a third of
-  its attempts, the method beats it on all four axes at once (round 19-21).
-* On the middle-school task, where the untouched model writes cleanly, the
-  method buys a third more variety and loses compliance, and raised temperature
-  beats it (rounds 24-25).
-* On a five-times-larger model, each half transfers and the pair costs a third
-  of its stories at the small model's dose (round 22).
-
-**The method's value tracks how badly the base model degenerates on the task,
-and its dose has to be tuned to the model and the task.** That is narrower than
-"the method improves everything" and it is defensible, measured, and falsifiable.
+Stated as evidence, that is: the margin is large in one setup, absent in the
+second, and present but expensive in the third. Two explanations fit -- how much
+the unmodified model degenerates on the task, and the register the directions
+carry -- and neither has been isolated by an experiment designed to separate
+them.
