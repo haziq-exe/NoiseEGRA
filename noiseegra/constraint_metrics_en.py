@@ -111,7 +111,17 @@ DEFAULT_MAX_WORD_USES = 3          # unprompted 32%, i.e. no content word four t
 # in it rather than the simplest possible sentences. A minimum rather than a
 # ceiling: the requirement and a push toward richer language agree about which
 # way is better, which is what the steering architecture needs.
-DEFAULT_MIN_GRADE_LEVEL = 6.0
+# Calibrated the way every other threshold here was: measured on a hundred
+# baseline stories written to the middle-school prompt and set where between 5%
+# and 50% of them pass. The model's whole range on that prompt is grade 0.7 to
+# 5.0 with a median of 2.6, so the first attempt's floor of 6.0 was unreachable
+# -- every condition failed it, and a rule nobody can pass measures nothing.
+# Grade 3 is passed by 37% of them. The label "middle school" belongs to the
+# audience the prompt names, not to this number: Flesch-Kincaid counts only
+# sentence length and syllables, so prose that reads as middle-school work
+# ("The wind howls through the pine trees as Jake grumbles") still scores near 2
+# because its words are short. See noiseegra/readability.py.
+DEFAULT_MIN_GRADE_LEVEL = 3.0
 
 DEFAULT_MAX_SAME_OPENER = 3        # unprompted, the model reuses one 6.1 times
 DEFAULT_MAX_DUP_SENTENCES = 0      # unprompted 1.7 duplicate sentences per story
@@ -645,9 +655,8 @@ class EnglishConstraintChecker:
                               "appears, written as a word and never as a digit",
             "no_repetition": "it does not repeat itself: no run of five words appears "
                              "twice",
-            "mature_register": "the language suits a middle-school or early "
-                               "high-school reader rather than a small child: "
-                               "full sentences with some length and range to them "
+            "mature_register": "the sentences have some length and range to them "
+                               "rather than being as short as possible "
                                f"(Flesch-Kincaid grade at least {self.min_grade_level:g})",
             "short_sentences": f"every sentence is short: at most {self.max_sentence_words} words",
             "dialogue_min": f"at least {self.min_quotes} lines of speech appear inside "
