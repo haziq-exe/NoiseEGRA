@@ -1598,3 +1598,29 @@ large effects (coherence and compliance) directionally. Its first steered
 stories are coherent present-tense dialogue-bearing prose with no fragmentation
 and no early aborts, which is the qualitative shape of a successful transfer;
 the numbers land in about two hours.
+
+## Round 21d - the champion on the paper's own diversity metric
+
+The embedding-based diversity score (Vendi over story embeddings, the metric
+family of the published Arabic paper and every earlier round) computed on the
+champion run's pooled 200 stories, over coherent stories only, at the standard
+40-word truncation, one scoring pass for all four settings:
+
+| setting, layers 6-13, temperature 1.0 | coherent | Vendi@40 | genuinely different stories /200 | reading grade |
+|---|---|---|---|---|
+| untouched model | 69% | 7.40 | 83 | 2.9 |
+| rule-nudge at 3 alone | 80% | 6.08 | 49 | -0.5 |
+| random shove 0.15 alone | 82% | 17.57 | 179 | 5.2 |
+| **nudge 3 + shove 0.15 (the champion)** | **86%** | **14.49** | **167** | **0.0** |
+
+Three sentences of reading. The shove alone doubles-plus the diversity but
+raises the reading grade from 2.9 to 5.2 - the same pathology the published
+paper showed for raised temperature in Arabic - and leaves rule-following at
+baseline. The nudge alone fixes rules and grade but pays a third of the
+diversity. Together they keep almost all of the shove's diversity (14.49 of
+17.57), all of the nudge's rule-following and readability, and produce the most
+coherent stories of any setting - each half pays for the other's damage, which
+is the paper's thesis in one table.
+
+("Genuinely different stories" counts stories more similar than the 99th
+percentile of cross-condition pairs as the same story, at matched group size.)
