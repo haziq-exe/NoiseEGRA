@@ -493,8 +493,14 @@ Haziq.
 
 ## The current champion (rounds 19-21, 2026-09-17)
 
+A note on band naming first: the runner's `--layers LO HI` flag is exclusive of
+HI, so "--layers 6 14" touches **layers 6-13 inclusive — eight layers** (the run
+ids say `L6-13`), while the default band is layers 10-18 inclusive — nine layers.
+Every comparison below is within one run and unaffected; only the prose names
+were off by one. The champion band is written 6-13 from here on.
+
 At sampling temperature 1.0 on Qwen3-1.7B, the intervention moved to **layers
-6-14** (the discovery of round 19: at the usual 10-18 the push fragments half
+6-13** (the discovery of round 19: at the usual 10-18 the push fragments half
 the stories, at 14-22 it kills all of them, at 6-14 it stops breaking text),
 the constraint push held at total strength 3 with the per-story perturbation of
 size 0.15 at the prompt positions:
