@@ -36,7 +36,7 @@ from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from .diversity import truncate_words, vendi_from_embeddings
+from .diversity import similarity_outliers, truncate_words, vendi_from_embeddings
 
 # Which parts of speech carry the story. PROPN is deliberately absent (see the
 # module docstring); pronouns, determiners and auxiliaries carry no content.
@@ -160,6 +160,20 @@ def syntactic_vendi(
 ) -> float:
     """Effective number of syntactically distinct stories (POS-trigram profiles)."""
     return vendi_from_embeddings(pos_trigram_vectors(texts, truncate), q=q)
+
+
+def trim_isolated(vectors: np.ndarray, z: float = 3.5) -> np.ndarray:
+    """Drop rows sitting far below the set's median similarity to the rest.
+
+    The same one-sided robust cut the embedding scoring uses
+    (`noiseegra.diversity.similarity_outliers`), applied to the content-word or
+    sentence-shape vectors so all three diversity numbers are trimmed the same
+    way. ``z <= 0`` returns the rows untouched.
+    """
+    if z <= 0 or vectors.shape[0] < 4:
+        return vectors
+    keep, _ = similarity_outliers(vectors, z)
+    return vectors[keep]
 
 
 def rarefied_vendi(

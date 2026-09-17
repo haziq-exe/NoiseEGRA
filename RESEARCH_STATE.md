@@ -419,6 +419,22 @@ no basis and asserts any that names one is guarded. What this costs: the r16
 basis is really a measurement of isotropic noise. That is not fatal, because
 r17-controls shows the two are nearly the same (below), but the labels were wrong.
 
+**A diversity number is only as good as the four steps in front of it.** (Found
+2026-09-17, correcting round 21d.) `scripts/score_diversity.py --coherence`
+*reports* the coherence checks but scores every story anyway; dropping the
+rejected ones needs `--drop-incoherent`, which round 21d did not pass. Its
+embedding-Vendi numbers were therefore computed over all stories including the
+broken ones, though they were described as coherent-only. Two further steps were
+also missing everywhere: nothing removed the *isolated survivors* — coherent
+stories sitting far from the whole set, each worth nearly a whole extra
+"distinct story" to Vendi — and nothing matched group size across conditions that
+kept different numbers of stories, which flatters whichever condition kept more.
+`scripts/clean_vendi.py` now runs all four steps in a fixed order (reject broken,
+match length, trim isolated, match group size) and prints each step's effect, so
+no flag combination can leave one out. The local structural and wording numbers
+were always computed over coherent stories, and trimming moves them by at most
+0.3, so only the embedding-Vendi column was affected.
+
 **Fluent non-stories pass every statistical check.** (Found 2026-09-17 by
 reading.) Two shapes: the model declining the task ("I'm sorry, but I can't
 generate content that includes..."), and the model's planning monologue leaking
@@ -520,9 +536,10 @@ compliance; larger shoves (0.25) and the constraint-vector sideways step buy
 more variety (up to 34-36) but pay in coherence or compliance. Full frontier in
 `EXPERIMENT_LOG.md` rounds 19-21.
 
-On the paper's own metric (embedding Vendi over coherent stories at 40-word
-truncation, pooled 200 stories): baseline 7.40, champion **14.49** — and 167 of
-200 stories genuinely different against the baseline's 83, at reading grade 0.0
+On the paper's own metric (embedding Vendi): the round-21d numbers (baseline
+7.40, champion 14.49) were computed over all stories including the rejected
+ones — see the measurement-fault note below — and are being re-measured through
+the four-step pipeline. Reading grade is unaffected: 0.0 for the champion
 against the baseline's 2.9. The shove alone reaches 17.57 but raises the grade
 to 5.2 (the same pathology the published paper showed for temperature) and fixes
 no rules; the nudge cancels both costs. Round 21d in `EXPERIMENT_LOG.md`.
