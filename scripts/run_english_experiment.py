@@ -32,17 +32,23 @@ from noiseegra.activation_basis import (  # noqa: E402
     StoryAxes, collect_block_pcs, collect_prompt_pcs, collect_story_pcs,
 )
 from noiseegra.constraint_metrics_en import (  # noqa: E402
+    DEFAULT_MAX_ADVERBS,
     DEFAULT_MAX_OPENER_USES,
     DEFAULT_MAX_WORD_USES,
+    DEFAULT_MIN_SENSORY,
+    DEFAULT_PRESENT_RATIO,
     DEFAULT_MIN_GRADE_LEVEL,
     EnglishConstraintChecker,
 )
 from noiseegra.defaults import (  # noqa: E402
     EN_MIDDLE_CONSTRAINTS,
     EN_MIDDLE_MAX_NEW_TOKENS,
+    EN_MIDDLE_MAX_ADVERBS,
     EN_MIDDLE_MAX_OPENER_USES,
     EN_MIDDLE_MAX_WORDS,
     EN_MIDDLE_MAX_WORD_USES,
+    EN_MIDDLE_MIN_SENSORY,
+    EN_MIDDLE_PRESENT_RATIO,
     EN_MIDDLE_REGISTER_STEER_VECTORS,
     EN_MIDDLE_STEER_VECTORS,
     EN_MONOTONE_CONSTRAINTS,
@@ -221,6 +227,14 @@ def main() -> None:
                     help="the word count --constraint-set middle asks the model to "
                          "aim for in the prompt")
     ap.add_argument("--beta", type=float, default=1.0)
+    ap.add_argument("--max-adverbs", type=int, default=DEFAULT_MAX_ADVERBS,
+                    help="at most this many adverbs (the verbs-not-adverbs rule)")
+    ap.add_argument("--min-sensory", type=int, default=DEFAULT_MIN_SENSORY,
+                    help="at least this many words for how something looks, sounds, "
+                         "feels, smells or tastes")
+    ap.add_argument("--present-ratio", type=float, default=DEFAULT_PRESENT_RATIO,
+                    help="share of finite verbs that must be in the present tense "
+                         "for the tense requirement to count as met")
     ap.add_argument("--pairs", default="children", choices=sorted(PAIR_SETS),
                     help="which contrast-pair file the steering directions are "
                          "extracted from. 'children' is the original set, whose "
@@ -506,6 +520,12 @@ def main() -> None:
             args.max_word_uses = EN_MIDDLE_MAX_WORD_USES
         if args.max_new_tokens == ap.get_default("max_new_tokens"):
             args.max_new_tokens = EN_MIDDLE_MAX_NEW_TOKENS
+        if args.max_adverbs == DEFAULT_MAX_ADVERBS:
+            args.max_adverbs = EN_MIDDLE_MAX_ADVERBS
+        if args.min_sensory == DEFAULT_MIN_SENSORY:
+            args.min_sensory = EN_MIDDLE_MIN_SENSORY
+        if args.present_ratio == DEFAULT_PRESENT_RATIO:
+            args.present_ratio = EN_MIDDLE_PRESENT_RATIO
 
 
     if args.dry_run:
@@ -609,6 +629,9 @@ def main() -> None:
         "max_word_uses": args.max_word_uses,
         "min_grade": args.min_grade,
         "story_target": args.story_target,
+        "max_adverbs": args.max_adverbs,
+        "min_sensory": args.min_sensory,
+        "present_ratio": args.present_ratio,
     }
     # A checkpoint written before a setting was recorded does not carry it, and
     # there is no way to know what that run used. Comparing such a key would
@@ -676,6 +699,9 @@ def main() -> None:
         min_grade_level=args.min_grade,
         max_word_uses=args.max_word_uses,
         max_opener_uses=getattr(args, "max_opener_uses", DEFAULT_MAX_OPENER_USES),
+        max_adverbs=args.max_adverbs,
+        min_sensory=args.min_sensory,
+        present_ratio_threshold=args.present_ratio,
         constraints=list(args.constraints),
     )
 

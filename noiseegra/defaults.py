@@ -208,6 +208,46 @@ EN_MIDDLE_MAX_NEW_TOKENS = 600
 #   it writes twice as many sentences. Report the share alongside the pass rate.
 EN_MIDDLE_MAX_OPENER_USES = 5
 
+# The rest of the middle-school thresholds, set the same way.
+#
+# The convention is already this project's: `DEFAULT_MAX_ADVERBS = 2` carries
+# the note "unprompted 50%", meaning the level was chosen so that half the
+# untouched model's stories pass. Those levels were measured on 60-word
+# children's stories. These stories are 150 words with two and a half times as
+# many sentences, so an absolute count means something different, and three
+# requirements had drifted to where no condition could pass them -- at which
+# point they add a constant to every score and separate nothing. That is the
+# fault the grade-6 reading floor had in round 24, found the same way.
+#
+# Measured on the untouched model's hundred stories from round 25. The levels
+# do not all favour the method: at five openings the untouched model goes from
+# 8% to 51% and the constraint push only from 1% to 13%.
+#
+#   at most this many adverbs. Two is 10% of stories here against 50% on the
+#   children's task; five is 48%.
+EN_MIDDLE_MAX_ADVERBS = 5
+#   at least this many words for how something looks, sounds, feels, smells or
+#   tastes. Two is 99% here -- passed by everything -- and six is 64%.
+EN_MIDDLE_MIN_SENSORY = 6
+#
+# The present-tense requirement is the exception, and is not calibrated to the
+# untouched model at all.
+#
+# It is the one categorical requirement in the set: "written in the present
+# tense" is not a quantity with a comfortable middle. Scored as it was, every
+# finite verb present, it reads 0% for the untouched model, 0% for raised
+# temperature and 6% for the constraint push -- which says the three are alike.
+# They are not. The share of finite verbs in the present tense is 15% untouched,
+# 18% at raised temperature and 96% under the push; over narration alone,
+# excluding quoted speech, it is 1%, 1% and 96%. The all-or-nothing form was
+# reporting the largest single effect the method has as no effect.
+#
+# 0.9 is what the words mean -- narration in the present tense, allowing the
+# subordinate clause that legitimately refers to the past -- and nothing here
+# depends on the exact value: the untouched model passes 0% at every level from
+# 0.6 to 1.0, and the push passes 68% at 0.95, 97% at 0.9 and 100% at 0.8.
+EN_MIDDLE_PRESENT_RATIO = 0.9
+
 # Back-compatible alias: older callers used this for the steering names.
 EN_CONSTRAINTS = EN_STEER_VECTORS
 
