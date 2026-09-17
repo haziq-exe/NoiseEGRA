@@ -1884,3 +1884,81 @@ second, and present but expensive in the third. Two explanations fit -- how much
 the unmodified model degenerates on the task, and the register the directions
 carry -- and neither has been isolated by an experiment designed to separate
 them.
+
+
+## Round 23b - what the reading-grade numbers are made of
+
+Recorded because these measurements were made to answer a question about the
+grade-level column and otherwise exist nowhere. Qwen3-1.7B, children's
+fifteen-rule task, coherent stories only.
+
+Grade distribution per condition, and mean sentence length:
+
+| condition | grade: min / median / max | share below zero | words per sentence |
+|---|---|---|---|
+| the method (push 3 + perturbation 0.15, layers 6-13) | -2.2 / -0.1 / 5.4 | 54% | 3.7 |
+| the untouched model | -1.8 / 1.1 / 39.4 | 26% | 9.8 |
+| temperature 1.8, nucleus 0.95 | -1.2 / 1.1 / 39.2 | 19% | 14.6 |
+
+Flesch-Kincaid grade is a continuous formula, not a bounded scale, and its floor
+is about -3.4 (every word one syllable, every sentence one word), so negative
+values are arithmetic rather than an error. Reading the most negative stories in
+the method's condition: the lowest (-2.2) is ordinary easy prose -- "I went to
+the park. The sun is bright. I sit on a bench. The grass is soft." -- while
+others at the same grade are lists of actions, "The cat runs. It jumps. It
+squeaks. Mia runs. She laughs." The method's mean sentence length of 3.7 words
+sits well under the eight-word ceiling the task asks for.
+
+The vocabulary measure added the same day (`uncommon_word_share`: the share of a
+story's ordinary words outside the commonest 3000 in English, proper nouns
+skipped) separates the two components:
+
+| condition | grade | words per sentence | uncommon words |
+|---|---|---|---|
+| the method | 0.0 | 3.7 | 19.9% |
+| the untouched model | 2.6 | 9.8 | 25.2% |
+| temperature 1.8, nucleus 0.95 | 4.5 | 14.6 | 27.0% |
+
+So on this task the method's stories use more common words *and* much shorter
+sentences. On the middle-school task the two move in opposite directions: the
+constraint push raises the uncommon-word share from 14.2% to 29.0% while
+shortening sentences enough to drop the grade-3 floor from 57% to 4%.
+
+Constructed cases showing what the grade formula responds to, scored with this
+project's own checker: natural children's prose 0.2; the same sentences cut into
+fragments -2.3; an adult note in short words ("The firm must pay its debt this
+week... the bank will seize the funds") -0.8; "Grandmother celebrated my
+birthday. Everybody remembered the decorations." 24.3; "Mia. Balloon. Fly."
+repeated four times, 0.5. Its syllable counter scores "Mia" as one syllable,
+"fire" as one and "idea" as two.
+
+## Tooling added on 2026-09-17, and what each was built for
+
+- `noiseegra/readability.py` -- `uncommon_word_share`, with the familiar-word
+  list derived once from the Brown corpus and committed as
+  `noiseegra/data/common_words_en.json` so it reproduces without nltk.
+- `noiseegra/diversity.py` -- `similarity_outliers` and `mean_similarity`, the
+  one-sided robust cut for isolated stories; `vendi_from_embeddings` takes a
+  Renyi order `q` (default 1, unchanged) so a score can be reported weighted
+  toward the bulk rather than the tail.
+- `noiseegra/structure.py` -- `trim_isolated`, so the content-word and
+  sentence-shape measures are trimmed the same way as the embedding one.
+- `noiseegra/coherence.py` -- `is_refusal` and `is_leaked_plan`, for the two
+  fluent non-story registers a large perturbation produces; leading-preamble
+  trimming.
+- `scripts/clean_vendi.py` -- the four-step diversity pipeline in fixed order,
+  printing each step's effect, and saving the embeddings for local reuse.
+- `scripts/build_story_review.py` -- a workbook of every story with its
+  rejection flags and the rules it broke, one sheet per condition.
+- `scripts/run_english_experiment.py` -- `--peek-stories` and
+  `--abort-broken-arms`; a guard that refuses to run when a condition's run id
+  names an estimated basis that was never built.
+- `scripts/run_sharded.py` -- `seed_shards`, and a merge that starts from the
+  existing merged state.
+- The middle-school requirement set (`MIDDLE_CONSTRAINTS`, `mature_register`,
+  `build_middle_messages`), appended rather than replacing anything, so every
+  earlier run re-scores to the number it produced.
+
+Tests covering these: `tests/test_readability.py`, `tests/test_structure.py`,
+`tests/test_shard_resume.py`, and additions to `tests/test_coherence.py`,
+`tests/test_suites_build.py` and `tests/test_english_smoke.py`.
