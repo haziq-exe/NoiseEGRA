@@ -1692,3 +1692,76 @@ the work (13.90 to 11.35 for the method, whose 173 surviving stories were being
 compared against the others' 78). And the order-2 column, which weights the bulk
 of the set rather than its tail, preserves the ordering, so the method's lead
 does not rest on a handful of unusual stories.
+
+## Round 24 - the middle-school task, and where the method's advantage actually comes from
+
+Haziq's change: drop every rule that forces the prose to be as small as possible
+(sentences at most eight words, a five-word opening, no word over two syllables,
+at most one subordinate clause), make the reading level a floor rather than a
+ceiling, and ask for roughly 150 words instead of 60, so there is room to be
+creative. Eleven rules instead of fifteen, Qwen3-1.7B at layers 6-13,
+temperature 1.0, 100 stories per setting.
+
+**The prose changed completely, which was the point.** The children's task
+produced "The cat runs. It jumps. Mia laughs." at 3.7 words a sentence. This one
+produces, unsteered:
+
+> Lila opened the door to the kitchen, her hands trembling. The scent of
+> chocolate spread through the air, sweet and warm. She looked at the clock -
+> 8:17. Her friends were waiting.
+
+and under the method:
+
+> The wind howls through the pine trees as Jake grumbles, his boots crunching on
+> the gravel. The sun beats down, but Lila sits in the corner of the library,
+> her hands tracing the spine of a textbook.
+
+**One rule was set wrong and had to be recalibrated.** The reading floor was put
+at grade 6 on the strength of the label "middle school". The model's entire
+range on this prompt is grade 0.7 to 5.0, median 2.6, so every condition failed
+it and the rule measured nothing. Recalibrated to grade 3, which 37% of baseline
+stories pass, the same way every other threshold in this project was set. The
+table below is the recalibrated re-score of the same saved stories. It also
+re-demonstrates what round 23 found about the metric: prose that reads as
+middle-school work scores near grade 2 because Flesch-Kincaid counts only
+sentence length and syllables.
+
+| setting, temperature 1.0 unless stated | coherent /100 | broken /11 | variety of what happens | variety of wording |
+|---|---|---|---|---|
+| untouched model | 100 | 4.26 | 51.4 | 10.9 |
+| temperature 1.8, nucleus 0.95 | 100 | **3.96** | 65.9 | 15.9 |
+| temperature 1.8, top-k 40 | 100 | 4.13 | **69.3** | 18.6 |
+| rule-nudge 3 alone | 100 | 4.45 | 58.0 | 12.6 |
+| the champion: nudge 3 + shove 0.15 | 92 | 4.53 | 68.4 | 17.1 |
+| shove 0.15 alone | 86 | 4.53 | 65.6 | **23.8** |
+
+**The champion does not win this task, and the reason is the finding.** It lifts
+both varieties far above the untouched model (51.4 to 68.4, 10.9 to 17.1), but
+it costs eight coherent stories per hundred and slightly worsens rule-following
+(4.53 against 4.26). Raised temperature beats it outright here: same variety,
+better rule-following, and not one incoherent story.
+
+The children's task told the opposite story - there the champion kept 86 stories
+per hundred against the untouched model's 69 - and the difference between the two
+tasks explains it. **The method's advantage is largest exactly where the
+unmodified model degenerates.** The children's task is so tightly constrained
+that the unmodified model loops on about a third of its attempts, and most of
+what the method won there was repairing that. Loosen the task until the
+unmodified model writes cleanly, and there is far less to repair: what remains is
+a real and large variety gain bought with a small amount of coherence.
+
+That is a sharper and more defensible claim than "the method improves
+everything", and it is testable: it predicts the method helps in proportion to
+how much the unmodified model degenerates on a task.
+
+Two smaller observations. The rule-nudge on this task pushes prose *simpler*
+even though the simple-register direction was dropped from the steered set -
+only 1% of its stories reach the grade-3 floor against the untouched model's 37%
+- so the remaining directions (present tense, dialogue, varied openings, senses,
+a named character) carry a simplicity side effect of their own. And the nudge
+raises the share of uncommon words from 13.8% to 29.0%, which is the vocabulary
+richness the Flesch-Kincaid floor was meant to capture and cannot see.
+
+Round 25 re-runs this with the floor calibrated in the prompt as well as the
+scorer, and adds the smaller perturbation of 0.1, which is the obvious dose for
+a task where the unmodified model is already coherent.
