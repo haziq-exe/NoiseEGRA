@@ -108,7 +108,7 @@ PAIR_SETS = {
 # basis-naming run id survives with no basis built.
 BASIS_SUITES = {"offset", "story", "prompt", "main", "pareto", "select", "feedback",
                 "assemble", "headtohead", "closure", "control", "ablate",
-                "controls", "tame", "core4", "combine", "amplify", "spread", "frontier",
+                "controls", "tame", "core4", "combine", "amplify", "spread", "frontier", "siting",
                 "constdose"}
 
 
@@ -170,7 +170,7 @@ def main() -> None:
     ap.add_argument("--suite", nargs="+", default=["compare"],
                     choices=["baseline", "sampling", "compare", "method", "noise",
                              "offset", "story", "prompt", "main", "pareto", "directions", "select", "budget", "feedback", "assemble", "headtohead", "closure", "control",
-                             "ablate", "controls", "tame", "fsc", "core4", "combine", "dose",
+                             "ablate", "controls", "tame", "fsc", "core4", "combine", "dose", "siting",
                              "amplify", "constdose", "spread", "frontier",
                              "window", "decay", "core", "ortho", "alpha", "gate",
                              "beta", "loo", "all"])

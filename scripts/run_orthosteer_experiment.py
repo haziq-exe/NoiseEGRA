@@ -1162,6 +1162,50 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
               "--random-directions to separate what the extracted directions do "
               "from what any push of that size does")
 
+    if name == "siting":
+        # Where the constraint push is applied, rather than how hard.
+        #
+        # Every run so far has added the constraint vector at each decode step,
+        # so the pull toward the directions acts on every token the model
+        # writes. On the middle-school task that accumulates into telegraphic
+        # prose: sentences containing no speech at all fall from 9.4 words to
+        # 5.4, the story goes from about 20 sentences to about 44, and the share
+        # of stories reaching the reading floor falls from 57% to 4%.
+        #
+        # Applying it during prefill only sets the state the model starts from
+        # and then leaves it alone. Properties decided once -- what tense the
+        # narration is in, whether a character gets a name -- should survive
+        # that; a continuous compression of sentence structure should not.
+        # `METHODS_TRIED.md` records the push applied to the prompt *as well as*
+        # the story, which is the opposite arm, and never this one.
+        #
+        # Both sitings appear with and without the per-story perturbation, so a
+        # difference cannot be read as the perturbation's doing.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        flat = {n: 1.0 for n in names}
+        b = float(getattr(args, "steer_budget", None) or 2.0)
+        g = float(getattr(args, "main_gamma", 0.1))
+        off = dict(offset_gamma=g, offset_mode="orth", offset_basis=offset_basis,
+                   offset_basis_kind=getattr(args, "offset_basis_kind", "story"),
+                   offset_prefill=True, offset_decode=False)
+        writing = dict(steer_prefill=False, steer_decode=True)
+        prompt_only = dict(steer_prefill=True, steer_decode=False)
+
+        items = ["baseline"]
+        for siting in (writing, prompt_only):
+            items.append({"plan": make_plan(beta=flat, steer_budget=b,
+                                            **siting, **quiet, **base)})
+            items.append({"plan": make_plan(beta=flat, steer_budget=b, **off,
+                                            **siting, **quiet, **base)})
+        # the perturbation with no push at all, so both sitings have a floor
+        items.append({"plan": make_plan(beta={n: 0.0 for n in names}, **off,
+                                        **writing, **quiet, **base)})
+        return items, (
+            f"where the push at {b:g} is applied: while writing against at the "
+            f"prompt only, each with and without the per-story perturbation at "
+            f"{g:g}, plus the perturbation alone and the untouched model")
+
     if name == "core4":
         # The four arms that anchor any configuration change (a different layer
         # band, a different model): nothing, the push, the perturbation, both.
