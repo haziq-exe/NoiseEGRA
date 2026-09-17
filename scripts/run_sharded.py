@@ -21,6 +21,7 @@ readable.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -46,9 +47,17 @@ def main() -> None:
     if rest and rest[0] == "--":
         rest = rest[1:]
 
+    seed_shards(Path(out), shards)
+
     procs = []
     for i in range(shards):
-        env = dict(os.environ, CUDA_VISIBLE_DEVICES=str(i))
+        # expandable_segments keeps the allocator from fragmenting into a state
+        # where a large contiguous block cannot be found. An 8B model on a 16 GB
+        # T4 sits close enough to the ceiling that a steered arm died on a 1.16 GB
+        # prefill allocation with 0.5 GB free and 1.16 GB reserved-but-unallocated
+        # -- exactly the fragmentation this setting addresses.
+        env = dict(os.environ, CUDA_VISIBLE_DEVICES=str(i),
+                   PYTORCH_ALLOC_CONF="expandable_segments:True")
         cmd = [sys.executable, "-u", str(RUNNER), *rest,
                "--shard", f"{i}/{shards}", "--out", f"{out}/shard{i}"]
         print(f"[gpu{i}] {' '.join(cmd[2:])}", flush=True)
@@ -69,6 +78,48 @@ def main() -> None:
     sys.exit(max(codes) if codes else 0)
 
 
+def seed_shards(out: Path, shards: int) -> None:
+    """Give every shard the history a previous run left behind.
+
+    A finished run is merged into one tree, ``<out>/<model>/``, and that is what
+    the checkpoint carries back on a resume. The shards, though, read and write
+    ``<out>/shard<i>/<model>/``, so without this they start from nothing and
+    regenerate everything the earlier run already produced. That cost one 8B run
+    two hours of GPU before it was noticed: the log says "restored 8 checkpoint
+    files" and then "resuming: 0 stories already saved" two lines later.
+
+    Every file is copied, not just the state: the steering vectors and the
+    activation basis are cached in the same directory, and re-extracting them is
+    the other slow part of starting up.
+    """
+    import shutil
+
+    merged = [p for p in out.glob("*/state.json") if not p.parent.name.startswith("shard")]
+    if not merged:
+        return
+    for sp in merged:
+        model_dir = sp.parent
+        try:
+            n = sum(len(c) for c in json.loads(sp.read_text()).get("runs", {}).values())
+        except Exception:
+            n = 0
+        for i in range(shards):
+            dest_dir = out / f"shard{i}" / model_dir.name
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            copied = 0
+            for f in model_dir.iterdir():
+                if not f.is_file():
+                    continue
+                dest = dest_dir / f.name
+                if dest.exists():
+                    continue
+                shutil.copy2(f, dest)
+                copied += 1
+            if copied:
+                print(f"[seed] shard{i} starts from the merged checkpoint: "
+                      f"{n} stories, {copied} files", flush=True)
+
+
 def merge(out: Path) -> None:
     """Fold the shard directories back into the single tree everything expects.
 
@@ -79,7 +130,6 @@ def merge(out: Path) -> None:
     the results still split by shard, re-running the same command would find no
     record of the conditions the other GPU produced and generate them again.
     """
-    import json
     import shutil
 
     states = sorted(out.glob("shard*/*/state.json"))
@@ -91,6 +141,21 @@ def merge(out: Path) -> None:
 
     merged, task = {}, None
     extra = {"rms_scale": {}, "entropy": {}}
+    # Start from whatever a previous run left here. Rebuilding this file from the
+    # shard states alone discards the history the checkpoint restored, so a
+    # resumed run would come back holding only the stories it happened to
+    # generate this time -- losing completed conditions from the earlier run.
+    existing = model_dir / "state.json"
+    if existing.is_file():
+        try:
+            blob = json.loads(existing.read_text())
+        except Exception:
+            blob = {}
+        task = blob.get("task")
+        for key in extra:
+            extra[key].update(blob.get(key, {}) or {})
+        for rid, cells in blob.get("runs", {}).items():
+            merged.setdefault(rid, {}).update(cells)
     for sp in states:
         blob = json.loads(sp.read_text())
         task = task or blob.get("task")
