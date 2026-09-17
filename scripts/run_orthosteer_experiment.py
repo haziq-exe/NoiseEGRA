@@ -1162,6 +1162,41 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
               "--random-directions to separate what the extracted directions do "
               "from what any push of that size does")
 
+    if name == "dropone":
+        # Which of the steered directions costs the reading level.
+        #
+        # The push buys tense, speech and a named character and pays for them in
+        # sentence length: at a total strength of 2 the share of stories
+        # reaching the grade-3 floor falls from 57% to 12% while words per
+        # sentence fall from 9.3 to 6.7. A push along random directions of the
+        # same length does neither -- it leaves sentence length alone and lifts
+        # the floor -- so this is something the extracted directions carry, not
+        # something any offset of that size does.
+        #
+        # Every arm holds the same total strength, so dropping a direction gives
+        # the remaining ones more of it rather than pushing less hard overall.
+        # That is the comparison that matters: what the set would be without
+        # this member, not what a weaker push does.
+        #
+        # `loo` already exists and is not this: it sweeps the old per-token
+        # noise path at a per-direction beta, with no fixed budget.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        b = float(getattr(args, "steer_budget", None) or 2.0)
+
+        items = [{"plan": make_plan(beta={n: 1.0 for n in names}, steer_budget=b,
+                                    steer_prefill=False, **quiet, **base)}]
+        for drop in names:
+            kept = [n for n in names if n != drop]
+            sub = dict(base)
+            sub["names"] = kept
+            items.append({"plan": make_plan(beta={n: 1.0 for n in kept},
+                                            steer_budget=b, steer_prefill=False,
+                                            **quiet, **sub)})
+        return items, (
+            f"all {len(names)} directions at a total strength of {b:g}, then the "
+            f"same strength with each one left out in turn")
+
     if name == "siting":
         # Where the constraint push is applied, rather than how hard.
         #
