@@ -1962,3 +1962,130 @@ repeated four times, 0.5. Its syllable counter scores "Mia" as one syllable,
 Tests covering these: `tests/test_readability.py`, `tests/test_structure.py`,
 `tests/test_shard_resume.py`, and additions to `tests/test_coherence.py`,
 `tests/test_suites_build.py` and `tests/test_english_smoke.py`.
+
+# The middle-school branch
+
+Everything above targets the children's-writing task: fifteen requirements that
+between them force the prose to be as small as it can be (every sentence at most
+eight words, a five-word opening, no word over two syllables, at most one
+subordinate clause, a reading level at or below grade 2.5). The method wins that
+task. Rounds 24 and 25 moved to a task for readers in middle school and early
+high school -- the small-prose rules removed, the reading level a floor instead
+of a ceiling, roughly 150 words instead of 60 -- and on that task the method
+improves no requirement at all, while raising the sampling temperature beats it
+on compliance, coherence and variety at once.
+
+This branch targets that task directly. What follows is the work done on it.
+
+## Round 26 - what the diagnosis found before any GPU was used
+
+Round 25 ended with an explanation attached to its numbers: that the steering
+directions carry the register of the contrast pairs they were extracted from,
+which is a children's-writing register, and that this is why pushing them takes
+the share of stories reaching the grade-3 reading floor from 57% down to 4%.
+That explanation had not been tested. Three checks, all run locally on saved
+steering vectors and saved stories, no GPU:
+
+**The five directions do not share a register component.** If each direction
+carried a common "write simply" ingredient, the directions would point partly
+the same way. They do not: the mean cosine between pairs of them is -0.01 at
+every layer in the band, ranging from -0.33 to +0.18, and the single direction
+that best explains the set accounts for 27% of its variation, which is close to
+what five arbitrary directions in a 2048-dimensional space would give. The
+summed push puts 2% to 17% of its length on that direction depending on layer.
+
+**Nor do they align with the directions for simplicity itself.** The children's
+pair file has three directions whose explicit subject is small prose: the
+reading ceiling, short sentences, and no subordinate clauses. Cosines between
+those and the five steered directions run from -0.14 to +0.10, averaged over the
+layer band. There is no linear "simplify" ingredient inside the steered set to
+subtract.
+
+So the geometric version of the round-25 explanation is wrong. A fix built on
+removing a shared nuisance direction would have removed nothing.
+
+**A mechanical explanation was checked and also rejected.** Two of the eleven
+requirements pull against each other by construction: lines of speech are short
+sentences, and the reading floor is computed from sentence length, so a story
+that obeys the speech requirement is pushed below the floor by doing so. That
+effect is real -- across the untouched model's hundred stories, the number of
+speech lines and the reading grade correlate at -0.43 -- but it is not what
+collapses the register. Recomputing the reading grade over narration only,
+excluding every sentence containing quoted speech, moves the push arm's grade
+from 1.56 to 1.59 and its pass rate from 3% to 2%. The measure was left as it
+is: changing it would not have explained the result, and would have looked like
+changing a metric until the method won.
+
+**What the stories actually show.** Under the push, sentences that contain no
+speech at all fall from 9.4 words to 5.4, and the hundred stories go from about
+1,800 sentences to about 4,100. The push shortens narration, not just dialogue.
+Two explanations remain and they are not geometric: that the directions encode
+the children's register in a way no single direction captures, or that a
+constant offset of this size flattens the prose whichever way it points.
+
+### The control that separates them, which this project had never run
+
+`--random-directions` replaces every extracted direction with a Gaussian draw of
+the same length. It has existed since early on, is listed in `METHODS_TRIED.md`
+under "implemented but never run on a GPU", and is the control for the claim the
+whole method rests on. On the children's task most requirements reward short
+simple sentences, so an offset that flattens prose whichever way it points would
+look like the method working there too.
+
+Three ladders were launched at once, one per Kaggle account, identical but for
+where the directions come from: the untouched model, then the constraint push at
+total strength 1, 2 and 3. A hundred stories each, Qwen3-1.7B, layers 6-13,
+sampling temperature 1.0, the middle-school rule set.
+
+* the directions extracted from the children's contrast pairs
+* random directions of the same length
+* the directions extracted from the new middle-school contrast pairs
+
+A ladder rather than one strength, because the question is not whether the
+curves differ at a point but whether the extracted directions have a usable
+window: a strength that buys compliance before it starts flattening the prose.
+
+### The contrast pairs, rewritten in the register the task asks for
+
+Reading the pair file is what the round-25 explanation should have started from.
+Every pair in it is written on **both** sides in the prose of a book for a
+five-year-old. The positive side of the speech direction is `"You missed
+dinner," he says. "I was not hungry," she says.`; of the senses direction, `Warm
+bread smells sweet. A pan hisses.` Across the file the positives average 3.8 to
+5.7 words a sentence and read at grade -1.1 to 2.0. The within-item contrast is
+sound -- the two sides differ only in the named property -- but the whole
+contrast is measured inside a four-word-sentence world, and the directions are
+then applied to a task asking for real sentences.
+
+`noiseegra/data/steering_pairs_en_middle.json` rewrites all of it at twelve to
+twenty words a sentence on both sides, and adds a direction the children's file
+has no counterpart for: developed prose against clipped prose, the two sides
+carrying the same content in the same number of words and differing only in
+whether it arrives as one developed sentence or a run of short ones. That is the
+direction the reading floor needs, and until now nothing was steering it -- the
+children's file's register direction points the other way, having been built for
+a task where the reading level was a ceiling.
+
+`tests/test_pair_sets.py` holds both files to the balance the extraction
+assumes. It earned its place immediately: the first draft of the new file had
+dialogue positives running at 11.6 words a sentence against their negatives'
+14.4, which would have rebuilt the exact confound the file exists to remove.
+
+### Two faults found while setting the round up
+
+**A launch that omitted one flag silently changed the task.** Rounds 24 and 25
+passed `--max-words 200`, which sets the length rule and, through it, the point
+at which an over-long generation is stopped. The first launch of this round left
+it at the children's-task default, so every story was being cut off at 97 words
+while the instruction asked for roughly 150. Nothing in the output said so
+except one line twenty minutes in. Both runs were stopped and relaunched. The
+middle-school rule set now carries that setting and the two others that have to
+move with it -- how often a word may be reused, and the token cap -- and the dry
+run prints all of them before anything reaches a GPU.
+
+**The steering-vector cache was not keyed on the pair file.** The cached file's
+name records the model, the reading context and the read window, but nothing
+about which pairs produced it, so a run asking for the middle-school pairs in a
+directory that already held children's-pair vectors would have loaded those and
+reported the result under the new name. The pair set is now in the file name and
+in the pinned task setup, so the two cannot be mixed or silently substituted.
