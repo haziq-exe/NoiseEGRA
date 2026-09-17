@@ -378,6 +378,62 @@ both.
 These are recorded because each one produced a number that was reported and then
 turned out to be wrong.
 
+**Losing sentence capitalisation makes a story score *better* on a requirement.**
+Every other degeneration here costs a condition something. This one pays. The
+reading-level check ends a sentence at a full stop only when what follows starts
+a new sentence, so a story whose sentences stop being capitalised is read as one
+enormous sentence and scores a very high reading grade. In round 25's
+perturbation-only condition, eleven such stories scored a mean Flesch-Kincaid
+grade of 53.9 and pulled that condition's mean from 3.8 to 9.3; the share of
+lowercase sentence openings and the reading grade correlate at +0.85 there. It
+was reported in this session as "the perturbation raises the reading level". It
+was eleven broken stories. `noiseegra.coherence.lowercase_opening_ratio` now
+flags them, `tests/test_coherence.py` covers it, and rescoring round 25 moves
+the perturbation-only condition from 97 coherent stories and grade 8.69 to 89
+and 3.85, and the push-with-perturbation condition from 99 and 3.69 to 90 and
+1.93.
+
+**A requirement scored all-or-nothing on a graded property reports a large
+effect as no effect.** The present-tense rule asked for every finite verb to be
+present tense. On the middle-school task that reads 0% for the untouched model,
+0% for raised temperature and 6% for the constraint push, which says the three
+behave alike. The share of finite verbs in the present tense is 15%, 18% and
+96%; over narration alone, excluding quoted speech, it is 1%, 1% and 96%. The
+largest single effect the method has was being reported as nothing. Scored at a
+threshold of 0.9 it is 0%, 0% and 97%, and nothing depends on the value chosen:
+the untouched model passes 0% anywhere from 0.6 to 1.0. The raw share is now a
+reported column so no reader has to accept a threshold at all.
+
+**Thresholds calibrated on 60-word stories do not transfer to 150-word ones.**
+Three of the eleven middle-school requirements had drifted to where no condition
+could pass them or every condition did, at which point they add a constant to
+each score and separate nothing -- the fault the grade-6 reading floor had in
+round 24. At most two adverbs is passed by 10% of untouched stories on this task
+against the 50% the level was set for; at least two sensory words by 99%; no
+word beginning more than three sentences by 8%. Re-set from the untouched
+model's own distribution to five, six and five. The levels do not all favour the
+method: the opening level takes the untouched model from 8% to 51% and the
+constraint push only from 1% to 13%.
+
+**A rule that counts rather than measures a share penalises writing more
+sentences.** The sentence-opening rule counts how many sentences one word
+begins, so a condition writing twice as many sentences breaks it more readily
+whatever its prose is like. Under the constraint push the commonest opening word
+covers 20% of sentences against the untouched model's 29% -- proportionally more
+varied -- while breaking the rule far more often. The share is now printed
+beside the pass rate. The rule was left as a count rather than converted to a
+share, because converting it would have helped the method and the argument for
+it is not strong enough to risk that.
+
+**A setting that reaches the prompt but sits in no flag silently changes the
+task.** The middle-school rounds passed `--max-words 200` by hand. A launch that
+omitted it stopped every story at 97 words while the instruction asked for 150,
+and nothing said so but one line twenty minutes into the run. Four such settings
+-- the length rule, the word-reuse allowance, the reading floor and the story
+target -- were also missing from the guard that refuses to mix stories written
+to different instructions. All are now in it, the middle-school rule set carries
+its own values, and the dry run prints them before anything reaches a GPU.
+
 **Degenerate text scores well on both metrics.** A set of differently-broken
 stories is mutually dissimilar, so looping raises Vendi, and collapsed text
 trivially satisfies requirements like "at most two adverbs". A result was reported
