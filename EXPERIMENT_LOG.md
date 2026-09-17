@@ -2089,3 +2089,35 @@ about which pairs produced it, so a run asking for the middle-school pairs in a
 directory that already held children's-pair vectors would have loaded those and
 reported the result under the new name. The pair set is now in the file name and
 in the pinned task setup, so the two cannot be mixed or silently substituted.
+
+### What the literature already says about the register explanation
+
+Checked before building anything on it, because the project's novelty bar is a
+comparison of methods rather than of framings.
+
+The general phenomenon is published. The review work on contrastive activation
+steering reports that steering vectors "may be capturing task-dependent aspects
+of a trait, with performance degrading substantially when the resulting vectors
+are applied in downstream settings", and that steering degrades unrelated
+capability -- measurably raising perplexity on clean text and hurting held-out
+benchmark answers. The original contrastive-activation-addition work already
+matches its pairs for length, topic and syntactic structure to keep confounds
+out of the direction, so the idea that the pairs' incidental properties end up
+in the vector is not new either.
+
+One nearby paper is about something else. "Understanding and Mitigating Dataset
+Corruption in LLM Steering" (arXiv 2603.03206) studies a *corrupted fraction* of
+the contrast set and fixes it by replacing the mean with a robust mean
+estimator. That remedy cannot touch what is happening here: the register is not
+in a minority of mislabelled pairs, it is in every pair on both sides, so it
+survives any estimator that assumes most of the data is clean.
+
+**What this means for the claim.** "Steering directions carry the register of
+their contrast set" is a specific instance of a documented failure, not a new
+phenomenon, and it should not be presented as the contribution. What is worth
+reporting is narrower and concrete: that the contamination is invisible to the
+diagnostics normally used -- the directions are mutually near-orthogonal and
+near-orthogonal to the explicit simplicity directions, so nothing in the
+geometry shows it -- and that it is visible only as damage to a *different*
+scored requirement than the one being steered. Whether that earns a section or a
+footnote depends on what the runs now say.
