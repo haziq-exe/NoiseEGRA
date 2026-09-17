@@ -20,7 +20,39 @@ Companion documents:
 - `EXPERIMENT_LOG.md` — the narrative, round by round: what was asked, what came
   back, what it changed.
 
-## The goal, stated precisely (revised by Haziq, 2026-09-17)
+## The goal on this branch (revised by Haziq, 2026-09-17, second revision)
+
+**The task is now the middle-school / early-high-school one, and only that.**
+Everything before round 26 targets the children's-writing task, where fifteen
+requirements between them force the prose to be as small as it can be. The
+method wins that task. On a task for older readers -- the small-prose rules
+removed, the reading level a floor instead of a ceiling, roughly 150 words
+instead of 60 -- it improves no requirement, and raising the sampling
+temperature beats it on compliance, coherence and variety at once (rounds 24 and
+25). This branch, `middle-school-register`, targets that task directly.
+
+What the method has to do there, all at once, at sampling temperature 1.0:
+
+1. improve constraint compliance over the unmodified model,
+2. improve the variety of the stories -- both what happens in them and how they
+   are worded,
+3. keep essentially every story coherent, and
+4. beat raised sampling temperature with nucleus sampling on all of the above.
+
+The fourth is new and is the hard one: on this task the untouched model does not
+degenerate, so raised temperature costs nothing and buys a great deal. As of the
+rescoring in round 26, temperature 1.8 with nucleus 0.95 scores 3.42
+requirements broken of eleven with 100 of 100 stories coherent, against the
+untouched model's 3.59, and takes the variety of what happens from 51.9 to 73.2.
+That is the number to beat.
+
+The novelty requirement stands: the contribution has to be a difference in
+method, not in framing, and the sampled between-generation basis has already
+failed to beat an isotropic draw on the one run that verifiably built it.
+
+### The old goal, for the rounds that were run under it
+
+#### The goal as stated for rounds 17 to 25 (revised by Haziq, 2026-09-17)
 
 A cheap inference-time method, **at sampling temperature 1.0** (Haziq explicitly
 does not want the temperature raised), that at the same time
