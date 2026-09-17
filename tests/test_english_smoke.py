@@ -696,3 +696,49 @@ if FAILURES:
     print(f"{len(FAILURES)} FAILURE(S): {FAILURES}")
     sys.exit(1)
 print("english smoke test passed")
+
+
+# --------------------------------------------------------------------------- #
+# The middle-school task: the same architecture with the four rules that force
+# the prose to be as small as possible removed, and the reading level a floor
+# instead of a ceiling.
+print("\n== the middle-school requirement set ==")
+from noiseegra.constraint_metrics_en import MIDDLE_CONSTRAINTS  # noqa: E402
+from noiseegra import writingprompts as _wp  # noqa: E402
+
+_gone = {"short_sentences", "easy_opening", "short_words", "simple_syntax",
+         "simple_register"}
+check("the rules that force tiny prose are gone",
+      not (_gone & set(MIDDLE_CONSTRAINTS)),
+      ", ".join(sorted(_gone & set(MIDDLE_CONSTRAINTS))) or "none present")
+check("the reading level is now a floor", "mature_register" in MIDDLE_CONSTRAINTS)
+check("the anti-repetition rules are kept",
+      {"no_repetition", "distinct_sentences", "fresh_openings"} <= set(MIDDLE_CONSTRAINTS))
+
+_mid = EnglishConstraintChecker(backend="regex", constraints=MIDDLE_CONSTRAINTS,
+                                min_grade_level=6.0)
+_simple = "The cat sits. The dog runs. Mia laughs. The sun is warm. She plays."
+_grown = ("Mira edges along the flooded corridor, counting the doors she passes "
+          "and listening for the hum of the generator below. \"Someone left the "
+          "hatch open,\" she says, and her voice carries further than she wants. "
+          "Nothing answers except the water moving against the walls.")
+check("a tiny-sentence story fails the new reading floor",
+      _mid.evaluate_all([_simple])["stories"][0].checks["mature_register"] is False)
+check("grown-up prose passes it",
+      _mid.evaluate_all([_grown])["stories"][0].checks["mature_register"] is True)
+
+# The children's set must re-score exactly as before: the new rule is an
+# addition, not a replacement.
+_old = EnglishConstraintChecker(backend="regex", constraints=MONOTONE_CONSTRAINTS)
+check("the children's set is untouched by the addition",
+      "mature_register" not in MONOTONE_CONSTRAINTS
+      and len(MONOTONE_CONSTRAINTS) == 15)
+
+_msgs = _wp.build_middle_messages(_mid.requirements(), list(MIDDLE_CONSTRAINTS),
+                                  target=150)
+check("the prompt asks for a middle-school reader",
+      "middle-school reader" in _msgs[1]["content"])
+check("the prompt asks for a longer story", "150 words" in _msgs[1]["content"])
+check("the prompt lists every scored rule and nothing else",
+      _msgs[1]["content"].count("\n- ") == len(MIDDLE_CONSTRAINTS),
+      f'{_msgs[1]["content"].count(chr(10) + "- ")} bullets for {len(MIDDLE_CONSTRAINTS)} rules')

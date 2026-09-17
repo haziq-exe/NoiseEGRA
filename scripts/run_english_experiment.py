@@ -33,9 +33,13 @@ from noiseegra.activation_basis import (  # noqa: E402
 )
 from noiseegra.constraint_metrics_en import (  # noqa: E402
     DEFAULT_MAX_OPENER_USES,
+    DEFAULT_MAX_WORD_USES,
+    DEFAULT_MIN_GRADE_LEVEL,
     EnglishConstraintChecker,
 )
 from noiseegra.defaults import (  # noqa: E402
+    EN_MIDDLE_CONSTRAINTS,
+    EN_MIDDLE_STEER_VECTORS,
     EN_MONOTONE_CONSTRAINTS,
     EN_MONOTONE_MAX_OPENER_USES,
     EN_MONOTONE_STEER_VECTORS,
@@ -170,7 +174,7 @@ def main() -> None:
     ap.add_argument("--with-baseline", action="store_true",
                     help="prepend an unsteered baseline condition to whichever suite is run "
                          "(already included in `compare` and `noise`)")
-    ap.add_argument("--constraint-set", choices=("mixed", "monotone"), default="mixed",
+    ap.add_argument("--constraint-set", choices=("mixed", "monotone", "middle"), default="mixed",
                     help="'monotone': the thirteen one-sided requirements, steered along "
                          "nine directions. 'mixed': the earlier set, which includes the "
                          "banded requirements (word count, sentence count, exactly-N "
@@ -188,6 +192,16 @@ def main() -> None:
     ap.add_argument("--min-words", type=int, default=EN_MIN_WORDS)
     ap.add_argument("--max-words", type=int, default=EN_MAX_WORDS)
     ap.add_argument("--max-grade", type=float, default=EN_MAX_GRADE_LEVEL)
+    ap.add_argument("--min-grade", type=float, default=DEFAULT_MIN_GRADE_LEVEL,
+                    help="reading-level floor for --constraint-set middle: the story "
+                         "must be at least this Flesch-Kincaid grade")
+    ap.add_argument("--max-word-uses", type=int, default=DEFAULT_MAX_WORD_USES,
+                    help="how often a word of four letters or more may be reused. "
+                         "A longer story reuses more, so the middle-school task "
+                         "needs this above the children's task's 3")
+    ap.add_argument("--story-target", type=int, default=150,
+                    help="the word count --constraint-set middle asks the model to "
+                         "aim for in the prompt")
     ap.add_argument("--beta", type=float, default=1.0)
     ap.add_argument("--extraction-context", default="task", choices=["task", "generic"],
                     help="the conversation the contrast activations are read in. "
@@ -430,6 +444,18 @@ def main() -> None:
             args.steer_vectors = list(EN_MONOTONE_STEER_VECTORS)
         args.max_opener_uses = EN_MONOTONE_MAX_OPENER_USES
 
+    if args.constraint_set == "middle":
+        # The middle-school task: the same architecture with the four rules that
+        # force the prose to be as small as possible removed, and the reading
+        # level a floor instead of a ceiling. The steered set drops the three
+        # directions whose requirement is gone (short sentences, simple
+        # register, simple syntax); the rest still apply.
+        if list(args.constraints) == list(EN_TASK_CONSTRAINTS):
+            args.constraints = list(EN_MIDDLE_CONSTRAINTS)
+        if list(args.steer_vectors) == list(EN_STEER_VECTORS):
+            args.steer_vectors = list(EN_MIDDLE_STEER_VECTORS)
+        args.max_opener_uses = EN_MONOTONE_MAX_OPENER_USES
+
 
     if args.dry_run:
         # Parsing the flags is the easy half. Two runs have now reached Kaggle,
@@ -561,13 +587,19 @@ def main() -> None:
     checker = EnglishConstraintChecker(
         min_words=args.min_words, max_words=args.max_words,
         max_grade_level=args.max_grade,
+        min_grade_level=args.min_grade,
+        max_word_uses=args.max_word_uses,
         max_opener_uses=getattr(args, "max_opener_uses", DEFAULT_MAX_OPENER_USES),
         constraints=list(args.constraints),
     )
 
     if args.task == "generic":
         prompts = ["<generic instruction>"]
-        messages = [wp.build_generic_messages(checker.requirements(), args.constraints)]
+        messages = [
+            wp.build_middle_messages(checker.requirements(), args.constraints,
+                                     target=args.story_target)
+            if args.constraint_set == "middle" else
+            wp.build_generic_messages(checker.requirements(), args.constraints)]
         stories_per_prompt = args.stories
         print(f"task: one generic instruction, {len(args.constraints)} requirements, "
               f"{stories_per_prompt} stories in a single group")

@@ -231,6 +231,43 @@ GENERIC_SYSTEM = (
     "You write short reading passages for young children learning to read."
 )
 
+# The middle-school variant. Same shape as the children's instruction -- one
+# task, a list of requirements built from the scorer, and nothing that dictates
+# what the story is about -- but aimed at a reader who can manage a real
+# sentence, and asking for a longer piece so there is room for something to
+# happen. The children's task caps sentences at eight words and the reading
+# level at grade 2.5, which leaves the model almost no room to write: under it
+# the steered model averages 3.7 words a sentence, which is telegraphic rather
+# than simple. This one removes that floor.
+MIDDLE_SYSTEM = (
+    "You write short stories for readers in middle school and early high school."
+)
+
+MIDDLE_INSTRUCTION = (
+    "Write one short story for a middle-school reader.\n\n"
+    "Aim for roughly {target} words -- long enough for something to happen in "
+    "it.\n\n"
+    "The story must satisfy every one of these requirements:\n"
+    "{constraints}\n\n"
+    "Write only the story itself: no title, heading, preamble or commentary."
+)
+
+
+def build_middle_messages(
+    requirements: Dict[str, str],
+    order: Sequence[str],
+    *,
+    target: int = 150,
+    system: str = MIDDLE_SYSTEM,
+) -> List[Dict[str, str]]:
+    return [
+        {"role": "system", "content": system},
+        {"role": "user", "content": MIDDLE_INSTRUCTION.format(
+            target=target,
+            constraints=requirement_block(requirements, order))},
+    ]
+
+
 GENERIC_INSTRUCTION = (
     "Write one short story for a young child to read.\n\n"
     "The story must satisfy every one of these requirements:\n"

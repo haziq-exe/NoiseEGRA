@@ -107,6 +107,12 @@ DEFAULT_MAX_WORD_USES = 3          # unprompted 32%, i.e. no content word four t
 # times. Both are one-sided, both are things anyone would ask of a written page,
 # and the second is measured on the opening two words because that is the unit the
 # model actually repeats.
+# The floor for the middle-school task, where the point is prose with some room
+# in it rather than the simplest possible sentences. A minimum rather than a
+# ceiling: the requirement and a push toward richer language agree about which
+# way is better, which is what the steering architecture needs.
+DEFAULT_MIN_GRADE_LEVEL = 6.0
+
 DEFAULT_MAX_SAME_OPENER = 3        # unprompted, the model reuses one 6.1 times
 DEFAULT_MAX_DUP_SENTENCES = 0      # unprompted 1.7 duplicate sentences per story
 
@@ -143,6 +149,10 @@ CONSTRAINT_NAMES = (
     "short_sentences", "dialogue_min", "plain_words", "sensory",
     "simple_syntax", "fresh_words", "named_character",
     "distinct_sentences", "fresh_openings",
+    # For the middle-school task, where the reading level is a floor rather than
+    # a ceiling. Appended rather than replacing `simple_register` so every
+    # earlier run still re-scores to the number it produced.
+    "mature_register",
 )
 
 # What a checker scores unless told otherwise: the original thirteen. The
@@ -163,13 +173,28 @@ MONOTONE_CONSTRAINTS = (
     "no_repetition", "distinct_sentences", "fresh_openings",
 )
 
+# The middle-school set. Same architecture -- every rule one-sided -- but aimed
+# at a reader who can manage a real sentence. The four rules that force the
+# prose to be as small as possible are gone (every sentence at most eight words,
+# a five-word opening, no word over two syllables, at most one subordinate
+# clause), and the reading level is a floor instead of a ceiling. What is left
+# is the craft: present tense, speech on the page, varied openings, verbs rather
+# than adverbs, the senses, a named character, and the four rules against
+# repeating yourself. Written for a longer story than the children's task, so
+# the word budget has to be raised with it.
+MIDDLE_CONSTRAINTS = (
+    "present_tense", "mature_register", "dialogue_min", "varied_openers",
+    "plain_words", "sensory", "fresh_words", "named_character",
+    "no_repetition", "distinct_sentences", "fresh_openings",
+)
+
 # Short column headers for wide tables, and the full text for the legend.
 CONSTRAINT_SHORT = {
     "length": "len", "present_tense": "tense", "simple_register": "easy",
     "dialogue": "quote", "easy_opening": "open", "sentence_band": "sband",
     "sentence_count": "count", "short_words": "syll", "one_name": "name",
     "varied_openers": "varied", "plain_punctuation": "punct",
-    "spelled_number": "number",
+    "spelled_number": "number", "mature_register": "grade+",
     "short_sentences": "short", "dialogue_min": "speech", "plain_words": "adverb",
     "sensory": "sense", "simple_syntax": "syntax", "fresh_words": "fresh",
     "named_character": "named", "no_repetition": "norep",
@@ -526,6 +551,7 @@ class EnglishConstraintChecker:
         max_word_uses: int = DEFAULT_MAX_WORD_USES,
         max_same_opener: int = DEFAULT_MAX_SAME_OPENER,
         max_dup_sentences: int = DEFAULT_MAX_DUP_SENTENCES,
+        min_grade_level: float = DEFAULT_MIN_GRADE_LEVEL,
         backend: str = "auto",
         constraints: Sequence[str] = DEFAULT_CONSTRAINTS,
     ):
@@ -547,6 +573,7 @@ class EnglishConstraintChecker:
 
         self.present_ratio_threshold = float(present_ratio_threshold)
         self.max_grade_level = float(max_grade_level)
+        self.min_grade_level = float(min_grade_level)
         self.n_quotes = int(n_quotes)
         self.max_opening_words = int(max_opening_words)
         self.sentence_word_range = (int(sentence_word_range[0]), int(sentence_word_range[1]))
@@ -618,6 +645,10 @@ class EnglishConstraintChecker:
                               "appears, written as a word and never as a digit",
             "no_repetition": "it does not repeat itself: no run of five words appears "
                              "twice",
+            "mature_register": "the language suits a middle-school or early "
+                               "high-school reader rather than a small child: "
+                               "full sentences with some length and range to them "
+                               f"(Flesch-Kincaid grade at least {self.min_grade_level:g})",
             "short_sentences": f"every sentence is short: at most {self.max_sentence_words} words",
             "dialogue_min": f"at least {self.min_quotes} lines of speech appear inside "
                             "quotation marks",
@@ -650,6 +681,7 @@ class EnglishConstraintChecker:
                               if self.present_ratio_threshold >= 1.0
                               else "present tense throughout"),
             "simple_register": f"grade {self.max_grade_level:g} or easier",
+            "mature_register": f"grade {self.min_grade_level:g} or harder",
             "dialogue": f"exactly {self.n_quotes} quoted lines",
             "easy_opening": f"first sentence at most {self.max_opening_words} words",
             "sentence_band": f"every sentence {slo} to {shi} words",
@@ -744,6 +776,7 @@ class EnglishConstraintChecker:
             "length": wlo <= len(words) <= whi,
             "present_tense": tense_ok,
             "simple_register": grade <= self.max_grade_level,
+            "mature_register": grade >= self.min_grade_level,
             "dialogue": n_quotes == self.n_quotes,
             "easy_opening": bool(sentences) and sent_words[0] <= self.max_opening_words,
             "sentence_band": bool(sentences) and slo <= min(sent_words)

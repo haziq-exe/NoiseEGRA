@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Dict, Tuple
 
-from .constraint_metrics_en import MONOTONE_CONSTRAINTS
+from .constraint_metrics_en import MIDDLE_CONSTRAINTS, MONOTONE_CONSTRAINTS
 
 # RMS noise calibration: std = RMS_ALPHA * median(block RMS)
 RMS_ALPHA = 0.175
@@ -147,6 +147,15 @@ EN_MONOTONE_STEER_VECTORS = (
 # No word may begin more than three sentences. The old level of two sat at 0%
 # under the prompt and contributed a constant to every condition.
 EN_MONOTONE_MAX_OPENER_USES = 3
+
+# The middle-school task. The directions whose requirement no longer exists are
+# dropped: `terse` (short sentences), `simple_register` (the reading ceiling) and
+# `simple_syntax` (no subordinate clauses) all push toward the smallest possible
+# prose, which is what this task removes.
+EN_MIDDLE_CONSTRAINTS = MIDDLE_CONSTRAINTS
+EN_MIDDLE_STEER_VECTORS = (
+    "present_tense", "dialogue", "varied_openers", "sensory", "named_character",
+)
 
 # Back-compatible alias: older callers used this for the steering names.
 EN_CONSTRAINTS = EN_STEER_VECTORS
