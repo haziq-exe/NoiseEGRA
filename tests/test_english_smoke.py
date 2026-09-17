@@ -742,3 +742,51 @@ check("the prompt asks for a longer story", "150 words" in _msgs[1]["content"])
 check("the prompt lists every scored rule and nothing else",
       _msgs[1]["content"].count("\n- ") == len(MIDDLE_CONSTRAINTS),
       f'{_msgs[1]["content"].count(chr(10) + "- ")} bullets for {len(MIDDLE_CONSTRAINTS)} rules')
+
+
+def test_opening_tense_switch_is_detected():
+    """A story that opens in the past and then narrates in the present is flagged.
+
+    The present-tense requirement is a share over the whole story, so it cannot
+    see that the exceptions are all in the opening sentence. Under the
+    constraint push 96% of finite verbs are present tense while 73% of stories
+    open in the past and switch immediately.
+    """
+    from noiseegra.constraint_metrics_en import (
+        MIDDLE_CONSTRAINTS, EnglishConstraintChecker, opens_in_the_wrong_tense,
+    )
+    from noiseegra.constraint_metrics_en import _Spacy
+
+    # The regex backend cannot see present-tense verbs at all -- it returns zero
+    # of them for "She walks to the window" -- so every tense measurement in this
+    # project is made with spaCy, and so is this check.
+    if not _Spacy.available():
+        print("  [SKIP] opening-tense check needs spaCy")
+        return
+
+    ck = EnglishConstraintChecker(backend="spacy", constraints=MIDDLE_CONSTRAINTS)
+
+    switches = ("Mara looked up from her book and frowned at the clock. "
+                "She walks to the window and opens it wide. "
+                "The wind comes in and lifts the curtain. "
+                "She listens to the trees for a while. "
+                "Her brother calls her name from downstairs.")
+    consistent = ("Mara looks up from her book and frowns at the clock. "
+                  "She walks to the window and opens it wide. "
+                  "The wind comes in and lifts the curtain. "
+                  "She listens to the trees for a while. "
+                  "Her brother calls her name from downstairs.")
+    all_past = ("Mara looked up from her book and frowned at the clock. "
+                "She walked to the window and opened it wide. "
+                "The wind came in and lifted the curtain. "
+                "She listened to the trees for a while. "
+                "Her brother called her name from downstairs.")
+
+    assert opens_in_the_wrong_tense(switches, ck), "the tense switch was missed"
+    assert not opens_in_the_wrong_tense(consistent, ck), "consistent present flagged"
+    assert not opens_in_the_wrong_tense(all_past, ck), "consistent past flagged"
+    print("  [PASS] an opening in the wrong tense is detected, consistent stories are not")
+
+
+if __name__ == "__main__":
+    test_opening_tense_switch_is_detected()

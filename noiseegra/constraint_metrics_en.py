@@ -320,6 +320,45 @@ def repeated_ngram_share(words: Sequence[str], n: int = 5) -> float:
     return 1.0 - len(set(grams)) / len(grams)
 
 
+def opens_in_the_wrong_tense(text: str, checker: "EnglishConstraintChecker") -> bool:
+    """True when the story opens in the past tense and then narrates in the present.
+
+    The present-tense requirement is scored as a share over the whole story, and
+    a share cannot see *where* the exceptions are. It turns out they are all in
+    the same place. Under the constraint push at total strength 2, 96% of finite
+    verbs are present tense -- but 73% of stories open with a past-tense
+    sentence and switch immediately afterwards:
+
+        "Mara looked up from her book, her eyes fluttering as she listens to
+         the wind through the trees. She's got a red scarf ..."
+
+    Only 4% of sentences are past tense and in 97% of stories those are the
+    first one or two, so this is a one-sentence flaw rather than a story that
+    wanders between tenses. It is still a flaw, and a more visible one than
+    writing in the past tense throughout, which is what the untouched model
+    does: a reader notices the switch, and the aggregate share does not.
+
+    The mechanism it points at is that the push is added at decode steps only,
+    so the opening is written before it has taken hold -- at total strength 1
+    the first present-tense sentence is the fourth, at strength 2 the second.
+    That predicts applying the push during prefill as well should remove it.
+    """
+    sentences = split_sentences(text)
+    if len(sentences) < 4:
+        return False
+
+    def present_share(chunk: str) -> Optional[float]:
+        counts = checker._tense_counts(chunk, tokenize_words(chunk))
+        finite = counts["present"] + counts["past"]
+        return (counts["present"] / finite) if finite else None
+
+    opening = present_share(sentences[0])
+    body = present_share(" ".join(sentences[1:]))
+    if opening is None or body is None:
+        return False
+    return opening < 0.5 and body > 0.8
+
+
 def flesch_kincaid_grade(words: Sequence[str], n_sentences: int) -> float:
     """0.39*(words/sentence) + 11.8*(syllables/word) - 15.59."""
     if not words or n_sentences <= 0:

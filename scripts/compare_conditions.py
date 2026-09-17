@@ -48,6 +48,7 @@ import numpy as np  # noqa: E402
 from noiseegra.coherence import CoherenceFilter  # noqa: E402
 from noiseegra.constraint_metrics_en import (  # noqa: E402
     MIDDLE_CONSTRAINTS, MONOTONE_CONSTRAINTS, EnglishConstraintChecker,
+    opens_in_the_wrong_tense,
 )
 from noiseegra.readability import uncommon_word_share  # noqa: E402
 from noiseegra.structure import (  # noqa: E402
@@ -157,6 +158,7 @@ def main() -> None:
             opener=float(np.mean([opener_share(t) for t in kept])),
             present=float(np.mean([s.present_ratio for s in per_story
                                    if s.present_ratio is not None] or [float("nan")])),
+            wrong_open=float(np.mean([opens_in_the_wrong_tense(t, checker) for t in kept])),
             pass_rate={r: float(np.mean([s.checks.get(r, True) for s in per_story]))
                        for r in rules},
             happens_vectors=trim_isolated(
@@ -179,7 +181,7 @@ def main() -> None:
           f"every condition pooled at {pool}.\n")
     head = (f"{'condition':<{width}}  {'coherent':>9}  {'broken':>7}  {'happens':>8}  "
             f"{'wording':>8}  {'grade':>6}  {'w/sent':>7}  {'sents':>6}  "
-            f"{'uncommon':>9}  {'opener':>7}  {'present':>8}")
+            f"{'uncommon':>9}  {'opener':>7}  {'present':>8}  {'past open':>10}")
     print(head)
     print("-" * len(head))
     for name in order:
@@ -187,7 +189,8 @@ def main() -> None:
         print(f"{name:<{width}}  {v['kept']:>4}/{v['n']:<4}  {v['broken']:>7.2f}  "
               f"{v['happens']:>8.1f}  {v['wording']:>8.1f}  {v['grade']:>6.2f}  "
               f"{v['words_per_sentence']:>7.1f}  {v['sentences']:>6.1f}  "
-              f"{v['uncommon']:>8.1%}  {v['opener']:>6.0%}  {v['present']:>7.0%}")
+              f"{v['uncommon']:>8.1%}  {v['opener']:>6.0%}  {v['present']:>7.0%}  "
+              f"{v['wrong_open']:>9.0%}")
 
     print("\n  broken    mean requirements broken per story, out of "
           f"{len(rules)}; lower is better")
@@ -198,6 +201,8 @@ def main() -> None:
     print("  uncommon  share of words outside the 3000 commonest in the Brown corpus")
     print("  opener    share of sentences begun by the story's commonest opening word")
     print("  present   share of finite verbs in the present tense, before any threshold")
+    print("  past open share of stories opening in the past tense then narrating in the")
+    print("            present -- a flaw the whole-story share above cannot see")
 
     rejections = {n: scored[n]["rejected"] for n in order if scored[n]["rejected"]}
     if rejections:
