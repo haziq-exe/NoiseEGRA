@@ -520,6 +520,13 @@ compliance; larger shoves (0.25) and the constraint-vector sideways step buy
 more variety (up to 34-36) but pay in coherence or compliance. Full frontier in
 `EXPERIMENT_LOG.md` rounds 19-21.
 
+On the paper's own metric (embedding Vendi over coherent stories at 40-word
+truncation, pooled 200 stories): baseline 7.40, champion **14.49** — and 167 of
+200 stories genuinely different against the baseline's 83, at reading grade 0.0
+against the baseline's 2.9. The shove alone reaches 17.57 but raises the grade
+to 5.2 (the same pathology the published paper showed for temperature) and fixes
+no rules; the nudge cancels both costs. Round 21d in `EXPERIMENT_LOG.md`.
+
 **Replicated on fresh seeds** (rounds 21b-c): the champion's second, independent
 hundred stories give 86 kept / 5.78 broken / 26.3 happens / 12.8 wording against
 the same-seed baseline's 66 / 7.85 / 21.7 / 7.1 — every margin holds — and every
