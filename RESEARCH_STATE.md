@@ -626,37 +626,68 @@ written for children's writing, and that on the middle-school task they lose the
 reading floor, is likewise an explanation that fits rather than one that has been
 isolated by ablation.
 
-In flight: a dose sweep on Qwen3-8B at its proportional early band (layers
-8-18 of 36), 30 stories per anchor setting (the big model costs ~140 s a story
-on a T4, so the sample is sized for the large effects). Early stories are
-coherent steered prose with no fragmentation.
+## In flight (2026-09-17)
 
-## Open questions
+A dose sweep on Qwen3-8B at layers 8-17: the constraint push at strength 2 as
+well as 3, and the perturbation at 0.1 as well as 0.15, 30 stories per setting.
+The pair at the small model's dose kept 20 stories of 30 there, so this measures
+whether a smaller dose recovers the coherence while keeping the compliance and
+variety gains. Nothing else is running.
 
-- r17 answered "does the method beat the temperature curve" with a trade:
-  compliance yes by three requirements, clean structural diversity no, and the
-  push at temperature 1.0 degenerates half its stories. The open cell is the
-  method at temperature 1.6-1.8, where the model does not loop unaided —
-  untested, and the natural r18.
-- The push at 4.5 collapses every story at temperature 1.0 on the fifteen-
-  requirement prompt. Whether a higher temperature revives it is part of the
-  same cell.
-- The perturbation is applied at the prompt only. Applying it while writing was
-  worse in earlier rounds, but has not been retried since the budget and the
-  monotone set changed what steering does.
-- Three mechanisms are implemented and have never run on a GPU: perturbation
-  *not* projected clear of the constraints (the ablation that would show the
-  projection earns its place), random directions instead of extracted ones (the
-  control that would show the directions are not just noise), and activation-space
-  feedback.
+## Open questions, with what would settle each
+
+- Whether the margin depends on how much the unmodified model degenerates on the
+  task. Consistent with the children's, middle-school and 8B measurements; would
+  need tasks built to vary degeneration deliberately, holding everything else
+  fixed.
+- Whether the steering directions carry the register of the pairs they were
+  extracted from. The middle-school per-rule numbers fit this (the largest
+  compliance loss is the reading floor, and the simple-register direction was not
+  even in that steered set); would need directions extracted from contrastive
+  pairs of plain against rich prose, then re-run on the same task.
+- What dose suits a larger model. Partly answered by the sweep in flight.
+- Whether the layer-band result holds on a third model, and whether the right
+  band is a fixed fraction of depth. Two bands on one model and one band on a
+  second is all there is.
+- Whether the sampled story-difference basis ever beats an isotropic draw. On the
+  one run that verifiably used it, it did not.
+
+
+
+### Answered since, with where the answer is
+
+- *Does the method beat the temperature curve?* On the children's task, a trade:
+  three requirements better on compliance, level or behind on clean variety of
+  what happens, and fewer coherent stories. Raising the temperature to 1.6 or 1.8
+  did not rescue it — 1.8 kept fewer coherent stories than 1.6 (rounds 17-18).
+  Superseded as the headline question by Haziq fixing the temperature at 1.0.
+- *Does the push at 4.5 ever work?* No band or temperature tried revives it. At
+  layers 6-13 it keeps 30 stories of 100 and breaks more rules than strength 3
+  (round 20).
+- *Is the perturbation better applied while writing than at the prompt?* No. At
+  layers 6-13 with the push, keeping it on while writing keeps 67 stories of 100
+  against 87 for prompt-only (round 19).
+- *Does the projection out of the constraint subspace earn its place?* It buys
+  about half a requirement of compliance and costs no diversity (round
+  17-controls).
+- *Are extracted directions better than random ones?* The isotropic control ran
+  and is not worse than the sampled story-difference basis; a random-direction
+  control in place of the *extracted constraint* directions still has not run.
+- *Does any of it hold on a second model?* Each half reproduces on Qwen3-8B at
+  the proportional band; the pair costs a third of its stories at the small
+  model's dose (round 22).
+- *Turning the constraint vector at constant length?* Ran on this model under a
+  budget: 5.21 broken at kappa 0.5 and 6.08 at kappa 1.0 against 4.86 for the
+  plain push, with no variety gain worth the loss (round 19).
+- *The original paper's per-token noise with cosine decay?* Does not transfer to
+  this model: strength 0.4 broke every opening story and was auto-aborted, 0.2
+  kept 47 of 100 and matched the baseline's variety exactly (round 19).
+
+### Still open, from earlier rounds
+
 - Whether any representation-level intervention can improve a requirement of the
-  form "between N and M". 36 steered conditions on Qwen3-1.7B did not; no other
-  model has been tried, and the mechanisms tried were constant coefficients,
-  activation-space feedback, and error-scaled coefficients.
-- Whether any of the above holds on a second model. Everything from r7 onward is
-  Qwen3-1.7B at layers 10-18. The earlier Qwen3-8B rounds used a different layer
-  band and a different requirement set, so they are not a replication of anything
-  measured since.
-- Turning the constraint vector at constant length was measured once, on Qwen3-8B,
-  with an unnormalised push and the mixed requirement set. Whether it behaves the
-  same on Qwen3-1.7B under a budget is untested.
+  form "between N and M". Thirty-six steered conditions on Qwen3-1.7B did not; the
+  mechanisms tried were constant coefficients, activation-space feedback and
+  error-scaled coefficients. Not tried on another model.
+- Activation-space feedback steering is implemented and has never run on the
+  current layer band or requirement set.
