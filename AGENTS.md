@@ -141,6 +141,55 @@ Kaggle has no cancel endpoint, so `stop` deletes the kernel to end the session -
 results already checkpointed survive, but that run's output is not published. The
 gentler route is the Stop Session button on the kernel's page.
 
+### Resuming, and the traps around it
+
+A finished run is folded into one tree, `<out>/<model>/`, and that is what the
+checkpoint carries back. The shards read and write `<out>/shard<i>/<model>/`, so
+`run_sharded.py` copies the merged state, the steering vectors and the activation
+basis into each shard before launching, and folds the new work back into the
+existing merged state rather than rebuilding it from the shards alone. Both were
+bugs: without the first a resumed run regenerated everything it already had (two
+hours of GPU on an 8B run, with the log saying "restored 8 checkpoint files" and
+"resuming: 0 stories already saved" two lines apart), and without the second the
+merge overwrote conditions the checkpoint held with only what the retry produced.
+`tests/test_shard_resume.py` fails on either.
+
+A resume only works when the task setup matches. The runner refuses to mix
+stories generated under different settings -- it will tell you which value
+changed, e.g. `max_new_tokens: 400 -> 300` -- because those values reach the
+prompt or the generation and the stories are then not comparable. Either restore
+the old value or point `--out` somewhere fresh; `--allow-task-change` exists but
+mixes them.
+
+Two more, both cheap to trip over:
+
+* **`/tmp/<name>.log` is appended across attempts.** A watcher that greps it for
+  "pulling results" fires immediately on the previous attempt's text. Poll
+  `kaggle_harness.py status --name <run>` instead. `/tmp/<name>.live` is
+  truncated per attempt and is safe to tail.
+* **`stop` asks for confirmation.** Pass `--yes` when running it without a
+  terminal, or it dies on an `EOFError` having stopped nothing.
+
+### Watching a run as it generates
+
+`--peek-stories N` prints the opening of each condition's first N stories to the
+live log as they are produced, and `--abort-broken-arms` runs the coherence
+checks on a condition's first twelve stories and skips the rest of it when nearly
+all of them fail. A dead condition then costs twelve stories instead of a
+hundred; the threshold is 90% broken, so ordinary imperfect conditions are never
+touched. Both have paid for themselves: the 14-22 layer band was diagnosed from
+two aborts, and reading peeked stories is what caught the leaked planning
+monologue.
+
+### Memory on a T4
+
+Qwen3-8B in half precision sits close enough to a 16 GB T4's ceiling that a
+steered arm can die on a ~1 GB allocation with fragmentation to spare. Shards run
+with `PYTORCH_ALLOC_CONF=expandable_segments:True`, which is what the error itself
+recommends and what let the combined arm finish. It also costs about 140 seconds
+a story there against 5 on Qwen3-1.7B, so size samples accordingly: 30 stories a
+condition is about two hours for four conditions across two GPUs.
+
 ### If something goes wrong
 
 The log is in `experiments/<name>/log.txt` whether the run succeeded or not, and
