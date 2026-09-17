@@ -1579,3 +1579,22 @@ the baseline itself shows. Found in passing and fixed: a resumed, sharded run's
 merged story file repeats the checkpointed history once per shard, which would
 have double-counted stories in any CSV-based scoring; the reader now
 deduplicates by story key (the checkpoint itself was never affected).
+
+## Round 21c - the whole frontier replicates; the big-model transfer test resized
+
+The combination run at layers 6-14 was also extended to 200 stories (the second
+hundred on fresh random seeds). Every setting on the frontier lands within noise
+of its first hundred - the champion family holds its coherence and compliance
+margins, and the variety records hold (the sideways step at 0.3 reaches 35.7
+effective distinct story-contents on the fresh half, against 34.0 on the first).
+Numbers per arm are in the run directory; nothing moved enough to change any
+conclusion.
+
+The transfer test on the eight-billion-parameter model (the four anchor settings
+at its proportional early band, layers 8-18 of 36) turned out to cost about 140
+seconds a story on Kaggle's T4s - the first attempt was stopped at a projected
+thirteen GPU-hours and relaunched at 30 stories per setting, enough to read the
+large effects (coherence and compliance) directionally. Its first steered
+stories are coherent present-tense dialogue-bearing prose with no fragmentation
+and no early aborts, which is the qualitative shape of a successful transfer;
+the numbers land in about two hours.
