@@ -127,6 +127,12 @@ class CoherenceThresholds:
     max_sentence_dup: float = 0.3
     max_tiny_run: int = 8
     max_quote_density: float = 3.0
+    # Sentences that stop being capitalised. Bimodal in practice, so anything
+    # between a fifth and three quarters flags the same stories; a third sits
+    # in the gap. See lowercase_opening_ratio for why this one matters more
+    # than the others: it is the only degeneration that makes a story score
+    # better on a requirement rather than worse.
+    max_lowercase_openings: float = 0.33
     max_ppl_z: float = 3.5             # robust z against a reference condition
     # How far *below* the reference a story's sentence-to-sentence similarity may
     # fall before it counts as incoherent. Relative for the same reason as the
@@ -267,6 +273,35 @@ def is_leaked_plan(text: str) -> bool:
     """True when the text is the model planning the story rather than the story."""
     head = text[:400]
     return bool(_META_ANY.search(head) or _META_OPEN.match(text))
+
+
+_SENTENCE_SPAN = re.compile(r"[^.!?]+[.!?]")
+
+
+def lowercase_opening_ratio(text: str) -> float:
+    """Share of sentences that begin with a lowercase letter.
+
+    A story whose sentences stop being capitalised is malformed output, not
+    prose, and it is the one degeneration here that makes a story score *better*
+    on a requirement. The reading-level check ends a sentence at a full stop only
+    when what follows starts a new one, so a run of uncapitalised sentences is
+    read as a single enormous sentence: in one perturbed condition eleven such
+    stories scored a mean Flesch-Kincaid grade of 53.9 and pulled the
+    condition's mean from 3.8 to 9.3, with the lowercase share and the grade
+    correlating at +0.85. Reported as "the perturbation raises the reading
+    level", it was eleven broken stories.
+
+    The distribution is not a continuum: across six conditions of a hundred
+    stories, a story either capitalises nearly everything or nearly nothing, and
+    the count flagged is the same anywhere between a fifth and three quarters.
+    Sentences beginning with a digit or a quotation mark are not counted either
+    way.
+    """
+    starts = [s.strip() for s in _SENTENCE_SPAN.findall(text)]
+    starts = [s[0] for s in starts if s and s[0].isalpha()]
+    if len(starts) < 3:
+        return 0.0
+    return sum(1 for c in starts if c.islower()) / len(starts)
 
 
 def quote_density(text: str) -> float:
@@ -641,6 +676,7 @@ class CoherenceFilter:
             "sentence_dup": near_dup_sentence_ratio(text),
             "tiny_run": float(tiny_sentence_run(text)),
             "quote_density": quote_density(text),
+            "lowercase_openings": lowercase_opening_ratio(text),
         }
 
         reasons = []
@@ -673,6 +709,8 @@ class CoherenceFilter:
             reasons.append("fragments")
         if scores["quote_density"] > t.max_quote_density:
             reasons.append("quote_salad")
+        if scores["lowercase_openings"] > t.max_lowercase_openings:
+            reasons.append("lost_capitals")
 
         return CoherenceReport(not reasons, reasons, scores, text, trimmed_words)
 

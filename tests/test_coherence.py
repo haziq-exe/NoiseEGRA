@@ -324,3 +324,40 @@ if failures:
     print(f"{len(failures)} FAILED: {failures}")
     raise SystemExit(1)
 print("all coherence tests passed")
+
+
+def test_lost_capitals_is_caught():
+    """A story whose sentences stop being capitalised must not pass.
+
+    This is the one degeneration that makes a story score *better* on a
+    requirement. The reading-level check ends a sentence at a full stop only
+    when what follows starts a new one, so uncapitalised prose is read as a
+    single enormous sentence and scores a very high reading grade. Eleven such
+    stories in one condition scored a mean grade of 53.9 and pulled that
+    condition's mean from 3.8 to 9.3.
+    """
+    from noiseegra.coherence import CoherenceFilter, lowercase_opening_ratio
+
+    filt = CoherenceFilter()
+    clean = ("The sun rose over the hill. Lily stretched her arms and smiled. "
+             "She walked towards the treehouse. The door creaked open.")
+    broken = ("the sun rose over the hilltops and the wind howled. the children "
+              "ran through the fields, kicking up dust. the teacher stood at the "
+              "edge of the field. she looked down at them and said nothing.")
+
+    assert lowercase_opening_ratio(clean) == 0.0
+    assert lowercase_opening_ratio(broken) == 1.0
+    assert filt.check(clean).ok, "well-formed prose was rejected"
+    report = filt.check(broken)
+    assert not report.ok and "lost_capitals" in report.reasons, report.reason
+
+    # Dialogue legitimately opens sentences with a quotation mark, and those
+    # must not count either way.
+    speech = ('"You missed dinner," he says. "I was not hungry," she says. '
+              '"Then sit down anyway," he says. The door closes behind them.')
+    assert filt.check(speech).ok, filt.check(speech).reason
+    print("  [PASS] lost capitalisation is caught, quoted openings are not")
+
+
+if __name__ == "__main__":
+    test_lost_capitals_is_caught()
