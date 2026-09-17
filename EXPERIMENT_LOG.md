@@ -1765,3 +1765,47 @@ richness the Flesch-Kincaid floor was meant to capture and cannot see.
 Round 25 re-runs this with the floor calibrated in the prompt as well as the
 scorer, and adds the smaller perturbation of 0.1, which is the obvious dose for
 a task where the unmodified model is already coherent.
+
+## Round 22 - the transfer test on the eight-billion-parameter model, complete
+
+The four anchor settings on Qwen3-8B at its proportionally-matched early band
+(layers 8-17 of 36, the same fifth-to-half of network depth as the champion's
+6-13 of 28), temperature 1.0, the children's fifteen-rule task, 30 stories per
+setting. Variety pooled at 20 stories, so these numbers compare only with each
+other and not with the small model's.
+
+| setting, Qwen3-8B | coherent /30 | broken /15 | variety of what happens | variety of wording | uncommon words |
+|---|---|---|---|---|---|
+| untouched model | **30** | 4.07 | 9.5 | 5.3 | 25.0% |
+| rule-nudge 3 alone | 29 | 3.45 | 8.6 | 4.5 | 22.3% |
+| shove 0.15 alone | 28 | 3.96 | 11.2 | 6.0 | 23.4% |
+| the champion: nudge 3 + shove 0.15 | 20 | **3.35** | **11.3** | **6.2** | 23.5% |
+
+**Each half transfers; the pair costs more here than on the small model.** The
+nudge improves rule-following (4.07 to 3.45) at 29 of 30 stories coherent, and
+the shove lifts both varieties, exactly as on Qwen3-1.7B. Together they reach the
+best compliance and the best variety in the table, but keep only 20 stories of 30
+against the untouched model's 30 - a third lost, where the small model's champion
+lost none against its baseline.
+
+The reason is visible in the stories: the 8B under the method writes the same
+telegraphic register the small model does, and about a third of its attempts
+tip over into fragments. The dose that suits a 1.7B model is too strong for an
+8B at the same relative depth. A dose sweep on the larger model is the obvious
+next step and has not been run.
+
+**What the round settles.** The mechanism is not an artefact of one model: the
+early layer band, the nudge's compliance gain and the shove's variety gain all
+reproduce at five times the parameter count. What does not transfer is the
+*setting* - the strength that is free on the small model is expensive on the
+large one.
+
+Two notes on the run itself. The 8B sits close enough to a 16 GB T4's ceiling
+that the combined arm died twice on a 1.16 GB prefill allocation; the shards now
+run with expandable_segments, which is the fragmentation the error itself
+pointed at, and the arm completed. And investigating that exposed two worse bugs
+in the resume path, both now fixed and covered by `tests/test_shard_resume.py`:
+a sharded run never actually resumed (the checkpoint restores to one directory
+layout and the workers read another, so the second attempt regenerated all 120
+stories), and the merge rebuilt its state from the workers alone, which would
+have overwritten the three completed conditions the checkpoint held.
