@@ -145,6 +145,54 @@ def vendi_from_embeddings(emb: np.ndarray, q: float = 1.0) -> float:
     return float((vals ** q).sum() ** (1.0 / (1.0 - q)))
 
 
+def mean_similarity(emb: np.ndarray) -> np.ndarray:
+    """Mean cosine similarity of each row to every other row.
+
+    Low for a story that sits apart from the whole set, high for one that is
+    near the middle of it. The diagonal is excluded, so a set of two gives each
+    item the similarity of the pair.
+    """
+    n = emb.shape[0]
+    if n < 2:
+        return np.zeros(n, dtype=np.float64)
+    kernel = (emb @ emb.T).astype(np.float64)
+    np.fill_diagonal(kernel, 0.0)
+    return kernel.sum(axis=1) / (n - 1)
+
+
+def similarity_outliers(
+    emb: np.ndarray, z: float = 3.5
+) -> Tuple[np.ndarray, np.ndarray]:
+    """``(keep_mask, mean_similarity)`` with isolated stories marked for removal.
+
+    Vendi counts the effective number of distinct items, so one story sitting far
+    from every other one is worth almost a whole extra "distinct story" on its
+    own. A handful of those — an off-task fragment, a story in a strange format,
+    anything the coherence checks let through — can carry a visible part of a
+    condition's score. This flags them the same way the perplexity checks flag an
+    unusual story: a robust z-score (median and median absolute deviation, so a
+    few outliers cannot drag the threshold out to meet them) on each story's mean
+    similarity to the rest, cutting only stories ``z`` deviations *below* the
+    median.
+
+    One-sided on purpose. A story unusually *similar* to the others lowers
+    diversity rather than inflating it, and dropping it would push the score up
+    for no reason.
+
+    A set with no spread in its similarities (every story alike) keeps
+    everything, because there is no scale on which to call anything an outlier.
+    """
+    s = mean_similarity(emb)
+    if s.size < 4:
+        return np.ones(s.size, dtype=bool), s
+    median = float(np.median(s))
+    mad = float(np.median(np.abs(s - median)))
+    scale = 1.4826 * mad
+    if scale <= 1e-9:
+        return np.ones(s.size, dtype=bool), s
+    return ((s - median) / scale) >= -z, s
+
+
 def _average_linkage_labels(sim: np.ndarray, threshold: float) -> np.ndarray:
     """Agglomerative average-linkage clustering; merge while similarity >= threshold.
 

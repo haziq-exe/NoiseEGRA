@@ -59,6 +59,37 @@ try:
 except ValueError:
     check("negative q is rejected", True)
 
+print("\n== isolated-story trimming ==")
+from noiseegra.diversity import mean_similarity, similarity_outliers  # noqa: E402
+
+rng2 = np.random.default_rng(3)
+core = rng2.normal(size=32)
+bulk2 = core + 0.25 * rng2.normal(size=(24, 32))
+bulk2 /= np.linalg.norm(bulk2, axis=1, keepdims=True)
+# Unrelated to the bulk rather than opposed to it: an off-task story shares
+# little with the others (cosine near zero), which is what adds a whole extra
+# direction to the set and inflates the count of distinct stories. A vector
+# pointing the opposite way lies in the same one-dimensional span as the bulk
+# and adds nothing, so it would not test this.
+far = rng2.normal(size=32)
+far -= (far @ core) / (core @ core) * core
+far /= np.linalg.norm(far)
+withq = np.vstack([bulk2, far[None, :]])
+keep, sims = similarity_outliers(withq)
+check("the isolated story has the lowest mean similarity",
+      int(np.argmin(sims)) == len(withq) - 1, f"{sims.min():.3f} vs median {np.median(sims):.3f}")
+check("the isolated story is trimmed", not keep[-1])
+check("the bulk survives", keep[:-1].all(), f"{int((~keep[:-1]).sum())} of the bulk dropped")
+v_all = vendi_from_embeddings(withq)
+v_trim = vendi_from_embeddings(withq[keep])
+check("trimming lowers the score it was inflating", v_trim < v_all,
+      f"all={v_all:.2f} trimmed={v_trim:.2f}")
+keep_clean, _ = similarity_outliers(bulk2)
+check("a set with no outlier keeps everything", keep_clean.all())
+ident = np.tile(np.array([0.6, 0.8]), (6, 1))
+check("a set with no spread keeps everything", similarity_outliers(ident)[0].all())
+check("a tiny set is left alone", similarity_outliers(np.eye(3))[0].all())
+
 print("\n== structural and syntactic diversity ==")
 from noiseegra.structure import _Nlp  # noqa: E402
 
