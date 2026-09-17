@@ -2145,3 +2145,132 @@ flagged stories read that way ("the wind howled through the trees like a
 thousand angry voices whispering secrets to the earth"). If that is what it is,
 skipping the control tokens will not help, and the fix is a smaller dose. The
 two are told apart by whether the skip changes the rate at all.
+
+## Round 26 - the control passes, and the register explanation fails
+
+Three ladders, one per Kaggle account, identical but for where the directions
+come from: the untouched model, then the constraint push at total strength 1, 2
+and 3. A hundred stories each, Qwen3-1.7B, layers 6-13, sampling temperature
+1.0, the middle-school rule set, prompt thresholds as in rounds 24-25.
+
+### The extracted directions do specific work that random ones do not
+
+`--random-directions` replaces every direction with a Gaussian draw of the same
+length. This is the control the project had never run, and the result is not
+close.
+
+| requirement, pass rate | untouched | push 2, extracted | push 2, random |
+|---|---|---|---|
+| present tense | 0% | **84%** | 0% |
+| a named character | 70% | **92%** | 59% |
+| speech on the page | 78% | **96%** | 91% |
+| variety of what happens | 52.5 | **63.7** | 54.3 |
+| variety of wording | 9.3 | **11.5** | 8.5 |
+
+A random push of the same size moves the tense requirement not at all, at any
+strength, and leaves the named-character rule below the untouched model. The
+extraction is doing the work. Whatever else is wrong with the method, its
+central premise survives its own control.
+
+### And the damage is specific to them too
+
+The reading floor is where the push loses, and a random push does the opposite:
+
+| | untouched | push 2, extracted | push 2, random | push 3, random |
+|---|---|---|---|---|
+| reaches the grade-3 floor | 57% | 12% | 69% | 84% |
+| words per sentence | 9.3 | 6.7 | 9.4 | 9.9 |
+| sentences per story | 20.3 | 32.0 | 19.6 | 17.5 |
+
+So "a constant offset of this magnitude flattens the prose whichever way it
+points" is false. A random offset leaves sentence length alone and lifts the
+reading floor. The shortening is something the extracted directions carry.
+
+### The best operating point found on this task
+
+| condition | coherent | broken /11 | happens | wording |
+|---|---|---|---|---|
+| untouched | 100/100 | 3.59 | 49.2 | 9.2 |
+| **push 2** | **100/100** | **2.72** | 58.9 | 11.3 |
+| push 3 | 99/100 | 3.48 | 57.4 | 11.6 |
+| temperature 1.8, nucleus 0.95 | 99/100 | 3.39 | 68.2 | 14.2 |
+| temperature 1.8, top-k 40 | 100/100 | 3.59 | 71.1 | 16.6 |
+| push 3 + perturbation 0.1 | 90/100 | 3.89 | 66.6 | 13.6 |
+| perturbation 0.1 alone | 89/100 | 4.18 | 62.8 | 17.3 |
+
+*Pooled at 89 across two runs; the two runs share their task setup exactly, and
+the cross-run pooling is what `scripts/compare_conditions.py` exists for.*
+
+The push at total strength 2 gives the best compliance yet measured on this task
+-- 2.72 requirements broken against the untouched model's 3.59 and raised
+temperature's 3.39 -- while keeping every one of its hundred stories coherent.
+Strength 2 is a real optimum, not an endpoint: 1 and 3 are both worse.
+
+**What it does not do is match raised temperature on variety.** 58.9 against
+68.2 for what happens, 11.3 against 14.2 for wording. That is the whole of the
+remaining gap, and the perturbation is the part of the method meant to close it.
+
+### The register-matched contrast pairs did not work, and refute their own premise
+
+The new pair file rewrites every contrast at twelve to twenty words a sentence
+on both sides and adds a direction for developed prose. Run as a third ladder:
+
+| condition | broken /11 | reaches the reading floor | words per sentence |
+|---|---|---|---|
+| untouched | 3.59 | 57% | 9.3 |
+| push 2, children's pairs | **2.72** | 12% | 6.7 |
+| push 2, register-matched pairs | 3.69 | 13% | 7.1 |
+
+Worse on compliance at every strength, and **no better on the thing it was built
+to fix**. The sensory requirement it should have helped went the wrong way
+(64% untouched, 85% under the children's pairs, 44% under the new ones).
+
+This is evidence against the explanation that motivated it. The new pairs'
+positive sides average fifteen to nineteen words a sentence, well *above* the
+model's own 9.3. If a direction carried the register of the text it was
+extracted from, pushing these should have lengthened sentences. It shortened
+them, by as much as the children's pairs did. "The directions carry the register
+of their contrast set" does not survive its own test, and the round-25 section
+that proposed it should be read with that in mind.
+
+Two things may explain the new set's weaker showing, neither tested: its
+directions agree across pairs less well (0.46-0.65 against 0.61-0.78), richer
+prose making a noisier contrast; and seven directions share a fixed total
+strength where five shared it before, so each gets less.
+
+### What shortens the sentences, as a hypothesis with a test attached
+
+What is left is that pushing a *property* direction makes the model express that
+property again, and expressing it again usually means starting another clause.
+More directions pushed, more sentence starts: at strength 3 the five-direction
+set writes 43.7 sentences a story and the seven-direction set 46.6, against the
+untouched model's 20.3. A random direction names no property to re-express and
+does not shorten anything.
+
+`--suite dropone` tests it directly: the same total strength with each direction
+left out in turn. If one direction carries most of the shortening, dropping it
+should recover the reading floor and keep the rest of the compliance.
+
+### A flaw inside the headline number, found by reading the stories
+
+> "Mara looked up from her book, her eyes fluttering as she listens to the wind
+> through the trees. She's got a red scarf tied around her neck ..."
+
+The push takes present-tense finite verbs from 15% to 96%. But 73% of its
+stories open in the past tense and switch immediately after. A share computed
+over a whole story cannot see where its exceptions sit, and they all sit in one
+place: 4% of sentences are past tense, and in 97% of stories those are the first
+one or two.
+
+It is a narrow flaw and a real one -- more visible to a reader than the
+untouched model's consistent past tense. It is now its own reported column.
+
+It also points somewhere. The push is added at decode steps only, so the opening
+is written before it takes hold: the first present-tense sentence is the fourth
+at strength 1, the second at strength 2, the first at strength 3. Applying the
+push during prefill as well should remove it. That is a run, not an argument,
+and it is the next one.
+
+A check for subject-verb agreement errors ("she're") found 1-2% of stories in
+the pushed arms, the same rate as the untouched model and raised temperature. It
+was one story, not a pattern.
