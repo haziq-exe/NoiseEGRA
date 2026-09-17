@@ -552,7 +552,32 @@ hundred stories give 86 kept / 5.78 broken / 26.3 happens / 12.8 wording against
 the same-seed baseline's 66 / 7.85 / 21.7 / 7.1 — every margin holds — and every
 frontier arm lands within noise of its first hundred.
 
-In flight: the transfer test on Qwen3-8B at its proportional early band (layers
+**Where the method helps, and where it does not** (rounds 22-25, 2026-09-17).
+The champion above is measured on the children's fifteen-rule task, where the
+untouched model loops on about a third of its attempts. Two further tasks say
+the advantage is not general:
+
+* **A looser task** (middle-school reader, no short-sentence rules, ~150 words):
+  the untouched model writes cleanly, 100 of 100 coherent, and the method loses.
+  It buys a third more variety of what happens (46.2 to 62.1 at perturbation
+  0.1, 99 of 100 coherent) but improves no requirement, and raised temperature
+  beats it on compliance, coherence and variety at once. Cause, from the
+  per-rule breakdown: the steering directions were extracted from pairs written
+  for children's writing, so they carry *write simply* with them and drag the
+  prose below the reading floor this task requires (57% to 4%), even with the
+  simple-register direction removed from the steered set. New directions for the
+  new register are the fix and have not been built.
+* **A larger model** (Qwen3-8B at the proportional early band, layers 8-17 of
+  36): each half transfers -- the nudge improves compliance at 29 of 30 stories
+  coherent, the perturbation lifts both varieties -- and together they reach the
+  best compliance and variety in that table while keeping only 20 stories of 30.
+  The dose that is free on a 1.7B model is expensive on an 8B.
+
+So: **the method's value tracks how badly the base model degenerates on the
+task, and its dose must be tuned to the model and the task.** Full tables in
+`EXPERIMENT_LOG.md` rounds 22, 24 and 25.
+
+In flight: a dose sweep on Qwen3-8B at its proportional early band (layers
 8-18 of 36), 30 stories per anchor setting (the big model costs ~140 s a story
 on a T4, so the sample is sized for the large effects). Early stories are
 coherent steered prose with no fragmentation.

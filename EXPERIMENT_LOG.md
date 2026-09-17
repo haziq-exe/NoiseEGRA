@@ -1809,3 +1809,80 @@ a sharded run never actually resumed (the checkpoint restores to one directory
 layout and the workers read another, so the second attempt regenerated all 120
 stories), and the merge rebuilt its state from the workers alone, which would
 have overwritten the three completed conditions the checkpoint held.
+
+## Round 25 - the middle-school task done properly, and why the method loses it
+
+The same task as round 24 with the reading floor calibrated in the prompt as well
+as the scorer (grade 3, which 37% of untouched stories reach, rather than the
+unreachable grade 6), and the perturbation swept at 0.1 as well as 0.15 - the
+smaller dose being the obvious choice for a task where the untouched model is
+already coherent. Eight settings, 100 stories each, temperature 1.0 except where
+stated, variety pooled at 81 stories.
+
+| setting | coherent /100 | broken /11 | variety of what happens | variety of wording | uncommon words |
+|---|---|---|---|---|---|
+| untouched model | **100** | 3.99 | 46.2 | 8.9 | 14.2% |
+| temperature 1.8, nucleus 0.95 | **100** | **3.85** | 63.3 | 13.8 | 15.5% |
+| temperature 1.8, top-k 40 | **100** | 3.91 | 65.8 | 16.1 | 16.0% |
+| nudge 3 alone | 99 | 4.63 | 53.7 | 11.3 | 29.0% |
+| nudge 3 + shove 0.1 | 99 | 4.61 | 62.1 | 13.3 | **29.1%** |
+| nudge 3 + shove 0.15 | 93 | 4.86 | **66.3** | 19.4 | 27.6% |
+| shove 0.1 alone | 97 | 4.38 | 57.6 | 16.4 | 14.2% |
+| shove 0.15 alone | 81 | 4.62 | 60.7 | **23.2** | 15.7% |
+
+**The smaller dose fixes the coherence cost.** At 0.1 the method keeps 99 stories
+of 100 against the untouched model's 100, and still lifts variety of what happens
+by a third (46.2 to 62.1). The dose has to be chosen per task: 0.15 is free on
+the children's task and costs seven stories per hundred here.
+
+**But raised temperature still wins this task outright** - better rule-following
+than the untouched model, not one incoherent story, and the same variety. Nothing
+the method does improves compliance here at all.
+
+### Why: the steering directions carry the register they were extracted for
+
+The per-rule breakdown says exactly where the nudge's compliance goes:
+
+| rule | untouched | nudge alone |
+|---|---|---|
+| speech on the page | 78% | **96%** |
+| a named character | 70% | **93%** |
+| the reading floor (grade 3+) | 57% | **4%** |
+| no sentence written twice | 98% | **79%** |
+| no two words beginning many sentences | 96% | **71%** |
+| no word leaned on | 84% | **72%** |
+
+The nudge wins the two rules it has directions for and loses four others, and
+the largest loss is the reading floor: 57% to 4%. The directions were extracted
+from minimal pairs written for a children's-writing task, so they encode *write
+simply* - and the simple-register direction was not even in this run's steered
+set. The remaining five (present tense, dialogue, varied openings, senses, a
+named character) carry the register with them anyway, shortening sentences until
+the prose falls below a floor the task now requires it to clear.
+
+The vocabulary column shows the same thing from the other side: the nudge
+roughly doubles the share of uncommon words, 14.2% to 29.0%. It is making the
+*words* richer while making the *sentences* shorter, and Flesch-Kincaid, which
+counts only sentence length and syllables, reads the net as simpler.
+
+**So the method is not task-agnostic.** Its directions are a register, and
+applied to a task that wants a different register they fight the requirements.
+Making this work on the middle-school task needs directions extracted for that
+register - contrastive pairs of plain against rich prose - not the children's
+ones re-used. That is the obvious next piece of work and has not been done.
+
+### Where this leaves the claim
+
+Three results now sit together, and they tell one story rather than three:
+
+* On the children's task, where the untouched model loops on about a third of
+  its attempts, the method beats it on all four axes at once (round 19-21).
+* On the middle-school task, where the untouched model writes cleanly, the
+  method buys a third more variety and loses compliance, and raised temperature
+  beats it (rounds 24-25).
+* On a five-times-larger model, each half transfers and the pair costs a third
+  of its stories at the small model's dose (round 22).
+
+**The method's value tracks how badly the base model degenerates on the task,
+and its dose has to be tuned to the model and the task.** That is narrower than
+"the method improves everything" and it is defensible, measured, and falsifiable.
