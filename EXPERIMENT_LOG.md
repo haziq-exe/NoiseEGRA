@@ -1624,3 +1624,30 @@ is the paper's thesis in one table.
 
 ("Genuinely different stories" counts stories more similar than the 99th
 percentile of cross-condition pairs as the same story, at matched group size.)
+
+## Round 22 - the transfer test on the eight-billion-parameter model (partial)
+
+The four anchor settings on Qwen3-8B at its proportionally-matched early band
+(layers 8-17 of 36, the same fifth-to-half depth as the champion's 6-13 of 28),
+temperature 1.0, 30 stories per setting (the 8B costs ~140 seconds a story on a
+T4, so the sample is sized for the large effects). The combined
+nudge-plus-shove arm ran out of GPU memory after one story - the 8B barely fits
+on the card and the combined tensors tipped it after a full prior arm; a resume
+with that arm alone on its shard is running. The three finished settings,
+variety over a 20-story pool (not comparable with the small model's 40-pool
+numbers; compare only within this table):
+
+| setting, Qwen3-8B, layers 8-17, temp 1.0 | kept /30 | broken /15 | happens | wording |
+|---|---|---|---|---|
+| untouched model | 30 | 4.07 | 9.5 ±0.4 | 5.3 |
+| rule-nudge at 3 alone | 29 | 3.45 | 8.6 ±0.4 | 4.5 |
+| random shove 0.15 alone | 28 | 3.96 | 11.2 ±0.4 | 6.0 |
+
+Three early reads. The bigger model unaided follows rules far better (4.07
+broken against the small model's 7.93) and writes far less varied stories
+relative to its own scale - the usual big-model mode-collapse. The early-band
+nudge transfers cleanly: better compliance, 29 of 30 coherent, no fragmentation
+(where the small model's default band shattered half its stories). The shove at
+0.15 buys +18% variety of what happens on this model against +43% on the small
+one - the dose may be low for the 8B; its keep rate (28 of 30) says there is
+room to push harder.
