@@ -536,11 +536,14 @@ compliance; larger shoves (0.25) and the constraint-vector sideways step buy
 more variety (up to 34-36) but pay in coherence or compliance. Full frontier in
 `EXPERIMENT_LOG.md` rounds 19-21.
 
-On the paper's own metric (embedding Vendi): the round-21d numbers (baseline
-7.40, champion 14.49) were computed over all stories including the rejected
-ones — see the measurement-fault note below — and are being re-measured through
-the four-step pipeline. Reading grade is unaffected: 0.0 for the champion
-against the baseline's 2.9. The shove alone reaches 17.57 but raises the grade
+On the paper's own metric (embedding Vendi), re-measured through the four-step
+pipeline — reject broken, match length, trim isolated, match group size — with
+all three conditions in one pass (round 23): the champion reaches **11.35**
+against the untouched model's **6.28**, 1.8 times the diversity, and clears the
+raised-temperature reference (8.40) by 35% while breaking two fewer rules. At
+reading grade 0.0 against the baseline's 2.6 and the raised temperature's 4.5.
+The earlier round-21d figures (7.40 and 14.49) were contaminated by rejected
+stories and are superseded. The shove alone reaches 17.57 but raises the grade
 to 5.2 (the same pathology the published paper showed for temperature) and fixes
 no rules; the nudge cancels both costs. Round 21d in `EXPERIMENT_LOG.md`.
 

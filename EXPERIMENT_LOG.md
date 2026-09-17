@@ -1651,3 +1651,44 @@ nudge transfers cleanly: better compliance, 29 of 30 coherent, no fragmentation
 0.15 buys +18% variety of what happens on this model against +43% on the small
 one - the dose may be low for the 8B; its keep rate (28 of 30) says there is
 room to push harder.
+
+## Round 23 - the diversity numbers re-measured honestly, and a correction to round 21d
+
+Round 21d reported the published paper's diversity metric (embedding Vendi) as
+7.40 for the untouched model and 14.49 for the method, described as measured
+over coherent stories only. **They were not.** The scoring script reports the
+coherence checks with one flag and drops the rejected stories with a different
+one, and only the first was passed, so those numbers were computed over every
+story including the broken ones. Two further steps were missing from every
+embedding-Vendi number the project has quoted: nothing removed the isolated
+survivors (a coherent story sitting far from the whole set is worth nearly a
+whole extra "distinct story" to this metric), and nothing matched group size
+across conditions that kept different numbers of stories, which flatters
+whichever kept more.
+
+All three conditions were re-scored in one pass through a fixed four-step
+pipeline (`scripts/clean_vendi.py`): reject the stories the checks fail, cut
+every story to its first 40 words, trim stories more than 3.5 robust deviations
+below their set's median similarity to the rest, then resample every condition
+to 78 stories (the smallest surviving count) and average over 40 draws.
+
+| condition, all at temperature 1.0 unless stated | stories | coherent | after trimming | Vendi, coherent only | Vendi, clean (the number to quote) | order-2 |
+|---|---|---|---|---|---|---|
+| the method: nudge 3 + shove 0.15, layers 6-13 | 200 | 173 | 173 | 13.90 | **11.35** | 3.36 |
+| untouched model at temperature 1.8, nucleus 0.95 | 100 | 78 | 78 | 8.40 | 8.40 | 2.71 |
+| the untouched model | 200 | 138 | 136 | 6.95 | 6.28 | 2.35 |
+
+The correction does not change any conclusion, and the honest margin is close to
+the inflated one: the method reaches **1.8 times** the untouched model's
+diversity on the paper's own metric (11.35 against 6.28) where the contaminated
+figure claimed 2.0 times. It also clears the raised-temperature reference (8.40)
+by 35% while breaking two fewer rules and writing at reading grade 0.0 against
+that reference's 4.5.
+
+Two details worth keeping. Trimming removed nothing from the method and from the
+high-temperature condition and two stories from the baseline, so isolated
+survivors were not carrying these scores - the group-size correction did most of
+the work (13.90 to 11.35 for the method, whose 173 surviving stories were being
+compared against the others' 78). And the order-2 column, which weights the bulk
+of the set rather than its tail, preserves the ordering, so the method's lead
+does not rest on a handful of unusual stories.
