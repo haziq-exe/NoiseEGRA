@@ -511,12 +511,18 @@ the base temperature; zero refusals and zero leaked planning monologues (two
 contaminations that inflate variety in every larger-perturbation arm — see the
 measurement-fault section). Stronger pushes (4.5) lose both coherence AND
 compliance; larger shoves (0.25) and the constraint-vector sideways step buy
-more variety (up to 34.0) but pay in coherence or compliance. Full frontier in
-`EXPERIMENT_LOG.md` rounds 19-21. One run of 100 stories per arm so far.
+more variety (up to 34-36) but pay in coherence or compliance. Full frontier in
+`EXPERIMENT_LOG.md` rounds 19-21.
 
-In flight: replication with fresh seeds (stories 101-200) for the champion and
-the combination arms, and the transfer test on Qwen3-8B at its proportional
-layer band (8-18 of 36).
+**Replicated on fresh seeds** (rounds 21b-c): the champion's second, independent
+hundred stories give 86 kept / 5.78 broken / 26.3 happens / 12.8 wording against
+the same-seed baseline's 66 / 7.85 / 21.7 / 7.1 — every margin holds — and every
+frontier arm lands within noise of its first hundred.
+
+In flight: the transfer test on Qwen3-8B at its proportional early band (layers
+8-18 of 36), 30 stories per anchor setting (the big model costs ~140 s a story
+on a T4, so the sample is sized for the large effects). Early stories are
+coherent steered prose with no fragmentation.
 
 ## Open questions
 
