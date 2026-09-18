@@ -276,6 +276,15 @@ GENERIC_INSTRUCTION = (
 )
 
 
+# Requirements the instruction already states in prose, which must not also
+# appear as a bullet. `story_format` is the closing line -- "Write only the story
+# itself: no title, heading, preamble or commentary" -- and it is scored like any
+# other rule. Giving it a bullet as well would change the prompt, and every story
+# generated before that change would stop being comparable with every story after
+# it, which is a high price for saying the same thing twice.
+STATED_IN_THE_INSTRUCTION = frozenset({"story_format"})
+
+
 def requirement_block(requirements: Dict[str, str], order: Sequence[str]) -> str:
     """The requirement list exactly as the checker will score it.
 
@@ -283,7 +292,8 @@ def requirement_block(requirements: Dict[str, str], order: Sequence[str]) -> str
     separately, so the prompt and the scorer cannot drift apart: if a threshold
     changes, the sentence the model is given changes with it.
     """
-    return "\n".join(f"- {requirements[name]}" for name in order if name in requirements)
+    return "\n".join(f"- {requirements[name]}" for name in order
+                     if name in requirements and name not in STATED_IN_THE_INSTRUCTION)
 
 
 def build_generic_messages(

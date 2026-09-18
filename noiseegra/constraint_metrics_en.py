@@ -163,6 +163,10 @@ CONSTRAINT_NAMES = (
     # a ceiling. Appended rather than replacing `simple_register` so every
     # earlier run still re-scores to the number it produced.
     "mature_register",
+    # The instruction's closing line: "Write only the story itself: no title,
+    # heading, preamble or commentary", plus the ordinary prose formatting that
+    # goes with it. Appended, so every earlier run re-scores as it did.
+    "story_format",
 )
 
 # What a checker scores unless told otherwise: the original thirteen. The
@@ -196,6 +200,11 @@ MIDDLE_CONSTRAINTS = (
     "present_tense", "mature_register", "dialogue_min", "varied_openers",
     "plain_words", "sensory", "fresh_words", "named_character",
     "no_repetition", "distinct_sentences", "fresh_openings",
+    # Scored but deliberately not given a bullet of its own: the instruction
+    # already states it in its closing line, and adding a bullet would change
+    # the prompt and make every story generated before it incomparable. See
+    # writingprompts.STATED_IN_THE_INSTRUCTION.
+    "story_format",
 )
 
 # Short column headers for wide tables, and the full text for the legend.
@@ -209,6 +218,7 @@ CONSTRAINT_SHORT = {
     "sensory": "sense", "simple_syntax": "syntax", "fresh_words": "fresh",
     "named_character": "named", "no_repetition": "norep",
     "distinct_sentences": "dupsent", "fresh_openings": "reopen",
+    "story_format": "format",
 }
 
 _WORD = re.compile(r"[A-Za-z]+(?:'[A-Za-z]+)?")
@@ -318,6 +328,43 @@ def repeated_ngram_share(words: Sequence[str], n: int = 5) -> float:
         return 0.0
     grams = [" ".join(w[i:i + n]) for i in range(len(w) - n + 1)]
     return 1.0 - len(set(grams)) / len(grams)
+
+
+_TITLE_LINE = re.compile(r"^\s*(?:\*\*|__|#{1,6}\s|Title\s*:|TITLE\s*:)", re.I)
+
+
+def _badly_formatted(text: str) -> bool:
+    """A heading the instruction forbids, or sentences that lost their capitals.
+
+    Both are the same failure and neither is incoherence: the prose underneath
+    is usually fine, and a copy-editor would fix either in a minute. Scoring
+    them as one broken requirement rather than as a broken story is what keeps
+    the count of usable stories honest in both directions -- a condition that
+    produces good prose under a heading has produced a story, and it has also
+    disobeyed an instruction.
+
+    Kept in step with `coherence.opens_with_a_title`, which is the same test.
+    """
+    stripped = text.lstrip()
+    if not stripped:
+        return True
+    first = stripped.split("\n")[0].strip()
+    if _TITLE_LINE.match(first):
+        return True
+    rest = "\n".join(stripped.split("\n")[1:]).strip()
+    if (rest and len(first.split()) <= 10
+            and not first.endswith((".", "!", "?", '"', "\u201d", "\u2019"))):
+        return True
+
+    # Split on terminators alone, not with `split_sentences`, which only breaks
+    # where a capital follows -- on the all-lowercase text this is here to catch
+    # it returns the whole story as one sentence and the check cannot fire.
+    openings = [x.strip() for x in re.split(r"(?<=[.!?])\s+", text) if x.strip()]
+    if len(openings) >= 4:
+        lower = sum(1 for x in openings if x[0].islower())
+        if lower / len(openings) > 0.5:
+            return True
+    return False
 
 
 def opens_in_the_wrong_tense(text: str, checker: "EnglishConstraintChecker") -> bool:
@@ -716,6 +763,9 @@ class EnglishConstraintChecker:
             "fresh_openings": "it does not start sentence after sentence the same way: "
                               "no two words begin more than "
                               f"{self.max_same_opener} sentences",
+            "story_format": "it is the story itself and nothing else: no title, "
+                            "heading or preamble, and its sentences start with "
+                            "capital letters",
         }
 
     def requirements_short(self) -> Dict[str, str]:
@@ -749,6 +799,7 @@ class EnglishConstraintChecker:
             "named_character": f"a name, used {self.min_name_uses}+ times",
             "distinct_sentences": "no sentence written twice",
             "fresh_openings": f"no opening reused over {self.max_same_opener} times",
+            "story_format": "no heading, capitals kept",
         }
 
     # -- measurement --------------------------------------------------------- #
@@ -847,6 +898,11 @@ class EnglishConstraintChecker:
             "named_character": n_names >= 1 and name_uses >= self.min_name_uses,
             "distinct_sentences": n_dup_sentences <= self.max_dup_sentences,
             "fresh_openings": same_opener <= self.max_same_opener,
+            # A heading the instruction forbids, or prose that has stopped
+            # capitalising its sentences. Both are the model failing to produce
+            # a conventionally formatted story while the prose underneath is
+            # fine, so both cost one requirement rather than the whole story.
+            "story_format": not _badly_formatted(text),
         }
         violations = sum(1 for c in self.constraints if checks[c] is False)
 

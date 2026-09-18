@@ -143,23 +143,33 @@ def main() -> None:
         # content sitting in exactly the opening words every diversity number
         # here is computed over. Counted, then removed, so the scores below
         # describe the story rather than its heading.
+        # A heading is scored as a broken requirement, not as a broken story:
+        # the prose underneath it is usually fine, and so is the prose in a
+        # story that stopped capitalising. Both cost one rule. The rate is still
+        # reported, and the text is still measured with the heading removed,
+        # because a title is distinctive content sitting in exactly the opening
+        # words the diversity scores are computed over.
         title_flags = [opens_with_a_title(t) for t in texts]
         titled = float(np.mean(title_flags))
-        texts = [trim_title(t)[0] for t in texts]
+        scored_text = [trim_title(t)[0] for t in texts]
 
-        reports = [coherence.check(t) for t in texts]
+        reports = [coherence.check(t) for t in scored_text]
         kept = [r.text for r in reports if r.ok]
         # What a reader would actually accept: coherent, and without a heading
         # the instruction forbids. The two failures trade against each other --
         # sparing the prompt's boundary takes titles from 29% to 4% and loses
         # capitalisation in some stories instead -- so neither column alone says
         # how much of a condition's output is usable.
-        usable = float(np.mean([r.ok and not t for r, t in zip(reports, title_flags)]))
+        usable = float(np.mean([r.ok for r in reports]))
         rejected = Counter(r.reason for r in reports if not r.ok)
         if not kept:
             raise SystemExit(f"{name}: the coherence checks rejected all {len(texts)} stories")
 
-        agg = checker.evaluate_all(kept)
+        # Requirements are scored on the text as written, heading and all, so
+        # the formatting rule can see it; the diversity measures below use the
+        # trimmed text, for the reason above.
+        kept_raw = [t for t, r in zip(texts, reports) if r.ok]
+        agg = checker.evaluate_all(kept_raw)
         per_story = agg["stories"]
         sentences = [len(SENTENCE.findall(t)) or 1 for t in kept]
         words = [len(WORD.findall(t)) for t in kept]
@@ -222,9 +232,9 @@ def main() -> None:
     print("            present -- a flaw the whole-story share above cannot see")
     print("  titled    share opening with a title or heading, which the instruction")
     print("            forbids. Removed before every other number in the row")
-    print("  usable    share that are coherent AND untitled -- the share a reader")
-    print("            would accept. The two failures trade against each other, so")
-    print("            neither of the columns before it says this on its own")
+    print("  usable    share whose prose the coherence checks accept. A heading or")
+    print("            lost capitals is a broken requirement, counted in `broken`,")
+    print("            not a broken story: the prose underneath is fine either way")
 
     rejections = {n: scored[n]["rejected"] for n in order if scored[n]["rejected"]}
     if rejections:

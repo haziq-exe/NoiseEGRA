@@ -133,6 +133,20 @@ class CoherenceThresholds:
     # than the others: it is the only degeneration that makes a story score
     # better on a requirement rather than worse.
     max_lowercase_openings: float = 0.33
+    # Whether losing capitalisation rejects a story outright.
+    #
+    # It used to, and that was the wrong place for it. A story that reads
+    #
+    #     the wind carries the scent of pine as lila walks through the forest.
+    #     the trees whisper secrets as she passes, their leaves rustling softly.
+    #
+    # is not incoherent -- the prose is fine and a copy-editor would fix it in a
+    # minute. Rejecting it counts a formatting slip as a broken story, which
+    # understates how much usable text a condition produces and overstates how
+    # badly it fails. It belongs with the requirements, where breaking one rule
+    # costs one rule, and `constraint_metrics_en.story_format` scores it there
+    # alongside the heading the instruction also forbids.
+    reject_lost_capitals: bool = False
     max_ppl_z: float = 3.5             # robust z against a reference condition
     # How far *below* the reference a story's sentence-to-sentence similarity may
     # fall before it counts as incoherent. Relative for the same reason as the
@@ -764,7 +778,8 @@ class CoherenceFilter:
             reasons.append("fragments")
         if scores["quote_density"] > t.max_quote_density:
             reasons.append("quote_salad")
-        if scores["lowercase_openings"] > t.max_lowercase_openings:
+        if (t.reject_lost_capitals
+                and scores["lowercase_openings"] > t.max_lowercase_openings):
             reasons.append("lost_capitals")
 
         return CoherenceReport(not reasons, reasons, scores, text, trimmed_words)
