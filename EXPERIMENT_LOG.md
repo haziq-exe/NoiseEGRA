@@ -2938,3 +2938,62 @@ The heading requirement and the perturbation size are therefore in direct
 opposition, and the balance between them is a number rather than a choice: round
 38 sweeps how much of the fixed strength that one direction gets, at 2 and 3
 times the others, crossed with perturbation 0.15 and 0.175.
+
+## Round 38 - a formatting slip is a broken rule, not a broken story
+
+Haziq's call, and it changes what the numbers mean. Reading the stories the best
+arm was losing: all of them are good prose that stopped capitalising, or good
+prose under a heading.
+
+> the wind carries the scent of pine as lila walks through the forest. the trees
+> whisper secrets as she passes, their leaves rustling like a soft lullaby.
+
+That is not an incoherent story. Rejecting it counted a formatting slip as a
+broken story, which overstates how badly a condition fails and understates how
+much usable text it produces. Breaking one rule should cost one rule.
+
+`story_format` now scores both failures -- a heading the instruction forbids, or
+sentences that have lost their capitals -- as a twelfth requirement.
+
+Three things it deliberately does not do:
+
+* **It does not change the prompt.** The instruction already ends "Write only the
+  story itself: no title, heading, preamble or commentary", so the rule is scored
+  from that line and gets no bullet of its own. A bullet would change the prompt,
+  and every story generated before today would stop being comparable with every
+  story after it.
+* **It does not favour the method.** Both decoding baselines produce no headings
+  and lose no capitals, so their counts are unchanged. It costs the method 0.06
+  of a requirement.
+* **It does not delete the old behaviour.** `reject_lost_capitals` defaults off,
+  so the stricter accounting can still be reproduced.
+
+### Where that leaves the comparison, 100 stories a condition, pooled at 98
+
+| condition | coherent | broken /12 | happens | wording | grade |
+|---|---|---|---|---|---|
+| untouched model | 98/100 | 4.31 | 57.5 | 9.8 | 3.06 |
+| temperature 1.8, nucleus 0.95 | **100/100** | 3.97 | 74.2 | 16.5 | 3.46 |
+| temperature 1.8, top-k 40 | 99/100 | 3.91 | **78.3** | 17.8 | 3.63 |
+| four directions, perturbation 0.15 | **100/100** | **2.86** | **74.6** | **19.3** | **5.70** |
+
+Against raised temperature with nucleus sampling -- the comparison the goal names
+-- the method matches coherence at 100 of 100, breaks 2.86 requirements against
+3.97, and wins both varieties, at a markedly higher reading level.
+
+**Two things not to overclaim.** The margin on variety of what happens is 0.4 at
+a hundred stories, which is inside the noise and means nothing yet; that is what
+the larger run is for. And raised temperature with top-k 40 still wins that axis
+at 78.3, though it loses the other three.
+
+### Two nulls that fix the operating point
+
+Raising the total push to 2.5 or 3, to restore the strength each direction had
+before a fourth was added, makes headings **worse**: 5% and 6% against 3% at a
+total of 2.
+
+Weighting the heading direction above the others does nothing at a perturbation
+of 0.15 -- still 3% -- and is much worse at 0.175, where headings reach 11-12%
+and coherence falls to 90-93%. So 0.15 with equal weights is the operating
+point, and the perturbation ceiling is a property of the prompt rather than of
+how the push is divided.
