@@ -2524,3 +2524,74 @@ So there are two candidates and neither is finished:
 
 The run sparing the last few prompt positions is testing whether the second can
 be had without the titles.
+
+## Rounds 29 and 30 - three ways of buying more variety, all failing the same way
+
+The state after round 28 was that compliance and coherence were won and one axis
+was not: variety of what happens, 66-70 against raised temperature's 70-74. All
+three obvious ways of buying more of it were run. None worked, and they failed
+identically, which is more informative than any of them succeeding.
+
+Every number below is Qwen3-1.7B, layers 6-13, temperature 1.0, the
+middle-school rule set, 100 stories a condition, pooled at 91.
+
+**Usable** is introduced here and is the honest headline: the share of stories
+that are coherent *and* do not open with a heading the instruction forbids.
+Reporting coherence alone made the round-28 arm look like a 99% result when 29%
+of its stories broke an explicit instruction.
+
+| condition | usable | broken /11 | happens | wording |
+|---|---|---|---|---|
+| untouched | 98% | 4.31 | 54.6 | 9.6 |
+| temperature 1.8, nucleus 0.95 | **100%** | 3.97 | 70.0 | 16.2 |
+| temperature 1.8, top-k 40 | 99% | 3.90 | **73.6** | 17.1 |
+| push 2 at both sitings + perturbation 0.1 | 96% | 3.37 | 66.3 | 16.9 |
+| the same, sparing the last 4 prompt positions | 95% | 3.19 | 66.5 | 15.2 |
+| the same at perturbation 0.125 | 92% | 3.36 | 68.0 | 16.9 |
+| the same with a 95-direction perturbation basis | 91% | **2.99** | 63.7 | 14.3 |
+| prompt push at twice the writing strength, no perturbation | 88% | 3.94 | 61.9 | **18.1** |
+
+### The three failures
+
+**A larger perturbation.** 3% of stories open with a title at 0.1, 29% at 0.15.
+
+**A stronger push at the prompt.** 12% titles at twice the writing strength, 44%
+at four times, taking usable to 88% and 39%.
+
+**A richer perturbation basis.** The basis had been rank 31 all along -- built
+from 32 sampled stories, so the rank 64 every run requested was silently capped.
+At 95 directions variety of what happens is *lower*, 63.7 against 66.3, and
+coherence is eight points worse. More directions to move along is not what was
+missing.
+
+### What they have in common, and what it rules out
+
+All three enlarge the displacement of the prompt representation, and all three
+end with the model no longer treating the prompt as an instruction: it writes a
+document, and a document opens with a title. The prompt representation has a
+limited displacement budget and every lever tried so far spends it.
+
+Sparing the final prompt positions -- the chat template's own tokens, which mark
+that the instruction is over -- confirms the mechanism directly: titles fall from
+29% to 4%. At a perturbation of 0.15 it trades one failure for another, stories
+that stop capitalising entirely ("the wind howls through the canyon as jake runs
+down the rocky path"), so it has to be used at 0.1 to 0.125 where neither
+appears.
+
+**The push is protective, not additive.** It would be natural to think the push
+and the perturbation share the budget, so a smaller push would buy room for a
+larger perturbation. The opposite is true of coherence. Perturbation alone at
+0.15 keeps 84 stories of 100 coherent; the same perturbation with the push at 2
+keeps 99. The push does add titles on top (18% alone, 29% with it), but weakening
+it to buy perturbation headroom would cost more than it bought.
+
+### What is left
+
+Both remaining ideas are structural rather than "turn it up", which is what this
+round says is required. The per-story perturbation moved to a later layer band
+than the push, with the push held where it is known to work; and the perturbation
+applied while the story is written instead of at the prompt, which does not touch
+the prompt representation at all and so cannot spend its budget. Neither has ever
+been run here: every run in this project has perturbed the prompt positions and
+left decoding alone, and one `--layers` flag has always set the band for both
+halves at once.
