@@ -20,6 +20,81 @@ Companion documents:
 - `EXPERIMENT_LOG.md` — the narrative, round by round: what was asked, what came
   back, what it changed.
 
+## The branch this is on now: the middle-school task (2026-09-18)
+
+`middle-school-register`, branched from `english-generalization`. Everything
+above the round-26 mark in `EXPERIMENT_LOG.md` targets the children's-writing
+task, whose fifteen requirements between them force the prose to be as small as
+it can be. The method wins that task. On the middle-school task -- the
+small-prose rules removed, the reading level a floor rather than a ceiling,
+roughly 150 words instead of 60 -- it did not, and this branch exists to make it.
+
+**The goal, from Haziq:** on the middle-school task, at sampling temperature
+1.0, improve variety, keep every story coherent, and improve requirement
+compliance, all at once, and beat raised-temperature decoding. The novelty bar
+in `astar-novelty-bar` still applies.
+
+### Where it stands (round 28, 100 stories a condition, Qwen3-1.7B, layers 6-13)
+
+| condition | coherent | broken /11 | variety of what happens | variety of wording | opens with a title |
+|---|---|---|---|---|---|
+| untouched model | 98/100 | 4.31 | 57.5 | 9.8 | 0% |
+| temperature 1.8, nucleus 0.95 | **100/100** | 3.97 | 74.2 | 16.6 | 0% |
+| temperature 1.8, top-k 40 | 99/100 | 3.90 | **78.3** | 17.8 | 0% |
+| push 2 while writing, four directions | **100/100** | 2.51 | 62.7 | 12.2 | 0% |
+| push 2 while writing, three directions | **100/100** | **2.13** | 62.9 | 10.4 | 0% |
+| push 2 at both sitings + perturbation 0.15 | 99/100 | 3.52 | 75.5 | **20.0** | 29% |
+
+Compliance is won outright and coherence is level. **Variety of what happens is
+the one axis still behind**, and the arm that comes closest on it breaks an
+instruction the others keep.
+
+### The four findings this branch has produced
+
+1. **The extracted directions do specific work.** The random-direction control,
+   never run before, is not close: a push along Gaussian directions of the same
+   length moves the tense requirement from 0% to 0% at every strength while the
+   extracted directions take it to 84%. The method's central premise survives
+   its own control.
+
+2. **Two of the five steered directions were costing the reading level, and
+   both were redundant.** Leave-one-out at fixed total strength: dropping the
+   speech direction takes requirements broken from 3.03 to 2.51 and dropping
+   varied openings takes it to 2.13, while *improving the very requirements
+   they were steering* (speech 97% to 95% at a prompt-only cost, varied openings
+   57% to 64%) and restoring the prose completely -- 9.2 words a sentence
+   against the untouched model's 9.1. Both removed directions express their
+   property by starting another unit of text: another quoted line, another
+   sentence to open. The three that remain -- present tense, the senses, a named
+   character -- are properties of prose already being written.
+
+3. **Where the push is applied decides what it buys.** Pushing while writing
+   enforces a sustained property and costs sentence length; pushing at the
+   prompt positions alone gives no compliance at all but takes variety of
+   wording from 9.7 to 16.7 with sentence length intact. A constant offset is
+   identical for every story, so that is not per-story variation. The two
+   sitings were tied to one strength in every run before this branch.
+
+4. **Two failure modes that no metric here could see, both found by reading.**
+   73% of pushed stories open in the past tense and switch to the present
+   immediately (the whole-story share cannot see where its exceptions sit), and
+   29% of the highest-variety arm's stories open with a title, which the
+   instruction forbids and which no baseline produces at all. Both are now
+   reported columns.
+
+### What has been tried on this branch and did not work
+
+- **Contrast pairs rewritten in the middle-school register.** Built to fix the
+  reading level on the theory that the directions carried the register of the
+  text they were extracted from. They were worse on compliance at every strength
+  (3.69 against 2.72) and no better on the reading floor. They also refute the
+  theory that motivated them: their positive sides average fifteen to nineteen
+  words a sentence, well above the model's own 9.3, so pushing them should have
+  lengthened sentences and it shortened them by as much as the children's pairs
+  did. Do not rebuild this without a new reason.
+- **Pushing at the prompt only, to fix the past-tense opening.** It does remove
+  the flaw, by removing the tense effect entirely.
+
 ## The goal on this branch (revised by Haziq, 2026-09-17, second revision)
 
 **The task is now the middle-school / early-high-school one, and only that.**
