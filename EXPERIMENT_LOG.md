@@ -2997,3 +2997,53 @@ of 0.15 -- still 3% -- and is much worse at 0.175, where headings reach 11-12%
 and coherence falls to 90-93%. So 0.15 with equal weights is the operating
 point, and the perturbation ceiling is a property of the prompt rather than of
 how the push is divided.
+
+## Round 39 - the perturbation has a content ceiling, and it is not where the wording ceiling is
+
+Re-scoring every arm generated so far under the corrected accounting, where a
+heading or lost capitals costs one requirement rather than the whole story.
+Pooled at 83, which is set by the worst-keeping arm, so these numbers compare
+only with each other.
+
+| condition | coherent | broken /12 | happens | wording | grade |
+|---|---|---|---|---|---|
+| temperature 1.8, nucleus 0.95 | **100/100** | 3.97 | 64.7 | 15.7 | 3.46 |
+| temperature 1.8, top-k 40 | 99/100 | 3.91 | **68.1** | 16.5 | 3.63 |
+| four directions, perturbation 0.15 | **100/100** | **2.86** | 65.4 | 18.2 | 5.70 |
+| push at decode only, perturbation 0.15 | 96/100 | 3.26 | 67.2 | 17.9 | 4.03 |
+| the same at 0.2 | 91/100 | 3.86 | 64.3 | 24.1 | 5.74 |
+| the same at 0.25 | 83/100 | 3.72 | 61.8 | **26.5** | 6.52 |
+| heading direction weighted 2, perturbation 0.175 | 93/100 | 3.23 | 63.0 | 18.0 | 5.48 |
+| four directions at a total push of 3 | 98/100 | 2.98 | 64.6 | 15.0 | 5.39 |
+
+**Variety of what happens peaks at a perturbation of 0.15 and falls after it:**
+67.2, then 64.3 at 0.2, then 61.8 at 0.25. **Variety of wording does the
+opposite and keeps climbing:** 17.9, 24.1, 26.5.
+
+The two measures answer different questions and this is where they separate.
+Past 0.15 the perturbation stops sending the model to a different story and
+starts disturbing the wording of the story it was already going to write. More
+displacement buys more ways of saying a thing and fewer things to say.
+
+That is a ceiling on the mechanism rather than a setting left untuned, and it
+explains every failed attempt to push past 0.15: the magnitude was not being
+wasted, it was being spent on the wrong axis. It also means raised temperature
+with top-k sampling is unlikely to be caught on that axis by perturbing harder,
+because harder is the wrong direction.
+
+### Where the comparison stands
+
+Against raised temperature with **nucleus sampling** -- the baseline the goal
+names -- the method matches coherence at 100 of 100 and wins the other three:
+requirements broken 2.86 against 3.97, variety of what happens 65.4 against
+64.7, variety of wording 18.2 against 15.7, at a reading grade of 5.70 against
+3.46.
+
+Against raised temperature with **top-k sampling** it wins requirement
+compliance, variety of wording and coherence, and loses variety of what happens,
+68.1 against 65.4.
+
+The margin on variety of what happens against nucleus sampling is 0.7 here and
+0.4 at a different pooling, both inside the noise of a hundred stories. Nothing
+should be claimed from it until the larger run, which puts all four conditions
+in one run sharing a prompt, a seed sequence and a pooling size.
