@@ -220,6 +220,15 @@ def _ortho_tag(model_name: str, spec: ExperimentSpec) -> str:
         parts.append(f"__nsch{_SCHEDULE_CODE.get(plan.noise_schedule, plan.noise_schedule[:1])}")
         if getattr(plan, "noise_horizon", None):
             parts.append(f"__nh{int(plan.noise_horizon)}")
+    # Which layers each half acts on, when they differ. Without this in the id,
+    # a run pushing at one band and perturbing at another shares an id with one
+    # that does both over the same band, and they overwrite each other.
+    ol = sorted(getattr(plan, "offset_layers", ()) or ())
+    pl = sorted(getattr(plan, "push_layers", ()) or ())
+    if ol and ol != pl:
+        parts.append(f"__ol{ol[0]}-{ol[-1]}")
+    if pl and ol and pl != ol:
+        parts.append(f"__pl{pl[0]}-{pl[-1]}")
     if getattr(plan, "prompt_tail_clear", 0):
         parts.append(f"__tail{int(plan.prompt_tail_clear)}")
     if plan.steer_prefill:

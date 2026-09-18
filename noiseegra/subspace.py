@@ -39,7 +39,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Dict, List, Mapping, Optional, Sequence, Tuple, FrozenSet
 
 import torch
 
@@ -612,6 +612,19 @@ class SteeringPlan:
     # moving how the model read the instruction itself. 0 keeps every run before
     # this one.
     prompt_tail_clear: int = 0
+    # Which layers each half of the method acts on, when they should differ.
+    # Empty means "every layer the plan covers", which is what every run before
+    # this used.
+    #
+    # The two halves have no reason to want the same band. The constraint push
+    # controls properties of the sentence being written -- its tense, whether it
+    # names the character -- and works at layers 6-13 of 28, fragmenting the text
+    # at 14-22. The perturbation's job is different: it is supposed to send the
+    # model to a different story, and which story gets told is not obviously
+    # decided in the same place as how a sentence is worded. Every run so far has
+    # applied both over one band because one `--layers` set both.
+    push_layers: FrozenSet[int] = frozenset()
+    offset_layers: FrozenSet[int] = frozenset()
     protect_rank: int = 0
 
     # ---- construction ---------------------------------------------------- #
@@ -659,6 +672,8 @@ class SteeringPlan:
         steer_prefill: bool = False,
         prefill_gain: float = 1.0,
         prompt_tail_clear: int = 0,
+        push_layers: Optional[Sequence[int]] = None,
+        offset_layers: Optional[Sequence[int]] = None,
         protect_extra: Optional[Mapping[int, torch.Tensor]] = None,
         device: Optional[torch.device] = None,
     ) -> "SteeringPlan":
@@ -841,6 +856,8 @@ class SteeringPlan:
             steer_prefill=bool(steer_prefill),
             prefill_gain=float(prefill_gain),
             prompt_tail_clear=int(prompt_tail_clear),
+            push_layers=frozenset(int(x) for x in (push_layers or ())),
+            offset_layers=frozenset(int(x) for x in (offset_layers or ())),
             protect_rank=protect_rank,
         )
 
@@ -986,6 +1003,8 @@ class SteeringPlan:
             lp.basis = lp.basis.to(device)
             if lp.jitter is not None:
                 lp.jitter = lp.jitter.to(device)
+        if self.push_layers and layer not in self.push_layers:
+            return None
         h = self.horizon if horizon is None else horizon
         delta = self.jitter_steering(
             layer, lp.steering_delta(t, h, self.specs, self.rms_scale,
@@ -1129,7 +1148,8 @@ class SteeringPlan:
 
         h = self.horizon if horizon is None else horizon
         delta = None
-        if self.steer_decode and self.steer_mode not in ("feedback", "error"):
+        if (self.steer_decode and self.steer_mode not in ("feedback", "error")
+                and (not self.push_layers or layer in self.push_layers)):
             delta = self.jitter_steering(
                 layer, lp.steering_delta(t, h, self.specs, self.rms_scale,
                                          gains=self.gains, budget=self.steer_budget)
@@ -1137,7 +1157,8 @@ class SteeringPlan:
 
         # The per-story offset is a perturbation, so it is gated with the noise
         # rather than with the steering: an entropy gate closes on both together.
-        if with_offset and self.offset_decode and lp.offset is not None:
+        if (with_offset and self.offset_decode and lp.offset is not None
+                and (not self.offset_layers or layer in self.offset_layers)):
             delta = lp.offset if delta is None else delta + lp.offset
 
         if with_noise and self.noise_mode != "none" and self.noise_alpha > 0:
@@ -1403,6 +1424,8 @@ class SteeringPlan:
             "steer_prefill": self.steer_prefill,
             "prefill_gain": self.prefill_gain,
             "prompt_tail_clear": self.prompt_tail_clear,
+            "push_layers": sorted(self.push_layers),
+            "offset_layers": sorted(self.offset_layers),
             "protect_rank": self.protect_rank,
             "per_layer": per_layer,
         }

@@ -108,7 +108,7 @@ PAIR_SETS = {
 # basis-naming run id survives with no basis built.
 BASIS_SUITES = {"offset", "story", "prompt", "main", "pareto", "select", "feedback",
                 "assemble", "headtohead", "closure", "control", "ablate",
-                "controls", "tame", "core4", "combine", "amplify", "spread", "frontier", "siting", "prefill", "asymmetric", "boundary",
+                "controls", "tame", "core4", "combine", "amplify", "spread", "frontier", "siting", "prefill", "asymmetric", "boundary", "bands",
                 "constdose"}
 
 
@@ -170,7 +170,7 @@ def main() -> None:
     ap.add_argument("--suite", nargs="+", default=["compare"],
                     choices=["baseline", "sampling", "compare", "method", "noise",
                              "offset", "story", "prompt", "main", "pareto", "directions", "select", "budget", "feedback", "assemble", "headtohead", "closure", "control",
-                             "ablate", "controls", "tame", "fsc", "core4", "combine", "dose", "siting", "dropone", "prefill", "asymmetric", "boundary",
+                             "ablate", "controls", "tame", "fsc", "core4", "combine", "dose", "siting", "dropone", "prefill", "asymmetric", "boundary", "bands",
                              "amplify", "constdose", "spread", "frontier",
                              "window", "decay", "core", "ortho", "alpha", "gate",
                              "beta", "loo", "all"])
@@ -233,6 +233,8 @@ def main() -> None:
                          "temperature leaves this untouched, so it distinguishes an "
                          "intervention that makes the model less certain from one "
                          "that moves it somewhere else while leaving it as certain")
+    ap.add_argument("--prompt-tail", type=int, default=8,
+                    help="how many final prompt positions to leave unperturbed")
     ap.add_argument("--tail-sweep", nargs="*", type=int, default=[2, 4, 8],
                     help="how many of the final prompt positions to leave "
                          "unperturbed -- the chat template's own tokens, which "

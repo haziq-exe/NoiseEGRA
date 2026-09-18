@@ -79,6 +79,8 @@ def make_plan(
     steer_prefill=False,
     prefill_gain=1.0,
     prompt_tail_clear=0,
+    push_layers=None,
+    offset_layers=None,
     noise_norm_match="energy",
     noise_schedule="constant",
     offset_gamma=0.0,
@@ -129,6 +131,8 @@ def make_plan(
         steer_prefill=steer_prefill,
         prefill_gain=prefill_gain,
         prompt_tail_clear=prompt_tail_clear,
+        push_layers=push_layers,
+        offset_layers=offset_layers,
         protect_extra=extra,
         offset_gamma=offset_gamma,
         offset_mode=offset_mode,
@@ -1165,6 +1169,51 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             + ", against the untouched model. Run a second time with "
               "--random-directions to separate what the extracted directions do "
               "from what any push of that size does")
+
+    if name == "bands":
+        # The constraint push and the per-story perturbation given different
+        # layer bands.
+        #
+        # They have no reason to want the same one. The push controls properties
+        # of the sentence being written -- its tense, whether the character is
+        # named -- and works at layers 6-13 of 28 while fragmenting the text at
+        # 14-22. The perturbation's job is to send the model to a different
+        # story, and which story gets told need not be decided where a sentence
+        # is worded. Every run so far has used one band for both because one
+        # flag set both.
+        #
+        # This matters now because the one axis still behind raised temperature
+        # is variety of what *happens*, and every way of buying more of it by
+        # turning something up has failed the same way: a larger perturbation,
+        # and a stronger push at the prompt, both make the model stop treating
+        # the prompt as an instruction and start writing a document with a
+        # title. Moving the perturbation rather than enlarging it is the
+        # remaining structural knob.
+        #
+        # The push is held where it is known to work and the perturbation is
+        # moved later, in bands of the same width.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        kind = getattr(args, "offset_basis_kind", "story")
+        flat = {n: 1.0 for n in names}
+        b = float(getattr(args, "steer_budget", None) or 2.0)
+        g = float(getattr(args, "main_gamma", 0.1))
+        keep = int(getattr(args, "prompt_tail", 8) or 8)
+        push_band = list(range(6, 14))
+        offset_bands = [list(range(6, 14)), list(range(10, 18)), list(range(14, 22))]
+
+        items = []
+        for band in offset_bands:
+            items.append({"plan": make_plan(
+                beta=flat, steer_budget=b, offset_gamma=g, offset_mode="orth",
+                offset_basis=offset_basis, offset_basis_kind=kind,
+                steer_prefill=True, prompt_tail_clear=keep,
+                push_layers=push_band, offset_layers=band,
+                offset_prefill=True, offset_decode=False, **quiet, **base)})
+        return items, (
+            f"the constraint push at {b:g} held at layers {push_band[0]}-{push_band[-1]} "
+            f"with the per-story perturbation at {g:g} moved to layers "
+            + ", ".join(f"{x[0]}-{x[-1]}" for x in offset_bands))
 
     if name == "boundary":
         # The best-scoring arm with the final prompt positions left unperturbed.
