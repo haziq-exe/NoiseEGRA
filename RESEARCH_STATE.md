@@ -34,20 +34,43 @@ roughly 150 words instead of 60 -- it did not, and this branch exists to make it
 compliance, all at once, and beat raised-temperature decoding. The novelty bar
 in `astar-novelty-bar` still applies.
 
-### Where it stands (round 28, 100 stories a condition, Qwen3-1.7B, layers 6-13)
+### Where it stands (round 34, 100 stories a condition, Qwen3-1.7B, layers 6-13)
 
-| condition | coherent | broken /11 | variety of what happens | variety of wording | opens with a title |
-|---|---|---|---|---|---|
-| untouched model | 98/100 | 4.31 | 57.5 | 9.8 | 0% |
-| temperature 1.8, nucleus 0.95 | **100/100** | 3.97 | 74.2 | 16.6 | 0% |
-| temperature 1.8, top-k 40 | 99/100 | 3.90 | **78.3** | 17.8 | 0% |
-| push 2 while writing, four directions | **100/100** | 2.51 | 62.7 | 12.2 | 0% |
-| push 2 while writing, three directions | **100/100** | **2.13** | 62.9 | 10.4 | 0% |
-| push 2 at both sitings + perturbation 0.15 | 99/100 | 3.52 | 75.5 | **20.0** | 29% |
+**Usable** is the headline: the share of stories that are coherent *and* do not
+open with a heading the instruction forbids. Coherence alone hid a 29% rate of
+those for a day.
 
-Compliance is won outright and coherence is level. **Variety of what happens is
-the one axis still behind**, and the arm that comes closest on it breaks an
-instruction the others keep.
+| condition | usable | broken /11 | happens | wording |
+|---|---|---|---|---|
+| untouched model | 98% | 4.31 | ~55 | 9.6 |
+| temperature 1.8, nucleus 0.95 | **100%** | 3.97 | 71.8 | 16.4 |
+| temperature 1.8, top-k 40 | 99% | 3.90 | **75.7** | 17.5 |
+| push at decode, perturbation 0.15 at the prompt | 89% | 3.19 | **74.0** | **18.5** |
+| push at both sitings, perturbation 0.125, sparing 8 | 96% | **3.07** | 71.6 | 18.3 |
+| perturbation in the opening 30 decode steps | 98% | 2.98 | 70.0 | 15.0 |
+
+Requirement compliance is won outright against both decoding baselines, by 0.7
+to 0.9 of a requirement, and variety of wording is won as well. **One axis and
+one column are not:** the arm that passes nucleus sampling on variety of what
+happens keeps only 89% of its stories usable, and the arms that keep 96-100%
+fall 1 to 2 points short on that variety.
+
+Everything sits on one curve: **content variety comes from displacing the
+prompt, and displacing the prompt costs formatting.** The open question is
+whether anything moves the curve rather than sliding along it.
+
+### The constraint push is protective, measured three ways
+
+This rules out a family of otherwise reasonable ideas, so it is worth stating
+plainly. Weakening the push anywhere to buy room for a larger perturbation makes
+things worse, not better:
+
+* perturbation alone at 0.15 keeps 84 stories of 100 coherent; with the push at
+  2 it keeps 99
+* dropping a steered direction, which gives the survivors more of a fixed total
+  strength, collapses coherence from 100% to 83%
+* removing the push from the prompt admits titles in 7% of stories at a
+  perturbation of 0.15, against 4% with it there
 
 ### The four findings this branch has produced
 
