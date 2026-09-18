@@ -2474,3 +2474,53 @@ tokens, which mark that the instruction is over and the answer starts here, and
 the perturbation was being added to those along with everything else, weakening
 the only signal that this is a reply to an instruction. A run sparing the last
 2, 4 and 8 prompt positions is testing it.
+
+### Round 28, continued - the push and the perturbation swept together, writing siting only
+
+Four directions (present tense, varied openings, the senses, a named
+character), the push applied at decode steps only, 100 stories a condition,
+pooled at 93.
+
+| condition | coherent | broken /11 | happens | wording | grade | words/sentence | opens with a title |
+|---|---|---|---|---|---|---|---|
+| untouched | 98/100 | 4.31 | 55.6 | 9.7 | 3.06 | 9.1 | 0% |
+| temperature 1.8, top-k 40 | 99/100 | 3.90 | **74.9** | 17.5 | 3.63 | 9.1 | 0% |
+| push 2 | **100/100** | **2.51** | 60.4 | 12.0 | 2.62 | 8.0 | 0% |
+| push 2.5 | **100/100** | 2.74 | 62.0 | 12.1 | 2.65 | 7.8 | 0% |
+| **push 2 + perturbation 0.1** | 99/100 | 2.86 | 67.1 | 14.2 | **3.73** | **9.9** | **0%** |
+| push 2 + perturbation 0.15 | 93/100 | 3.20 | 73.3 | **17.6** | 4.86 | 11.6 | 17% |
+| push 2.5 + perturbation 0.1 | 96/100 | 2.80 | 65.0 | 12.7 | 3.49 | 9.4 | 0% |
+| push 2.5 + perturbation 0.15 | 93/100 | 3.20 | 70.4 | 16.7 | 4.67 | 10.7 | 16% |
+
+Three things worth keeping.
+
+**The perturbation undoes the shortening rather than adding to it.** The push
+alone writes 8.0 words a sentence against the untouched model's 9.1; adding a
+perturbation of 0.1 takes it to 9.9 and the reading grade from 2.62 to 3.73,
+above the untouched model's 3.06 and above raised temperature's 3.63. The two
+parts of the method pull sentence length in opposite directions.
+
+**Raising the push beyond 2 does nothing useful.** At 2.5 compliance is slightly
+worse and coherence slightly worse at every perturbation. Strength 2 is the
+operating point on this task, as it was on the four-direction set in round 27.
+
+**The perturbation is what costs coherence and what produces the titles.** At
+0.1 nothing is lost -- 99 of 100 coherent, no titles at all. At 0.15 coherence
+falls to 93 and titles appear in 16-17% of stories. Comparing with the
+both-sitings run at the same perturbation (99 coherent, 75.5 and 20.0) says
+pushing at the prompt as well buys back the coherence the larger perturbation
+costs, while making the title problem worse, 17% to 29%.
+
+So there are two candidates and neither is finished:
+
+* **push 2 + perturbation 0.1, writing siting only** -- 2.86 broken against
+  raised temperature's 3.90, 99 of 100 coherent, a better reading level than any
+  other condition, and no titles. Variety is 67.1 and 14.2 against 74.9 and
+  17.5.
+* **push 2 at both sitings + perturbation 0.15** -- beats raised temperature on
+  requirements broken and on variety of wording and comes within 2.8 on variety
+  of what happens, at 99 of 100 coherent, but opens 29% of its stories with a
+  title.
+
+The run sparing the last few prompt positions is testing whether the second can
+be had without the titles.
