@@ -612,6 +612,18 @@ class SteeringPlan:
     # moving how the model read the instruction itself. 0 keeps every run before
     # this one.
     prompt_tail_clear: int = 0
+    # How many of the *first* prompt positions to leave untouched: the mirror of
+    # prompt_tail_clear.
+    #
+    # The prompt does not begin with the instruction any more than it ends with
+    # it. It begins with the chat template's opening and the system line, which
+    # here is "You write short stories for readers in middle school and early
+    # high school" -- the only place the model is told what kind of thing it is
+    # producing at all. Perturbing that along with everything else is a
+    # candidate for why it falls back to writing a document, which has a title;
+    # sparing the end alone does not remove them, 4% of stories still opening
+    # with one at the size that scores best.
+    prompt_head_clear: int = 0
     # Which layers each half of the method acts on, when they should differ.
     # Empty means "every layer the plan covers", which is what every run before
     # this used.
@@ -691,6 +703,7 @@ class SteeringPlan:
         steer_prefill: bool = False,
         prefill_gain: float = 1.0,
         prompt_tail_clear: int = 0,
+        prompt_head_clear: int = 0,
         push_layers: Optional[Sequence[int]] = None,
         offset_layers: Optional[Sequence[int]] = None,
         offset_decode_steps: int = 0,
@@ -876,6 +889,7 @@ class SteeringPlan:
             steer_prefill=bool(steer_prefill),
             prefill_gain=float(prefill_gain),
             prompt_tail_clear=int(prompt_tail_clear),
+            prompt_head_clear=int(prompt_head_clear),
             push_layers=frozenset(int(x) for x in (push_layers or ())),
             offset_layers=frozenset(int(x) for x in (offset_layers or ())),
             offset_decode_steps=int(offset_decode_steps),
@@ -1452,6 +1466,7 @@ class SteeringPlan:
             "steer_prefill": self.steer_prefill,
             "prefill_gain": self.prefill_gain,
             "prompt_tail_clear": self.prompt_tail_clear,
+            "prompt_head_clear": self.prompt_head_clear,
             "push_layers": sorted(self.push_layers),
             "offset_layers": sorted(self.offset_layers),
             "offset_decode_steps": self.offset_decode_steps,

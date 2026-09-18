@@ -114,7 +114,7 @@ GATE_SUITES = {"gate", "gatedwrite"}
 
 BASIS_SUITES = {"offset", "story", "prompt", "main", "pareto", "select", "feedback",
                 "assemble", "headtohead", "closure", "control", "ablate",
-                "controls", "tame", "core4", "combine", "amplify", "spread", "frontier", "siting", "prefill", "asymmetric", "boundary", "bands", "whilewriting", "gatedwrite", "promptbudget", "opening",
+                "controls", "tame", "core4", "combine", "amplify", "spread", "frontier", "siting", "prefill", "asymmetric", "boundary", "bands", "whilewriting", "gatedwrite", "promptbudget", "opening", "framing",
                 "constdose"}
 
 
@@ -176,7 +176,7 @@ def main() -> None:
     ap.add_argument("--suite", nargs="+", default=["compare"],
                     choices=["baseline", "sampling", "compare", "method", "noise",
                              "offset", "story", "prompt", "main", "pareto", "directions", "select", "budget", "feedback", "assemble", "headtohead", "closure", "control",
-                             "ablate", "controls", "tame", "fsc", "core4", "combine", "dose", "siting", "dropone", "prefill", "asymmetric", "boundary", "bands", "whilewriting", "gatedwrite", "promptbudget", "opening",
+                             "ablate", "controls", "tame", "fsc", "core4", "combine", "dose", "siting", "dropone", "prefill", "asymmetric", "boundary", "bands", "whilewriting", "gatedwrite", "promptbudget", "opening", "framing",
                              "amplify", "constdose", "spread", "frontier",
                              "window", "decay", "core", "ortho", "alpha", "gate",
                              "beta", "loo", "all"])
@@ -239,6 +239,8 @@ def main() -> None:
                          "temperature leaves this untouched, so it distinguishes an "
                          "intervention that makes the model less certain from one "
                          "that moves it somewhere else while leaving it as certain")
+    ap.add_argument("--head-sweep", nargs="*", type=int, default=[8, 16, 24],
+                    help="how many opening prompt positions to leave unperturbed")
     ap.add_argument("--opening-steps", nargs="*", type=int, default=[12, 30, 60],
                     help="how many opening decode steps the perturbation lasts")
     ap.add_argument("--gate-sweep", nargs="*", default=None,

@@ -845,9 +845,13 @@ class EGRA:
                                 # and the answer starts here. See
                                 # SteeringPlan.prompt_tail_clear.
                                 keep = int(getattr(plan, "prompt_tail_clear", 0) or 0)
+                                head = int(getattr(plan, "prompt_head_clear", 0) or 0)
                                 d = delta.to(target.dtype).view(1, 1, -1)
-                                if keep > 0 and target.shape[1] > keep:
-                                    target[:, :-keep, :].add_(d)
+                                n = target.shape[1]
+                                lo = head if 0 < head < n else 0
+                                hi = n - keep if 0 < keep < n - lo else n
+                                if hi > lo:
+                                    target[:, lo:hi, :].add_(d)
                                 else:
                                     target.add_(d)
                             if plan.steer_prefill and getattr(plan, "steer_mode", "constant") == "feedback":

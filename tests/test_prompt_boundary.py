@@ -101,3 +101,51 @@ if __name__ == "__main__":
     test_a_short_prompt_is_not_wiped_out()
     test_the_spared_count_is_in_the_run_id()
     print("\nok")
+
+
+def head_and_tail(plan_head: int, plan_tail: int, n_positions: int = 30):
+    """The slicing the prefill hook does with both ends spared."""
+    plan = a_plan(plan_tail)
+    plan.prompt_head_clear = plan_head
+    target = torch.zeros(1, n_positions, DIM)
+    delta = plan.steering_only(LAYERS[0], 0)
+    assert delta is not None
+    d = delta.view(1, 1, -1)
+    n = target.shape[1]
+    lo = plan_head if 0 < plan_head < n else 0
+    hi = n - plan_tail if 0 < plan_tail < n - lo else n
+    if hi > lo:
+        target[:, lo:hi, :].add_(d)
+    else:
+        target.add_(d)
+    return target
+
+
+def test_both_ends_of_the_prompt_can_be_spared() -> None:
+    """The middle is perturbed and both ends are not.
+
+    Sparing the end alone took titles from 29% to 4% and no further. The other
+    end carries the system line, the only place the model is told it is writing
+    a story rather than a document, and it has never been spared.
+    """
+    n = 30
+    for head, tail in ((8, 8), (16, 8), (24, 4)):
+        out = head_and_tail(head, tail, n)
+        moved = (out.abs().sum(-1) > 0)[0]
+        assert not moved[:head].any(), f"head={head}: the opening was perturbed"
+        assert not moved[n - tail:].any(), f"tail={tail}: the boundary was perturbed"
+        assert moved[head:n - tail].all(), (
+            f"head={head} tail={tail}: the middle of the prompt was not perturbed")
+    print("  [PASS] both ends of the prompt are spared and the middle is perturbed")
+
+
+def test_sparing_more_than_the_prompt_holds_does_not_silently_disable() -> None:
+    out = head_and_tail(40, 40, 10)
+    assert (out.abs().sum(-1) > 0).all(), (
+        "a prompt shorter than the spared ends lost its perturbation entirely")
+    print("  [PASS] an over-long sparing does not quietly disable the perturbation")
+
+
+if __name__ == "__main__":
+    test_both_ends_of_the_prompt_can_be_spared()
+    test_sparing_more_than_the_prompt_holds_does_not_silently_disable()

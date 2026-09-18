@@ -79,6 +79,7 @@ def make_plan(
     steer_prefill=False,
     prefill_gain=1.0,
     prompt_tail_clear=0,
+    prompt_head_clear=0,
     push_layers=None,
     offset_layers=None,
     offset_decode_steps=0,
@@ -132,6 +133,7 @@ def make_plan(
         steer_prefill=steer_prefill,
         prefill_gain=prefill_gain,
         prompt_tail_clear=prompt_tail_clear,
+        prompt_head_clear=prompt_head_clear,
         push_layers=push_layers,
         offset_layers=offset_layers,
         offset_decode_steps=offset_decode_steps,
@@ -1171,6 +1173,44 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             + ", against the untouched model. Run a second time with "
               "--random-directions to separate what the extracted directions do "
               "from what any push of that size does")
+
+    if name == "framing":
+        # The perturbation kept away from both ends of the prompt.
+        #
+        # Sparing the end alone -- the chat template's tokens saying the
+        # instruction is over -- took titles from 29% to 4% and no further.
+        # The other end has never been spared, and it is where the model is told
+        # what it is producing: the system line reads "You write short stories
+        # for readers in middle school and early high school", and it is the
+        # only statement of that in the whole prompt. If perturbing it is what
+        # lets the model fall back to writing a document, sparing both ends
+        # should take the remaining titles out while leaving the perturbation on
+        # the part of the prompt that describes the story, which is where the
+        # content variety comes from.
+        #
+        # 4% of stories is what stands between the best arm and the baseline it
+        # has to beat, so this is aimed at that alone; the size is held where it
+        # scores best.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        kind = getattr(args, "offset_basis_kind", "story")
+        flat = {n: 1.0 for n in names}
+        b = float(getattr(args, "steer_budget", None) or 2.0)
+        g = float(getattr(args, "main_gamma", 0.125))
+        keep = int(getattr(args, "prompt_tail", 8) or 8)
+        heads = [int(x) for x in (getattr(args, "head_sweep", None) or (8, 16, 24))]
+
+        items = []
+        for head in heads:
+            items.append({"plan": make_plan(
+                beta=flat, steer_budget=b, offset_gamma=g, offset_mode="orth",
+                offset_basis=offset_basis, offset_basis_kind=kind,
+                steer_prefill=True, prompt_tail_clear=keep, prompt_head_clear=head,
+                offset_prefill=True, offset_decode=False, **quiet, **base)})
+        return items, (
+            f"the per-story perturbation at {g:g} kept off the last {keep} prompt "
+            f"positions and off the first "
+            + ", ".join(str(h) for h in heads))
 
     if name == "opening":
         # The per-story perturbation applied to the opening decode steps only,
