@@ -67,10 +67,11 @@ class Tiny(EGRA):
 
 print("== task setup ==")
 pairs = load_pairs(ROOT / "noiseegra" / "data" / "steering_pairs_en.json")
-check("English pair file holds the ten steerable directions",
-      sorted(pairs) == ["closure", "dialogue", "named_character", "plain_words",
-                        "present_tense", "sensory", "simple_register",
-                        "simple_syntax", "terse", "varied_openers"], f"{sorted(pairs)}")
+check("English pair file holds the eleven steerable directions",
+      sorted(pairs) == ["closure", "dialogue", "named_character", "no_heading",
+                        "plain_words", "present_tense", "sensory",
+                        "simple_register", "simple_syntax", "terse",
+                        "varied_openers"], f"{sorted(pairs)}")
 
 # The first pair set was length-confounded: three of its four directions had a
 # positive side 11 to 14 words shorter than the negative, so "simple register"
@@ -78,9 +79,15 @@ check("English pair file holds the ten steerable directions",
 # else, length included.
 import re as _re
 _W = _re.compile(r"[A-Za-z]+(?:'[A-Za-z]+)?")
+# `no_heading` is exempt, and has to be: its two sides share a body word for
+# word and the negative adds a heading on top, so the added words *are* the
+# property being contrasted. Holding it to a length match would mean shortening
+# the body under the heading, which would make the direction "write less" as
+# well as "write no heading" -- the exact confound this check exists to catch.
+_LENGTH_IS_THE_PROPERTY = {"no_heading"}
 gaps = {name: max(abs(len(_W.findall(p["positive"])) - len(_W.findall(p["negative"])))
                   for p in v["pairs"])
-        for name, v in pairs.items()}
+        for name, v in pairs.items() if name not in _LENGTH_IS_THE_PROPERTY}
 check("positive and negative sides are the same length, to within a word",
       all(g <= 1 for g in gaps.values()), str(gaps))
 check("each constraint has usable minimal pairs",
@@ -90,9 +97,17 @@ check("each constraint has usable minimal pairs",
 
 check("reddit tags are stripped from prompts",
       wp.clean_prompt("[ WP ] You wake   up alone.") == "You wake up alone.")
-msgs = wp.build_messages("You are the last human alive.", list(pairs))
+# Not every extracted direction is a scored requirement with its own bullet.
+# `no_heading` steers the instruction's closing line -- "write only the story
+# itself: no title, heading, preamble or commentary" -- which the prompt already
+# states once and which no bullet repeats. Build the prompt from the names that
+# do map to a scored constraint.
+_STEER_ONLY = {"no_heading"}
+msgs = wp.build_messages("You are the last human alive.",
+                         [n for n in pairs if n not in _STEER_ONLY])
+_scenario_names = [n for n in pairs if n not in _STEER_ONLY]
 check("scenario prompt carries one requirement line per constraint",
-      msgs[1]["content"].count("\n- ") == len(pairs), str(msgs[1]["content"]))
+      msgs[1]["content"].count("\n- ") == len(_scenario_names), str(msgs[1]["content"]))
 
 print("\n== English constraint checks ==")
 # Thresholds are constructor arguments, so the same four mechanics can be checked

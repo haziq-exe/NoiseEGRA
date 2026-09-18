@@ -35,7 +35,16 @@ SENTENCE = re.compile(r"[^.!?]+[.!?]")
 # `mature_register` is the one direction whose whole purpose is to contrast
 # developed sentences with clipped ones, so its two sides are meant to differ in
 # sentence length. Every other direction must not.
-LENGTH_IS_THE_POINT = {"mature_register", "terse", "simple_syntax", "simple_register"}
+LENGTH_IS_THE_POINT = {"mature_register", "terse", "simple_syntax", "simple_register",
+                       "no_heading"}
+
+# These four differ in sentence structure at a matched word count, so the
+# word-count rule still applies to them. `no_heading` is the one direction where
+# the word count itself is the property: its two sides share a body word for
+# word and the negative adds a heading above it. Matching the totals would mean
+# shortening the body under the heading, which would make the direction "write
+# less" as well as "write no heading" -- the confound this file exists to catch.
+WORD_COUNT_IS_THE_POINT = {"no_heading"}
 
 
 def words(text: str):
@@ -68,11 +77,12 @@ def check_file(path: Path, *, min_words_per_sentence: float) -> None:
         neg_wps = sum(words_per_sentence(it["negative"]) for it in items) / len(items)
 
         # The difference vector must not encode "one side is longer".
-        assert abs(mean_gap) <= 2.0, (
-            f"{name}: positives average {mean_gap:+.2f} words against their "
-            f"negatives; the direction would carry length as well as the property"
-        )
-        assert worst <= 4, f"{name}: one pair differs by {worst} words"
+        if name not in WORD_COUNT_IS_THE_POINT:
+            assert abs(mean_gap) <= 2.0, (
+                f"{name}: positives average {mean_gap:+.2f} words against their "
+                f"negatives; the direction would carry length as well as the property"
+            )
+            assert worst <= 4, f"{name}: one pair differs by {worst} words"
 
         if name not in LENGTH_IS_THE_POINT:
             assert abs(pos_wps - neg_wps) <= 2.5, (
