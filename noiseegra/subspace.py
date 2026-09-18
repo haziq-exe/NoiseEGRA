@@ -1141,10 +1141,16 @@ class SteeringPlan:
                 lp.protect = lp.protect.to(device)
             if lp.offset_basis is not None:
                 lp.offset_basis = lp.offset_basis.to(device)
-            if lp.offset is not None:
-                lp.offset = lp.offset.to(device)
             if lp.jitter is not None:
                 lp.jitter = lp.jitter.to(device)
+        # The offset is moved outside that guard because it is redrawn for every
+        # story, after the basis has already been relocated. Inside the guard it
+        # was moved once, for the first story, and every later draw stayed on the
+        # CPU. That never showed while the offset was only ever added at the
+        # prompt, where the prefill hook relocates it itself; the first run that
+        # added it at decode steps died on the second story of every shard.
+        if device is not None and lp.offset is not None and lp.offset.device != device:
+            lp.offset = lp.offset.to(device)
 
         h = self.horizon if horizon is None else horizon
         delta = None
