@@ -625,6 +625,25 @@ class SteeringPlan:
     # applied both over one band because one `--layers` set both.
     push_layers: FrozenSet[int] = frozenset()
     offset_layers: FrozenSet[int] = frozenset()
+    # How many decode steps the per-story perturbation lasts, when it is applied
+    # while the story is written. 0 means every step, which is what
+    # `offset_decode` alone has always meant.
+    #
+    # The two sitings turned out to do different jobs, and neither does both.
+    # Perturbing the prompt changes what the story is about -- variety of what
+    # happens 71.6 against the untouched model's 55 -- but past a certain
+    # displacement the model stops treating the prompt as an instruction and
+    # writes a document with a title. Perturbing while the story is written
+    # never does that, 0% titles and 100 of 100 coherent, but barely changes
+    # what happens: 56.4 at a perturbation of 0.05 and 63.1 at 0.1, below the
+    # prompt siting at a smaller size.
+    #
+    # The reading is that a story's content is settled in its opening tokens,
+    # which are written from a prompt this siting has not touched; perturbing
+    # after that changes the texture of a story already chosen. If that is
+    # right, perturbing the opening decode steps and stopping should buy the
+    # content variety of the prompt siting without touching the prompt at all.
+    offset_decode_steps: int = 0
     protect_rank: int = 0
 
     # ---- construction ---------------------------------------------------- #
@@ -674,6 +693,7 @@ class SteeringPlan:
         prompt_tail_clear: int = 0,
         push_layers: Optional[Sequence[int]] = None,
         offset_layers: Optional[Sequence[int]] = None,
+        offset_decode_steps: int = 0,
         protect_extra: Optional[Mapping[int, torch.Tensor]] = None,
         device: Optional[torch.device] = None,
     ) -> "SteeringPlan":
@@ -858,6 +878,7 @@ class SteeringPlan:
             prompt_tail_clear=int(prompt_tail_clear),
             push_layers=frozenset(int(x) for x in (push_layers or ())),
             offset_layers=frozenset(int(x) for x in (offset_layers or ())),
+            offset_decode_steps=int(offset_decode_steps),
             protect_rank=protect_rank,
         )
 
@@ -1164,7 +1185,8 @@ class SteeringPlan:
         # The per-story offset is a perturbation, so it is gated with the noise
         # rather than with the steering: an entropy gate closes on both together.
         if (with_offset and self.offset_decode and lp.offset is not None
-                and (not self.offset_layers or layer in self.offset_layers)):
+                and (not self.offset_layers or layer in self.offset_layers)
+                and (self.offset_decode_steps <= 0 or t < self.offset_decode_steps)):
             delta = lp.offset if delta is None else delta + lp.offset
 
         if with_noise and self.noise_mode != "none" and self.noise_alpha > 0:
@@ -1432,6 +1454,7 @@ class SteeringPlan:
             "prompt_tail_clear": self.prompt_tail_clear,
             "push_layers": sorted(self.push_layers),
             "offset_layers": sorted(self.offset_layers),
+            "offset_decode_steps": self.offset_decode_steps,
             "protect_rank": self.protect_rank,
             "per_layer": per_layer,
         }

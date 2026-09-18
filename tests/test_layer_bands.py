@@ -148,3 +148,41 @@ if __name__ == "__main__":
     test_empty_bands_mean_every_layer()
     test_the_bands_are_in_the_run_id()
     print("\nok")
+
+
+def test_the_perturbation_stops_after_its_window():
+    """A perturbation given a window of N steps is silent from step N onward.
+
+    The two sitings measured do different jobs and neither does both: the prompt
+    siting changes what the story is about and risks the formatting, the
+    while-writing siting is safe and changes almost nothing about the content.
+    The window exists to take the first without the second, by perturbing the
+    opening steps -- where the content is settled -- and then stopping.
+
+    If the cutoff does not work the arm is just the while-writing siting again,
+    and a sweep over window sizes reads as a null.
+    """
+    torch.manual_seed(0)
+    vectors = {"present_tense": {l: torch.randn(DIM) for l in ALL}}
+    basis = {l: torch.linalg.qr(torch.randn(DIM, 4))[0] for l in ALL}
+    plan = SteeringPlan.build(
+        vectors=vectors, layers=ALL,
+        specs=[ConstraintSpec("present_tense", 1.0)], rms_scale=1.0,
+        steer_budget=2.0, offset_gamma=0.2, offset_mode="orth",
+        offset_basis=basis, offset_prefill=False, offset_decode=True,
+        offset_decode_steps=5, steer_decode=False,
+    )
+    plan.plan_offsets(2, seed=0)
+    plan.resample_offset(0)
+
+    inside = [plan.delta_for(ALL[0], t, with_noise=False) for t in range(5)]
+    outside = [plan.delta_for(ALL[0], t, with_noise=False) for t in (5, 9, 40)]
+    assert all(d is not None and d.norm() > 0 for d in inside), (
+        "the perturbation was silent inside its own window")
+    assert all(d is None or d.norm() == 0 for d in outside), (
+        "the perturbation carried on past the end of its window")
+    print("  [PASS] the perturbation stops when its window of decode steps ends")
+
+
+if __name__ == "__main__":
+    test_the_perturbation_stops_after_its_window()

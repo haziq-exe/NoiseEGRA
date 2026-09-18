@@ -81,6 +81,7 @@ def make_plan(
     prompt_tail_clear=0,
     push_layers=None,
     offset_layers=None,
+    offset_decode_steps=0,
     noise_norm_match="energy",
     noise_schedule="constant",
     offset_gamma=0.0,
@@ -133,6 +134,7 @@ def make_plan(
         prompt_tail_clear=prompt_tail_clear,
         push_layers=push_layers,
         offset_layers=offset_layers,
+        offset_decode_steps=offset_decode_steps,
         protect_extra=extra,
         offset_gamma=offset_gamma,
         offset_mode=offset_mode,
@@ -1169,6 +1171,49 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             + ", against the untouched model. Run a second time with "
               "--random-directions to separate what the extracted directions do "
               "from what any push of that size does")
+
+    if name == "opening":
+        # The per-story perturbation applied to the opening decode steps only,
+        # and never to the prompt.
+        #
+        # The two sitings measured so far do different jobs and neither does
+        # both. Perturbing the prompt changes what the story is about -- variety
+        # of what happens 71.6 against the untouched model's 55 -- but past a
+        # certain displacement the model stops treating the prompt as an
+        # instruction and opens with a title, in 4% to 29% of stories depending
+        # on size. Perturbing throughout the writing never does that, 0% titles
+        # and 100 of 100 coherent, but barely changes what happens: 56.4 at 0.05
+        # and 63.1 at 0.1, below what the prompt siting gives at a smaller size.
+        #
+        # The reading is that a story's content is settled in its opening
+        # tokens, and those are written from a prompt this siting has not
+        # touched, so perturbing afterwards changes the texture of a story
+        # already chosen. If that is right, perturbing the opening steps and
+        # then stopping should buy the prompt siting's content variety without
+        # touching the prompt, which is where every formatting failure has come
+        # from.
+        #
+        # The window is swept because there is no way to guess where the
+        # content stops being decided.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        kind = getattr(args, "offset_basis_kind", "story")
+        flat = {n: 1.0 for n in names}
+        b = float(getattr(args, "steer_budget", None) or 2.0)
+        g = float(getattr(args, "main_gamma", 0.15))
+        windows = [int(x) for x in (getattr(args, "opening_steps", None) or (12, 30, 60))]
+
+        items = []
+        for w in windows:
+            items.append({"plan": make_plan(
+                beta=flat, steer_budget=b, offset_gamma=g, offset_mode="orth",
+                offset_basis=offset_basis, offset_basis_kind=kind,
+                steer_prefill=True, offset_prefill=False, offset_decode=True,
+                offset_decode_steps=w, **quiet, **base)})
+        return items, (
+            f"the per-story perturbation at {g:g} applied to the first "
+            + ", ".join(str(w) for w in windows)
+            + " decode steps and never to the prompt")
 
     if name == "promptbudget":
         # The whole of the prompt's displacement spent on the perturbation, with
