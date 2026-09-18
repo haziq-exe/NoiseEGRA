@@ -2767,3 +2767,66 @@ happens from 72.7 to 72.5, pooled at the same size.
 **The titled stories are not the varied ones.** Removing them costs essentially
 nothing, so the 4% is a clean 4% of usable output rather than a trade. Anything
 that removes the titles without disturbing the rest is worth the whole of it.
+
+## Round 34 - the trade-off curve, mapped
+
+Every configuration measured on this task now sits on one curve: content variety
+comes from displacing the prompt, and displacing the prompt costs formatting.
+100 stories a condition, pooled at 94.
+
+| condition | usable | broken /11 | happens | wording | titled |
+|---|---|---|---|---|---|
+| temperature 1.8, nucleus 0.95 | **100%** | 3.97 | 71.8 | 16.4 | 0% |
+| temperature 1.8, top-k 40 | 99% | 3.90 | **75.7** | 17.5 | 0% |
+| push at decode only, perturbation 0.15 at the prompt | 89% | 3.19 | **74.0** | **18.5** | 7% |
+| push at both sitings, perturbation 0.125, sparing 8 | 96% | **3.07** | 71.6 | 18.3 | 4% |
+| perturbation in the opening 12 decode steps | **100%** | 3.17 | 66.2 | 13.4 | **0%** |
+| perturbation in the opening 30 decode steps | 98% | 2.98 | 70.0 | 15.0 | **0%** |
+| perturbation in the opening 60 decode steps | 94% | 3.77 | 70.6 | 16.1 | **0%** |
+
+### The opening-window siting does what it was built for and is not enough
+
+Perturbing the opening decode steps and then stopping produces **no titles at
+all**, at any window length, exactly as the mechanism predicted: it never
+touches the prompt, and the prompt is where every formatting failure has come
+from. But content variety caps at 70.6, below the untouched comparison it has to
+beat, and rises with window length only until coherence starts falling.
+
+This is the second half of the round-32 dissociation, confirmed rather than
+assumed. Perturbing during decoding cannot move content as far as perturbing the
+prompt, because the cached prompt stays clean and only the current position is
+displaced. The opening window buys more of it than perturbing throughout does --
+70.6 against 63.1 -- and still not enough.
+
+### Giving the prompt to the perturbation alone overturns its own premise
+
+The run was built on the idea that the push and the perturbation compete for the
+prompt's displacement, so removing the push from the prompt should buy room for
+a larger perturbation. It does buy variety: 74.0 at a perturbation of 0.15, the
+first arm on this task to pass raised temperature at nucleus sampling on that
+axis, with the best variety of wording measured anywhere, 18.5.
+
+But titles got **worse**, not better: 7% at 0.15, 30% at 0.2, 13% at 0.25,
+against 4% with the push present.
+
+**The push is protective, and this is the third independent measurement of it.**
+Perturbation alone at 0.15 keeps 84 stories of 100 coherent against 99 with the
+push. Dropping a direction, which pushes the survivors harder, collapses
+coherence to 83%. Removing the push from the prompt admits titles. Whatever the
+push does to the representation, it holds the text together, and every idea that
+starts "make room at the prompt by pushing less there" is ruled out by the same
+evidence.
+
+### Where that leaves the comparison
+
+Against raised temperature with nucleus sampling, one configuration wins
+requirement compliance (3.19 against 3.97), variety of what happens (74.0
+against 71.8) and variety of wording (18.5 against 16.4), and loses only the
+share of stories a reader would accept: 89% against 100%, of which 7% is titles
+and 4% degeneration.
+
+Both deficits point at the same fix, and it is a run rather than an argument:
+restore the push at the prompt, which is protective, keep the perturbation at
+0.15, and spare both ends of the prompt rather than only the end -- the start
+carries the system line, the only place the model is told it is writing a story
+and not a document.
