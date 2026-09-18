@@ -170,6 +170,27 @@ Two more, both cheap to trip over:
 * **`stop` asks for confirmation.** Pass `--yes` when running it without a
   terminal, or it dies on an `EOFError` having stopped nothing.
 
+### Running on more than one account at once
+
+`--profile` picks the account, but the Kaggle client hard-codes its credentials
+path, so `kaggle_token.py` swaps the file in place. Launching three runs on three
+profiles in quick succession therefore leaves whichever went last as the account
+`--profile default` resolves to. It is not cosmetic: a watcher then polls the
+wrong account and reports
+
+    Cannot access kernel 'haziqaus/noiseegra-r27-headtohead'
+    (Permission 'kernels.get' was denied)
+
+for a run that is alive and well on another account. The run itself is
+unaffected -- it was launched with the right token and keeps going -- but its
+results are never pulled and the log fills with permission errors.
+
+Check with `scripts/kaggle_token.py --profile <name> --whoami` before believing
+any status. The three accounts are reachable by their own names regardless of
+what `default` currently points at: `coauth1` is haziqexe, `coauth2` is
+haziqaus, `coauth3` is haziqcsv. Use those three and never `default` when more
+than one run is in flight.
+
 ### Watching a run as it generates
 
 `--peek-stories N` prints the opening of each condition's first N stories to the
