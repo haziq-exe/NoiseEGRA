@@ -1178,6 +1178,58 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
               "--random-directions to separate what the extracted directions do "
               "from what any push of that size does")
 
+    if name == "quieten":
+        # One named direction given *less* of the push than the others.
+        #
+        # At 200 stories the method loses five: two refusals, and three that
+        # stall into listing rather than narrating --
+        #
+        #     She sees a butterfly fluttering around a flower. She hears the
+        #     wind whisper through the trees. She notices a squirrel jumping
+        #     over a puddle. She feels the breeze on her face.
+        #
+        # which is what the senses direction looks like when it is driven past
+        # the point of helping: the requirement asks for words about how things
+        # look and sound, and the model satisfies it by enumerating them instead
+        # of telling a story. The requirement itself is passed comfortably --
+        # this is the direction overshooting, not falling short.
+        #
+        # The total strength is fixed, so quietening one direction gives the
+        # others more. That is the trade being measured, and it is the opposite
+        # of `weighted`, which is for a direction that needs more.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet_noise = dict(noise_mode="none", noise_alpha=0.0)
+        kind = getattr(args, "offset_basis_kind", "story")
+        b = float(getattr(args, "steer_budget", None) or 2.0)
+        g = float(getattr(args, "main_gamma", 0.15))
+        keep = int(getattr(args, "prompt_tail", 8) or 8)
+        target = getattr(args, "quieten", "sensory")
+        weights = [float(x) for x in (getattr(args, "quieten_weights", None)
+                                      or (0.5, 0.25))]
+
+        if target not in names:
+            raise ValueError(
+                f"suite 'quieten' lowers the push on {target!r}, which is not in "
+                f"the steered set ({sorted(names)}). Every arm would be "
+                "identical. Pass --quieten with a direction that is steered."
+            )
+
+        items = []
+        for w in weights:
+            beta = {n: (w if n == target else 1.0) for n in names}
+            items.append({"plan": make_plan(
+                beta=beta, steer_budget=b, offset_gamma=g, offset_mode="orth",
+                offset_basis=offset_basis, offset_basis_kind=kind,
+                offset_scale=getattr(args, "offset_scale", None),
+                offset_draw_shape=getattr(args, "offset_draw_shape", "sphere"),
+                steer_prefill=True, prompt_tail_clear=keep,
+                offset_prefill=True, offset_decode=False,
+                **quiet_noise, **base)})
+        return items, (
+            f"the {target} direction given "
+            + ", ".join(f"{w:g}" for w in weights)
+            + f" of the push the others get, at a perturbation of {g:g}")
+
     if name == "weighted":
         # The no-heading direction given more of the push than the others.
         #

@@ -114,7 +114,7 @@ GATE_SUITES = {"gate", "gatedwrite"}
 
 BASIS_SUITES = {"offset", "story", "prompt", "main", "pareto", "select", "feedback",
                 "assemble", "headtohead", "closure", "control", "ablate",
-                "controls", "tame", "core4", "combine", "amplify", "spread", "frontier", "siting", "prefill", "asymmetric", "boundary", "bands", "whilewriting", "gatedwrite", "promptbudget", "opening", "framing", "final", "weighted",
+                "controls", "tame", "core4", "combine", "amplify", "spread", "frontier", "siting", "prefill", "asymmetric", "boundary", "bands", "whilewriting", "gatedwrite", "promptbudget", "opening", "framing", "final", "weighted", "quieten",
                 "constdose"}
 
 
@@ -176,7 +176,7 @@ def main() -> None:
     ap.add_argument("--suite", nargs="+", default=["compare"],
                     choices=["baseline", "sampling", "compare", "method", "noise",
                              "offset", "story", "prompt", "main", "pareto", "directions", "select", "budget", "feedback", "assemble", "headtohead", "closure", "control",
-                             "ablate", "controls", "tame", "fsc", "core4", "combine", "dose", "siting", "dropone", "prefill", "asymmetric", "boundary", "bands", "whilewriting", "gatedwrite", "promptbudget", "opening", "framing", "final", "weighted",
+                             "ablate", "controls", "tame", "fsc", "core4", "combine", "dose", "siting", "dropone", "prefill", "asymmetric", "boundary", "bands", "whilewriting", "gatedwrite", "promptbudget", "opening", "framing", "final", "weighted", "quieten",
                              "amplify", "constdose", "spread", "frontier",
                              "window", "decay", "core", "ortho", "alpha", "gate",
                              "beta", "loo", "all"])
@@ -247,6 +247,10 @@ def main() -> None:
                          "the sampled stories actually spread along each, so a "
                          "perturbation of a given size is shaped like a real "
                          "difference between two of the model's own stories")
+    ap.add_argument("--quieten", default="sensory",
+                    help="which direction to give less of the push than the others")
+    ap.add_argument("--quieten-weights", nargs="*", type=float, default=[0.5, 0.25],
+                    help="the share of the others' push that direction gets")
     ap.add_argument("--heading-weights", nargs="*", type=float, default=[2.0, 3.0],
                     help="how much more push the no-heading direction gets than "
                          "the others, at the same fixed total strength")

@@ -94,7 +94,7 @@ import run_english_experiment as _R  # noqa: E402
 # without it every arm would be identical. Refusing loudly is the correct
 # behaviour and is what this list records; silently building identical arms is
 # the fault.
-NEEDS_ITS_OWN_DIRECTIONS = {"weighted"}
+NEEDS_ITS_OWN_DIRECTIONS = {"weighted", "quieten"}
 
 for suite in SUITES:
     if suite in NEEDS_ITS_OWN_DIRECTIONS:
@@ -104,7 +104,7 @@ for suite in SUITES:
                   "built identical arms instead of raising")
         except ValueError as exc:
             check(f"{suite:<11} refuses a name set it cannot vary",
-                  "no_heading" in str(exc), str(exc))
+                  "not in the steered set" in str(exc), str(exc))
         continue
     try:
         built, desc = build_suite(suite, VECS, LAYERS, list(NAMES), 1.5, ARGS)
