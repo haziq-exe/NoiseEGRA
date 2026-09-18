@@ -87,7 +87,7 @@ def write_csvs(out: Path, state: dict) -> None:
 
 
 def generate_one(model, spec, mode, story_prompt, seed, max_new_tokens, max_words=None,
-                 story_index=None):
+                 story_index=None, entropy_out=None):
     """``max_words`` stops a generation that has run far past what the task allows.
 
     A perturbed arm that stops terminating runs to the token cap on every sample
@@ -100,6 +100,7 @@ def generate_one(model, spec, mode, story_prompt, seed, max_new_tokens, max_word
             max_new_tokens=max_new_tokens, do_sample=spec.do_sample,
             temperature=spec.temperature, top_p=spec.top_p, top_k=spec.top_k, seed=seed,
             max_words=max_words, story_index=story_index,
+            entropy_out=entropy_out,
         )
     if mode == "residual_stream_noise":
         return model.generate_with_residual_stream_noise(
@@ -116,7 +117,7 @@ def generate_one(model, spec, mode, story_prompt, seed, max_new_tokens, max_word
         return model.generate(
             story_prompt, max_new_tokens=max_new_tokens, do_sample=spec.do_sample,
             temperature=spec.temperature, top_p=spec.top_p, top_k=spec.top_k, seed=seed,
-            max_words=max_words,
+            max_words=max_words, entropy_out=entropy_out,
         )
     raise ValueError(f"kaggle_orthosteer does not handle mode '{mode}'")
 

@@ -190,7 +190,7 @@ class EGRA:
 
         return StoppingCriteriaList([_WordBudget()])
 
-    def generate(self, prompt, max_new_tokens=100, do_sample=True, temperature=1.0, top_p=None, top_k=None, seed=None, max_words=None):
+    def generate(self, prompt, max_new_tokens=100, do_sample=True, temperature=1.0, top_p=None, top_k=None, seed=None, max_words=None, entropy_out=None):
         """
         prompt should always be a list of dicts of the form [ {"role" : "system", "content" : system_prompt},
                                               {"role" : "user", "content" : user_prompt}  ]
@@ -204,9 +204,20 @@ class EGRA:
         inputs = self.tokenizer(chat_text, return_tensors="pt").to(device)
         inputs.pop("token_type_ids", None)
         stopper = self._word_budget_stopper(inputs["input_ids"].shape[-1], max_words)
+        # See generate_with_orthogonal_steering: this reads the model's own
+        # uncertainty off the raw scores, so raising the temperature leaves it
+        # unchanged and the two kinds of intervention can be told apart.
+        probe_kwargs = {}
+        if entropy_out is not None:
+            from .entropy_gate import EntropyProbe
+            probe_state = {}
+            probe_kwargs["logits_processor"] = LogitsProcessorList(
+                [EntropyProbe(probe_state, keep_history=True)])
+            entropy_out.append(probe_state)
         outputs = self.model.generate(
             **inputs,
             max_new_tokens=max_new_tokens,
+            **probe_kwargs,
             **({"stopping_criteria": stopper} if stopper is not None else {}),
             **self._sampling_kwargs(
                 do_sample=do_sample,
@@ -659,6 +670,7 @@ class EGRA:
         max_new_tokens=500, do_sample=True, temperature=1.0, top_p=None, top_k=None, seed=None,
         story_index=None,
         max_words=None,
+        entropy_out=None,
     ):
         """
         Constraint steering with direction-constrained noise, injected at the same
@@ -881,6 +893,20 @@ class EGRA:
             gen_kwargs = self._sampling_kwargs(
                 do_sample=do_sample, temperature=temperature, top_p=top_p, top_k=top_k
             )
+            # `entropy_out` records the model's own next-token uncertainty, read
+            # off the raw scores before temperature or any cut-off is applied.
+            # That is the point: raising the temperature does not change this
+            # number at all, because it rescales the scores afterwards. So it
+            # separates an intervention that makes the model less certain from
+            # one that moves it somewhere else while leaving it just as certain.
+            if entropy_out is not None:
+                from .entropy_gate import EntropyProbe
+                probe_state = {}
+                probe = EntropyProbe(probe_state, keep_history=True)
+                processors = (LogitsProcessorList([*(processors or []), probe])
+                              if processors is not None
+                              else LogitsProcessorList([probe]))
+                entropy_out.append(probe_state)
             if processors is not None:
                 gen_kwargs["logits_processor"] = processors
             stopper = self._word_budget_stopper(inputs["input_ids"].shape[-1], max_words)

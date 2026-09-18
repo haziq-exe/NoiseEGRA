@@ -227,6 +227,12 @@ def main() -> None:
                     help="the word count --constraint-set middle asks the model to "
                          "aim for in the prompt")
     ap.add_argument("--beta", type=float, default=1.0)
+    ap.add_argument("--record-uncertainty", action="store_true",
+                    help="record each story's mean next-token entropy, read off the "
+                         "raw scores before temperature or any cut-off. Raising the "
+                         "temperature leaves this untouched, so it distinguishes an "
+                         "intervention that makes the model less certain from one "
+                         "that moves it somewhere else while leaving it as certain")
     ap.add_argument("--prefill-gains", nargs="*", type=float, default=[2.0, 4.0],
                     help="prompt-side push strengths, as multiples of the strength "
                          "used while writing")
@@ -1125,11 +1131,20 @@ def main() -> None:
         if missing:
             model = get_model()
             mode = _spec_mode(spec)
+            # The model's own next-token uncertainty, averaged over the story.
+            # Read off the raw scores, so raising the temperature does not move
+            # it: it separates an intervention that makes the model less certain
+            # from one that moves it elsewhere while leaving it as certain.
+            probes = [] if args.record_uncertainty else None
             for p_idx, k in missing:
                 text = generate_one(model, spec, mode, messages[p_idx],
                                     seed_for(p_idx, k), args.max_new_tokens,
-                                    max_words=word_budget, story_index=k)
+                                    max_words=word_budget, story_index=k,
+                                    entropy_out=probes)
                 state["runs"][rid][f"{p_idx}:{k}"] = text
+                if probes is not None and probes[-1].get("history"):
+                    state.setdefault("uncertainty", {}).setdefault(rid, []).append(
+                        float(np.mean(probes[-1]["history"])))
                 save_state(state_path, state)
                 done += 1
                 rate = (time.time() - t0) / max(done - started, 1)
