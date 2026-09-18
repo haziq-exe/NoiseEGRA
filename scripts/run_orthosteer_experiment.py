@@ -1170,6 +1170,54 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
               "--random-directions to separate what the extracted directions do "
               "from what any push of that size does")
 
+    if name == "gatedwrite":
+        # The per-story perturbation applied while the story is written, and
+        # allowed through only at the decode steps where the model was unsure.
+        #
+        # This is aimed at the one thing standing between the method and the
+        # goal. Variety of what happens is 66-70 against raised temperature's
+        # 70-74, and every way of enlarging the intervention has broken the
+        # formatting instead: a perturbation of 0.15 at the prompt gives 29%
+        # titles, twice the prompt push gives 12%, four times gives 44%.
+        #
+        # The reason to expect gating to help is that those two things happen at
+        # different kinds of decode step. Which noun comes next is a step where
+        # the model is genuinely unsure; whether to capitalise, close a quote or
+        # finish a word is one where it is not. Perturbing everywhere spends the
+        # displacement on both. Perturbing only the uncertain steps aims it at
+        # the choice that decides what happens and leaves the mechanics alone,
+        # which is what should let the magnitude go up rather than down.
+        #
+        # The thresholds come from the untouched model's own decode entropies,
+        # measured once, so "the more uncertain half" means the same thing in
+        # every arm.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        kind = getattr(args, "offset_basis_kind", "story")
+        flat = {n: 1.0 for n in names}
+        b = float(getattr(args, "steer_budget", None) or 2.0)
+        keep = int(getattr(args, "prompt_tail", 8) or 8)
+        gates = getattr(args, "gate_thresholds", {}) or {}
+        gammas = [float(x) for x in (getattr(args, "gamma_sweep", None) or (0.15, 0.3))]
+        levels = [str(x) for x in (getattr(args, "gate_sweep", None)
+                                   or ("none", "median", "high"))]
+
+        items = []
+        for gam in gammas:
+            for level in levels:
+                items.append({"plan": make_plan(
+                    beta=flat, steer_budget=b, offset_gamma=gam, offset_mode="orth",
+                    offset_basis=offset_basis, offset_basis_kind=kind,
+                    steer_prefill=True, prompt_tail_clear=keep,
+                    offset_prefill=False, offset_decode=True,
+                    gate_threshold=gates.get(level, 0.0), gate_level=level,
+                    **quiet, **base)})
+        return items, (
+            "the per-story perturbation applied while the story is written at "
+            + ", ".join(f"{x:g}" for x in gammas)
+            + ", allowed through at " + ", ".join(levels) + " of the decode steps "
+            "by how unsure the model was")
+
     if name == "whilewriting":
         # The per-story perturbation applied while the story is being written,
         # instead of, and as well as, at the prompt positions.
