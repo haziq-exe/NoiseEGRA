@@ -1188,17 +1188,19 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         b = float(getattr(args, "steer_budget", None) or 2.0)
         g = float(getattr(args, "main_gamma", 0.15))
         tails = [int(x) for x in (getattr(args, "tail_sweep", None) or (2, 4, 8))]
+        gammas = [float(x) for x in (getattr(args, "gamma_sweep", None) or [g])]
 
         items = []
         for keep in tails:
-            items.append({"plan": make_plan(
-                beta=flat, steer_budget=b, offset_gamma=g, offset_mode="orth",
-                offset_basis=offset_basis, offset_basis_kind=kind,
-                steer_prefill=True, prompt_tail_clear=keep,
-                offset_prefill=True, offset_decode=False, **quiet, **base)})
+            for gam in gammas:
+                items.append({"plan": make_plan(
+                    beta=flat, steer_budget=b, offset_gamma=gam, offset_mode="orth",
+                    offset_basis=offset_basis, offset_basis_kind=kind,
+                    steer_prefill=True, prompt_tail_clear=keep,
+                    offset_prefill=True, offset_decode=False, **quiet, **base)})
         return items, (
             f"the constraint push at {b:g} at both sitings with a per-story "
-            f"perturbation at {g:g}, leaving the last "
+            f"perturbation at {', '.join(f'{x:g}' for x in gammas)}, leaving the last "
             f"{', '.join(str(t) for t in tails)} prompt positions unperturbed")
 
     if name == "asymmetric":
