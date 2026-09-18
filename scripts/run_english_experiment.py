@@ -239,6 +239,14 @@ def main() -> None:
                          "temperature leaves this untouched, so it distinguishes an "
                          "intervention that makes the model less certain from one "
                          "that moves it somewhere else while leaving it as certain")
+    ap.add_argument("--offset-draw-shape", default="sphere",
+                    choices=("sphere", "manifold"),
+                    help="how the per-story perturbation's coefficients are drawn. "
+                         "'sphere' weights every direction equally, which is what "
+                         "every run so far used. 'manifold' weights them by how far "
+                         "the sampled stories actually spread along each, so a "
+                         "perturbation of a given size is shaped like a real "
+                         "difference between two of the model's own stories")
     ap.add_argument("--heading-weights", nargs="*", type=float, default=[2.0, 3.0],
                     help="how much more push the no-heading direction gets than "
                          "the others, at the same fixed total strength")
@@ -975,6 +983,10 @@ def main() -> None:
         # is centred on zero.
         if isinstance(cached, StoryAxes):
             args.offset_basis, args.amplify_basis = cached.basis, cached.basis
+            # How far stories spread along each of those directions, so a
+            # perturbation can be shaped like a real difference between two of
+            # them rather than treating every direction alike.
+            args.offset_scale = getattr(cached, "scale", None)
             args.amplify_mean = cached.mean
         else:
             args.offset_basis = args.amplify_basis = cached

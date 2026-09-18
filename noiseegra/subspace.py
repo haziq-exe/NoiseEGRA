@@ -307,6 +307,9 @@ class LayerPlan:
     protect: Optional[torch.Tensor]        # (dim, k) orthonormal protected basis
     report: Dict[str, object] = field(default_factory=dict)
     offset_basis: Optional[torch.Tensor] = None   # (dim, M) directions offsets may use
+    # (M,) how far stories actually spread along each of those directions. Used
+    # when the draw is shaped to the manifold rather than to the sphere.
+    offset_scale: Optional[torch.Tensor] = None
     offset: Optional[torch.Tensor] = None         # (dim,) this generation's offset
     amp_basis: Optional[torch.Tensor] = None      # (dim, r) directions stories differ along
     amp_mean: Optional[torch.Tensor] = None       # (dim,) what they differ *from*
@@ -656,6 +659,27 @@ class SteeringPlan:
     # right, perturbing the opening decode steps and stopping should buy the
     # content variety of the prompt siting without touching the prompt at all.
     offset_decode_steps: int = 0
+    # How the per-story perturbation's coefficients are drawn.
+    #
+    #   "sphere"    every direction weighted equally, which is what every run
+    #               before this used
+    #   "manifold"  weighted by how far stories actually spread along each
+    #               direction, so a perturbation of a given size is shaped like
+    #               a real difference between two of the model's own stories
+    #
+    # This is aimed at a measured ceiling. Variety of what happens rises with
+    # the size of the perturbation up to 0.15 and falls after it -- 67.2, then
+    # 64.3 at 0.2, then 61.8 at 0.25 -- while variety of wording keeps climbing,
+    # 17.9 to 24.1 to 26.5. Past the peak the displacement stops sending the
+    # model to a different story and starts disturbing the wording of the one it
+    # was already going to write.
+    #
+    # A uniform draw is a candidate for why. The basis is ordered by how much
+    # between-story variation each direction carries, and the last directions
+    # carry almost none; weighting them equally with the first means a step of a
+    # given length lands far outside anything the model does. Shaping the draw
+    # by the observed spread keeps it inside.
+    offset_draw_shape: str = "sphere"
     protect_rank: int = 0
 
     # ---- construction ---------------------------------------------------- #
@@ -707,6 +731,8 @@ class SteeringPlan:
         push_layers: Optional[Sequence[int]] = None,
         offset_layers: Optional[Sequence[int]] = None,
         offset_decode_steps: int = 0,
+        offset_scale: Optional[Mapping[int, torch.Tensor]] = None,
+        offset_draw_shape: str = "sphere",
         protect_extra: Optional[Mapping[int, torch.Tensor]] = None,
         device: Optional[torch.device] = None,
     ) -> "SteeringPlan":
@@ -848,7 +874,10 @@ class SteeringPlan:
 
             layer_plans[layer] = LayerPlan(
                 layer=layer, basis=basis, protect=protect, report=report,
-                offset_basis=ob, amp_basis=ab, amp_mean=am, jitter_basis=jb,
+                offset_basis=ob,
+                offset_scale=(None if offset_scale is None
+                              else offset_scale.get(layer)),
+                amp_basis=ab, amp_mean=am, jitter_basis=jb,
                 raw_basis=unit_columns(raw).clone(), target=tgt,
             )
 
@@ -893,6 +922,7 @@ class SteeringPlan:
             push_layers=frozenset(int(x) for x in (push_layers or ())),
             offset_layers=frozenset(int(x) for x in (offset_layers or ())),
             offset_decode_steps=int(offset_decode_steps),
+            offset_draw_shape=str(offset_draw_shape),
             protect_rank=protect_rank,
         )
 
@@ -1088,7 +1118,14 @@ class SteeringPlan:
         for lyr, r in ranks.items():
             pts = torch.randn(n_stories, r, generator=gen, dtype=torch.float32)
             pts = pts / pts.norm(dim=1, keepdim=True).clamp_min(1e-12)
-            plan[lyr] = _spread_on_sphere(pts)
+            pts = _spread_on_sphere(pts)
+            if self.offset_draw_shape == "manifold":
+                sc = self.layer_plans[lyr].offset_scale
+                if sc is not None and sc.numel() >= r:
+                    w = sc[:r].to(pts.dtype).clamp_min(1e-12)
+                    pts = pts * w.unsqueeze(0)
+                    pts = pts / pts.norm(dim=1, keepdim=True).clamp_min(1e-12)
+            plan[lyr] = pts
         self._offset_plan = plan
 
     def resample_offset(self, story_index: Optional[int] = None) -> None:
@@ -1131,6 +1168,17 @@ class SteeringPlan:
             if lp.offset_basis is not None:
                 if coeff is None:
                     coeff = torch.randn(lp.offset_basis.shape[1], dtype=dt, device=dev)
+                    # Shape the draw like a real difference between two of the
+                    # model's own stories, rather than treating every direction
+                    # alike. The basis is ordered by how much between-story
+                    # variation each direction carries and the last ones carry
+                    # almost none, so an even draw spends as much on them as on
+                    # the first and lands outside anything the model does.
+                    if self.offset_draw_shape == "manifold":
+                        sc = lp.offset_scale
+                        if sc is not None and sc.numel() >= coeff.numel():
+                            coeff = coeff * sc[:coeff.numel()].to(
+                                device=dev, dtype=dt).clamp_min(1e-12)
                 vec = lp.offset_basis @ coeff
             else:
                 vec = coeff if coeff is not None else torch.randn(self.dim, dtype=dt,
@@ -1470,6 +1518,7 @@ class SteeringPlan:
             "push_layers": sorted(self.push_layers),
             "offset_layers": sorted(self.offset_layers),
             "offset_decode_steps": self.offset_decode_steps,
+            "offset_draw_shape": self.offset_draw_shape,
             "protect_rank": self.protect_rank,
             "per_layer": per_layer,
         }

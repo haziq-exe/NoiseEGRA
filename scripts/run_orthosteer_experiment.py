@@ -83,6 +83,8 @@ def make_plan(
     push_layers=None,
     offset_layers=None,
     offset_decode_steps=0,
+    offset_scale=None,
+    offset_draw_shape="sphere",
     noise_norm_match="energy",
     noise_schedule="constant",
     offset_gamma=0.0,
@@ -137,6 +139,8 @@ def make_plan(
         push_layers=push_layers,
         offset_layers=offset_layers,
         offset_decode_steps=offset_decode_steps,
+        offset_scale=offset_scale,
+        offset_draw_shape=offset_draw_shape,
         protect_extra=extra,
         offset_gamma=offset_gamma,
         offset_mode=offset_mode,
@@ -1588,6 +1592,8 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                     beta=flat, steer_budget=b, offset_gamma=gam, offset_mode="orth",
                     offset_basis=offset_basis, offset_basis_kind=kind,
                     steer_prefill=True, prompt_tail_clear=keep,
+                    offset_scale=getattr(args, "offset_scale", None),
+                    offset_draw_shape=getattr(args, "offset_draw_shape", "sphere"),
                     offset_prefill=True, offset_decode=False, **quiet, **base)})
         return items, (
             "the constraint push at "

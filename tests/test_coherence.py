@@ -348,7 +348,16 @@ def test_lost_capitals_is_caught():
     assert lowercase_opening_ratio(clean) == 0.0
     assert lowercase_opening_ratio(broken) == 1.0
     assert filt.check(clean).ok, "well-formed prose was rejected"
-    report = filt.check(broken)
+
+    # Losing capitals no longer rejects a story. The prose underneath is fine --
+    # a copy-editor would fix it in a minute -- so it is scored as one broken
+    # requirement by constraint_metrics_en.story_format rather than as a broken
+    # story. The detection still has to work, and the stricter behaviour still
+    # has to be reachable, which is what these two check.
+    assert filt.check(broken).ok, (
+        "losing capitals rejected the story; it is a broken requirement now")
+    strict = CoherenceFilter(CoherenceThresholds(reject_lost_capitals=True))
+    report = strict.check(broken)
     assert not report.ok and "lost_capitals" in report.reasons, report.reason
 
     # Dialogue legitimately opens sentences with a quotation mark, and those

@@ -16,7 +16,7 @@ where projecting them out changes the outcome.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence, Union
 
 import torch
@@ -35,6 +35,18 @@ class StoryAxes:
     """
     basis: Dict[int, torch.Tensor]
     mean: Dict[int, torch.Tensor]
+    # How far stories actually spread along each of those directions, in the
+    # same order: the standard deviation of the sampled stories' positions.
+    #
+    # The basis alone says which way stories differ and not how much, and the
+    # difference matters. Drawn uniformly on the sphere, a perturbation puts as
+    # much weight on the last direction as on the first -- and the first carries
+    # most of the between-story variation while the last carries almost none, so
+    # a step of a given length along the last is a far larger departure from
+    # anything the model does than the same step along the first. Weighting the
+    # draw by this makes a perturbation of a given size look like a real
+    # story-to-story difference instead.
+    scale: Dict[int, torch.Tensor] = field(default_factory=dict)
     explained: float = 0.0
     n_stories: int = 0
 
@@ -248,6 +260,7 @@ def collect_story_pcs(
     basis: Dict[int, torch.Tensor] = {}
     centre: Dict[int, torch.Tensor] = {}
     explained, n_used = 0.0, 0
+    spread: Dict[int, torch.Tensor] = {}
     for li, means in story_means.items():
         if len(means) < 3:
             raise RuntimeError(f"only {len(means)} usable stories for layer {li}.")
@@ -258,13 +271,17 @@ def collect_story_pcs(
         k = min(rank, mat.shape[0] - 1, mat.shape[1])
         _, sv, vh = torch.linalg.svd(mat, full_matrices=False)
         basis[li] = vh[:k].t().contiguous()
+        # Singular values divided by sqrt(n-1) are the per-direction standard
+        # deviations of the story positions this basis was built from.
+        spread[li] = (sv[:k] / max(mat.shape[0] - 1, 1) ** 0.5).contiguous()
         n_used = mat.shape[0]
         if li == min(story_means):
             explained = float((sv[:k] ** 2).sum() / (sv ** 2).sum().clamp_min(1e-12))
             if verbose:
                 print(f"  [story basis] rank {k} from {n_used} stories; those "
                       f"directions carry {explained:.0%} of the between-story variation")
-    return StoryAxes(basis=basis, mean=centre, explained=explained, n_stories=n_used)
+    return StoryAxes(basis=basis, mean=centre, scale=spread,
+                     explained=explained, n_stories=n_used)
 
 
 @torch.no_grad()

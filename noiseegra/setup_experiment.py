@@ -229,6 +229,8 @@ def _ortho_tag(model_name: str, spec: ExperimentSpec) -> str:
         parts.append(f"__ol{ol[0]}-{ol[-1]}")
     if pl and ol and pl != ol:
         parts.append(f"__pl{pl[0]}-{pl[-1]}")
+    if getattr(plan, "offset_draw_shape", "sphere") != "sphere":
+        parts.append(f"__od{plan.offset_draw_shape}")
     if getattr(plan, "offset_decode_steps", 0):
         parts.append(f"__ods{int(plan.offset_decode_steps)}")
     if getattr(plan, "prompt_head_clear", 0):
