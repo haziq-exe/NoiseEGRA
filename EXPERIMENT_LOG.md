@@ -2378,3 +2378,99 @@ in the present tense" means allowing a subordinate clause about the past.
 Nothing depends on the value -- the untouched model passes 0% anywhere from 0.6
 to 1.0 and the push passes 68% at 0.95, 97% at 0.9, 100% at 0.8 -- and the raw
 share is reported as its own column so the threshold can be ignored entirely.
+
+## Round 28 - two directions cost the reading level, and both are redundant
+
+Built on round 27's finding that the speech direction was the one shortening the
+prose. Everything here uses Qwen3-1.7B at layers 6-13, temperature 1.0, the
+middle-school rule set, 100 stories a condition.
+
+### Leaving out a second direction
+
+The same leave-one-out at fixed total strength, now over the four directions
+that remain after the speech direction was dropped.
+
+| steered set | broken /11 | grade | words/sentence | sentences | reaches reading floor | its own rule |
+|---|---|---|---|---|---|---|
+| untouched model | 4.31 | 3.06 | 9.1 | 21.8 | 53% | -- |
+| four directions | 2.51 | 2.62 | 8.0 | 23.4 | 35% | -- |
+| **without varied openings** | **2.13** | **3.26** | **9.2** | **18.4** | **55%** | 57% to 64% |
+| without a named character | 2.62 | 2.71 | 8.5 | 23.9 | 36% | 81% to 75% |
+| without the senses | 2.80 | 2.72 | 8.7 | 20.2 | 36% | 71% to 78% |
+| without present tense | 3.16 | 3.66 | 8.6 | 22.0 | 55% | 77% to 15% |
+
+**The varied-openings direction behaves exactly as the speech direction did.**
+Dropping it improves the requirement it was steering, 57% to 64%; it takes the
+broken count from 2.51 to 2.13; and it restores the reading level completely --
+words per sentence 9.2 against the untouched model's 9.1, grade 3.26 against
+3.06, the reading floor 55% against 53%.
+
+So with three directions -- present tense, the senses, a named character -- the
+register damage that has been present since round 24 is gone, and compliance is
+2.13 requirements broken against the untouched model's 4.31.
+
+Both of the two directions now removed have the same character: their property
+is expressed by *starting another unit of text*. Putting speech on the page
+means another quoted line; varying the openings means another sentence to open.
+Pushing them makes the model do that again and again, which is the mechanism
+proposed at the end of round 26, and both were redundant because the prompt
+already obtains the requirement without any push. The three that remain are
+properties of prose already being written -- what tense it is in, whether it
+appeals to the senses, whether the character has a name -- and they do not
+fragment it.
+
+The cost of dropping varied openings is speech on the page, 95% to 78% (the
+untouched model is at 64%), and variety of wording, 12.3 to 10.4.
+
+### Both sitings at once
+
+Round 27 found that pushing while writing buys compliance and pushing at the
+prompt buys variety. This is both at once, on the four-direction set.
+
+| condition | coherent | broken /11 | happens | wording | grade | opens in past tense | opens with a title |
+|---|---|---|---|---|---|---|---|
+| untouched | 98/100 | 4.31 | 57.5 | 9.8 | 3.06 | 0% | 0% |
+| temperature 1.8, nucleus 0.95 | **100/100** | 3.97 | 74.2 | 16.6 | 3.46 | 0% | 0% |
+| temperature 1.8, top-k 40 | 99/100 | 3.90 | **78.3** | 17.8 | 3.63 | 0% | 0% |
+| push 2 while writing | **100/100** | **2.51** | 62.7 | 12.2 | 2.62 | 73% | 0% |
+| push 2 at both sitings | **100/100** | 3.72 | 58.7 | 16.3 | 2.35 | 13% | 0% |
+| both + perturbation 0.1 | 99/100 | 3.37 | 70.0 | 17.3 | 3.07 | 6% | 3% |
+| both + perturbation 0.15 | 99/100 | 3.52 | 75.5 | **20.0** | 4.34 | 12% | 29% |
+
+The last row beats both decoding baselines on requirements broken and on variety
+of wording at 99 of 100 stories coherent, and comes within 2.8 of the best on
+variety of what happens. It also removes most of the opening-tense flaw, 73% to
+12% -- so round 26's prediction that pushing at the prompt would fix the opening
+was right, but only when the push is at *both* sitings. Prompt-only removes the
+flaw by removing the tense effect altogether.
+
+Adding the prompt siting costs compliance (2.51 to 3.72) and buys variety of
+wording (12.2 to 16.3). The two sitings have been tied to one strength in every
+run so far; they are now separable, and the sweep is running.
+
+### A failure mode found by reading, that no metric here could see
+
+29% of that arm's stories open with a title:
+
+> **Title: The Day the Sky Grew Cold**
+> **Short Story for Middle-School Readers: "The Last Drop"**
+
+The instruction ends "Write only the story itself: no title, heading, preamble
+or commentary". None of the eleven requirements looks at formatting, and no
+coherence check fires, because what follows the heading is usually a good story.
+
+It is not a background rate. The untouched model, both raised-temperature arms
+and the constraint push on its own produce **none at all**; the per-story
+perturbation introduces them, 3% at 0.1 and 29% at 0.15.
+
+Titles are now counted and reported as their own column, and stripped before
+every other number, since a heading is distinctive content sitting in exactly
+the opening words the diversity scores are computed over. Stripping moves those
+scores very little -- variety of what happens 75.4 to 75.5, wording 20.5 to
+20.0 -- so the variety gain is real and not an artefact of the headings.
+
+The suspected cause is mechanical: the prompt ends with the chat template's own
+tokens, which mark that the instruction is over and the answer starts here, and
+the perturbation was being added to those along with everything else, weakening
+the only signal that this is a reply to an instruction. A run sparing the last
+2, 4 and 8 prompt positions is testing it.
