@@ -34,43 +34,49 @@ roughly 150 words instead of 60 -- it did not, and this branch exists to make it
 compliance, all at once, and beat raised-temperature decoding. The novelty bar
 in `astar-novelty-bar` still applies.
 
-### Where it stands (round 34, 100 stories a condition, Qwen3-1.7B, layers 6-13)
+### Where it stands (round 42, 200 stories a condition, one run, Qwen3-1.7B)
 
-**Usable** is the headline: the share of stories that are coherent *and* do not
-open with a heading the instruction forbids. Coherence alone hid a 29% rate of
-those for a day.
+The untouched model, both decoding baselines and the method generated in a
+single run at 200 stories each, sharing one prompt, one seed sequence and one
+pooling size. Layers 6-13, temperature 1.0, total push 2 over four directions,
+a shaped per-story perturbation of 0.15 at the prompt, the last eight prompt
+positions spared.
 
-| condition | usable | broken /11 | happens | wording |
-|---|---|---|---|---|
-| untouched model | 98% | 4.31 | ~55 | 9.6 |
-| temperature 1.8, nucleus 0.95 | **100%** | 3.97 | 71.8 | 16.4 |
-| temperature 1.8, top-k 40 | 99% | 3.90 | **75.7** | 17.5 |
-| push at decode, perturbation 0.15 at the prompt | 89% | 3.19 | **74.0** | **18.5** |
-| push at both sitings, perturbation 0.125, sparing 8 | 96% | **3.07** | 71.6 | 18.3 |
-| perturbation in the opening 30 decode steps | 98% | 2.98 | 70.0 | 15.0 |
+| condition | coherent | broken /12 | happens | wording | grade |
+|---|---|---|---|---|---|
+| untouched model | 194/200 | 4.30 | 86.0 | 11.7 | 3.27 |
+| temperature 1.8, nucleus 0.95 | **200/200** | 3.92 | 123.7 | 19.4 | 3.45 |
+| temperature 1.8, top-k 40 | 199/200 | 3.95 | **132.0** | 21.5 | 3.60 |
+| the method | 195/200 | **2.99** | 125.6 | 21.3 | **5.22** |
 
-Requirement compliance is won outright against both decoding baselines, by 0.7
-to 0.9 of a requirement, and variety of wording is won as well. **One axis and
-one column are not:** the arm that passes nucleus sampling on variety of what
-happens keeps only 89% of its stories usable, and the arms that keep 96-100%
-fall 1 to 2 points short on that variety.
+Differences from nucleus sampling, 95% intervals from 300 subsamples of 135
+stories without replacement:
 
-Everything sits on one curve: **content variety comes from displacing the
-prompt, and displacing the prompt costs formatting.** The open question is
-whether anything moves the curve rather than sliding along it.
+| | variety of what happens | variety of wording |
+|---|---|---|
+| temperature 1.8, top-k 40 | **+5.2** [+2.5, +7.3] | +1.8 [-0.0, +3.6] |
+| the untouched model | -25.3 [-28.0, -22.3] | -6.7 [-7.9, -5.5] |
+| the method | +1.2 [-1.3, +3.6] | **+1.6** [+0.1, +3.1] |
 
-### The constraint push is protective, measured three ways
+**Won:** requirement compliance, by nearly a whole requirement of twelve against
+both decoding baselines. Variety of wording against nucleus sampling, on an
+interval that clears zero. Reading level and sentence length by a wide margin,
+5.22 and 12.6 words against 3.45 and 8.9.
 
-This rules out a family of otherwise reasonable ideas, so it is worth stating
-plainly. Weakening the push anywhere to buy room for a larger perturbation makes
-things worse, not better:
+**Not won:** variety of what happens is a tie with nucleus sampling and a real
+loss to top-k sampling. Coherence is five stories short of nucleus sampling.
 
-* perturbation alone at 0.15 keeps 84 stories of 100 coherent; with the push at
-  2 it keeps 99
-* dropping a steered direction, which gives the survivors more of a fixed total
-  strength, collapses coherence from 100% to 83%
-* removing the push from the prompt admits titles in 7% of stories at a
-  perturbation of 0.15, against 4% with it there
+**Never quote a variety number without its interval.** Margins of half a point
+were read as results for two days; the interval at a hundred stories is over a
+point wide. `scripts/compare_conditions.py --interval` does it.
+
+### The five stories the method loses, which are specific rather than general
+
+Two are refusals -- "I'm sorry, but I can't generate stories that meet your
+requirements". Three stall into list-making rather than narration: "She sees a
+butterfly. She hears the wind. She notices a squirrel", which looks like the
+senses direction over-driving. Neither failure is general incoherence and both
+are narrow enough to attack.
 
 ### The four findings this branch has produced
 
