@@ -2705,3 +2705,65 @@ is no short opening in which the content is settled and after which it is fixed.
 60 steps -- roughly the first 9, 22 and 45 words. It is the one way left to get
 a content effect without touching the prompt, and the measurement above says its
 window has to be long to cover what is scored.
+
+## Round 33 - three nulls, two of them mine
+
+### Dropping the senses direction: a null, and why
+
+Round 31 found the senses direction concentrating the content vocabulary --
+air in 43% of stories, sun 39%, scent 26%, smell 24% -- and the obvious move was
+to drop it, leaving present tense and a named character.
+
+| steered set, perturbation 0.125 at the prompt, sparing 8 | coherent | titled | usable |
+|---|---|---|---|
+| three directions | **100%** | 4% | **96%** |
+| two directions | 83% | 0% | 83% |
+| two directions, perturbation 0.15 | 85% | 3% | 82% |
+
+Coherence collapses. The cause is the fixed total strength: dropping a direction
+gives the remaining ones more of it each, so two directions are pushed half again
+as hard as three were. Going from five to four to three was free because the
+strength per direction stayed moderate; three is the floor.
+
+So the concentration the senses direction causes cannot be removed by dropping
+it, and the round-31 observation stands without a fix attached to it.
+
+### A gate that was never armed
+
+The gated-perturbation run returned three byte-identical arms -- no gate, the
+more uncertain half, the most uncertain tenth -- all at 90% coherent and 0%
+titled at a perturbation of 0.15, and all at 8% coherent at 0.3.
+
+The entropy thresholds are measured only when the suite literally named "gate"
+is requested. The new suite has a different name, so every level resolved to
+0.0, which means no gate at all, and the three arms differed in a number that
+was always zero.
+
+This is the third fault of the same shape in two days: a mechanism registered
+where it is built and not where it is armed, producing a clean null under run
+ids that name something which never happened. `BASIS_SUITES` exists because of
+the first version of it, where three suites ran isotropic noise while their run
+ids claimed an estimated basis. `GATE_SUITES` now exists for this one, and the
+suite-building test asserts that any suite whose run ids name a gate is in it.
+The guard was run against the unregistered suite and fails on it.
+
+The ungated arm was real, so the round does settle one thing: **a perturbation
+of 0.3 applied while the story is written leaves 8 stories of 100 coherent.**
+That siting holds 0.15 at 90% and not much past it.
+
+### A layer-band sweep that never applied
+
+Reported under round 31: the band gating reached the decode path and not the
+prefill hook, and every run here perturbs the prompt, so three bands produced
+three byte-identical arms. Fixed, and the test now reproduces the hook rather
+than the plan's own methods.
+
+### What the titles are, and are not, costing
+
+Worth knowing before spending more on them. Taking the best arm's hundred
+stories, dropping the four that open with a title changes variety of what
+happens from 72.7 to 72.5, pooled at the same size.
+
+**The titled stories are not the varied ones.** Removing them costs essentially
+nothing, so the 4% is a clean 4% of usable output rather than a trade. Anything
+that removes the titles without disturbing the rest is worth the whole of it.
