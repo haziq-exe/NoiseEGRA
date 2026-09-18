@@ -3096,3 +3096,24 @@ no margin gets reported again without one.
 * **Against raised temperature with top-k sampling**, it wins requirement
   compliance and coherence, ties variety of wording, and loses variety of what
   happens by a real 2.3.
+
+### Where the content-variety gap to top-k sampling actually sits
+
+Vendi over content-lemma sets is a kernel on top of a representation, so it is
+worth checking the ordering it reports against the raw vocabulary underneath.
+Over the coherent stories of each condition, first forty words, proper nouns
+excluded:
+
+| | content lemmas per story | distinct across the set | lemmas in exactly one story | a story's lemmas no other has |
+|---|---|---|---|---|
+| temperature 1.8, nucleus 0.95 | 18.7 | 644 | 53% | 18% |
+| the method at 0.15 | 18.7 | 672 | 53% | 19% |
+| temperature 1.8, top-k 40 | 18.6 | 711 | 55% | 21% |
+
+The three write the same amount of content and differ in how much of it is
+shared. The ordering matches the Vendi ordering exactly, so that measure is
+reporting something real about the vocabulary and not an artefact of its kernel.
+
+It also sizes the remaining gap: about 40 more distinct lemmas across a hundred
+stories, or four tenths of a novel word per story. That is what a mechanism has
+to buy, and it is small enough to be worth one.
