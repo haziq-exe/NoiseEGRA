@@ -1170,6 +1170,51 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
               "--random-directions to separate what the extracted directions do "
               "from what any push of that size does")
 
+    if name == "promptbudget":
+        # The whole of the prompt's displacement spent on the perturbation, with
+        # the constraint push kept to the decode steps.
+        #
+        # The prompt is carrying two things at once. The push at the prompt buys
+        # variety of wording -- 9.7 to 16.7 on its own -- and the perturbation
+        # buys variety of what happens. Both displace the same representation,
+        # and past a certain displacement the model stops treating it as an
+        # instruction and writes a document with a title. So the two are
+        # competing for one budget, and variety of what happens is the axis
+        # still short.
+        #
+        # There is a direct measurement that they compete. Pushing at both
+        # sitings rather than while writing alone takes variety of what happens
+        # from 62.7 down to 58.7, while taking variety of wording from 12.2 up to
+        # 16.3. A constant offset is the same for every story, so a push at the
+        # prompt moves every story the same way and can only make them more
+        # alike in content; the perturbation is the only part that differs
+        # between stories.
+        #
+        # This gives the prompt to the perturbation alone, at sizes that were
+        # unusable when the push was there as well, with the instruction
+        # boundary spared.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        kind = getattr(args, "offset_basis_kind", "story")
+        flat = {n: 1.0 for n in names}
+        b = float(getattr(args, "steer_budget", None) or 2.0)
+        keep = int(getattr(args, "prompt_tail", 8) or 8)
+        gammas = [float(x) for x in (getattr(args, "gamma_sweep", None)
+                                     or (0.15, 0.2, 0.25))]
+
+        items = []
+        for gam in gammas:
+            items.append({"plan": make_plan(
+                beta=flat, steer_budget=b, offset_gamma=gam, offset_mode="orth",
+                offset_basis=offset_basis, offset_basis_kind=kind,
+                steer_prefill=False, prompt_tail_clear=keep,
+                offset_prefill=True, offset_decode=False, **quiet, **base)})
+        return items, (
+            f"the constraint push at {b:g} kept to the decode steps, with the "
+            f"prompt given to the per-story perturbation alone at "
+            + ", ".join(f"{x:g}" for x in gammas)
+            + f", sparing the last {keep} prompt positions")
+
     if name == "gatedwrite":
         # The per-story perturbation applied while the story is written, and
         # allowed through only at the decode steps where the model was unsure.
