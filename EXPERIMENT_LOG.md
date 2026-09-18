@@ -2274,3 +2274,107 @@ and it is the next one.
 A check for subject-verb agreement errors ("she're") found 1-2% of stories in
 the pushed arms, the same rate as the untouched model and raised temperature. It
 was one story, not a pattern.
+
+## Round 27 - the speech direction is what costs the reading level
+
+Three runs, one per account, all Qwen3-1.7B at layers 6-13, temperature 1.0,
+the middle-school rule set with every threshold recalibrated (see the note on
+calibration below), 100 stories a condition.
+
+### The head-to-head, everything scored in one place
+
+| condition | coherent | broken /11 | happens | wording | grade | words/sentence | opens in past tense |
+|---|---|---|---|---|---|---|---|
+| untouched | 98/100 | 4.31 | 55.6 | 9.7 | 3.06 | 9.1 | 0% |
+| temperature 1.8, nucleus 0.95 | **100/100** | 3.97 | 71.2 | 16.4 | 3.46 | 8.9 | 0% |
+| temperature 1.8, top-k 40 | 99/100 | 3.90 | **74.9** | **17.5** | 3.63 | 9.1 | 0% |
+| push 2 | **100/100** | 3.03 | 60.0 | 13.7 | 2.10 | 6.6 | 68% |
+| push 2 + perturbation 0.05 | **100/100** | 3.28 | 64.2 | 12.3 | 2.09 | 6.6 | 48% |
+| **push 2 + perturbation 0.1** | 97/100 | **2.94** | 68.8 | 14.9 | 2.53 | 7.5 | 24% |
+| perturbation 0.05 alone | 97/100 | 4.05 | 55.2 | 9.4 | 3.38 | 9.4 | 0% |
+| perturbation 0.1 alone | 93/100 | 4.29 | 59.6 | 13.0 | 4.04 | 10.7 | 0% |
+
+Compliance is now clearly ahead of both decoding baselines: 2.94 requirements
+broken against 3.90 and 3.97, with the untouched model at 4.31. Coherence is
+97 of 100 against 99 and 100. **Variety is still behind**: 68.8 against 74.9 for
+what happens, 14.9 against 17.5 for wording. That gap is the whole of what is
+left.
+
+The perturbation also removes two thirds of the opening-tense flaw, 68% to 24%,
+which was not expected and is not yet explained.
+
+### Where the push is applied changes what it does
+
+| condition | broken /11 | happens | wording | present tense | words/sentence |
+|---|---|---|---|---|---|
+| untouched | 4.31 | 55.6 | 9.7 | 13% | 9.1 |
+| push 2 while writing | 3.03 | 60.0 | 13.7 | **94%** | 6.6 |
+| push 2 at the prompt only | 4.80 | 60.4 | **16.7** | 12% | 8.0 |
+| push 2 at the prompt only + perturbation 0.1 | 4.65 | 64.2 | 16.2 | 14% | 10.0 |
+
+Pushing at the prompt positions and leaving decoding alone gives **no compliance
+at all** -- the tense requirement sits at the untouched model's level -- while
+lifting variety of wording from 9.7 to 16.7, which is near raised temperature's
+17.5, and leaving sentence length alone. The two sitings do different jobs:
+decoding supplies compliance, the prompt supplies variety. Having both at once
+has not been run and is the obvious next arm.
+
+This also disposes of the prediction made at the end of round 26. Prefill
+steering was expected to fix the past-tense opening; prompt-only steering does
+remove it, but only by removing the tense effect entirely.
+
+### Which direction costs the reading level: leave one out at fixed strength
+
+Each arm holds the same total strength, so dropping a direction gives the
+remaining ones more of it rather than pushing less hard.
+
+| steered set | broken /11 | words/sentence | sentences | reaches reading floor | present tense | speech on the page |
+|---|---|---|---|---|---|---|
+| all five | 3.03 | 6.6 | 33.4 | 16% | 87% | 97% |
+| **without the speech direction** | **2.51** | **8.0** | **23.4** | **35%** | 77% | 95% |
+| without varied openings | 2.94 | 7.1 | 29.3 | 26% | 90% | 94% |
+| without the senses | 3.52 | 6.7 | 33.6 | 21% | 94% | 95% |
+| without a named character | 3.49 | 6.7 | 37.5 | 18% | 94% | 96% |
+| without present tense | 3.79 | 6.9 | 31.3 | 26% | 15% | 96% |
+
+**The speech direction is the one that shortens the prose, and it is not needed
+for its own requirement.** Dropping it takes the broken count from 3.03 to 2.51,
+sentences from 33.4 to 23.4 against the untouched model's 21.8, words per
+sentence from 6.6 to 8.0, and the share of stories reaching the grade-3 reading
+floor from 16% to 35% -- while the speech requirement itself stays at 95%,
+because the prompt already asks for it and the model already complies.
+
+It also improves three requirements it was never aimed at: varied openings 32%
+to 57%, verbs-rather-than-adverbs 46% to 64%, no sentence written twice 95% to
+98%. The only cost is the tense share, 87% to 77%.
+
+This is consistent with the mechanism proposed at the end of round 26 -- pushing
+a property direction makes the model express that property again, and expressing
+speech again means another short quoted line -- and it is the first direct
+evidence for it. The remaining four directions are what round 28 is built on.
+
+### A note on the thresholds
+
+Three of the eleven requirements were unpassable or unfailable at the levels
+inherited from the 60-word children's task, and so measured nothing on a
+150-word story. They were recalibrated by the convention already written into
+this project's code (`DEFAULT_MAX_ADVERBS = 2  # unprompted 50%`): the level at
+which the untouched model passes about half the time, measured on the untouched
+model's own stories and decided without reference to any method arm.
+
+* at most 2 adverbs became at most 5 (10% of untouched stories passed, now 48%)
+* at least 2 sensory words became at least 6 (99% passed, now 64%)
+* no word beginning more than 3 sentences became 5 (8% passed, now 51%)
+
+The levels do not all favour the method: on the opening rule the untouched model
+goes from 8% to 51% and the push at strength 2 only from 1% to 13%.
+
+The present-tense requirement was treated differently and deliberately so. It is
+the one categorical requirement, and scored as "every finite verb present" it
+read 0% untouched, 0% at raised temperature and 6% under the push, which says
+those three are alike. They are not: the share of finite verbs in the present
+tense is 15%, 18% and 96%. A threshold of 0.9 was used, which is what "written
+in the present tense" means allowing a subordinate clause about the past.
+Nothing depends on the value -- the untouched model passes 0% anywhere from 0.6
+to 1.0 and the push passes 68% at 0.95, 97% at 0.9, 100% at 0.8 -- and the raw
+share is reported as its own column so the threshold can be ignored entirely.
