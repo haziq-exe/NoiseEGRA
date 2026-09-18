@@ -143,11 +143,18 @@ def main() -> None:
         # content sitting in exactly the opening words every diversity number
         # here is computed over. Counted, then removed, so the scores below
         # describe the story rather than its heading.
-        titled = float(np.mean([opens_with_a_title(t) for t in texts]))
+        title_flags = [opens_with_a_title(t) for t in texts]
+        titled = float(np.mean(title_flags))
         texts = [trim_title(t)[0] for t in texts]
 
         reports = [coherence.check(t) for t in texts]
         kept = [r.text for r in reports if r.ok]
+        # What a reader would actually accept: coherent, and without a heading
+        # the instruction forbids. The two failures trade against each other --
+        # sparing the prompt's boundary takes titles from 29% to 4% and loses
+        # capitalisation in some stories instead -- so neither column alone says
+        # how much of a condition's output is usable.
+        usable = float(np.mean([r.ok and not t for r, t in zip(reports, title_flags)]))
         rejected = Counter(r.reason for r in reports if not r.ok)
         if not kept:
             raise SystemExit(f"{name}: the coherence checks rejected all {len(texts)} stories")
@@ -168,7 +175,7 @@ def main() -> None:
             present=float(np.mean([s.present_ratio for s in per_story
                                    if s.present_ratio is not None] or [float("nan")])),
             wrong_open=float(np.mean([opens_in_the_wrong_tense(t, checker) for t in kept])),
-            titled=titled,
+            titled=titled, usable=usable,
             pass_rate={r: float(np.mean([s.checks.get(r, True) for s in per_story]))
                        for r in rules},
             happens_vectors=trim_isolated(
@@ -191,7 +198,7 @@ def main() -> None:
           f"every condition pooled at {pool}.\n")
     head = (f"{'condition':<{width}}  {'coherent':>9}  {'broken':>7}  {'happens':>8}  "
             f"{'wording':>8}  {'grade':>6}  {'w/sent':>7}  {'sents':>6}  "
-            f"{'uncommon':>9}  {'opener':>7}  {'present':>8}  {'past open':>10}  {'titled':>7}")
+            f"{'uncommon':>9}  {'opener':>7}  {'present':>8}  {'past open':>10}  {'titled':>7}  {'usable':>7}")
     print(head)
     print("-" * len(head))
     for name in order:
@@ -200,7 +207,7 @@ def main() -> None:
               f"{v['happens']:>8.1f}  {v['wording']:>8.1f}  {v['grade']:>6.2f}  "
               f"{v['words_per_sentence']:>7.1f}  {v['sentences']:>6.1f}  "
               f"{v['uncommon']:>8.1%}  {v['opener']:>6.0%}  {v['present']:>7.0%}  "
-              f"{v['wrong_open']:>9.0%}  {v['titled']:>6.0%}")
+              f"{v['wrong_open']:>9.0%}  {v['titled']:>6.0%}  {v['usable']:>6.0%}")
 
     print("\n  broken    mean requirements broken per story, out of "
           f"{len(rules)}; lower is better")
@@ -215,6 +222,9 @@ def main() -> None:
     print("            present -- a flaw the whole-story share above cannot see")
     print("  titled    share opening with a title or heading, which the instruction")
     print("            forbids. Removed before every other number in the row")
+    print("  usable    share that are coherent AND untitled -- the share a reader")
+    print("            would accept. The two failures trade against each other, so")
+    print("            neither of the columns before it says this on its own")
 
     rejections = {n: scored[n]["rejected"] for n in order if scored[n]["rejected"]}
     if rejections:
