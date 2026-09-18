@@ -1242,16 +1242,25 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         b = float(getattr(args, "steer_budget", None) or 2.0)
         g = float(getattr(args, "main_gamma", 0.15))
         windows = [int(x) for x in (getattr(args, "opening_steps", None) or (12, 30, 60))]
+        gammas = [float(x) for x in (getattr(args, "gamma_sweep", None) or [g])]
 
+        # Window and size have to be crossed, not swept one at a time. This
+        # siting is the only one that produces no titles at all, so its ceiling
+        # is worth finding properly: a short window may carry a displacement
+        # that the same siting cannot survive for a whole story. Applied
+        # throughout, 0.15 keeps 90 stories of 100 and 0.3 keeps 8.
         items = []
         for w in windows:
-            items.append({"plan": make_plan(
-                beta=flat, steer_budget=b, offset_gamma=g, offset_mode="orth",
-                offset_basis=offset_basis, offset_basis_kind=kind,
-                steer_prefill=True, offset_prefill=False, offset_decode=True,
-                offset_decode_steps=w, **quiet, **base)})
+            for gam in gammas:
+                items.append({"plan": make_plan(
+                    beta=flat, steer_budget=b, offset_gamma=gam, offset_mode="orth",
+                    offset_basis=offset_basis, offset_basis_kind=kind,
+                    steer_prefill=True, offset_prefill=False, offset_decode=True,
+                    offset_decode_steps=w, **quiet, **base)})
         return items, (
-            f"the per-story perturbation at {g:g} applied to the first "
+            "the per-story perturbation at "
+            + ", ".join(f"{x:g}" for x in gammas)
+            + " applied to the first "
             + ", ".join(str(w) for w in windows)
             + " decode steps and never to the prompt")
 
