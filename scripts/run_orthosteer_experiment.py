@@ -1571,19 +1571,29 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         g = float(getattr(args, "main_gamma", 0.15))
         tails = [int(x) for x in (getattr(args, "tail_sweep", None) or (2, 4, 8))]
         gammas = [float(x) for x in (getattr(args, "gamma_sweep", None) or [g])]
+        # The total strength is swept too, because adding a direction divides a
+        # fixed total among more of them: four directions at a total of 2 push
+        # each one less hard than three did, and the push is what holds the text
+        # together against the perturbation. Restoring the strength per
+        # direction is a different lever from re-splitting it.
+        budgets = [float(x) for x in (getattr(args, "budget_sweep", None) or [b])]
 
         items = []
         for keep in tails:
             for gam in gammas:
+              for b in budgets:
                 items.append({"plan": make_plan(
                     beta=flat, steer_budget=b, offset_gamma=gam, offset_mode="orth",
                     offset_basis=offset_basis, offset_basis_kind=kind,
                     steer_prefill=True, prompt_tail_clear=keep,
                     offset_prefill=True, offset_decode=False, **quiet, **base)})
         return items, (
-            f"the constraint push at {b:g} at both sitings with a per-story "
-            f"perturbation at {', '.join(f'{x:g}' for x in gammas)}, leaving the last "
-            f"{', '.join(str(t) for t in tails)} prompt positions unperturbed")
+            "the constraint push at "
+            + ", ".join(f"{x:g}" for x in budgets)
+            + " at both sitings with a per-story perturbation at "
+            + ", ".join(f"{x:g}" for x in gammas)
+            + ", leaving the last "
+            + ", ".join(str(t) for t in tails) + " prompt positions unperturbed")
 
     if name == "asymmetric":
         # The constraint push given a different strength at the prompt from the
