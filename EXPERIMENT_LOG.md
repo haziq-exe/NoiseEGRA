@@ -2595,3 +2595,64 @@ the prompt representation at all and so cannot spend its budget. Neither has eve
 been run here: every run in this project has perturbed the prompt positions and
 left decoding alone, and one `--layers` flag has always set the band for both
 halves at once.
+
+## Round 31 - where the remaining variety is being lost
+
+The state going in: the method wins requirement compliance and coherence, and
+variety of what happens is the one axis behind. Reading the two conditions'
+stories side by side says where it goes.
+
+### The steered stories are not short of words, they are short of subjects
+
+Over the first forty words of each of a hundred stories, counting content
+lemmas with proper nouns excluded, which is what the variety measure is
+computed from:
+
+| | raised temperature (nucleus) | the method |
+|---|---|---|
+| distinct content lemmas across the set | 644 | **659** |
+| share of all lemma occurrences in the commonest 20 | 21% | 20% |
+| the lemma appearing in most stories | look, 41% | **air, 43%** |
+| next four | sun 27%, sky 25%, window 23%, stand 23% | **sun 39%, scent 26%, smell 24%**, finger 20% |
+
+The method has *more* distinct content words and no worse concentration
+overall. What it has is a particular concentration: four of its five commonest
+lemmas are words for how something smells or feels, in a quarter to nearly half
+of all its stories. The direction for the senses is doing its job -- the
+requirement asks for six sensory words and the direction delivers them -- and
+the model satisfies it by reaching for the same small set every time.
+
+This is the third direction found to cost something it was not aimed at, and
+the pattern is now consistent. The speech direction bought its own requirement
+and paid in sentence length. The varied-openings direction bought its own
+requirement and paid in sentence length. The senses direction buys its own
+requirement and appears to pay in how many different things the stories are
+about.
+
+Whether dropping it recovers the variety is a run rather than an argument, and
+it is queued: the same configuration steering only present tense and a named
+character. The cost if it works is the sensory requirement falling back to the
+untouched model's 64% from 71%, which is 0.07 of one requirement.
+
+Character names show the same concentration without affecting the measure,
+which excludes proper nouns: the method uses 67 distinct names against raised
+temperature's 55, but puts "Mia" in 28 stories of 100 against 17.
+
+### Two faults found this round
+
+**A layer-band sweep that was a null because it never happened.** The push and
+the perturbation were given separate bands, and the three arms came back
+byte-identical -- same coherence, same variety, same title rate to the
+percentage point -- with run ids faithfully recording bands that never applied.
+The gating had been added to the decode path only, and every run in this project
+perturbs the prompt and leaves decoding alone. The test that was written to
+prevent exactly this covered the plan's own methods rather than the hook that
+applies them; it now reproduces the hook, and fails against the previous code.
+
+**The per-story perturbation stayed on the CPU from the second story onward.**
+A layer's tensors are moved onto the model's device on first use, guarded by
+whether the basis is already there. The perturbation is redrawn every story,
+after that move, so it was relocated once and never again. Invisible for the
+whole project because the perturbation has only ever been added at the prompt,
+where the prefill hook relocates it itself; the first run to add it at decode
+steps died on the second story of both shards.
