@@ -2884,3 +2884,57 @@ steering requirements is what this method does; it has never had a direction for
 this one because no baseline has ever broken it. Round 37 extracts one from
 contrastive pairs whose two sides share a body word for word, the negative
 adding a heading above it, and steers it with the other three.
+
+## Round 37 - steering the instruction the perturbation was breaking
+
+Every configuration with enough content variety to reach the decoding baselines
+opened 3-7% of its stories with a heading, and nothing geometric removed them:
+sparing the end of the prompt took 29% to 4% and stopped, sparing the start as
+well made it worse (7%, 9%, 12% at a perturbation of 0.15, against 3% with the
+end alone), and moving or gating the perturbation removed the headings only by
+removing the content variety with them.
+
+The instruction ends "Write only the story itself: no title, heading, preamble
+or commentary". That is a requirement of the task, stated in the prompt. The
+method steers requirements, and it had never had a direction for this one --
+because no baseline has ever broken it, so nothing ever asked for one.
+
+The pairs share a body word for word and the negative adds a heading above it.
+That makes their word counts differ by construction, which every other direction
+in the file is forbidden to do; matching them would mean shortening the body
+under the heading, and the direction would then mean "write less" as well as
+"write no heading", which is the confound those checks exist to catch. Both test
+files carry the exemption and the reasoning.
+
+100 stories a condition, pooled at 97.
+
+| condition | usable | broken /11 | happens | wording | grade | titled |
+|---|---|---|---|---|---|---|
+| temperature 1.8, nucleus 0.95 | **100%** | 3.97 | 73.6 | 16.6 | 3.46 | 0% |
+| temperature 1.8, top-k 40 | 99% | 3.90 | **77.6** | 17.7 | 3.63 | 0% |
+| three directions, perturbation 0.125 | 96% | 3.07 | 73.2 | 18.3 | 3.84 | 4% |
+| with the heading direction, 0.125 | 99% | **2.41** | 68.6 | 15.5 | 4.12 | **0%** |
+| **with the heading direction, 0.15** | 94% | 2.80 | **74.5** | **19.7** | **4.37** | 3% |
+
+**It works, and it lifts the cap that was holding the method back.** At 0.125 the
+headings go from 4% of stories to none and the share a reader would accept from
+96% to 99%. More importantly, 0.15 becomes reachable -- and 0.15 is where the
+content variety is, because the size of the perturbation at the prompt is the
+only thing that moves variety of what happens.
+
+At 0.15 the method beats raised temperature with nucleus sampling on **variety
+of what happens (74.5 against 73.6), on requirement compliance (2.80 against
+3.97), and on variety of wording (19.7 against 16.6)**, at a higher reading
+level (4.37 against 3.46) and longer sentences (11.8 words against 8.9). It
+loses only the share of stories a reader would accept: 94% against 100%, being
+3% that still open with a heading and 3% that degenerate.
+
+Adding the direction costs the other three some of a fixed total push, which is
+visible at 0.125: variety of what happens falls from 73.2 to 68.6 when the
+fourth direction takes a quarter of the strength. At 0.15 the larger
+perturbation more than makes it back.
+
+The heading requirement and the perturbation size are therefore in direct
+opposition, and the balance between them is a number rather than a choice: round
+38 sweeps how much of the fixed strength that one direction gets, at 2 and 3
+times the others, crossed with perturbation 0.15 and 0.175.
