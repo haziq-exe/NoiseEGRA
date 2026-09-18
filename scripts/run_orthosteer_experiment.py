@@ -1174,6 +1174,44 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
               "--random-directions to separate what the extracted directions do "
               "from what any push of that size does")
 
+    if name == "final":
+        # The head-to-head that settles the comparison, all in one run.
+        #
+        # Every number so far comes from pooling conditions across separate
+        # runs, which is sound but leaves the margins inside the noise of a
+        # hundred stories: the best arm sits at 74.6 on variety of what happens
+        # against raised temperature's 74.8, and a difference of 0.2 means
+        # nothing at that sample size. This puts the untouched model, both
+        # decoding baselines and the method in one run at whatever --stories is
+        # set to, so they share a prompt, a seed sequence and a pooling size
+        # exactly.
+        #
+        # The method's settings are passed in rather than written here, because
+        # which configuration this should be is what the rounds before it decide.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        kind = getattr(args, "offset_basis_kind", "story")
+        flat = {n: 1.0 for n in names}
+        b = float(getattr(args, "steer_budget", None) or 2.0)
+        g = float(getattr(args, "main_gamma", 0.125))
+        keep = int(getattr(args, "prompt_tail", 8) or 8)
+
+        items = [
+            "baseline",
+            {"mode": "baseline", "temperature": 1.8, "top_p": 0.95},
+            {"mode": "baseline", "temperature": 1.8, "top_k": 40},
+            {"plan": make_plan(
+                beta=flat, steer_budget=b, offset_gamma=g, offset_mode="orth",
+                offset_basis=offset_basis, offset_basis_kind=kind,
+                steer_prefill=True, prompt_tail_clear=keep,
+                offset_prefill=True, offset_decode=False, **quiet, **base)},
+        ]
+        return items, (
+            "the untouched model, temperature 1.8 with nucleus 0.95, temperature "
+            f"1.8 with top-k 40, and the constraint push at {b:g} at both sitings "
+            f"with a per-story perturbation of {g:g} at the prompt, sparing its "
+            f"last {keep} positions -- all in one run")
+
     if name == "framing":
         # The perturbation kept away from both ends of the prompt.
         #
