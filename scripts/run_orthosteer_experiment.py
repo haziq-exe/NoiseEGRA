@@ -1197,21 +1197,23 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         gammas = [float(x) for x in (getattr(args, "gamma_sweep", None) or (0.15, 0.175))]
         weights = [float(x) for x in (getattr(args, "heading_weights", None) or (2.0, 3.0))]
 
-        # Without the direction this suite weights, every weight produces the
-        # same plan and the sweep is a null that looks like a result. The
-        # suite-building test found exactly that, because it builds every suite
-        # against a fixed set of names.
-        if "no_heading" not in names:
+        # Whichever direction holds the story's format is the one weighted.
+        # Without it, every weight produces the same plan and the sweep is a
+        # null that looks like a result -- which the suite-building test found,
+        # because it builds every suite against one fixed set of names.
+        target = next((n for n in ("story_format", "no_heading") if n in names), None)
+        if target is None:
             raise ValueError(
                 "suite 'weighted' varies the share of the push given to the "
-                "no_heading direction, and it is not in the steered set "
-                f"({sorted(names)}). Every arm would be identical. Add it to "
+                "direction that holds the story's format, and neither "
+                "'story_format' nor 'no_heading' is in the steered set "
+                f"({sorted(names)}). Every arm would be identical. Add one to "
                 "--steer-vectors."
             )
 
         items = []
         for w in weights:
-            beta = {n: (w if n == "no_heading" else 1.0) for n in names}
+            beta = {n: (w if n == target else 1.0) for n in names}
             for gam in gammas:
                 items.append({"plan": make_plan(
                     beta=beta, steer_budget=b, offset_gamma=gam, offset_mode="orth",
@@ -1219,7 +1221,7 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                     steer_prefill=True, prompt_tail_clear=keep,
                     offset_prefill=True, offset_decode=False, **quiet, **base)})
         return items, (
-            "the no-heading direction weighted "
+            f"the {target} direction weighted "
             + ", ".join(f"{w:g}" for w in weights)
             + " times the others, crossed with a per-story perturbation at "
             + ", ".join(f"{x:g}" for x in gammas))
