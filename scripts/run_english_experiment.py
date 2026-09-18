@@ -106,6 +106,12 @@ PAIR_SETS = {
 # noise. `tests/test_suites_build.py` asserts every suite whose run ids name an
 # estimated basis is in this set, and the runner crashes at generation time if a
 # basis-naming run id survives with no basis built.
+# Any suite that reads args.gate_thresholds to set a per-arm gate must be listed
+# here, or every level silently resolves to "no gate" and the sweep reads as a
+# null while the run ids faithfully record gates that were never applied.
+# tests/test_suites_build.py asserts a suite whose run ids name a gate is here.
+GATE_SUITES = {"gate", "gatedwrite"}
+
 BASIS_SUITES = {"offset", "story", "prompt", "main", "pareto", "select", "feedback",
                 "assemble", "headtohead", "closure", "control", "ablate",
                 "controls", "tame", "core4", "combine", "amplify", "spread", "frontier", "siting", "prefill", "asymmetric", "boundary", "bands", "whilewriting", "gatedwrite", "promptbudget", "opening",
@@ -978,7 +984,12 @@ def main() -> None:
     # reasoning as calibrating the noise scale to the model's own block RMS.
     # Measured unsteered, so it describes the model and not the condition.
     args.gate_thresholds = {"none": 0.0}
-    if "gate" in suites_req or args.gate != "none":
+    # Any suite that sets a per-arm gate needs the thresholds measured, not just
+    # the one called "gate". `gatedwrite` did not, so every level resolved to
+    # 0.0 and three arms that differed only in their gate generated identical
+    # stories under run ids that named the gate. Same silent null as a suite
+    # missing from BASIS_SUITES.
+    if GATE_SUITES & set(suites_req) or args.gate != "none":
         gate_key = f"{args.model}|{lo}-{hi}"
         store = state.setdefault("entropy", {})
         if gate_key not in store:

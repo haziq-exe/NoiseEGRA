@@ -122,6 +122,18 @@ for suite in SUITES:
               "" if suite in _R.BASIS_SUITES else
               f"{suite!r} emits obstory/obprompt but is not guarded")
 
+    # The same shape of fault one level along. A suite that sets a per-arm
+    # entropy gate needs the thresholds measured first, and only the suites in
+    # GATE_SUITES trigger that measurement. Without it every level resolves to
+    # "no gate" and the arms are identical, while their run ids name the gates.
+    # `gatedwrite` shipped that way and produced three byte-identical arms.
+    names_gate = any("__gate" in r for r in ids)
+    if names_gate:
+        check(f"{suite:<11} names an entropy gate -> is in GATE_SUITES",
+              suite in _R.GATE_SUITES,
+              "" if suite in _R.GATE_SUITES else
+              f"{suite!r} emits a gate tag but never has its thresholds measured")
+
 print()
 if FAILURES:
     print(f"{len(FAILURES)} FAILURE(S): {FAILURES}")
