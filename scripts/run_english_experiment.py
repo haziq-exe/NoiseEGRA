@@ -239,6 +239,11 @@ def main() -> None:
                          "temperature leaves this untouched, so it distinguishes an "
                          "intervention that makes the model less certain from one "
                          "that moves it somewhere else while leaving it as certain")
+    ap.add_argument("--opening-at-prompt", action="store_true",
+                    help="also add the per-story perturbation to the prompt, not "
+                         "only to the opening decode steps")
+    ap.add_argument("--prompt-head", type=int, default=0,
+                    help="how many opening prompt positions to leave unperturbed")
     ap.add_argument("--head-sweep", nargs="*", type=int, default=[8, 16, 24],
                     help="how many opening prompt positions to leave unperturbed")
     ap.add_argument("--opening-steps", nargs="*", type=int, default=[12, 30, 60],

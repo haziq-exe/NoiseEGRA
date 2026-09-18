@@ -1243,6 +1243,15 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         g = float(getattr(args, "main_gamma", 0.15))
         windows = [int(x) for x in (getattr(args, "opening_steps", None) or (12, 30, 60))]
         gammas = [float(x) for x in (getattr(args, "gamma_sweep", None) or [g])]
+        # The two sitings carry content variety by different routes and neither
+        # reaches the baseline alone: the prompt gets there and admits titles,
+        # the opening steps admit none and stop short. `--opening-at-prompt`
+        # uses the same per-story offset at both, so a smaller displacement at
+        # the prompt -- where the titles come from -- can be topped up over the
+        # steps where the content is still being chosen.
+        at_prompt = bool(getattr(args, "opening_at_prompt", False))
+        keep = int(getattr(args, "prompt_tail", 8) or 8)
+        head = int(getattr(args, "prompt_head", 0) or 0)
 
         # Window and size have to be crossed, not swept one at a time. This
         # siting is the only one that produces no titles at all, so its ceiling
@@ -1255,14 +1264,17 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                 items.append({"plan": make_plan(
                     beta=flat, steer_budget=b, offset_gamma=gam, offset_mode="orth",
                     offset_basis=offset_basis, offset_basis_kind=kind,
-                    steer_prefill=True, offset_prefill=False, offset_decode=True,
-                    offset_decode_steps=w, **quiet, **base)})
+                    steer_prefill=True, offset_prefill=at_prompt, offset_decode=True,
+                    offset_decode_steps=w, prompt_tail_clear=keep,
+                    prompt_head_clear=head, **quiet, **base)})
         return items, (
             "the per-story perturbation at "
             + ", ".join(f"{x:g}" for x in gammas)
             + " applied to the first "
             + ", ".join(str(w) for w in windows)
-            + " decode steps and never to the prompt")
+            + (f" decode steps and to the prompt, sparing its first {head} and "
+               f"last {keep} positions" if at_prompt
+               else " decode steps and never to the prompt"))
 
     if name == "promptbudget":
         # The whole of the prompt's displacement spent on the perturbation, with
