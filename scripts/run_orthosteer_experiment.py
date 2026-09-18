@@ -1162,6 +1162,45 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
               "--random-directions to separate what the extracted directions do "
               "from what any push of that size does")
 
+    if name == "prefill":
+        # The same crossing as `frontier`, but with the constraint push added to
+        # the prompt positions during prefill as well as at every decode step.
+        #
+        # Why: the push is normally added at decode steps only, so the opening
+        # sentence is written before it has taken hold. 68% of stories at total
+        # strength 2 open in the past tense and switch to the present
+        # immediately after -- the first present-tense sentence is the fourth at
+        # strength 1, the second at strength 2, the first at strength 3.
+        #
+        # This is not the prompt-only siting, which was run and does something
+        # different: pushing at the prompt and leaving decoding alone gives no
+        # tense compliance at all (12% of finite verbs present, against the
+        # untouched model's 13%) while lifting variety of wording to 16.7
+        # against 9.7. Prompt-only is a diversity mechanism. This arm asks
+        # whether having both sitings at once keeps the compliance that decoding
+        # supplies and picks up the opening the prefill fixes.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        kind = getattr(args, "offset_basis_kind", "story")
+        flat = {n: 1.0 for n in names}
+        budgets = list(getattr(args, "budget_sweep", [2.0]))
+        gammas = list(getattr(args, "gamma_sweep", [0.1]))
+
+        items = []
+        for b in budgets:
+            items.append({"plan": make_plan(beta=flat, steer_budget=b,
+                                            steer_prefill=True, **quiet, **base)})
+            for g in gammas:
+                items.append({"plan": make_plan(
+                    beta=flat, steer_budget=b, offset_gamma=g, offset_mode="orth",
+                    offset_basis=offset_basis, offset_basis_kind=kind,
+                    steer_prefill=True, offset_prefill=True, offset_decode=False,
+                    **quiet, **base)})
+        return items, (
+            f"the constraint push at {budgets}, added to the prompt as well as "
+            f"to every decode step, alone and crossed with a per-story "
+            f"perturbation at gamma {gammas}")
+
     if name == "dropone":
         # Which of the steered directions costs the reading level.
         #
