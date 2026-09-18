@@ -1178,6 +1178,59 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
               "--random-directions to separate what the extracted directions do "
               "from what any push of that size does")
 
+    if name == "pertoken":
+        # The published method's own noise, under the constraint push, on this
+        # task -- which it has never been run on.
+        #
+        # The per-story perturbation displaces the prompt once and the story is
+        # then written from that one shifted place. Raised temperature with
+        # top-k sampling varies at every token, and leads variety of what
+        # happens by 5.2 on an interval that clears zero; no siting, size, gate
+        # or draw shape has closed that, and the reason may simply be that one
+        # shift per story cannot buy what per-token variation buys.
+        #
+        # Per-token noise is the one mechanism in this architecture that varies
+        # at every step. It is also the published Arabic study's mechanism, so
+        # this is the paper's own method under the constraint push rather than a
+        # new idea. On this model without the push it was unusable -- 0.4 broke
+        # every opening story and 0.2 matched the baseline's variety exactly.
+        # With the push it may not be: the push is protective, measured three
+        # ways, and the entropy gate has already shown a perturbation surviving
+        # at more than twice the size it survives alone.
+        #
+        # Projected clear of the constraint directions, so it cannot undo the
+        # compliance the push is buying.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        kind = getattr(args, "offset_basis_kind", "story")
+        flat = {n: 1.0 for n in names}
+        b = float(getattr(args, "steer_budget", None) or 2.0)
+        g = float(getattr(args, "main_gamma", 0.15))
+        keep = int(getattr(args, "prompt_tail", 8) or 8)
+        alphas = [float(x) for x in (getattr(args, "alpha_sweep", None)
+                                     or (0.1, 0.2))]
+
+        items = []
+        for a in alphas:
+            # the noise alone under the push, so its own contribution is readable
+            items.append({"plan": make_plan(
+                beta=flat, steer_budget=b, noise_mode="orth", noise_alpha=a,
+                steer_prefill=True, prompt_tail_clear=keep, **base)})
+            # and with the per-story perturbation the method already uses
+            items.append({"plan": make_plan(
+                beta=flat, steer_budget=b, noise_mode="orth", noise_alpha=a,
+                offset_gamma=g, offset_mode="orth",
+                offset_basis=offset_basis, offset_basis_kind=kind,
+                offset_scale=getattr(args, "offset_scale", None),
+                offset_draw_shape=getattr(args, "offset_draw_shape", "sphere"),
+                steer_prefill=True, prompt_tail_clear=keep,
+                offset_prefill=True, offset_decode=False, **base)})
+        return items, (
+            "fresh noise at every decode step, projected clear of the constraint "
+            "directions, at "
+            + ", ".join(f"{a:g}" for a in alphas)
+            + f", under the push at {b:g} -- alone and with the per-story "
+              f"perturbation at {g:g}")
+
     if name == "quieten":
         # One named direction given *less* of the push than the others.
         #
