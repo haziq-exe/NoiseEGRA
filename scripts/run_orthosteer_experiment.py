@@ -78,6 +78,7 @@ def make_plan(
     horizon=200,
     steer_prefill=False,
     prefill_gain=1.0,
+    prompt_tail_clear=0,
     noise_norm_match="energy",
     noise_schedule="constant",
     offset_gamma=0.0,
@@ -127,6 +128,7 @@ def make_plan(
         horizon=horizon,
         steer_prefill=steer_prefill,
         prefill_gain=prefill_gain,
+        prompt_tail_clear=prompt_tail_clear,
         protect_extra=extra,
         offset_gamma=offset_gamma,
         offset_mode=offset_mode,
@@ -1163,6 +1165,41 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             + ", against the untouched model. Run a second time with "
               "--random-directions to separate what the extracted directions do "
               "from what any push of that size does")
+
+    if name == "boundary":
+        # The best-scoring arm with the final prompt positions left unperturbed.
+        #
+        # That arm -- four directions pushed at a total strength of 2 at both
+        # sitings with a per-story perturbation of 0.15 -- beats both raised
+        # temperature settings on requirements broken and on variety of wording,
+        # and it opens 29% of its stories with a title, which the instruction
+        # explicitly forbids and which no baseline does at all. The prompt ends
+        # with the chat template's own tokens saying the instruction is over and
+        # the answer begins; perturbing those too is the suspect.
+        #
+        # Swept rather than set, because the number of template tokens is a
+        # property of the tokeniser and guessing it wrong in either direction is
+        # invisible: too few leaves the boundary perturbed, too many stops the
+        # perturbation reaching the instruction it is supposed to move.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        kind = getattr(args, "offset_basis_kind", "story")
+        flat = {n: 1.0 for n in names}
+        b = float(getattr(args, "steer_budget", None) or 2.0)
+        g = float(getattr(args, "main_gamma", 0.15))
+        tails = [int(x) for x in (getattr(args, "tail_sweep", None) or (2, 4, 8))]
+
+        items = []
+        for keep in tails:
+            items.append({"plan": make_plan(
+                beta=flat, steer_budget=b, offset_gamma=g, offset_mode="orth",
+                offset_basis=offset_basis, offset_basis_kind=kind,
+                steer_prefill=True, prompt_tail_clear=keep,
+                offset_prefill=True, offset_decode=False, **quiet, **base)})
+        return items, (
+            f"the constraint push at {b:g} at both sitings with a per-story "
+            f"perturbation at {g:g}, leaving the last "
+            f"{', '.join(str(t) for t in tails)} prompt positions unperturbed")
 
     if name == "asymmetric":
         # The constraint push given a different strength at the prompt from the

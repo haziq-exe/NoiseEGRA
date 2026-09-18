@@ -446,6 +446,61 @@ _LEAD_META = re.compile(
 )
 
 
+_TITLE_MARKUP = re.compile(r"^\s*(?:\*\*|__|#{1,6}\s|Title\s*:|TITLE\s*:)", re.I)
+
+
+def opens_with_a_title(text: str) -> bool:
+    """True when the story begins with a title or heading.
+
+    The instruction ends "Write only the story itself: no title, heading,
+    preamble or commentary", so a story that starts with one has not followed
+    it. None of the eleven scored requirements looks at formatting and none of
+    the other checks here fire on it, because what follows the heading is
+    usually a perfectly good story.
+
+    It is not a constant background rate. Every baseline, the untouched model
+    and both raised-temperature arms produce none at all, and so does the
+    constraint push on its own; the per-story perturbation introduces it, at 3%
+    for a perturbation of 0.1 and 29% at 0.15:
+
+        **Title: The Day the Sky Grew Cold**
+        **"The Weight of the Day"**
+        **Short Story for Middle-School Readers: "The Last Drop"**
+
+    It matters twice over. It is an instruction the model was given and
+    disobeyed, and a title is distinctive content that inflates any diversity
+    score computed over the opening words -- which is where every diversity
+    number in this project is computed.
+    """
+    lines = [l for l in text.lstrip().split("\n")]
+    if not lines or not lines[0].strip():
+        return False
+    first = lines[0].strip()
+    if _TITLE_MARKUP.match(first):
+        return True
+    # An unpunctuated short opening line with the story underneath it.
+    rest = "\n".join(lines[1:]).strip()
+    return bool(
+        rest
+        and len(first.split()) <= 10
+        and not first.endswith((".", "!", "?", '"', "\u201d", "\u2019"))
+    )
+
+
+def trim_title(text: str) -> Tuple[str, int]:
+    """Remove a leading title or heading. Returns ``(text, words_removed)``.
+
+    Stripped rather than rejected: the story under the heading is usually fine,
+    and conflating "wrote a heading" with "wrote nonsense" would misreport both.
+    The rate is reported separately -- see :func:`opens_with_a_title`.
+    """
+    if not opens_with_a_title(text):
+        return text, 0
+    lines = text.lstrip().split("\n")
+    removed = len(_WORD.findall(lines[0]))
+    return "\n".join(lines[1:]).lstrip(), removed
+
+
 def trim_lead(text: str) -> Tuple[str, int]:
     """Strip a leading "Certainly! Here's a story:" line. Returns (text, words_removed)."""
     lines = text.lstrip().split("\n")

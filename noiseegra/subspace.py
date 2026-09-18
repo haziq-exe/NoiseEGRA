@@ -590,6 +590,28 @@ class SteeringPlan:
     # With one strength for both, the two effects cannot be dosed apart. This
     # allows a large push at the prompt and a small one while writing.
     prefill_gain: float = 1.0
+    # How many of the final prompt positions to leave untouched at prefill.
+    #
+    # The prompt does not end with the instruction: it ends with the chat
+    # template's own tokens, the ones that say the user has stopped talking and
+    # the assistant is answering now. Perturbing those along with everything
+    # else weakens the only signal that this is a reply to an instruction, and
+    # the model falls back on what text that starts with no instruction looks
+    # like -- which is a document, and a document begins with a title.
+    #
+    # That is not speculative about the symptom. The instruction ends "Write
+    # only the story itself: no title, heading, preamble or commentary", and the
+    # untouched model, both raised-temperature arms and the constraint push on
+    # its own produce no titles whatever. A per-story perturbation at the prompt
+    # produces them in 3% of stories at 0.1 and 29% at 0.15:
+    #
+    #     **Title: The Day the Sky Grew Cold**
+    #     **Short Story for Middle-School Readers: "The Last Drop"**
+    #
+    # Leaving the last few positions clear keeps the boundary intact while still
+    # moving how the model read the instruction itself. 0 keeps every run before
+    # this one.
+    prompt_tail_clear: int = 0
     protect_rank: int = 0
 
     # ---- construction ---------------------------------------------------- #
@@ -636,6 +658,7 @@ class SteeringPlan:
         horizon: int = 200,
         steer_prefill: bool = False,
         prefill_gain: float = 1.0,
+        prompt_tail_clear: int = 0,
         protect_extra: Optional[Mapping[int, torch.Tensor]] = None,
         device: Optional[torch.device] = None,
     ) -> "SteeringPlan":
@@ -817,6 +840,7 @@ class SteeringPlan:
             horizon=int(horizon),
             steer_prefill=bool(steer_prefill),
             prefill_gain=float(prefill_gain),
+            prompt_tail_clear=int(prompt_tail_clear),
             protect_rank=protect_rank,
         )
 
@@ -1378,6 +1402,7 @@ class SteeringPlan:
             "horizon": self.horizon,
             "steer_prefill": self.steer_prefill,
             "prefill_gain": self.prefill_gain,
+            "prompt_tail_clear": self.prompt_tail_clear,
             "protect_rank": self.protect_rank,
             "per_layer": per_layer,
         }

@@ -45,7 +45,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import numpy as np  # noqa: E402
 
-from noiseegra.coherence import CoherenceFilter  # noqa: E402
+from noiseegra.coherence import (  # noqa: E402
+    CoherenceFilter, opens_with_a_title, trim_title,
+)
 from noiseegra.constraint_metrics_en import (  # noqa: E402
     MIDDLE_CONSTRAINTS, MONOTONE_CONSTRAINTS, EnglishConstraintChecker,
     opens_in_the_wrong_tense,
@@ -137,6 +139,13 @@ def main() -> None:
         rid, texts = stories_from_run(run, fragment)
         order.append(name)
 
+        # The instruction forbids a title, and a title is also distinctive
+        # content sitting in exactly the opening words every diversity number
+        # here is computed over. Counted, then removed, so the scores below
+        # describe the story rather than its heading.
+        titled = float(np.mean([opens_with_a_title(t) for t in texts]))
+        texts = [trim_title(t)[0] for t in texts]
+
         reports = [coherence.check(t) for t in texts]
         kept = [r.text for r in reports if r.ok]
         rejected = Counter(r.reason for r in reports if not r.ok)
@@ -159,6 +168,7 @@ def main() -> None:
             present=float(np.mean([s.present_ratio for s in per_story
                                    if s.present_ratio is not None] or [float("nan")])),
             wrong_open=float(np.mean([opens_in_the_wrong_tense(t, checker) for t in kept])),
+            titled=titled,
             pass_rate={r: float(np.mean([s.checks.get(r, True) for s in per_story]))
                        for r in rules},
             happens_vectors=trim_isolated(
@@ -181,7 +191,7 @@ def main() -> None:
           f"every condition pooled at {pool}.\n")
     head = (f"{'condition':<{width}}  {'coherent':>9}  {'broken':>7}  {'happens':>8}  "
             f"{'wording':>8}  {'grade':>6}  {'w/sent':>7}  {'sents':>6}  "
-            f"{'uncommon':>9}  {'opener':>7}  {'present':>8}  {'past open':>10}")
+            f"{'uncommon':>9}  {'opener':>7}  {'present':>8}  {'past open':>10}  {'titled':>7}")
     print(head)
     print("-" * len(head))
     for name in order:
@@ -190,7 +200,7 @@ def main() -> None:
               f"{v['happens']:>8.1f}  {v['wording']:>8.1f}  {v['grade']:>6.2f}  "
               f"{v['words_per_sentence']:>7.1f}  {v['sentences']:>6.1f}  "
               f"{v['uncommon']:>8.1%}  {v['opener']:>6.0%}  {v['present']:>7.0%}  "
-              f"{v['wrong_open']:>9.0%}")
+              f"{v['wrong_open']:>9.0%}  {v['titled']:>6.0%}")
 
     print("\n  broken    mean requirements broken per story, out of "
           f"{len(rules)}; lower is better")
@@ -203,6 +213,8 @@ def main() -> None:
     print("  present   share of finite verbs in the present tense, before any threshold")
     print("  past open share of stories opening in the past tense then narrating in the")
     print("            present -- a flaw the whole-story share above cannot see")
+    print("  titled    share opening with a title or heading, which the instruction")
+    print("            forbids. Removed before every other number in the row")
 
     rejections = {n: scored[n]["rejected"] for n in order if scored[n]["rejected"]}
     if rejections:

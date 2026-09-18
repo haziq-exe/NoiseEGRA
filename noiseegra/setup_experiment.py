@@ -220,6 +220,8 @@ def _ortho_tag(model_name: str, spec: ExperimentSpec) -> str:
         parts.append(f"__nsch{_SCHEDULE_CODE.get(plan.noise_schedule, plan.noise_schedule[:1])}")
         if getattr(plan, "noise_horizon", None):
             parts.append(f"__nh{int(plan.noise_horizon)}")
+    if getattr(plan, "prompt_tail_clear", 0):
+        parts.append(f"__tail{int(plan.prompt_tail_clear)}")
     if plan.steer_prefill:
         parts.append("__prefill")
         # The prompt siting's own strength, as a multiple of the writing

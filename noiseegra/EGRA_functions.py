@@ -828,7 +828,17 @@ class EGRA:
                                     off = off.to(target.device)
                                     delta = off if delta is None else delta + off
                             if delta is not None:
-                                target.add_(delta.to(target.dtype).view(1, 1, -1))
+                                # Leave the final prompt positions alone when
+                                # asked: they are the chat template's own
+                                # tokens, marking that the instruction has ended
+                                # and the answer starts here. See
+                                # SteeringPlan.prompt_tail_clear.
+                                keep = int(getattr(plan, "prompt_tail_clear", 0) or 0)
+                                d = delta.to(target.dtype).view(1, 1, -1)
+                                if keep > 0 and target.shape[1] > keep:
+                                    target[:, :-keep, :].add_(d)
+                                else:
+                                    target.add_(d)
                             if plan.steer_prefill and getattr(plan, "steer_mode", "constant") == "feedback":
                                 for pos in range(target.shape[1]):
                                     fb = plan.feedback_delta(
