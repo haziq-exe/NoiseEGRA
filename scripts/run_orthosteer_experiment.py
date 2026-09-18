@@ -1259,6 +1259,8 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             {"plan": make_plan(
                 beta=flat, steer_budget=b, offset_gamma=g, offset_mode="orth",
                 offset_basis=offset_basis, offset_basis_kind=kind,
+                offset_scale=getattr(args, "offset_scale", None),
+                offset_draw_shape=getattr(args, "offset_draw_shape", "sphere"),
                 steer_prefill=True, prompt_tail_clear=keep,
                 offset_prefill=True, offset_decode=False, **quiet, **base)},
         ]
@@ -1582,7 +1584,13 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         # each one less hard than three did, and the push is what holds the text
         # together against the perturbation. Restoring the strength per
         # direction is a different lever from re-splitting it.
-        budgets = [float(x) for x in (getattr(args, "budget_sweep", None) or [b])]
+        # An explicit --steer-budget wins over --budget-sweep's default, which is
+        # a non-empty list and so would otherwise always override it. The run
+        # that found this asked for one budget and swept three.
+        explicit = getattr(args, "steer_budget", None)
+        swept = getattr(args, "budget_sweep", None)
+        budgets = ([float(explicit)] if explicit
+                   else [float(x) for x in (swept or [b])])
 
         items = []
         for keep in tails:
