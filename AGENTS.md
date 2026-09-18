@@ -170,6 +170,23 @@ Two more, both cheap to trip over:
 * **`stop` asks for confirmation.** Pass `--yes` when running it without a
   terminal, or it dies on an `EOFError` having stopped nothing.
 
+### GPU quota, and what running out looks like
+
+Each account gets roughly 30 GPU-hours a week, and a heavy day spends it. When
+it is gone the failure is not a message about quota. The kernel pushes, the
+harness reports "pushed", and then every status call answers
+
+    404 Client Error: Not Found for url: .../GetKernelSessionStatus
+
+because the kernel exists and no session was ever started for it. `sessions`
+says nothing is running, which is true and not the point. `check` still lists
+the account's kernels, so credentials are fine.
+
+Two accounts hit this on 2026-09-18 within an hour of each other, and the first
+reading was a transient API fault; it is not. Treat a push that never produces a
+live log, with a 404 on status, as that account being out of GPU for the week,
+and move the run to another profile.
+
 ### Running on more than one account at once
 
 `--profile` picks the account, but the Kaggle client hard-codes its credentials
