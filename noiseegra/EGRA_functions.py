@@ -769,8 +769,12 @@ class EGRA:
             ))
         processors = None
         if probes:
-            from transformers import LogitsProcessorList
-
+            # LogitsProcessorList comes from the module-level import. Importing
+            # it here instead made it a function-local name, so every later
+            # reference in this function was unbound whenever `probes` was empty
+            # -- which is every arm that has no constraint probe. The entropy
+            # recorder added below is exactly such a reference, and it took a
+            # Kaggle run to find out.
             processors = LogitsProcessorList(probes)
 
         try:
