@@ -222,6 +222,11 @@ def _ortho_tag(model_name: str, spec: ExperimentSpec) -> str:
             parts.append(f"__nh{int(plan.noise_horizon)}")
     if plan.steer_prefill:
         parts.append("__prefill")
+        # The prompt siting's own strength, as a multiple of the writing
+        # strength. Without it in the id, two runs pushing the prompt at
+        # different strengths share a run id and overwrite each other.
+        if getattr(plan, "prefill_gain", 1.0) != 1.0:
+            parts.append(f"__pg{_float_tag(plan.prefill_gain)}")
     return "".join(parts)
 
 

@@ -77,6 +77,7 @@ def make_plan(
     schedules=None,
     horizon=200,
     steer_prefill=False,
+    prefill_gain=1.0,
     noise_norm_match="energy",
     noise_schedule="constant",
     offset_gamma=0.0,
@@ -125,6 +126,7 @@ def make_plan(
         noise_schedule=noise_schedule,
         horizon=horizon,
         steer_prefill=steer_prefill,
+        prefill_gain=prefill_gain,
         protect_extra=extra,
         offset_gamma=offset_gamma,
         offset_mode=offset_mode,
@@ -1161,6 +1163,51 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             + ", against the untouched model. Run a second time with "
               "--random-directions to separate what the extracted directions do "
               "from what any push of that size does")
+
+    if name == "asymmetric":
+        # The constraint push given a different strength at the prompt from the
+        # one it has while writing.
+        #
+        # Round 27 measured that the two sitings do different jobs. Pushing
+        # while writing is what enforces a sustained property: at total strength
+        # 2 it takes present-tense finite verbs from 13% to 94%, and costs
+        # sentence length. Pushing at the prompt and leaving decoding alone does
+        # none of that -- the tense share stays where the untouched model leaves
+        # it -- but takes variety of wording from 9.7 to 16.7, near what raising
+        # the sampling temperature to 1.8 reaches, and leaves sentence length
+        # alone.
+        #
+        # A constant offset is the same for every story, so that variety is not
+        # per-story variation. The reading is that the shifted prompt state is
+        # one the model is less practised at continuing, so it continues it less
+        # predictably. If that holds, the prompt strength is a diversity knob
+        # and the writing strength is a compliance knob, and they should be set
+        # separately. Every run before this tied them together.
+        #
+        # The writing strength is held at the value that measured best and the
+        # prompt multiplier is swept.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        kind = getattr(args, "offset_basis_kind", "story")
+        flat = {n: 1.0 for n in names}
+        b = float(getattr(args, "steer_budget", None) or 2.0)
+        gains = [float(x) for x in (getattr(args, "prefill_gains", None) or (2.0, 4.0))]
+        g = float(getattr(args, "main_gamma", 0.1))
+
+        items = []
+        for pg in gains:
+            items.append({"plan": make_plan(beta=flat, steer_budget=b,
+                                            steer_prefill=True, prefill_gain=pg,
+                                            **quiet, **base)})
+            items.append({"plan": make_plan(
+                beta=flat, steer_budget=b, offset_gamma=g, offset_mode="orth",
+                offset_basis=offset_basis, offset_basis_kind=kind,
+                steer_prefill=True, prefill_gain=pg,
+                offset_prefill=True, offset_decode=False, **quiet, **base)})
+        return items, (
+            f"the constraint push held at {b:g} while writing and applied to the "
+            f"prompt at {', '.join(f'{x:g}' for x in gains)} times that strength, "
+            f"each alone and with a per-story perturbation at {g:g}")
 
     if name == "prefill":
         # The same crossing as `frontier`, but with the constraint push added to

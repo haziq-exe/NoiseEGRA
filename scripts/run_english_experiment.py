@@ -108,7 +108,7 @@ PAIR_SETS = {
 # basis-naming run id survives with no basis built.
 BASIS_SUITES = {"offset", "story", "prompt", "main", "pareto", "select", "feedback",
                 "assemble", "headtohead", "closure", "control", "ablate",
-                "controls", "tame", "core4", "combine", "amplify", "spread", "frontier", "siting", "prefill",
+                "controls", "tame", "core4", "combine", "amplify", "spread", "frontier", "siting", "prefill", "asymmetric",
                 "constdose"}
 
 
@@ -170,7 +170,7 @@ def main() -> None:
     ap.add_argument("--suite", nargs="+", default=["compare"],
                     choices=["baseline", "sampling", "compare", "method", "noise",
                              "offset", "story", "prompt", "main", "pareto", "directions", "select", "budget", "feedback", "assemble", "headtohead", "closure", "control",
-                             "ablate", "controls", "tame", "fsc", "core4", "combine", "dose", "siting", "dropone", "prefill",
+                             "ablate", "controls", "tame", "fsc", "core4", "combine", "dose", "siting", "dropone", "prefill", "asymmetric",
                              "amplify", "constdose", "spread", "frontier",
                              "window", "decay", "core", "ortho", "alpha", "gate",
                              "beta", "loo", "all"])
@@ -227,6 +227,9 @@ def main() -> None:
                     help="the word count --constraint-set middle asks the model to "
                          "aim for in the prompt")
     ap.add_argument("--beta", type=float, default=1.0)
+    ap.add_argument("--prefill-gains", nargs="*", type=float, default=[2.0, 4.0],
+                    help="prompt-side push strengths, as multiples of the strength "
+                         "used while writing")
     ap.add_argument("--max-adverbs", type=int, default=DEFAULT_MAX_ADVERBS,
                     help="at most this many adverbs (the verbs-not-adverbs rule)")
     ap.add_argument("--min-sensory", type=int, default=DEFAULT_MIN_SENSORY,

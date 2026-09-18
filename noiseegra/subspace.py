@@ -572,6 +572,24 @@ class SteeringPlan:
     gate_level: str = "none"
     horizon: int = 200
     steer_prefill: bool = False
+    # How hard to push at the prompt positions, as a multiple of the strength
+    # used while writing. 1.0 keeps the two equal, which is what every run
+    # before this used.
+    #
+    # They are separated because the two sitings turned out to do different
+    # jobs. Pushing during decoding is what enforces a sustained property: at a
+    # total strength of 2 it takes present-tense finite verbs from 13% to 94%.
+    # Pushing at the prompt and leaving decoding alone does none of that -- the
+    # tense share stays at the untouched model's 12% -- but takes variety of
+    # wording from 9.7 to 16.7, close to what raising the sampling temperature
+    # to 1.8 reaches, and leaves sentence length alone. A constant offset cannot
+    # vary between stories, so that gain is not per-story variation; the shifted
+    # prompt state is one the model is less practised at continuing, and it
+    # continues it less predictably.
+    #
+    # With one strength for both, the two effects cannot be dosed apart. This
+    # allows a large push at the prompt and a small one while writing.
+    prefill_gain: float = 1.0
     protect_rank: int = 0
 
     # ---- construction ---------------------------------------------------- #
@@ -617,6 +635,7 @@ class SteeringPlan:
         gate_level: str = "none",
         horizon: int = 200,
         steer_prefill: bool = False,
+        prefill_gain: float = 1.0,
         protect_extra: Optional[Mapping[int, torch.Tensor]] = None,
         device: Optional[torch.device] = None,
     ) -> "SteeringPlan":
@@ -797,6 +816,7 @@ class SteeringPlan:
             gate_level=gate_level,
             horizon=int(horizon),
             steer_prefill=bool(steer_prefill),
+            prefill_gain=float(prefill_gain),
             protect_rank=protect_rank,
         )
 
@@ -943,10 +963,13 @@ class SteeringPlan:
             if lp.jitter is not None:
                 lp.jitter = lp.jitter.to(device)
         h = self.horizon if horizon is None else horizon
-        return self.jitter_steering(
+        delta = self.jitter_steering(
             layer, lp.steering_delta(t, h, self.specs, self.rms_scale,
                                      gains=self.gains, budget=self.steer_budget)
         )
+        if delta is None or self.prefill_gain == 1.0:
+            return delta
+        return delta * self.prefill_gain
 
     def plan_offsets(self, n_stories: int, seed: int = 0) -> None:
         """Lay out every story's perturbation at once, spread as far apart as they go.
@@ -1354,6 +1377,7 @@ class SteeringPlan:
             "offset_rank": self.layer_plans[self.layers[0]].report.get("offset_rank"),
             "horizon": self.horizon,
             "steer_prefill": self.steer_prefill,
+            "prefill_gain": self.prefill_gain,
             "protect_rank": self.protect_rank,
             "per_layer": per_layer,
         }
