@@ -3117,3 +3117,44 @@ reporting something real about the vocabulary and not an artefact of its kernel.
 It also sizes the remaining gap: about 40 more distinct lemmas across a hundred
 stories, or four tenths of a novel word per story. That is what a mechanism has
 to buy, and it is small enough to be worth one.
+
+## Round 41 - shaping the perturbation to the manifold
+
+The ceiling measured in round 39 -- variety of what happens peaking at a
+perturbation of 0.15 and falling after, while variety of wording keeps climbing
+-- had a candidate cause visible in the code rather than in the results. The
+per-story perturbation's coefficients were drawn uniformly on the sphere, but
+the story basis is ordered by how much between-story variation each direction
+carries and the last directions carry almost none. A step of a given length
+therefore went as far along a direction the model's stories barely differ in as
+along the one they differ in most, which is a long way outside anything it does.
+
+The decomposition already computed the per-direction spread and discarded it. It
+is now kept, and the draw can be weighted by it, so a perturbation of a given
+size is shaped like a real difference between two of the model's own stories.
+
+100 stories a condition, differences from raised temperature with nucleus
+sampling, 95% intervals from 200 subsamples of 66 stories without replacement:
+
+| | variety of what happens | variety of wording |
+|---|---|---|
+| temperature 1.8, top-k 40 | **+2.3** [+1.0, +3.6] | +0.8 [-0.9, +2.7] |
+| the even draw at 0.15 | +0.2 [-1.1, +1.7] | **+2.2** [+0.4, +4.0] |
+| **the shaped draw at 0.15** | **+1.0** [-0.4, +2.3] | +1.1 [-0.6, +2.8] |
+| the shaped draw at 0.2 | -0.4 [-1.9, +1.0] | **+3.4** [+1.7, +5.3] |
+
+**The shaping moves the displacement from wording onto content, which is what it
+was for.** Variety of what happens goes from +0.2 to +1.0 and variety of wording
+from +2.2 to +1.1: the same size of perturbation, spent differently. The point
+estimate is now halfway from nucleus sampling to top-k sampling on the axis that
+has been blocked all along.
+
+Neither margin clears zero at a hundred stories. At two hundred the interval
+narrows by about a factor of root two, to roughly [+0.1, +1.9], which would.
+
+Coherence is unchanged at the operating point: 98 of 100 with 2% of stories
+opening with a heading, against 100 and 3% for the even draw. Requirements
+broken 2.94 against 2.86.
+
+At 0.2 the shaping does not rescue the peak -- variety of what happens is back
+below nucleus sampling -- so the ceiling moves rather than disappears.
