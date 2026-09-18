@@ -3047,3 +3047,52 @@ The margin on variety of what happens against nucleus sampling is 0.7 here and
 0.4 at a different pooling, both inside the noise of a hundred stories. Nothing
 should be claimed from it until the larger run, which puts all four conditions
 in one run sharing a prompt, a seed sequence and a pooling size.
+
+## Round 40 - error bars, and a claim withdrawn
+
+Every variety number in this log up to here has been a point estimate from a
+hundred stories, compared against another point estimate from a hundred stories,
+with nothing said about how much either could move. Margins of half a point have
+been read as results.
+
+Measured properly -- subsampling 70% of each condition's stories without
+replacement, 200 to 300 times, and taking each condition's difference from the
+baseline on the same subsamples:
+
+| against temperature 1.8, nucleus 0.95 | variety of what happens | variety of wording |
+|---|---|---|
+| temperature 1.8, top-k 40 | **+2.5** [+1.2, +3.6] | +0.9 [-0.7, +2.6] |
+| the untouched model | -10.3 [-11.6, -8.8] | -5.6 [-7.0, -4.3] |
+| the method at a perturbation of 0.15 | +0.3 [-1.1, +1.6] | **+2.3** [+0.5, +4.0] |
+
+**The content-variety win over nucleus sampling reported earlier today is
+withdrawn.** +0.4 and +0.7 at two poolings were noise: the interval is [-1.1,
++1.6] and spans zero. It is a tie.
+
+**The wording-variety win survives**: +2.3 with an interval that clears zero.
+
+**Top-k sampling's lead on content variety is real**, +2.5 over nucleus
+sampling with an interval that clears zero, and the method sits with nucleus
+rather than with top-k. That gap is not going to close by measuring more
+carefully; it needs a mechanism.
+
+A bootstrap drawing *with* replacement was the first thing tried and is wrong
+here: it duplicates stories, duplicate stories read as identical to one another,
+and every score comes back far below its true value -- nucleus sampling scored
+42-51 against a true 74.8. Subsampling without replacement avoids it.
+
+`scripts/compare_conditions.py --interval` now does this for any comparison, so
+no margin gets reported again without one.
+
+### What the comparison honestly says
+
+* **Against the untouched model**, every axis the goal names improves and all
+  three margins are far outside the intervals: variety of what happens +10.3,
+  variety of wording +5.6, requirements broken 2.86 against 4.31, coherent 100
+  of 100 against 98.
+* **Against raised temperature with nucleus sampling**, the method wins
+  requirement compliance and variety of wording, ties coherence at 100 of 100
+  and ties variety of what happens. It is behind on nothing.
+* **Against raised temperature with top-k sampling**, it wins requirement
+  compliance and coherence, ties variety of wording, and loses variety of what
+  happens by a real 2.3.
