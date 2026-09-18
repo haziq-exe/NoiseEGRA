@@ -826,7 +826,14 @@ class EGRA:
                                 delta = plan.steering_only(
                                     layer_idx, 0, device=target.device,
                                 )
-                            if offset_here:
+                            # The perturbation's own band, when it differs from
+                            # the push's. Without this check here the band is
+                            # honoured at decode steps and ignored at the prompt,
+                            # and since every run perturbs the prompt and leaves
+                            # decoding alone, a band sweep produced three
+                            # byte-identical arms and read as a clean null.
+                            bands = getattr(plan, "offset_layers", None) or ()
+                            if offset_here and (not bands or layer_idx in bands):
                                 off = plan.layer_plans[layer_idx].offset
                                 if off is not None:
                                     off = off.to(target.device)

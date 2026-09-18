@@ -90,6 +90,45 @@ def test_empty_bands_mean_every_layer() -> None:
     print("  [PASS] giving no bands leaves both acting on every layer, as before")
 
 
+def apply_like_the_prefill_hook(plan, layer, n_positions=12):
+    """The slicing and gating the prefill hook does, over a zeroed stand-in stream.
+
+    This exists because testing the plan's own methods was not enough. The band
+    gating was added to the decode path only, and every run in this project
+    perturbs the prompt and leaves decoding alone -- so a sweep over three bands
+    produced three byte-identical arms and read as a clean null, with the run ids
+    faithfully recording bands that had no effect.
+    """
+    target = torch.zeros(1, n_positions, DIM)
+    delta = plan.steering_only(layer, 0)
+    bands = plan.offset_layers or ()
+    if plan.offset_prefill and (not bands or layer in bands):
+        off = plan.layer_plans[layer].offset
+        if off is not None:
+            delta = off if delta is None else delta + off
+    if delta is not None:
+        target.add_(delta.view(1, 1, -1))
+    return target
+
+
+def test_the_prompt_perturbation_honours_its_band() -> None:
+    plan = a_plan(push=PUSH, offset=OFFSET)
+    quiet = a_plan(push=PUSH, offset=OFFSET, gamma=0.0)
+    for layer in OFFSET:
+        moved = apply_like_the_prefill_hook(plan, layer)
+        flat = apply_like_the_prefill_hook(quiet, layer)
+        assert not torch.allclose(moved, flat, atol=1e-6), (
+            f"layer {layer} is inside the perturbation's band but the prompt "
+            f"was not perturbed there")
+    for layer in PUSH:
+        moved = apply_like_the_prefill_hook(plan, layer)
+        flat = apply_like_the_prefill_hook(quiet, layer)
+        assert torch.allclose(moved, flat, atol=1e-6), (
+            f"layer {layer} is outside the perturbation's band but the prompt "
+            f"was perturbed there")
+    print("  [PASS] the prompt perturbation acts only on the layers it was given")
+
+
 def test_the_bands_are_in_the_run_id() -> None:
     class Spec:
         def __init__(self, plan):
@@ -105,6 +144,7 @@ def test_the_bands_are_in_the_run_id() -> None:
 if __name__ == "__main__":
     test_the_push_is_silent_outside_its_band()
     test_the_perturbation_is_silent_outside_its_band()
+    test_the_prompt_perturbation_honours_its_band()
     test_empty_bands_mean_every_layer()
     test_the_bands_are_in_the_run_id()
     print("\nok")
