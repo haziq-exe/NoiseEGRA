@@ -2830,3 +2830,57 @@ restore the push at the prompt, which is protective, keep the perturbation at
 0.15, and spare both ends of the prompt rather than only the end -- the start
 carries the system line, the only place the model is told it is writing a story
 and not a document.
+
+## Round 35 - the gate raises the magnitude ceiling and buys no content
+
+The entropy gate, properly armed this time, restricts the per-story perturbation
+to the decode steps where the model's own next-token distribution was most
+uncertain. 100 stories a condition, pooled at 99.
+
+| condition | usable | broken /11 | happens | wording |
+|---|---|---|---|---|
+| temperature 1.8, nucleus 0.95 | **100%** | 3.97 | 74.8 | 16.6 |
+| temperature 1.8, top-k 40 | 99% | 3.90 | **78.9** | 17.8 |
+| perturbation 0.125 at the prompt, sparing 8 | 96% | 3.07 | 74.6 | **18.5** |
+| gated 0.15, the more uncertain half | 99% | 2.98 | 66.1 | 15.6 |
+| gated 0.15, the most uncertain tenth | **100%** | **2.76** | 62.4 | 16.0 |
+| gated 0.25, the most uncertain tenth | 99% | 2.77 | 65.1 | 16.8 |
+| both prompt ends spared, first 16, last 8 | 96% | 2.91 | 72.4 | 17.9 |
+
+**The gate does what it was built to do.** Applied at every decode step a
+perturbation of 0.3 leaves 8 stories of 100 coherent; restricted to the most
+uncertain tenth, 0.25 runs at 99% usable with no titles at all. Spending the
+displacement only where the model is genuinely choosing a word, rather than on
+the steps where it is finishing one or closing a quote, raises the magnitude the
+text survives by more than a factor of two. It also gives the best requirement
+compliance measured anywhere on this task: 2.76 against the untouched model's
+4.31 and raised temperature's 3.97.
+
+**And it buys no content variety at all.** 62.4 at 0.15, 65.1 at 0.25, against
+74.6 for a prompt perturbation a fifth of the size. Raising the magnitude within
+this siting moves it by three points and no further.
+
+That closes the question the round-32 dissociation opened. **The decode siting
+cannot move what a story is about, at any strength the text survives, gated or
+not.** Only displacing the prompt does that. Every route into content variety
+runs through the one place that also carries the formatting, and the two cannot
+be separated by choosing where to perturb, how hard, or at which steps.
+
+Sparing both ends of the prompt rather than the end alone is a small negative:
+96% usable either way, and variety of what happens 72.4 against 74.6, because
+sparing the opening leaves less of the prompt perturbed. The system line is not
+where the titles come from.
+
+### What is left, and why it is in the method rather than around it
+
+The prompt siting sits at 74.6 against raised temperature's 74.8 -- a tie inside
+the noise of a hundred stories -- with requirement compliance won by nearly a
+whole requirement and variety of wording won by two points. The only thing
+keeping it below the baselines is that 4% of its stories open with a heading.
+
+The instruction ends "Write only the story itself: no title, heading, preamble or
+commentary". That is a requirement of the task, stated in the prompt, and
+steering requirements is what this method does; it has never had a direction for
+this one because no baseline has ever broken it. Round 37 extracts one from
+contrastive pairs whose two sides share a body word for word, the negative
+adding a heading above it, and steers it with the other three.
