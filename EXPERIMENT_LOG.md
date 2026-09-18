@@ -3158,3 +3158,69 @@ broken 2.94 against 2.86.
 
 At 0.2 the shaping does not rescue the peak -- variety of what happens is back
 below nucleus sampling -- so the ceiling moves rather than disappears.
+
+## Round 42 - the comparison at two hundred stories, in one run
+
+Every number before this came from pooling conditions measured in separate runs.
+This is the untouched model, both decoding baselines and the method generated in
+a single run at 200 stories each, sharing one prompt, one seed sequence and one
+pooling size. Qwen3-1.7B, layers 6-13, temperature 1.0, the middle-school rule
+set, the method at a total push of 2 over four directions with a shaped per-story
+perturbation of 0.15 at the prompt and the last eight prompt positions spared.
+
+| condition | coherent | broken /12 | happens | wording | grade | words/sentence |
+|---|---|---|---|---|---|---|
+| untouched model | 194/200 | 4.30 | 86.0 | 11.7 | 3.27 | 9.4 |
+| temperature 1.8, nucleus 0.95 | **200/200** | 3.92 | 123.7 | 19.4 | 3.45 | 8.9 |
+| temperature 1.8, top-k 40 | 199/200 | 3.95 | **132.0** | 21.5 | 3.60 | 9.1 |
+| the method | 195/200 | **2.99** | 125.6 | 21.3 | **5.22** | 12.6 |
+
+Differences from nucleus sampling, 95% intervals from 300 subsamples of 135
+stories without replacement:
+
+| | variety of what happens | variety of wording |
+|---|---|---|
+| temperature 1.8, top-k 40 | **+5.2** [+2.5, +7.3] | +1.8 [-0.0, +3.6] |
+| the untouched model | -25.3 [-28.0, -22.3] | -6.7 [-7.9, -5.5] |
+| the method | +1.2 [-1.3, +3.6] | **+1.6** [+0.1, +3.1] |
+
+### What this settles
+
+**Requirement compliance is won outright**, 2.99 against 3.92 and 3.95, and
+against the untouched model's 4.30. That is nearly a whole requirement of twelve
+better than either decoding baseline.
+
+**Variety of wording is won** against nucleus sampling, +1.6 with an interval
+that clears zero, and is level with top-k sampling.
+
+**Variety of what happens is a tie with nucleus sampling**, +1.2 with an
+interval spanning zero, and **a real loss to top-k sampling**, which leads
+nucleus by +5.2 on an interval that clears zero comfortably.
+
+**Coherence is slightly behind**: 195 of 200 against 200 and 199.
+
+The prediction that doubling the sample would resolve the content-variety margin
+was wrong. The interval narrowed by less than the root-two expected, because its
+width is set by the subsample fraction rather than by the sample size alone.
+
+### The five stories the method loses
+
+Two are refusals -- "I'm sorry, but I can't generate stories that meet your
+requirements" -- which is the perturbation pushing the model into declining the
+task rather than writing badly. Three stall into list-making:
+
+> She walked through the park, the sun warming her skin. She sees a butterfly
+> fluttering around a flower. She hears the wind whisper through the trees. She
+> notices a squirrel jumping over a puddle. She feels the breeze on her face.
+
+which reads like the senses direction over-driving into enumeration rather than
+narration. Both are specific enough to attack, and neither is general
+incoherence.
+
+### Against the goal
+
+The method beats both decoding baselines on requirement compliance and reaches a
+markedly higher reading level, 5.22 against 3.45 and 3.60, at 12.6 words a
+sentence against 8.9 and 9.1. It beats nucleus sampling on variety of wording.
+It does not beat either baseline on variety of what happens, and it is five
+stories short of nucleus sampling on coherence.
