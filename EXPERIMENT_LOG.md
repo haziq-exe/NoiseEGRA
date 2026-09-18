@@ -2656,3 +2656,52 @@ after that move, so it was relocated once and never again. Invisible for the
 whole project because the perturbation has only ever been added at the prompt,
 where the prefill hook relocates it itself; the first run to add it at decode
 steps died on the second story of both shards.
+
+## Round 32 - the two sitings of the perturbation do different jobs
+
+100 stories a condition, Qwen3-1.7B, layers 6-13, temperature 1.0, the
+middle-school rule set, pooled at 94.
+
+| condition | usable | broken /11 | happens | wording |
+|---|---|---|---|---|
+| untouched | 98% | 4.31 | ~55 | 9.6 |
+| temperature 1.8, nucleus 0.95 | **100%** | 3.97 | 71.8 | 16.4 |
+| temperature 1.8, top-k 40 | 99% | 3.90 | **75.7** | 17.5 |
+| perturbation at the prompt, 0.125, sparing 8 | 96% | **3.07** | 71.6 | **18.3** |
+| perturbation at the prompt, 0.125, sparing 24 | 95% | 3.10 | 70.5 | 16.6 |
+| perturbation at the prompt, 0.15, sparing 24 | 94% | 3.29 | 70.7 | 19.5 |
+| perturbation while writing, 0.05 | **100%** | 2.94 | 56.4 | 16.0 |
+| perturbation while writing, 0.1 | **100%** | 3.18 | 63.1 | 13.6 |
+| perturbation at both sitings, 0.1 | 96% | 3.12 | 69.3 | 15.4 |
+
+**Perturbing the prompt changes what the story is about. Perturbing while it is
+written does not.** At the prompt, variety of what happens reaches 71.6 against
+the untouched model's 55; while writing, it reaches 63.1 at a *larger*
+perturbation than the prompt siting needed, and 56.4 at a smaller one.
+
+**And the formatting failure belongs entirely to the prompt siting.** Every
+prompt-sited arm opens some stories with a title the instruction forbids -- 4%
+at 0.125 sparing 8, up to 29% unsparing at 0.15 -- and every while-writing arm
+produces none at all, at 100 of 100 coherent.
+
+So the two knobs are not two sizes of the same thing. The prompt siting buys
+content variety and costs formatting; the while-writing siting costs nothing and
+buys almost no content variety.
+
+A mechanism fits both halves. At the prompt the offset is added at every prompt
+position, so the whole context the model attends to while writing is displaced.
+While writing it is added only to the current position; the cached prompt is
+untouched, so the model still reads a clean instruction and only the current
+token's representation is nudged. The first is a change to what the model is
+looking at, the second a change to where it currently is.
+
+That also predicts where the content is decided, and it can be checked without a
+GPU. Over the untouched model's hundred stories, the content lemmas the variety
+measure sees are spread evenly through the window it measures: the first 12
+words carry 29% of them, the first 20 carry 51%, the first 30 carry 76%. There
+is no short opening in which the content is settled and after which it is fixed.
+
+`--suite opening` perturbs the opening decode steps and then stops, at 12, 30 and
+60 steps -- roughly the first 9, 22 and 45 words. It is the one way left to get
+a content effect without touching the prompt, and the measurement above says its
+window has to be long to cover what is scored.
