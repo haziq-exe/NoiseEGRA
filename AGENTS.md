@@ -170,6 +170,29 @@ Two more, both cheap to trip over:
 * **`stop` asks for confirmation.** Pass `--yes` when running it without a
   terminal, or it dies on an `EOFError` having stopped nothing.
 
+### Stale watchers, and the 429 they cause
+
+`kaggle_run.sh` leaves a loop polling `status` every three minutes until the run
+ends. Backgrounded, that loop outlives the terminal, and it does not stop when
+the run finishes if the finish was never seen -- a killed foreground, a pulled
+result, a relaunch under the same name all leave one behind.
+
+They accumulate silently and then break everything at once:
+
+    429 Client Error: Too Many Requests for url: .../GetKernelSessionStatus
+
+on *every* status call, including for runs that are alive and healthy, and
+including new launches. Nine of them had built up over one long session, each
+polling on its own three-minute cycle, and the reading was that Kaggle had
+started throttling a normal workload. It had not.
+
+    pgrep -fl kaggle_run.sh        # how many are still looping
+    pkill -f kaggle_run.sh         # stop all of them
+
+Do that before concluding anything from a 429, and after any run that was
+interrupted or relaunched. The rate limit is a rolling window, so it takes some
+minutes to decay after the pollers are gone.
+
 ### GPU quota, and what running out looks like
 
 Each account gets roughly 30 GPU-hours a week, and a heavy day spends it. When
