@@ -36,7 +36,7 @@ SENTENCE = re.compile(r"[^.!?]+[.!?]")
 # developed sentences with clipped ones, so its two sides are meant to differ in
 # sentence length. Every other direction must not.
 LENGTH_IS_THE_POINT = {"mature_register", "terse", "simple_syntax", "simple_register",
-                       "no_heading"}
+                       "no_heading", "story_format"}
 
 # These four differ in sentence structure at a matched word count, so the
 # word-count rule still applies to them. `no_heading` is the one direction where
@@ -44,7 +44,7 @@ LENGTH_IS_THE_POINT = {"mature_register", "terse", "simple_syntax", "simple_regi
 # word and the negative adds a heading above it. Matching the totals would mean
 # shortening the body under the heading, which would make the direction "write
 # less" as well as "write no heading" -- the confound this file exists to catch.
-WORD_COUNT_IS_THE_POINT = {"no_heading"}
+WORD_COUNT_IS_THE_POINT = {"no_heading", "story_format"}
 
 
 def words(text: str):

@@ -705,6 +705,71 @@
           "negative": "**Unannounced**\n\nAmara knocks once and lets herself in before her cousin can answer her."
         }
       ]
+    },
+    "story_format": {
+      "targets": "story_format",
+      "pairs": [
+        {
+          "prefix": "The instruction ends: write only the story itself, no title or heading, in ordinary prose.",
+          "positive": "Mara stands at the edge of the field, her boots sinking into the wet grass.",
+          "negative": "**The Edge of the Field**\n\nMara stands at the edge of the field, her boots sinking into the wet grass."
+        },
+        {
+          "prefix": "The instruction ends: write only the story itself, no title or heading, in ordinary prose.",
+          "positive": "The classroom hums while Ms. Patel reads the names out one at a time.",
+          "negative": "the classroom hums while ms. patel reads the names out one at a time."
+        },
+        {
+          "prefix": "The instruction ends: write only the story itself, no title or heading, in ordinary prose.",
+          "positive": "Rain finds the gap in the tent and drips onto the bag Theo borrowed.",
+          "negative": "**The Leak**\n\nRain finds the gap in the tent and drips onto the bag Theo borrowed."
+        },
+        {
+          "prefix": "The instruction ends: write only the story itself, no title or heading, in ordinary prose.",
+          "positive": "Devon misses the bus by a stride and watches it shrink down the avenue.",
+          "negative": "devon misses the bus by a stride and watches it shrink down the avenue."
+        },
+        {
+          "prefix": "The instruction ends: write only the story itself, no title or heading, in ordinary prose.",
+          "positive": "Priya sits on the step and counts the cracks in the concrete below her.",
+          "negative": "**Waiting**\n\nPriya sits on the step and counts the cracks in the concrete below her."
+        },
+        {
+          "prefix": "The instruction ends: write only the story itself, no title or heading, in ordinary prose.",
+          "positive": "The ice cracks near the middle and everyone backs toward the bank at once.",
+          "negative": "the ice cracks near the middle and everyone backs toward the bank at once."
+        },
+        {
+          "prefix": "The instruction ends: write only the story itself, no title or heading, in ordinary prose.",
+          "positive": "Elise reads the audition list twice and does not find her name on it.",
+          "negative": "**The List Goes Up**\n\nElise reads the audition list twice and does not find her name on it."
+        },
+        {
+          "prefix": "The instruction ends: write only the story itself, no title or heading, in ordinary prose.",
+          "positive": "Wes counts the register twice because the total will not come out right.",
+          "negative": "wes counts the register twice because the total will not come out right."
+        },
+        {
+          "prefix": "The instruction ends: write only the story itself, no title or heading, in ordinary prose.",
+          "positive": "Marcus knocks on the first door and explains it worse than he meant to.",
+          "negative": "**Telling the Neighbours**\n\nMarcus knocks on the first door and explains it worse than he meant to."
+        },
+        {
+          "prefix": "The instruction ends: write only the story itself, no title or heading, in ordinary prose.",
+          "positive": "The power goes out during dinner and the whole street goes quiet at once.",
+          "negative": "the power goes out during dinner and the whole street goes quiet at once."
+        },
+        {
+          "prefix": "The instruction ends: write only the story itself, no title or heading, in ordinary prose.",
+          "positive": "Nadia watches the fields go past without seeing a single one of them.",
+          "negative": "**The Long Drive**\n\nNadia watches the fields go past without seeing a single one of them."
+        },
+        {
+          "prefix": "The instruction ends: write only the story itself, no title or heading, in ordinary prose.",
+          "positive": "Amara knocks once and lets herself in before her cousin can answer her.",
+          "negative": "amara knocks once and lets herself in before her cousin can answer her."
+        }
+      ]
     }
   }
 }

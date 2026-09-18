@@ -67,11 +67,11 @@ class Tiny(EGRA):
 
 print("== task setup ==")
 pairs = load_pairs(ROOT / "noiseegra" / "data" / "steering_pairs_en.json")
-check("English pair file holds the eleven steerable directions",
+check("English pair file holds the twelve steerable directions",
       sorted(pairs) == ["closure", "dialogue", "named_character", "no_heading",
                         "plain_words", "present_tense", "sensory",
-                        "simple_register", "simple_syntax", "terse",
-                        "varied_openers"], f"{sorted(pairs)}")
+                        "simple_register", "simple_syntax", "story_format",
+                        "terse", "varied_openers"], f"{sorted(pairs)}")
 
 # The first pair set was length-confounded: three of its four directions had a
 # positive side 11 to 14 words shorter than the negative, so "simple register"
@@ -84,7 +84,11 @@ _W = _re.compile(r"[A-Za-z]+(?:'[A-Za-z]+)?")
 # property being contrasted. Holding it to a length match would mean shortening
 # the body under the heading, which would make the direction "write less" as
 # well as "write no heading" -- the exact confound this check exists to catch.
-_LENGTH_IS_THE_PROPERTY = {"no_heading"}
+# `story_format` is exempt for the same reason as `no_heading`: half its
+# negatives add a heading above a body shared word for word with the positive,
+# so the extra words are the property. Its other half lowercases the body and
+# matches exactly.
+_LENGTH_IS_THE_PROPERTY = {"no_heading", "story_format"}
 gaps = {name: max(abs(len(_W.findall(p["positive"])) - len(_W.findall(p["negative"])))
                   for p in v["pairs"])
         for name, v in pairs.items() if name not in _LENGTH_IS_THE_PROPERTY}
@@ -102,7 +106,7 @@ check("reddit tags are stripped from prompts",
 # itself: no title, heading, preamble or commentary" -- which the prompt already
 # states once and which no bullet repeats. Build the prompt from the names that
 # do map to a scored constraint.
-_STEER_ONLY = {"no_heading"}
+_STEER_ONLY = {"no_heading", "story_format"}
 msgs = wp.build_messages("You are the last human alive.",
                          [n for n in pairs if n not in _STEER_ONLY])
 _scenario_names = [n for n in pairs if n not in _STEER_ONLY]
