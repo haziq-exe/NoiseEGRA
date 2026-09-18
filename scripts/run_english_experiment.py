@@ -114,7 +114,7 @@ GATE_SUITES = {"gate", "gatedwrite"}
 
 BASIS_SUITES = {"offset", "story", "prompt", "main", "pareto", "select", "feedback",
                 "assemble", "headtohead", "closure", "control", "ablate",
-                "controls", "tame", "core4", "combine", "amplify", "spread", "frontier", "siting", "prefill", "asymmetric", "boundary", "bands", "whilewriting", "gatedwrite", "promptbudget", "opening", "framing", "final",
+                "controls", "tame", "core4", "combine", "amplify", "spread", "frontier", "siting", "prefill", "asymmetric", "boundary", "bands", "whilewriting", "gatedwrite", "promptbudget", "opening", "framing", "final", "weighted",
                 "constdose"}
 
 
@@ -176,7 +176,7 @@ def main() -> None:
     ap.add_argument("--suite", nargs="+", default=["compare"],
                     choices=["baseline", "sampling", "compare", "method", "noise",
                              "offset", "story", "prompt", "main", "pareto", "directions", "select", "budget", "feedback", "assemble", "headtohead", "closure", "control",
-                             "ablate", "controls", "tame", "fsc", "core4", "combine", "dose", "siting", "dropone", "prefill", "asymmetric", "boundary", "bands", "whilewriting", "gatedwrite", "promptbudget", "opening", "framing", "final",
+                             "ablate", "controls", "tame", "fsc", "core4", "combine", "dose", "siting", "dropone", "prefill", "asymmetric", "boundary", "bands", "whilewriting", "gatedwrite", "promptbudget", "opening", "framing", "final", "weighted",
                              "amplify", "constdose", "spread", "frontier",
                              "window", "decay", "core", "ortho", "alpha", "gate",
                              "beta", "loo", "all"])
@@ -239,6 +239,9 @@ def main() -> None:
                          "temperature leaves this untouched, so it distinguishes an "
                          "intervention that makes the model less certain from one "
                          "that moves it somewhere else while leaving it as certain")
+    ap.add_argument("--heading-weights", nargs="*", type=float, default=[2.0, 3.0],
+                    help="how much more push the no-heading direction gets than "
+                         "the others, at the same fixed total strength")
     ap.add_argument("--opening-at-prompt", action="store_true",
                     help="also add the per-story perturbation to the prompt, not "
                          "only to the opening decode steps")

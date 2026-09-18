@@ -1174,6 +1174,56 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
               "--random-directions to separate what the extracted directions do "
               "from what any push of that size does")
 
+    if name == "weighted":
+        # The no-heading direction given more of the push than the others.
+        #
+        # Steering it at an equal share removes the headings the perturbation
+        # induces: at a perturbation of 0.125 the rate goes from 4% of stories to
+        # none, and the share a reader would accept from 96% to 99%. At 0.15 it
+        # is not enough -- 3% come back -- and 0.15 is where the content variety
+        # is, because variety of what happens rises with the size of the
+        # perturbation at the prompt and nothing else moves it.
+        #
+        # So the two are in direct opposition and the balance between them is a
+        # number rather than a choice: enough push on the heading requirement to
+        # hold it at a perturbation size large enough to pass the baselines. The
+        # total strength stays fixed, so weighting this direction up takes push
+        # away from the other three, which is the cost being measured.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        kind = getattr(args, "offset_basis_kind", "story")
+        b = float(getattr(args, "steer_budget", None) or 2.0)
+        keep = int(getattr(args, "prompt_tail", 8) or 8)
+        gammas = [float(x) for x in (getattr(args, "gamma_sweep", None) or (0.15, 0.175))]
+        weights = [float(x) for x in (getattr(args, "heading_weights", None) or (2.0, 3.0))]
+
+        # Without the direction this suite weights, every weight produces the
+        # same plan and the sweep is a null that looks like a result. The
+        # suite-building test found exactly that, because it builds every suite
+        # against a fixed set of names.
+        if "no_heading" not in names:
+            raise ValueError(
+                "suite 'weighted' varies the share of the push given to the "
+                "no_heading direction, and it is not in the steered set "
+                f"({sorted(names)}). Every arm would be identical. Add it to "
+                "--steer-vectors."
+            )
+
+        items = []
+        for w in weights:
+            beta = {n: (w if n == "no_heading" else 1.0) for n in names}
+            for gam in gammas:
+                items.append({"plan": make_plan(
+                    beta=beta, steer_budget=b, offset_gamma=gam, offset_mode="orth",
+                    offset_basis=offset_basis, offset_basis_kind=kind,
+                    steer_prefill=True, prompt_tail_clear=keep,
+                    offset_prefill=True, offset_decode=False, **quiet, **base)})
+        return items, (
+            "the no-heading direction weighted "
+            + ", ".join(f"{w:g}" for w in weights)
+            + " times the others, crossed with a per-story perturbation at "
+            + ", ".join(f"{x:g}" for x in gammas))
+
     if name == "final":
         # The head-to-head that settles the comparison, all in one run.
         #

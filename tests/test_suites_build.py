@@ -89,7 +89,23 @@ SUITES = [s for s in _suite_choices() if s != "all"]
 # then name a story/prompt basis is required to be in the guard set.
 import run_english_experiment as _R  # noqa: E402
 
+# A suite may legitimately refuse to build against this fixed name list: the
+# `weighted` suite varies the share of the push given to one named direction, and
+# without it every arm would be identical. Refusing loudly is the correct
+# behaviour and is what this list records; silently building identical arms is
+# the fault.
+NEEDS_ITS_OWN_DIRECTIONS = {"weighted"}
+
 for suite in SUITES:
+    if suite in NEEDS_ITS_OWN_DIRECTIONS:
+        try:
+            build_suite(suite, VECS, LAYERS, list(NAMES), 1.5, ARGS)
+            check(f"{suite:<11} refuses a name set it cannot vary", False,
+                  "built identical arms instead of raising")
+        except ValueError as exc:
+            check(f"{suite:<11} refuses a name set it cannot vary",
+                  "no_heading" in str(exc), str(exc))
+        continue
     try:
         built, desc = build_suite(suite, VECS, LAYERS, list(NAMES), 1.5, ARGS)
     except Exception as exc:
