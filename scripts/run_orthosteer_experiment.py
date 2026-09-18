@@ -1170,6 +1170,52 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
               "--random-directions to separate what the extracted directions do "
               "from what any push of that size does")
 
+    if name == "whilewriting":
+        # The per-story perturbation applied while the story is being written,
+        # instead of, and as well as, at the prompt positions.
+        #
+        # Every run in this project has perturbed the prompt and left decoding
+        # alone. That siting is now the thing standing in the way: the variety
+        # it buys runs out at a perturbation of about 0.1, and beyond that the
+        # model stops treating the prompt as an instruction and writes a
+        # document with a title -- 29% of stories at 0.15. The same happens if
+        # the constraint push at the prompt is enlarged instead: 12% titles at
+        # twice the strength, 44% at four times. Whatever the displacement
+        # budget of the prompt representation is, both levers spend it.
+        #
+        # Perturbing during decoding does not touch the prompt at all. The
+        # instruction has already been read, so the failure that limits the
+        # other two has no purchase here. What it risks instead is the text
+        # itself, since the offset is then added at every step of a 150-word
+        # story rather than once.
+        #
+        # Small sizes only, for that reason, and the prompt siting is kept as
+        # the comparison it has to beat.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        kind = getattr(args, "offset_basis_kind", "story")
+        flat = {n: 1.0 for n in names}
+        b = float(getattr(args, "steer_budget", None) or 2.0)
+        keep = int(getattr(args, "prompt_tail", 8) or 8)
+        gammas = [float(x) for x in (getattr(args, "gamma_sweep", None) or (0.05, 0.1))]
+
+        def arm(gam, at_prompt, while_writing):
+            return {"plan": make_plan(
+                beta=flat, steer_budget=b, offset_gamma=gam, offset_mode="orth",
+                offset_basis=offset_basis, offset_basis_kind=kind,
+                steer_prefill=True, prompt_tail_clear=keep,
+                offset_prefill=at_prompt, offset_decode=while_writing,
+                **quiet, **base)}
+
+        items = []
+        for gam in gammas:
+            items.append(arm(gam, False, True))   # while writing only
+            items.append(arm(gam, True, True))    # both sitings
+        return items, (
+            f"the per-story perturbation at {', '.join(f'{x:g}' for x in gammas)} "
+            "applied while the story is written, alone and together with the "
+            "prompt siting every run so far has used")
+
     if name == "bands":
         # The constraint push and the per-story perturbation given different
         # layer bands.
