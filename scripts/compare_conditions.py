@@ -117,6 +117,13 @@ def main() -> None:
                     help="rarefy every condition to this many kept stories "
                          "(default: the smallest kept count)")
     ap.add_argument("--draws", type=int, default=40)
+    ap.add_argument("--interval", nargs="?", type=int, const=300, default=0,
+                    metavar="N",
+                    help="add a 95%% interval on each variety score by subsampling "
+                         "the stories N times, and report each condition's "
+                         "difference from the first. Without it a margin of half a "
+                         "point reads like a result; the interval on a hundred "
+                         "stories is over a point wide")
     ap.add_argument("--per-rule", action="store_true",
                     help="add a pass-rate table, one row per requirement")
     args = ap.parse_args()
@@ -218,6 +225,53 @@ def main() -> None:
               f"{v['words_per_sentence']:>7.1f}  {v['sentences']:>6.1f}  "
               f"{v['uncommon']:>8.1%}  {v['opener']:>6.0%}  {v['present']:>7.0%}  "
               f"{v['wrong_open']:>9.0%}  {v['titled']:>6.0%}  {v['usable']:>6.0%}")
+
+    if args.interval:
+        # Subsample without replacement: a bootstrap that draws with replacement
+        # duplicates stories, duplicates read as identical to each other, and
+        # every score comes back far below its true value. The difference
+        # between two conditions is what this is for, so both are subsampled the
+        # same way and the first condition is the reference.
+        take = max(int(pool * 0.7), 2)
+        rng = np.random.default_rng(0)
+        draws = {}
+        for name in order:
+            v = scored[name]
+            got = {"happens": [], "wording": []}
+            for _ in range(args.interval):
+                for key, vecs in (("happens", v["happens_vectors"]),
+                                  ("wording", v["wording_vectors"])):
+                    if len(vecs) < take:
+                        continue
+                    idx = rng.choice(len(vecs), take, replace=False)
+                    got[key].append(rarefied_vendi(
+                        vecs[idx], take, draws=1,
+                        seed=int(rng.integers(1_000_000)))[0])
+            draws[name] = {k: np.array(x) for k, x in got.items()}
+
+        base = order[0]
+        print(f"\n95% intervals from {args.interval} subsamples of {take} stories, "
+              f"and each condition's difference from {base!r}")
+        head = (f"{'condition':<{width}}  {'happens':>22}  {'wording':>22}")
+        print(head)
+        print("-" * len(head))
+        for name in order:
+            cells = []
+            for key in ("happens", "wording"):
+                a = draws[name][key]
+                if a.size == 0:
+                    cells.append(f"{'--':>22}")
+                    continue
+                if name == base:
+                    cells.append(f"{a.mean():>8.1f}  [{np.percentile(a, 2.5):>5.1f},"
+                                 f"{np.percentile(a, 97.5):>6.1f}]")
+                else:
+                    d = a - draws[base][key]
+                    cells.append(f"{d.mean():>+8.1f}  [{np.percentile(d, 2.5):>+5.1f},"
+                                 f"{np.percentile(d, 97.5):>+6.1f}]")
+            print(f"{name:<{width}}  " + "  ".join(cells))
+        print("\n  A difference whose interval spans zero is a tie, however the "
+              "point estimates read.")
 
     print("\n  broken    mean requirements broken per story, out of "
           f"{len(rules)}; lower is better")
