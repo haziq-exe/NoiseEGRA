@@ -3660,3 +3660,72 @@ Implemented as `--shield-vectors in_story`. `tests/test_shielded_direction.py`
 checks the three things that have gone wrong before: the push is byte-identical,
 no shielded draw has any component along the direction, and the two arms get
 different run ids.
+
+### What round 50 returned
+
+Two runs on two accounts, 100 stories a condition. One shielded, sweeping the
+displacement at 0.15, 0.25 and 0.35; one unshielded at 0.25 and 0.35 as the
+control. The four pushed directions are byte-identical between the two runs, so
+the push is not what differs.
+
+**At the matched displacement of 0.15**, read against the unshielded arm of
+round 42 rather than against a baseline, because that is the arm it differs from
+by one thing:
+
+| | coherent | broken /12 | what it broke on |
+|---|---|---|---|
+| unshielded | 195/200 | 2.99 | refusal 2, stalled 2, repetition 1 |
+| **shielded** | **99/100** | **2.39** | one run-on with a dangling end |
+
+**The failure it was built for is gone.** No refusals and no leaked plans at
+all, where the unshielded arm's rejections were mostly those. The single
+remaining rejection is ordinary bad prose.
+
+**Compliance improves by 0.60 of twelve requirements [-0.93, -0.28]**, an
+interval well clear of zero, from 5000 resamples of the per-story counts. That
+puts it 1.5 requirements ahead of both raised-temperature baselines, which sit
+at 3.92 and 3.95.
+
+**Variety is unchanged.** Against the unshielded arm, variety of what happens
+-1.5 [-3.4, +0.8] and variety of wording -1.5 [-3.4, +0.2]. Both are ties. The
+point estimates read low and it would be wrong to report either as a cost.
+
+So the shield buys coherence and compliance and costs nothing measurable.
+
+### And the thing it was expected to buy, which it does not
+
+The displacement's ceiling is not made of this failure.
+
+| displacement | unshielded coherent | shielded coherent |
+|---|---|---|
+| 0.15 | 195/200 | 99/100 |
+| 0.25 | 82/100 | 73/100 |
+| 0.35 | 71/100 | 64/100 |
+
+Larger displacements collapse just as fast with the shield as without, slightly
+faster. Whatever breaks a story at 0.25 and beyond is not the model leaving the
+story for its planning register; that failure is specific to the small
+displacements where it was the *only* thing going wrong.
+
+Worth recording, because the large displacements are where the variety is:
+at 0.35 variety of what happens is +1.8 [+0.6, +3.1] over nucleus sampling
+shielded and +2.4 [+1.3, +3.6] unshielded, both ahead of top-k's +1.0. The one
+axis the method has never won is winnable at a displacement whose stories are
+two-thirds coherent. That is the trade to attack next, and it is a different
+failure from the one just fixed.
+
+### Two faults in the runner, found by reading the run ids
+
+Neither changed a conclusion, both would have.
+
+**The displacement-size spread reached two suites out of twenty-odd.** It was
+threaded through by naming it at each place a plan is built, and it got named at
+the suite that sweeps it and one other. Round 50 was launched asking for a
+spread of 0.5 and ran at zero, which the run ids showed and nothing else did.
+The run's value now lives in one place and 32 suites inherit it;
+`tests/test_run_wide_settings.py` fails if any of them stops.
+
+**The shield's tag counted the protected subspace's rank**, which the steered
+constraints' principal components also enlarge, so it printed the same thing on
+the shielded arm and on its unshielded control. It names the shielded directions
+now.
