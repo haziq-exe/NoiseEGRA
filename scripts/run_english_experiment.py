@@ -223,6 +223,16 @@ def main() -> None:
                          "'in_story' is the one that exists: it separates telling the "
                          "story from talking about the task, which is what the stories "
                          "the perturbation breaks are actually doing.")
+    ap.add_argument("--drop-anchors", nargs="*", type=int, default=[],
+                    help="sampled stories the displacement must not aim at, by "
+                         "index. The coherence loss is not spread evenly across "
+                         "them: across six runs of the arm that wins both variety "
+                         "measures, eight of the thirty-two sampled stories "
+                         "accounted for 62 of the 76 rejected stories and twenty-one "
+                         "never caused one at all. Aiming along a direction "
+                         "amplifies whatever makes that story unusual, and a few of "
+                         "them are unusual in a way that stops the model writing a "
+                         "story at all.")
     ap.add_argument("--anchor-source", default="self", choices=("self", "untouched"),
                     help="which stories an anchored displacement aims at. 'self' "
                          "uses the same cloud the basis came from. 'untouched' "
@@ -1108,6 +1118,21 @@ def main() -> None:
             torch.save(cached, pc_path)
             print(f"activation basis (step): saved to {pc_path.name}")
 
+        if args.drop_anchors:
+            drop = sorted(set(int(i) for i in args.drop_anchors))
+            n0 = cached.anchors[sorted(cached.anchors)[0]].shape[0]
+            keep = [i for i in range(n0) if i not in drop]
+            if len(keep) < 4:
+                raise SystemExit(
+                    f"--drop-anchors would leave only {len(keep)} sampled stories "
+                    "to aim at; the displacement needs a set to vary over."
+                )
+            import torch as _t
+            for layer in list(cached.anchors):
+                cached.anchors[layer] = cached.anchors[layer][_t.tensor(keep)].contiguous()
+            print(f"  not aiming at sampled stories {drop}: "
+                  f"{len(keep)} of {n0} left")
+
         if args.anchor_source == "untouched":
             if not args.basis_under_push:
                 raise SystemExit(
@@ -1146,6 +1171,10 @@ def main() -> None:
             # Into the run id, so an arm measured against steered stories and
             # one measured against untouched stories cannot share a file.
             args.offset_basis_kind = args.offset_basis_kind + "push"
+        if args.drop_anchors and "drop" not in args.offset_basis_kind:
+            # Into the run id: an arm aiming at a reduced set of sampled stories
+            # is a different arm and must not share a file with the full one.
+            args.offset_basis_kind += f"drop{len(set(args.drop_anchors))}"
         if (args.anchor_source == "untouched"
                 and not args.offset_basis_kind.endswith("mix")):
             # Into the run id: an arm aiming at untouched stories and one aiming
