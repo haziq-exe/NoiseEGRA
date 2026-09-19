@@ -73,7 +73,7 @@ from noiseegra.steering_vectors import (  # noqa: E402
 
 from build_steering_vectors import build_model  # noqa: E402
 from kaggle_orthosteer import generate_one, load_state, save_state  # noqa: E402
-from run_orthosteer_experiment import build_suite  # noqa: E402
+from run_orthosteer_experiment import build_suite, make_plan  # noqa: E402
 from score_english import (  # noqa: E402
     constraint_legend, live_table, score_condition,
 )
@@ -223,6 +223,14 @@ def main() -> None:
                          "'in_story' is the one that exists: it separates telling the "
                          "story from talking about the task, which is what the stories "
                          "the perturbation breaks are actually doing.")
+    ap.add_argument("--basis-under-push", action="store_true",
+                    help="sample the stories the perturbation is measured against "
+                         "while the constraint push is applied, instead of from the "
+                         "untouched model. The perturbation acts during steered "
+                         "generation, so the cloud it moves within is the cloud of "
+                         "steered stories; and an anchored displacement aims at one "
+                         "of the sampled stories, which taken from the untouched "
+                         "model break 4.3 requirements of twelve.")
     ap.add_argument("--offset-norm", default="energy",
                     choices=("energy", "raw", "story"),
                     help="what the displacement's size is measured against. "
@@ -1016,7 +1024,10 @@ def main() -> None:
     args.amplify_mean = None
     if BASIS_SUITES & set(suites_req):
         kind = args.offset_basis_kind
-        pc_path = out / f"actpcs_{kind}_{args.model}.pt"
+        # A basis taken under the push describes a different cloud, so it must
+        # not be loaded from a file written without it.
+        push_tag = "push" if args.basis_under_push else ""
+        pc_path = out / f"actpcs_{kind}{push_tag}_{args.model}.pt"
         legacy = out / f"actpcs_{args.model}.pt"
         if kind == "step" and not pc_path.is_file() and legacy.is_file():
             pc_path = legacy
@@ -1043,14 +1054,32 @@ def main() -> None:
             torch.save(cached, pc_path)
             print(f"activation basis (prompt): saved to {pc_path.name}")
         elif kind == "story":
-            print(f"activation basis: sampling {args.offset_basis_stories} unsteered "
-                  "stories to find the directions they differ along (once) ...",
+            push_plan = None
+            if args.basis_under_push:
+                # The same push the arms use, with no perturbation of its own:
+                # a fixed total over the steered directions, at the prompt and
+                # at every decode step, sparing the same prompt tail.
+                push_plan = make_plan(
+                    vectors, layers, list(args.steer_vectors),
+                    beta={n: 1.0 for n in args.steer_vectors},
+                    rms_scale=rms_scale,
+                    protect_rank=args.protect_rank,
+                    noise_mode="none", noise_alpha=0.0,
+                    steer_budget=args.steer_budget, steer_prefill=True,
+                    prompt_tail_clear=int(getattr(args, "prompt_tail", 8) or 8),
+                    offset_gamma=0.0, offset_mode="none",
+                )
+            print(f"activation basis: sampling {args.offset_basis_stories} "
+                  + ("stories under the constraint push" if push_plan is not None
+                     else "unsteered stories")
+                  + " to find the directions they differ along (once) ...",
                   flush=True)
             cached = collect_story_pcs(
                 get_model(), messages[0], layers,
                 n_stories=args.offset_basis_stories,
                 rank=args.offset_rank,
                 max_new_tokens=args.offset_basis_tokens,
+                push_plan=push_plan,
             )
             torch.save(cached, pc_path)
             print(f"activation basis (story): saved to {pc_path.name}")
@@ -1065,6 +1094,11 @@ def main() -> None:
             )
             torch.save(cached, pc_path)
             print(f"activation basis (step): saved to {pc_path.name}")
+
+        if args.basis_under_push and not args.offset_basis_kind.endswith("push"):
+            # Into the run id, so an arm measured against steered stories and
+            # one measured against untouched stories cannot share a file.
+            args.offset_basis_kind = args.offset_basis_kind + "push"
 
         # The story-level estimate carries the mean the directions are measured
         # from, which amplification needs; the decode-step one is a bare basis and

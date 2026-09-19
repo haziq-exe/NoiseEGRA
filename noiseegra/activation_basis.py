@@ -169,6 +169,7 @@ def collect_story_pcs(
     skip_first: int = 4,
     temperature: float = 1.0,
     seed: Optional[int] = 0,
+    push_plan=None,
     verbose: bool = True,
 ) -> "StoryAxes":
     """Directions along which one *story* differs from another.
@@ -194,7 +195,35 @@ def collect_story_pcs(
     ``skip_first`` drops the opening decode steps, where every story is still
     writing the same first few words and the activations say nothing about which
     story this is.
+
+    ``push_plan`` samples the stories *under the constraint push* instead of
+    from the untouched model. It matters for two reasons, both measured.
+
+    The perturbation is applied during steered generation, so the cloud of
+    states it is displacing within is the cloud of *steered* stories. Sampled
+    without the push, the basis and the anchors describe a cloud the state is
+    never in, and the displacement is measured from the wrong centre.
+
+    And the sampled stories are what an anchored displacement aims *at*. Taken
+    from the untouched model they are stories that break 4.3 requirements of
+    twelve, so aiming at one drags the writing back towards breaking them: at
+    one story's distance the anchored displacement scores 3.58 against the drawn
+    one's 2.19, and it loses precisely on the two requirements the push is
+    holding up. Under the push they are compliant stories, and aiming at one
+    should cost nothing.
+
+    The push is applied exactly as the generation hook applies it -- the same
+    ``steering_only`` vector at the prompt positions if the plan steers there,
+    the same spared head and tail, the same per-step vector while writing --
+    so the states collected are the states the real run produces. The plan must
+    carry no perturbation of its own; that is what is being measured.
     """
+    if push_plan is not None and getattr(push_plan, "offset_gamma", 0.0):
+        raise ValueError(
+            "the plan used to sample the basis must not itself perturb: it is "
+            "being used to find out what the unperturbed steered stories look "
+            "like. Build it with offset_gamma=0."
+        )
     blocks = egra._get_transformer_blocks()
     norm_layers = sorted({egra._normalize_layer_index(int(i), len(blocks)) for i in layers})
 
@@ -208,8 +237,30 @@ def collect_story_pcs(
     def make_hook(li: int):
         def hook(module, inp, out):
             t = out[0] if isinstance(out, (tuple, list)) else out
-            if not isinstance(t, torch.Tensor) or t.dim() != 3 or t.shape[1] != 1:
+            if not isinstance(t, torch.Tensor) or t.dim() != 3:
                 return None
+            if t.shape[1] != 1:
+                # The prompt, read in one pass. Push it exactly as the
+                # generation hook does, sparing the same positions.
+                if push_plan is not None and getattr(push_plan, "steer_prefill", False):
+                    d = push_plan.steering_only(li, 0, device=t.device)
+                    if d is not None:
+                        keep = int(getattr(push_plan, "prompt_tail_clear", 0) or 0)
+                        head = int(getattr(push_plan, "prompt_head_clear", 0) or 0)
+                        n = t.shape[1]
+                        lo = head if 0 < head < n else 0
+                        hi = n - keep if 0 < keep < n - lo else n
+                        d = d.to(t.dtype).view(1, 1, -1)
+                        if hi > lo:
+                            t[:, lo:hi, :].add_(d)
+                        else:
+                            t.add_(d)
+                return None
+            if push_plan is not None:
+                d = push_plan.delta_for(li, step["t"], with_noise=False,
+                                        with_offset=False, device=t.device)
+                if d is not None:
+                    t[:, -1:, :].add_(d.to(t.dtype).view(1, 1, -1))
             if step["t"] >= skip_first:
                 cur[li].append(t[0, -1, :].detach().to("cpu", torch.float32))
             return None
