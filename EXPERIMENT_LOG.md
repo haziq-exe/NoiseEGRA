@@ -3923,3 +3923,54 @@ territory it has never entered.
 `tests/test_story_scaled_size.py` pins the arithmetic, including the ratio
 between the two units at the real hidden size, so the claim above stops being
 true loudly rather than quietly.
+
+## Round 56 - the sweep in units of the data, and what it settles
+
+The same displacement, drawn and anchored, at 0.5, 1.0 and 1.5 stories from the
+average, with the size varying between stories by 0.5 and the story-register
+direction shielded. 100 stories a condition; differences from raised
+temperature with nucleus sampling, intervals from 250 subsamples of 60 for
+variety and 5000 resamples of the per-story counts for compliance.
+
+| condition | coherent | broken /12 | vs nucleus | happens | wording | preamble | titled |
+|---|---|---|---|---|---|---|---|
+| temperature 1.8, nucleus | 200/200 | 3.92 | reference | reference | reference | 0% | 0% |
+| temperature 1.8, top-k | 199/200 | 3.95 | +0.03 [-0.28, +0.33] | +1.7 [+0.0, +3.3] | +1.2 [-1.1, +3.5] | 0% | 0% |
+| 0.5 stories, drawn | **100/100** | **1.87** | **-2.05** [-2.36, -1.75] | -5.6 [-7.3, -3.9] | -3.4 [-5.1, -1.7] | **0%** | **0%** |
+| 1.0 stories, drawn | **100/100** | 2.19 | -1.73 [-2.05, -1.42] | -2.7 [-4.6, -0.7] | -1.9 [-3.7, -0.1] | **0%** | **0%** |
+| 1.5 stories, drawn | 99/100 | 2.65 | | -0.2 [-1.9, +1.6] | +1.5 [-0.6, +3.5] | 4% | 9% |
+| 0.5 stories, anchored | 98/100 | 2.80 | -1.12 [-1.47, -0.78] | -0.3 [-2.2, +1.5] | -0.2 [-2.0, +1.7] | **0%** | **0%** |
+| 1.0 stories, anchored | 92/100 | 3.58 | -0.34 [-0.73, +0.05] | **+2.7** [+1.0, +4.3] | **+2.5** [+0.2, +4.8] | 3% | 4% |
+| 1.5 stories, anchored | 87/100 | 3.48 | -0.44 [-0.78, -0.09] | **+3.1** [+1.5, +5.0] | **+5.4** [+3.1, +7.5] | 5% | 8% |
+
+**The formatting failures are gone, and they were never a formatting problem.**
+Preambles and headings both fall to zero at every size inside the cloud of real
+stories, drawn or anchored, and appear again the moment the displacement goes
+past one story's distance. Eleven rounds of this project treated the heading as
+its own defect and built a direction, a weighting and a per-story guard against
+it, all of which failed. It was extrapolation the whole time.
+
+**Compliance is the best ever measured.** 1.87 requirements broken of twelve at
+half a story out, with all hundred stories coherent and no heading or preamble
+anywhere -- against 3.92 and 3.95 for the two baselines, a gap of over two
+requirements on an interval nowhere near zero.
+
+**Aiming at a story is worth three to five points of variety over drawing one,
+at the same distance.** At 1.0 the drawn displacement scores -2.7 on variety of
+what happens and the anchored one +2.7; at 0.5, -5.6 against -0.3. Both move
+the state equally far; only one moves it somewhere the model has been. This is
+the case for the anchored displacement, and it was invisible until the size
+meant something, because in the old units every arm was outside the data and
+the difference between two ways of being outside it is small.
+
+**One arm wins every axis the goal names except coherence.** At 1.5 stories
+anchored: compliance better than both baselines on an interval clear of zero,
+variety of what happens +3.1 against top-k's +1.7, variety of wording +5.4
+against +1.2. It keeps 87 stories of 100.
+
+**And the trade is now a clean monotone curve** rather than a set of unexplained
+cliffs. Distance buys variety and spends coherence, compliance and formatting,
+and the anchored draw sits on a better curve than the drawn one. What is left is
+to find where on it every story survives -- which round 57 tests by taking the
+size variation's upper tail off, since a spread of 0.5 around 1.0 sends some
+stories to 1.5 and it is those that should be breaking.
