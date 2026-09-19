@@ -289,6 +289,65 @@ def is_leaked_plan(text: str) -> bool:
     return bool(_META_ANY.search(head) or _META_OPEN.match(text))
 
 
+# The model answering the person who asked instead of telling a story. Fluent,
+# varied, second person, and every statistical check above passes it -- which is
+# how a hundred stories of this scored as "all coherent" and as highly diverse,
+# because a numbered list of drawing tips is enormously unlike a story about a
+# girl at a bus stop and a diversity score rewards exactly that:
+#
+#     Ah! I see you've discovered your new adventure in the world of creative
+#     art and storytelling. If you're feeling inspired to explore even more,
+#     here's a few ideas to keep the creativity alive:
+#     1. **Sketchbook Adventures**: ...
+#
+#     Hello! I'm excited to meet you and share some fun moments with you. How
+#     about we talk about your favorite hobbies or adventures?
+#
+# It is not detected by second person alone. A story may be told in the second
+# person -- "You tread cautiously through the forest, the crunch of leaves
+# beneath your boots" is a story -- and three of the first eight that a bare
+# "you" rule flagged were exactly that. What marks these is the model addressing
+# the *task*: offering help, proposing what to do next, or handing over a
+# labelled artefact.
+_CHATTY = re.compile(
+    r"\b(?:i see you|thank you for|i'?m (?:excited|happy|glad) to|i'?d love to"
+    r"|how about we|let'?s (?:make|dive|talk|start|explore)|feel free to"
+    r"|hope you (?:enjoy|like)|i can (?:help|write|create)|would you like"
+    r"|if you'?(?:re|d) (?:feeling|like|interested)|you'?ve got)\b", re.I)
+# Handing over something that is not a story. "Here's a short story:" is a
+# preamble with a story behind it and costs one requirement; "here's a poetic
+# description" or "here's a sample dialogue" means no story was written at all,
+# which is a different and worse thing. So `story` is deliberately absent here.
+_HANDOVER = re.compile(
+    r"\bhere'?s (?:a|the|an|your)\b[^.\n]{0,70}"
+    r"\b(?:description|dialogue|sample|conversation|poem|list|summary|outline"
+    r"|version of|example)", re.I)
+# Two or more numbered or bulleted items: a list of suggestions, not prose.
+_LIST = re.compile(r"(^|\n)\s*(?:\d+\.|[-*\u2022])\s+\S(?:.|\n)*?"
+                   r"(^|\n)\s*(?:\d+\.|[-*\u2022])\s+\S", re.M)
+# A script rather than a story: "**Lena:**" on its own line.
+_SCRIPT = re.compile(r"(^|\n)\s*\*\*[A-Z][a-z]+:?\*\*\s*:?\s*(\n|\")", re.M)
+
+
+def is_not_a_story(text: str) -> bool:
+    """True when the model answered the asker instead of telling a story.
+
+    Measured across every arm in the project: the untouched model and both
+    raised-temperature baselines produce none of these at all, and the arms that
+    displace the hidden state furthest produce up to a quarter. So it is a cost
+    of the intervention, not a property of the model, and it has to be counted
+    as a broken story rather than as a broken requirement -- unlike a heading or
+    a preamble, there is no story underneath it.
+    """
+    body = trim_lead(text)[0]
+    head = body.lstrip()[:260]
+    # The handover is looked for in the text as written, before the preamble
+    # trimmer takes the line off: "here's a poetic description" is the evidence
+    # that no story was written, and trimming it would hide that.
+    return bool(_CHATTY.search(head) or _HANDOVER.search(text[:300])
+                or _LIST.search(body) or _SCRIPT.search(body))
+
+
 _SENTENCE_SPAN = re.compile(r"[^.!?]+[.!?]")
 
 
@@ -769,6 +828,8 @@ class CoherenceFilter:
             reasons.append("refusal")
         if is_leaked_plan(text):
             reasons.append("leaked_plan")
+        if is_not_a_story(text):
+            reasons.append("not_a_story")
         we = scores["window_entropy"]
         if we == we and we < t.min_window_entropy:
             reasons.append("vocab_loop")

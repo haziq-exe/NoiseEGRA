@@ -370,3 +370,46 @@ def test_lost_capitals_is_caught():
 
 if __name__ == "__main__":
     test_lost_capitals_is_caught()
+
+# ---------------------------------------------------------------------------
+#  The model answering the asker instead of telling a story
+#
+#  A hundred stories of this once scored as "all coherent" and as highly
+#  diverse. Every statistical check passes it -- it is fluent, varied, and does
+#  not repeat itself -- and a numbered list of drawing tips is enormously unlike
+#  a story about a girl at a bus stop, which is what a diversity score rewards.
+# ---------------------------------------------------------------------------
+from noiseegra.coherence import is_not_a_story  # noqa: E402
+
+check("a list of suggestions is not a story",
+      is_not_a_story("Ah! I see you've discovered your new adventure in the world "
+                     "of creative art.\n\n1. **Sketchbook**: try sketching.\n"
+                     "2. **Mime**: try miming."))
+check("chatting with the reader is not a story",
+      is_not_a_story("Hello! I'm excited to meet you and share some fun moments "
+                     "with you. How about we talk about your favourite hobbies?"))
+check("handing over something that is not a story is not a story",
+      is_not_a_story("Sure! Here's a gentle, poetic description of a quiet "
+                     "moment in nature for you:\n\n---\n\nThe sun rises."))
+# But handing over a story IS a story, with a preamble in front of it. That
+# costs one requirement, not the whole story -- the prose underneath is fine.
+check("handing over a story is a story with a preamble",
+      not is_not_a_story("Certainly! Here's a short story for you:\n\n"
+                         "Mara steps onto the bus and scans the rows. She finds "
+                         "a seat near the back and watches the rain fall."))
+check("a script is not a story",
+      is_not_a_story('**Lena:**\n"Hey, did you see the mural?"\n\n**Mia:**\n"I did."'))
+
+# The rule must not fire on a story that happens to be told in the second
+# person. Three of the first eight that a bare "you" rule flagged were exactly
+# that, and they are stories.
+check("a second-person story is a story",
+      not is_not_a_story("The wind howls through the pines as the last light "
+                         "fades. You tread cautiously through the forest, the "
+                         "crunch of leaves beneath your boots the only sound."))
+check("a plain story is a story",
+      not is_not_a_story("Mara steps onto the bus and scans the rows for a seat. "
+                         "She finds one near the back and watches the rain."))
+check("dialogue containing 'you' is a story",
+      not is_not_a_story('Priya drops the leash. "You\'re the one who let him go," '
+                         'she says, and Theo looks away.'))
