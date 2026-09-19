@@ -1382,6 +1382,7 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                 offset_basis=offset_basis, offset_basis_kind=kind,
                 offset_scale=getattr(args, "offset_scale", None),
                 offset_draw_shape=getattr(args, "offset_draw_shape", "sphere"),
+                offset_gamma_spread=getattr(args, "offset_gamma_spread", 0.0),
                 steer_prefill=True, prompt_tail_clear=keep,
                 offset_prefill=True, offset_decode=False,
                 **quiet_noise, **base)})

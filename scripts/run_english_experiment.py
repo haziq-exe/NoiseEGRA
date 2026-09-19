@@ -247,6 +247,11 @@ def main() -> None:
                          "the sampled stories actually spread along each, so a "
                          "perturbation of a given size is shaped like a real "
                          "difference between two of the model's own stories")
+    ap.add_argument("--offset-gamma-spread", type=float, default=0.0,
+                    help="how much the per-story displacement's size varies "
+                         "between stories, as a fraction of its mean. Applies to "
+                         "any suite that builds a displacement, not only the one "
+                         "that sweeps it")
     ap.add_argument("--spread-sweep", nargs="*", type=float, default=[0.5, 1.0],
                     help="how much the per-story displacement's size varies "
                          "between stories, as a fraction of its mean")
