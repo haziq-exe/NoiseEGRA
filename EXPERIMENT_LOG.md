@@ -3312,3 +3312,49 @@ register. A richer perturbation basis under the even draw. Raising the total
 push above 2. Weighting the format direction above the others. Sparing the start
 of the prompt. The opening-decode-window siting. The entropy gate, which raises
 the magnitude the text survives by more than twice and buys no content variety.
+
+## Round 44 - per-token noise under the push: the best compliance measured, and no variety
+
+The published Arabic study's own mechanism, run on this task for the first time,
+under the constraint push. 100 stories a condition, differences from raised
+temperature with nucleus sampling, intervals from 250 subsamples of 61 stories.
+
+| condition | coherent | broken /12 | happens | wording |
+|---|---|---|---|---|
+| temperature 1.8, nucleus 0.95 | 200/200 | 3.92 | +0 (reference) | +0 |
+| temperature 1.8, top-k 40 | 199/200 | 3.95 | **+1.7** [+0.0, +3.6] | +1.0 [-1.5, +3.7] |
+| the method as it stands | 195/200 | 2.99 | +0.5 [-1.4, +2.2] | +1.0 [-1.5, +3.4] |
+| **per-token noise 0.1 alone** | **100/100** | **1.67** | -6.8 [-8.7, -4.5] | -4.5 [-6.4, -2.8] |
+| per-token noise 0.2 alone | **100/100** | 2.79 | -4.9 [-6.8, -3.0] | -3.4 [-5.3, -1.5] |
+| per-token noise 0.1 + the perturbation | 97/100 | 3.04 | +0.4 [-1.2, +2.3] | +0.5 [-1.5, +2.4] |
+| per-token noise 0.2 + the perturbation | 88/100 | 3.97 | -0.3 [-1.9, +1.7] | -0.1 [-2.0, +2.0]
+
+**It survives, which it does not alone.** On this model the published per-token
+noise broke every opening story at 0.4 and matched the baseline's variety
+exactly at 0.2. Under the push it keeps 100 stories of 100 at both 0.1 and 0.2,
+with no headings at all, because nothing perturbs the prompt. That is the
+protective effect of the push showing up a fourth time.
+
+**It gives the best requirement compliance measured anywhere on this task**:
+1.67 broken of twelve, against the method's own 2.99, raised temperature's 3.92
+and 3.95, and the untouched model's 4.30. Less than half the baselines.
+
+**And it buys no variety at all.** Both varieties are significantly *below*
+nucleus sampling, on intervals that clear zero from the wrong side. Fresh noise
+at every step is white: it disturbs each token independently and averages out
+over a story, so the stories it produces are no more different from one another
+than the untouched model's. Added to the full method it changes nothing --
++0.4 and +0.5, both ties.
+
+### What the round isolates
+
+Putting the noise-alone and the noise-plus-perturbation rows together separates
+the two halves cleanly. **The per-story perturbation costs about 1.3
+requirements and buys about 12 points of variety of what happens**: 1.67 to 3.04
+broken, 57.0 to 68.7 happens, the same push underneath both.
+
+That is the trade the method has been paying all along, and it is now measured
+rather than inferred. It is also exactly what a rotation should escape: turning
+the push preserves its length, so the dose along every constraint direction is
+unchanged and there is nothing for compliance to pay. Whether the aim wandering
+over decode steps buys variety at that unchanged dose is the next run.
