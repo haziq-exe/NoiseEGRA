@@ -835,6 +835,136 @@
      "negative": "I need to make sure the story meets all those points the user listed."
     }
    ]
+  },
+  "not_refusing": {
+   "targets": "not_refusing",
+   "pairs": [
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Mara steps onto the bus and scans the rows for an empty seat near the back.",
+     "negative": "I am sorry, but I cannot help you with that particular request for writing here."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Theo forgets his lines and the auditorium goes very quiet around him then.",
+     "negative": "I am not able to write fiction that is not grounded in real fact."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Rain slides down the window while Nia waits for her name to be called.",
+     "negative": "I can only write stories and other content when the request is a clear one."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Jonah grips the handlebars and pushes off before he can change his mind.",
+     "negative": "I am unable to assist you with that particular request here today."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Sam counts the coins twice and still comes up two whole dollars short here.",
+     "negative": "I will not produce that text, but I am happy to answer other questions now."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "The dog barks once and Priya drops the leash onto the wet grey pavement.",
+     "negative": "I cannot generate that story for you, so please feel free to ask me again."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Elena hears the bell and shoves the note deep into her jacket pocket now.",
+     "negative": "I am sorry, but I am not going to be able to complete that task."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Marcus tastes salt on the wind and knows the tide is coming in very fast.",
+     "negative": "I am afraid that request falls outside what I am able to help you with."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Ivy's sneakers squeak across the gym floor as the whistle cuts the air.",
+     "negative": "I do not think that I can do that for you at the moment."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Dad burns the toast again and the smoke alarm answers from the hallway.",
+     "negative": "I am sorry, I am not able to respond to that kind of request."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Noor pushes the door open and the cold air hits her face just like water.",
+     "negative": "I must decline that particular request, although I would gladly help you again now."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "The bus pulls away and Leo realises his backpack is still on the curb.",
+     "negative": "I am not permitted to write that, so tell me what else you want."
+    }
+   ]
+  },
+  "not_planning": {
+   "targets": "not_planning",
+   "pairs": [
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Mara steps onto the bus and scans the rows for an empty seat near the back.",
+     "negative": "The user wants a short story and I should check the word count near the end."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Theo forgets his lines and the auditorium goes very quiet around him then.",
+     "negative": "Okay, let me see what the requirements are before I start writing it."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Rain slides down the window while Nia waits for her name to be called.",
+     "negative": "First I need to set the scene, and then check that the requirements are met."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Jonah grips the handlebars and pushes off before he can change his mind.",
+     "negative": "The user wants present tense, so I should avoid slipping into the past here."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Sam counts the coins twice and still comes up two whole dollars short here.",
+     "negative": "Let me think about this and figure out how the story ought to open."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "The dog barks once and Priya drops the leash onto the wet grey pavement.",
+     "negative": "The requirements are met if I keep the word count near one hundred and fifty."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Elena hears the bell and shoves the note deep into her jacket pocket now.",
+     "negative": "So the user wants a story that fits quite a lot of specific rules."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Marcus tastes salt on the wind and knows the tide is coming in very fast.",
+     "negative": "Alright, let me try to handle this and cover every single one of the rules."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Ivy's sneakers squeak across the gym floor as the whistle cuts the air.",
+     "negative": "I need to make sure the story meets all those points they listed."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Dad burns the toast again and the smoke alarm answers from the hallway.",
+     "negative": "Let me start by picking a character and then work through the rules."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Noor pushes the door open and the cold air hits her face just like water.",
+     "negative": "I am trying to work out how many sentences this will need to come in under."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "The bus pulls away and Leo realises his backpack is still on the curb.",
+     "negative": "The story should open in the present tense, so let me check that word count."
+    }
+   ]
   }
  }
 }

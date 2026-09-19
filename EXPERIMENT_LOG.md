@@ -3808,3 +3808,56 @@ varying by 0.5, which the one-axis arms of round 50 did not, because of the
 runner fault that dropped it. Some of the coherence gain could be the varying
 size rather than the wider shield. The matched control -- one axis, same varying
 size, same displacement -- is the 0.25 arm of round 51 and settles it.
+
+## Round 51, second half - the matched control, and the best arm on this branch
+
+The control round 52 needed: the same shield of one axis, the same varying
+displacement size, swept over the displacement. 100 stories a condition,
+differences from raised temperature with nucleus sampling, intervals from 250
+subsamples of 56.
+
+| condition | coherent | broken /12 | happens | wording |
+|---|---|---|---|---|
+| temperature 1.8, nucleus 0.95 | 200/200 | 3.92 | reference | reference |
+| temperature 1.8, top-k 40 | 199/200 | 3.95 | +1.5 [-0.3, +3.1] | +1.0 [-1.3, +3.6] |
+| **0.15, one axis, varying size** | **100/100** | **2.64** | -1.3 [-3.3, +0.8] | +1.9 [-0.4, +3.8] |
+| 0.20, one axis, varying size | 91/100 | 2.78 | +1.4 [-0.1, +3.1] | **+4.0** [+1.5, +6.9] |
+| **0.25, one axis, varying size** | 84/100 | 3.02 | **+3.1** [+1.4, +4.6] | **+9.8** [+7.9, +12.4] |
+| 0.25, rank 6, varying size | 84/100 | 3.36 | +1.4 [-0.6, +3.2] | +8.2 [+5.4, +10.6] |
+| 0.35, rank 6, varying size | 81/100 | 3.79 | +3.2 [+1.6, +4.6] | +11.1 [+8.7, +13.2] |
+
+**The wider shield does nothing.** At 0.25, matched on everything else, one axis
+and rank 6 keep exactly the same 84 stories of 100, and the wider shield is
+worse on compliance (3.36 against 3.02) and on variety of what happens (+1.4
+against +3.1). Round 52's apparent gain was the varying displacement size, which
+the one-axis arms it was compared against did not have because of the runner
+fault. The caution written into that entry was the right one and this settles
+it: **shield one axis, not a subspace.**
+
+**Every story is coherent at 0.15 with the size varying.** 100 of 100, at 2.64
+requirements broken against the baselines' 3.92 and 3.95. That is the first arm
+on this branch to reach every story coherent while beating both baselines on
+compliance.
+
+**And the variety is real one step further out.** At 0.25 both variety measures
+win outright: what happens +3.1 on an interval clear of zero, ahead of top-k's
+own +1.5, and wording +9.8. This is the first time the method has beaten top-k
+on variety of what happens rather than tying nucleus.
+
+**The two ends of the sweep each win two of the three things the goal asks
+for**, and what separates them is coherence: 100 of 100 at 0.15, 84 at 0.25.
+
+### What still breaks, at the displacement where the variety is
+
+| | refusals | leaked plans | everything else |
+|---|---|---|---|
+| 0.20 | 5 | 3 | 1 |
+| 0.25 | 11 | 3 | 2 |
+
+The same register failure, eight of nine and fourteen of sixteen. Widening the
+shield did not reach it. What has not been tried is a *better* shield rather
+than a wider one: `in_story` averages two different failures into one direction,
+nine of its twelve pairs being planning monologue and three being refusals,
+while the failure it has to stop at 0.25 is mostly refusal. Splitting it into
+`not_refusing` and `not_planning`, twelve balanced pairs each, gives two
+well-conditioned directions instead of one averaged one. That is the next run.
