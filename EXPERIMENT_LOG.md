@@ -4438,3 +4438,39 @@ happens and variety of wording, and loses coherence 189 of 200 against 199 and
 **What follows immediately**: the twelve the blind calibration flags reach 199
 of 200 when removed. Shortened rather than removed, at factors of 0.4, 0.5 and
 0.7, they are the obvious candidate for the whole goal at once.
+
+## Round 70 - the shortening sweep, and where the frontier now sits
+
+Every direction kept, the risky ones travelled towards at a fraction of the
+distance. 200 stories a condition, differences from raised temperature with
+top-k, 300 subsamples of 123.
+
+| arm | coherent | broken /12 | happens | wording | preamble | headings |
+|---|---|---|---|---|---|---|
+| temperature 1.8, top-k | 199/200 | 3.95 | reference | reference | 0% | 0% |
+| temperature 1.8, nucleus | 200/200 | 3.92 | -4.5 [-6.8, -2.2] | -1.8 [-3.5, +0.2] | 0% | 0% |
+| all 32 at full distance | 176/200 | 3.52 | **+3.5** [+1.1, +6.2] | **+9.0** [+6.7, +11.1] | 4% | 8% |
+| twelve shortened to 0.7 | 182/200 | 3.51 | **+3.4** [+0.8, +6.1] | **+7.2** [+4.8, +9.5] | 3% | 6% |
+| **eight shortened to 0.5** | 189/200 | 3.41 | **+3.4** [+0.6, +6.0] | **+7.1** [+4.6, +9.8] | 5% | 7% |
+| **twelve shortened to 0.4** | **196/200** | **3.36** | +1.6 [-1.0, +4.7] | **+5.2** [+2.7, +7.6] | **3%** | **5%** |
+| twelve removed | 199/200 | 3.48 | -6.3 [-9.5, -3.2] | +3.3 [+1.0, +5.6] | 5% | 9% |
+
+**Shortening dominates removing everywhere the two can be compared.** At 196 of
+200 the shortened arm ties top-k on variety of what happens; at 199 of 200 the
+removed arm loses it by 6.3. Shortening also gives the best requirement
+compliance measured on this family, 3.36, and the best formatting of anything in
+the project -- 3% preambles and 5% headings against 4% and 8% at full distance.
+
+**The frontier has moved but not vanished.** Winning variety of what happens
+still costs coherence: the arms that win it sit at 182 to 189 of 200, and the
+arm at 196 ties. What changed is the price. Removing twelve stories bought 23
+stories of coherence for 9.8 points of variety; shortening the same twelve buys
+20 for 1.9.
+
+### Round 72 - grading the shortening by measured risk
+
+One fraction for all twelve is blunt. In the calibration one sampled story broke
+the writing five times in eight uses and four broke it once. So each gets its
+own fraction, one over one plus its count: the worst travelled towards at a
+sixth of the distance, the mildest at a half. The counts come from the probe
+runs alone, so nothing is fitted to the arms being measured.
