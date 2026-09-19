@@ -4150,3 +4150,63 @@ All of these are hundred-story conditions and the intervals are wide enough that
 the tie boundary moves with the pooling, so the frontier point between the arm
 that keeps every story (1.5, 100 of 100) and the arm that wins two axes (2.0, 97
 of 100) is being run at 200 stories.
+
+## Round 64 - variety of what happens is won, and the whole goal reduces to one axis
+
+At 200 stories a condition, both baselines also at 200, differences from raised
+temperature with top-k, 300 subsamples of 123.
+
+| condition | coherent | broken /12 | happens | wording |
+|---|---|---|---|---|
+| temperature 1.8, top-k 40 | 199/200 | 3.95 | reference | reference |
+| temperature 1.8, nucleus 0.95 | 200/200 | 3.92 | -4.5 [-6.8, -2.2] | -1.8 [-3.5, +0.2] |
+| drawn 1.75, steered basis | **198/200** | **3.01** | -4.6 [-7.6, -1.7] | +1.2 [-0.6, +3.3] |
+| **anchored 1.5, untouched basis** | 176/200 | 3.52 | **+3.3** [+0.8, +5.7] | **+9.0** [+6.4, +11.8] |
+| anchored 1.25, untouched basis | 176/200 | 3.72 | +2.3 [-0.6, +5.1] | +6.6 [+4.4, +8.9] |
+
+**Variety of what happens is beaten against top-k for the first time**, +3.3 on
+an interval clear of zero, with variety of wording +9.0 and requirement
+compliance 3.52 against 3.95. Top-k is the stronger of the two baselines on that
+axis -- it leads nucleus by 4.5 here -- so this is the hard comparison, not the
+easy one.
+
+**And the only axis it fails is coherence**, 176 of 200 against 199 and 200. The
+failure is 9 refusals and 9 leaked plans of 24 rejections: the same register
+break, at 88% rather than the 87% the hundred-story run showed, so that was
+where the arm sits and not sampling noise.
+
+The goal is now one number away.
+
+### What the two clouds are for
+
+Stated as the 200-story numbers state it:
+
+* **Untouched stories** carry the variation in what happens. Aimed at, they beat
+  top-k on both variety measures and keep 176 of 200.
+* **Steered stories** are where the model still writes from. Aimed at, they keep
+  198 of 200 and win neither variety measure.
+
+The push makes stories alike -- that is its job -- so the cloud it produces has
+less variation in what happens for a displacement to amplify. The two are not
+two attempts at one thing; each has exactly what the other lacks.
+
+## Round 66 - taking the difference and dropping the part that leaves
+
+So: aim at an untouched story, and drop the part of its difference that points
+out of the subspace the steered stories occupy. What is left is a difference the
+model expresses *and* can still write from.
+
+Measured on this model, the two subspaces line up at 0.38 -- neither the same
+nor orthogonal -- and **58% of each untouched story's difference survives the
+projection**. That is the useful regime: below a third the aim would be decided
+by the steered directions rather than by the story, and above nine tenths
+nothing would be dropped.
+
+`--anchor-source untouched`. It needs both clouds, so the run samples 32 stories
+twice, once under the push and once without.
+`tests/test_anchor_source.py` checks that every projected story lands inside the
+steered subspace, that the projection does not collapse them onto one another,
+that a real share of each survives, and that the result is not simply the
+steered cloud again. Its stand-in clouds are built related rather than
+independent, because two independent 31-direction subspaces of a 2048-wide
+stream are nearly orthogonal and keep 12% where the real ones keep 58%.
