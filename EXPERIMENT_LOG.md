@@ -4287,3 +4287,31 @@ If it works, the honest next step is a calibration that finds them without
 having seen the answer -- probing each sampled story a few times during setup,
 in the same way this project already calibrates the activation scale and the
 entropy threshold once per model. Naming them by hand is a test, not a method.
+
+### The calibration works, so naming them by hand is not the method
+
+Naming eight sampled stories after looking at six runs is a test, not a method.
+The method has to find them without having seen the answer. It can:
+
+| what was probed | flags | of the eight, found | false alarms |
+|---|---|---|---|
+| one 100-story run at 1.0 out | 6 | 4 | 2 |
+| one 100-story run at 1.5 out | 10 | 8 | 2 |
+| one 200-story run at 1.25 out | 11 | 8 | 3 |
+| one 200-story run at 1.5 out | 10 | 8 | 2 |
+| the two 100-story runs pooled | 12 | **8** | 4 |
+
+**A hundred stories at the working displacement finds all eight.** The rule is
+as blunt as it looks: aim each story at one of the sampled stories in turn, and
+drop any sampled story that produced a rejected story at all. Two hundred
+stories of calibration is the same order as the activation scale and the entropy
+threshold this project already measures once per model.
+
+The false alarms cost almost nothing. Dropping twelve of thirty-two still leaves
+twenty to aim at, and the displacement only needs a set to vary over.
+
+So there are two arms, not one: round 67 drops the eight the six runs identify,
+which is the best the idea can do, and round 68 drops the twelve the calibration
+flags, which is what the method would actually do on a model it had not seen.
+Both at 200 stories, and round 68 also at two stories out, where the variety is
+larger.
