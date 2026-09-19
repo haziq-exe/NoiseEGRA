@@ -3580,3 +3580,83 @@ At 200 stories (`r42-final`) the same configuration with the shaped draw scores
 195 of 200 coherent, 2.99 broken, and variety of what happens +1.2 [-1.3, +3.6]
 against nucleus sampling -- so the 100% coherence above is a hundred-story
 figure and the larger sample puts it at 97.5%.
+
+## Round 49 - quietening the sensory direction: it costs compliance and does not touch coherence
+
+The idea was that the sensory requirement is the one whose push most distorts
+the prose, so giving it a smaller share of the fixed total might buy back the
+four stories in a hundred the perturbation breaks. Its share cut to a half and to
+a quarter, everything else at the best setting found so far (displacement size
+varying by 0.5, shaped draw, last eight prompt positions spared). 100 stories a
+condition, differences from raised temperature with nucleus sampling, intervals
+from 250 subsamples of 66.
+
+| condition | coherent | broken /12 | happens | wording | titled |
+|---|---|---|---|---|---|
+| temperature 1.8, nucleus 0.95 | 200/200 | 3.92 | reference | reference | 0% |
+| temperature 1.8, top-k 40 | 199/200 | 3.95 | +1.9 [-0.2, +3.8] | +1.2 [-1.4, +3.7] | 0% |
+| the method, equal shares | 195/200 | 2.99 | +0.5 [-1.6, +2.3] | +1.1 [-1.2, +3.4] | 2% |
+| **varying size 0.5, equal shares** | 96/100 | **2.70** | +1.0 [-0.8, +2.5] | **+2.9** [+0.7, +4.9] | 9% |
+| sensory at a half | 96/100 | 3.03 | +0.9 [-0.9, +2.7] | +1.9 [-0.2, +4.1] | 9% |
+| sensory at a quarter | 95/100 | 3.12 | +1.3 [-0.6, +2.9] | **+3.9** [+1.6, +5.9] | 8% |
+
+**It does not do what it was for.** Coherence is 96 and 95 of 100 against the
+96 it was meant to improve -- unchanged. And compliance gets *worse*, 3.03 and
+3.12 against 2.70, which is the obvious thing in hindsight: a fixed total taken
+from one direction is given to the other three, so the sensory requirement is
+failed more often and nothing else is failed less.
+
+The one real effect is on variety of wording, +3.9 at a quarter, the largest
+measured anywhere on this task. It comes with the worst compliance of the three
+and the share of words outside the common three thousand *falling*, 18.8%
+against 21.9%, so it is not richer vocabulary; it is more sentence shapes at a
+plainer word level. Not obviously worth 0.4 of a requirement.
+
+Equal shares at a varying displacement size stays the best arm.
+
+## Round 50 - what the perturbation actually breaks, and forbidding it
+
+Reading the rejected stories rather than the counts changes the problem.
+
+Four stories in a hundred fail the coherence checks at the best setting. They
+are not garbled. Three of the four are the model leaving the story altogether:
+
+    I'm sorry, but I can't help with that. I can only write stories and other
+    content. If you have any other requests, feel free to ask!
+
+    Okay, let me try to handle this. The user wants a short story for middle
+    schoolers, with a lot of specific requirements. They mentioned 150 words,
+    present tense, and a lot of verb phrases. I need to make sure the story
+    meets all those points.
+
+The prose is fluent. What has gone wrong is the register: the model is refusing,
+or narrating its own planning, instead of telling a story. And the same two
+story numbers fail in both of round 49's arms and in round 48's, so this is not
+random -- particular prompts and seeds are close to the edge, and the
+perturbation is what pushes them over.
+
+**That is a direction, so it can be forbidden.** A new contrast set, `in_story`,
+twelve pairs sharing a prefix, positives a line of story and negatives a line of
+planning or refusal at a matched word count and sentence length. Its direction
+is extracted like any other and then *never pushed*. It is added to the
+protected subspace instead, so the subspace the per-story displacement is drawn
+from is built with it removed and every draw is projected clear of it.
+
+The steering push is untouched by construction -- same budget, same dose along
+every constraint, same text from the push alone. The only thing that changes is
+that no displacement can move the state along the axis that separates telling a
+story from talking about the task. Measured on the built plan: the largest share
+of a displacement lying along that axis falls from 0.36 to about 1e-7.
+
+**The prize is not the four stories.** The displacement has been capped at 0.15
+since round 37 because larger sizes make the model abandon the instruction --
+which is this same failure. If the shield is what that ceiling was made of, the
+displacement can be pushed harder, and size is the only thing that has ever
+moved variety of what happens. So the run sweeps it: 0.15 (matched against round
+48), 0.25 and 0.35, with an unshielded control at 0.25 and 0.35 on a second
+account so the shield gets the credit or does not.
+
+Implemented as `--shield-vectors in_story`. `tests/test_shielded_direction.py`
+checks the three things that have gone wrong before: the push is byte-identical,
+no shielded draw has any component along the direction, and the two arms get
+different run ids.
