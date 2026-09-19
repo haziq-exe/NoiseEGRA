@@ -309,6 +309,14 @@ class LayerPlan:
     # story. Used when the displacement is aimed at a story rather than drawn in
     # the span of the principal components summarising them.
     offset_anchors: Optional[torch.Tensor] = None
+    # How far one of the model's own stories typically sits from their average,
+    # at this layer. This is the natural unit for a displacement and nothing
+    # used it for fifty rounds: gamma was measured against the activation's own
+    # length, which is far larger. At this model's layer 6 a real story sits 6.9
+    # from the average and a displacement of 0.15 -- the size every good arm was
+    # run at -- is 15.0, already twice as far out as any story the model wrote.
+    # Every arm has been extrapolating, which is what the refusals are.
+    story_radius: Optional[float] = None
     report: Dict[str, object] = field(default_factory=dict)
     offset_basis: Optional[torch.Tensor] = None   # (dim, M) directions offsets may use
     # (M,) how far stories actually spread along each of those directions. Used
@@ -964,6 +972,9 @@ class SteeringPlan:
                 offset_basis=ob,
                 offset_anchors=(None if offset_anchors is None
                                 else offset_anchors.get(layer)),
+                story_radius=(None if offset_anchors is None
+                              or offset_anchors.get(layer) is None
+                              else float(offset_anchors[layer].norm(dim=1).mean())),
                 offset_scale=(None if offset_scale is None
                               else offset_scale.get(layer)),
                 amp_basis=ab, amp_mean=am, jitter_basis=jb,
@@ -1345,7 +1356,14 @@ class SteeringPlan:
                         g = [1.0] * len(names)
                         g[k] = max(share, 0.05)
                         self.gains = g
-            if self.offset_norm == "energy":
+            if self.offset_norm == "story" and lp.story_radius:
+                # Gamma in units of the data: 1.0 puts the displaced state as
+                # far from the average as one of the model's own stories, so
+                # below 1.0 is interpolation towards a story it has written and
+                # above 1.0 is extrapolation past every one of them.
+                vec = vec / vec.norm().clamp_min(1e-12)
+                lp.offset = vec * (gamma * lp.story_radius)
+            elif self.offset_norm == "energy":
                 # Fixed length, so gamma means the same thing whatever the rank of
                 # the subspace the offset was drawn from. A draw from a rank-r
                 # subspace has natural length ~sqrt(r); without this, gamma silently

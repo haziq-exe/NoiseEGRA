@@ -71,7 +71,8 @@ DEFAULT_SCHEDULES = {}   # flat for every direction unless a caller says otherwi
 # so every other suite quietly ran at zero -- and a three-arm run was launched,
 # generated and scored before anyone noticed it had not been varying the size at
 # all. Anything a command-line flag sets for a whole run belongs here.
-RUN_DEFAULTS = {"offset_gamma_spread": 0.0, "offset_anchors": None}
+RUN_DEFAULTS = {"offset_gamma_spread": 0.0, "offset_anchors": None,
+                "offset_norm": "energy"}
 
 
 def make_plan(
@@ -102,7 +103,7 @@ def make_plan(
     noise_schedule="constant",
     offset_gamma=0.0,
     offset_mode="none",
-    offset_norm="energy",
+    offset_norm=None,
     offset_basis_kind="step",
     offset_draw="iid",
     offset_prefill=False,
@@ -137,6 +138,8 @@ def make_plan(
     extra = vectors.shielded_subspace(names, protect_rank)
     if offset_gamma_spread is None:
         offset_gamma_spread = RUN_DEFAULTS["offset_gamma_spread"]
+    if offset_norm is None:
+        offset_norm = RUN_DEFAULTS["offset_norm"]
     plan = SteeringPlan.build(
         vectors.vectors,
         layers,

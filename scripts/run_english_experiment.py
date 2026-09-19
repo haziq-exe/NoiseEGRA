@@ -223,6 +223,18 @@ def main() -> None:
                          "'in_story' is the one that exists: it separates telling the "
                          "story from talking about the task, which is what the stories "
                          "the perturbation breaks are actually doing.")
+    ap.add_argument("--offset-norm", default="energy",
+                    choices=("energy", "raw", "story"),
+                    help="what the displacement's size is measured against. "
+                         "'energy' is the hidden state's own length, which every "
+                         "run so far used and which has no relation to how far "
+                         "the model's stories sit from one another: on this model "
+                         "a size of 0.15 is twice as far out as any story it "
+                         "wrote. 'story' measures it against exactly that, so 1.0 "
+                         "is as far from the average as a typical story and "
+                         "anything below 1.0 is inside the cloud rather than "
+                         "outside it. Needs the story basis, which carries the "
+                         "sampled stories.")
     ap.add_argument("--shield-rank", type=int, default=0,
                     help="how many directions each shielded name contributes. 0 is "
                          "its mean difference alone; above that its top principal "
@@ -615,6 +627,7 @@ def main() -> None:
     # run, so the dry run builds the same conditions the real run will.
     import run_orthosteer_experiment as _ro
     _ro.RUN_DEFAULTS["offset_gamma_spread"] = float(args.offset_gamma_spread)
+    _ro.RUN_DEFAULTS["offset_norm"] = str(args.offset_norm)
 
     if args.dry_run:
         # Parsing the flags is the easy half. Two runs have now reached Kaggle,
@@ -1068,6 +1081,20 @@ def main() -> None:
             # Published for the whole run, so no suite has to name it.
             anchors = getattr(cached, "anchors", None) or None
             _ro.RUN_DEFAULTS["offset_anchors"] = anchors
+            if args.offset_norm == "story":
+                if not anchors:
+                    raise SystemExit(
+                        "--offset-norm story measures the displacement against "
+                        "how far the model's own stories sit from their average, "
+                        f"and {pc_path.name} was written before they were kept. "
+                        "Delete it and rerun so it is taken again."
+                    )
+                radii = {l: float(a.norm(dim=1).mean()) for l, a in anchors.items()}
+                lo, hi = min(radii.values()), max(radii.values())
+                print(f"  a size of 1.0 means as far from the average as one of "
+                      f"the model's own stories: {lo:.1f} to {hi:.1f} across "
+                      f"these layers, against {args.main_gamma * 2.215 * 45:.0f} "
+                      "for the same number measured the old way")
             if args.offset_draw_shape == "anchor":
                 if not anchors:
                     raise SystemExit(
