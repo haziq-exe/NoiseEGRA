@@ -3418,3 +3418,49 @@ worse on this axis, for the same reason.
 perturbation, whose size is capped by coherence and formatting at 0.15; and
 widening the token distribution, which is sampling temperature and is excluded
 by the task.
+
+## Round 46 - rotating the push between stories buys nothing either
+
+Round 45 found that mechanisms varying *within* a story cannot raise how
+different stories are *from each other*. Rotation of the constraint vector,
+drawn once per story and held, is the between-story member of that family, and
+it spends a different budget from the per-story perturbation: it turns the push
+rather than displacing the prompt, so it should not meet the formatting ceiling
+that caps displacement at 0.15. Three strengths, turning the aim by 17, 31 and
+45 degrees.
+
+| condition | coherent | broken /12 | happens | wording | titled |
+|---|---|---|---|---|---|
+| temperature 1.8, nucleus 0.95 | 200/200 | 3.92 | reference | reference | 0% |
+| temperature 1.8, top-k 40 | 199/200 | 3.95 | **+2.0** [+0.1, +3.9] | +1.4 [-0.9, +3.7] | 0% |
+| the method, no rotation | 195/200 | **2.99** | +0.6 [-1.6, +2.6] | +1.2 [-1.1, +3.4] | 2% |
+| rotation 0.3 | 98/100 | 3.09 | -0.3 [-2.2, +1.5] | +1.0 [-0.9, +2.9] | 0% |
+| rotation 0.6 | 97/100 | 3.16 | -0.4 [-2.2, +1.2] | +0.4 [-1.2, +2.3] | 1% |
+| rotation 1.0 | 99/100 | 3.32 | -0.4 [-2.1, +1.5] | +1.4 [-0.6, +3.5] | 2% |
+
+**The budget argument was right and the mechanism still does nothing.**
+Coherence holds at 97 to 99 of 100 and headings stay at 0 to 2% even at
+45 degrees, so rotation genuinely does not meet the ceiling displacement meets.
+It simply does not move variety of what happens: **-0.3, -0.4, -0.4 as the aim
+turns from 17 to 45 degrees**, which is not a trade but a flat line. The arms
+are real -- at most one story in a hundred is shared between any two of them.
+
+What it does cost is the opening tense, 15% to 28% of stories opening in the
+past and switching, against 7% without rotation, and a little compliance.
+
+### The search over between-story mechanisms, so far
+
+| mechanism | between or within a story | moves variety of what happens |
+|---|---|---|
+| per-story displacement of the prompt | between | **yes, about +12 points, capped at 0.15 by formatting** |
+| per-story rotation of the push | between | no, flat in strength to 45 degrees |
+| per-token noise | within | no, significantly negative |
+| the aim wandering over decode steps | within | no |
+| the entropy gate | within | no |
+| perturbing only the opening decode steps | within | no |
+| a richer perturbation basis | between, more directions | no |
+| a larger total push | neither, dose | no |
+
+Only one thing has ever moved this axis, and it is capped by a failure mode --
+the model ceasing to treat the prompt as an instruction -- rather than by
+anything about diversity.
