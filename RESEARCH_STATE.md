@@ -20,6 +20,11 @@ Companion documents:
 - `EXPERIMENT_LOG.md` — the narrative, round by round: what was asked, what came
   back, what it changed.
 
+**To reproduce the best-scoring configuration**, read the closing section of
+`EXPERIMENT_LOG.md`, "The configuration to reproduce, in full". It holds the
+exact command, the run id, every setting the result depends on, and the list of
+mechanisms built afterwards that are *not* part of it.
+
 ## The branch this is on now: the middle-school task (2026-09-18)
 
 `middle-school-register`, branched from `english-generalization`. Everything
