@@ -3703,9 +3703,28 @@ The displacement's ceiling is not made of this failure.
 | 0.35 | 71/100 | 64/100 |
 
 Larger displacements collapse just as fast with the shield as without, slightly
-faster. Whatever breaks a story at 0.25 and beyond is not the model leaving the
-story for its planning register; that failure is specific to the small
-displacements where it was the *only* thing going wrong.
+faster.
+
+And reading *why* they collapse says what is happening. It is the same failure:
+
+| | refusals | leaked plans | everything else |
+|---|---|---|---|
+| 0.25 unshielded | 17 | 1 | 0 |
+| 0.25 shielded | 16 | 6 | 5 |
+| 0.35 unshielded | 18 | 5 | 7 |
+| 0.35 shielded | 24 | 7 | 5 |
+
+The model is still leaving the story, and shielding one direction does not stop
+it. So the ceiling *is* made of this failure -- the first reading of these
+numbers, that it was some other fault, was wrong and is corrected here.
+
+What the shield's own numbers then say is that one direction is enough at 0.15
+and not at 0.25. That is what a region rather than a half-space looks like: the
+part of the stream that writes stories is bounded in many directions, a small
+displacement with one of them removed stays inside it, and a larger one leaves
+through a direction the shield never named. The fix that follows is to shield a
+*subspace* -- several principal components of the story-against-planning
+contrast, not only its mean.
 
 Worth recording, because the large displacements are where the variety is:
 at 0.35 variety of what happens is +1.8 [+0.6, +3.1] over nucleus sampling
