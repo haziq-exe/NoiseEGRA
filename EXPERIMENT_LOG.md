@@ -3974,3 +3974,68 @@ and the anchored draw sits on a better curve than the drawn one. What is left is
 to find where on it every story survives -- which round 57 tests by taking the
 size variation's upper tail off, since a spread of 0.5 around 1.0 sends some
 stories to 1.5 and it is those that should be breaking.
+
+## Rounds 57 and 58 - the size variation was never the cause; the frame was
+
+**Round 57 kills its own hypothesis.** A spread of 0.5 around one story's
+distance sends some stories out to 1.5, so those should be the ones breaking.
+Taking the spread off entirely keeps 89 of 100 at one story out and 92 at 1.25,
+against the 92 that the spread of 0.5 kept. Narrowing it to 0.25 gives 91. The
+upper tail was not doing it.
+
+**Round 58 finds what was.** The stories the displacement is measured against
+are sampled from the untouched model, but the displacement acts during *steered*
+generation. So the average it moves from, and the directions it moves along,
+describe a cloud the state is never in -- and an anchored displacement aims at
+stories that themselves break 4.3 requirements of twelve. Sampling those 32
+stories under the push instead, with the same vector at the prompt, the same
+spared tail and the same per-step vector:
+
+| at one story's distance | coherent | refusals | leaked plans |
+|---|---|---|---|
+| measured against untouched stories | 92/100 | 1 | 4 |
+| measured against untouched stories, no size variation | 89/100 | 3 | 7 |
+| **measured against steered stories** | **98/100** | **0** | **0** |
+
+Both register failures go to zero. This is the third and largest piece of
+evidence for one explanation: the refusals were always the state being somewhere
+the model does not write stories from, and every fix that worked -- the shield,
+the size measured in stories, and now the frame -- worked by keeping it where it
+does.
+
+### What it costs, which is the part that is not solved
+
+| condition | coherent | broken /12 | happens | wording |
+|---|---|---|---|---|
+| temperature 1.8, nucleus | 200/200 | 3.92 | reference | reference |
+| temperature 1.8, top-k | 199/200 | 3.95 | +1.7 [+0.0, +3.3] | +1.2 [-1.1, +3.5] |
+| 1.0 out, untouched basis | 92/100 | 3.58 | **+2.7** [+1.1, +4.3] | +2.3 [+0.0, +4.5] |
+| 1.5 out, untouched basis | 87/100 | 3.48 | **+3.1** [+1.3, +4.8] | **+5.6** [+3.2, +7.8] |
+| 1.0 out, steered basis | **98/100** | 3.41 | +0.9 [-1.0, +2.9] | +2.6 [+0.3, +4.7] |
+| 1.5 out, steered basis | 92/100 | 3.54 | +1.1 [-1.0, +3.2] | **+7.0** [+4.5, +9.4] |
+
+**Coherence is bought with variety of what happens.** The steered basis turns a
+real win into a tie on that axis, while improving variety of wording. It is not
+an artefact of the unit: the steered cloud's radius is 12.4 against the
+untouched cloud's 14.4, a 14% difference, and going 50% further out on the
+untouched basis is worth only +0.4, so 14% cannot account for +2.7 becoming
++0.9.
+
+The reason is plain enough. The push makes the stories more alike -- that is
+what it is for -- so the cloud of steered stories has less variation in what
+happens for a displacement to amplify. Staying inside a tighter cloud is safer
+and less interesting.
+
+**And the compliance leak did not close.** The anchored displacement was costing
+1.4 requirements against a drawn one at the same distance, and the reason
+offered was that it aims at stories breaking 4.3 of twelve. Aimed at compliant
+ones it scores 3.41 against 3.58 -- barely moved. That explanation is wrong and
+the cost is still unexplained.
+
+**Where this leaves the goal.** Two arms each miss on one axis. At 1.5 out on
+the untouched basis, compliance beats both baselines and both varieties beat
+top-k, at 87 stories of 100. At 1.0 out on the steered basis, 98 of 100 are
+coherent and variety of what happens is a tie. The next run takes the steered
+basis much further out -- 2.0, 2.5 and 3.0 -- on the reasoning that it survives
+distance far better, so the distance that gives the untouched basis its variety
+may be reachable on it without the breakage.
