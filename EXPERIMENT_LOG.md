@@ -3464,3 +3464,39 @@ past and switching, against 7% without rotation, and a little compliance.
 Only one thing has ever moved this axis, and it is capped by a failure mode --
 the model ceasing to treat the prompt as an instruction -- rather than by
 anything about diversity.
+
+## Round 48 - varying the size of the displacement between stories
+
+Every run before this gave every story a displacement of the same size, which
+puts them on a shell around the unperturbed state rather than filling the ball
+inside it. Vendi measures spread. Checked on the geometry first: a hundred
+points at this basis's rank score 2.3 with the radius drawn uniformly over
+[0, 2r] against 1.9 with it fixed, at an unchanged mean.
+
+100 stories a condition, differences from nucleus sampling, intervals from 250
+subsamples of 63 stories.
+
+| condition | coherent | broken /12 | happens | wording | titled |
+|---|---|---|---|---|---|
+| temperature 1.8, nucleus 0.95 | 200/200 | 3.92 | reference | reference | 0% |
+| temperature 1.8, top-k 40 | 199/200 | 3.95 | +1.7 [-0.1, +3.8] | +1.2 [-1.4, +3.6] | 0% |
+| the method, one size for every story | 195/200 | 2.99 | +0.5 [-1.7, +2.4] | +1.2 [-1.2, +3.7] | 2% |
+| **size varying by half** | 96/100 | **2.70** | +0.9 [-0.9, +2.7] | **+2.6** [+0.6, +4.8] | 9% |
+| size varying by the whole | 90/100 | 2.51 | -0.8 [-2.8, +1.3] | +1.7 [-0.4, +3.6] | 4% |
+
+**It moves two axes and not the blocked one.** At half, requirement compliance
+is the best of any variant -- 2.70 against the fixed size's 2.99 and raised
+temperature's 3.92 -- and variety of wording becomes a real win rather than a
+tie, +2.6 on an interval well clear of zero against the fixed size's +1.2.
+Variety of what happens improves from +0.5 to +0.9, closer to top-k sampling's
++1.7, and still spans zero.
+
+**The formatting ceiling binds per story, not on the average.** Headings go from
+2% to 9% while the *mean* displacement is unchanged, so the stories drawn near
+the top of the range are crossing the threshold individually. That is worth
+knowing: it means the cap cannot be got round by spending the same budget
+unevenly, only by raising what an individual story can take.
+
+At full spread the extra reach costs more than it buys -- coherence 90 of 100
+and variety of what happens back below nucleus sampling -- so half is the
+setting.
