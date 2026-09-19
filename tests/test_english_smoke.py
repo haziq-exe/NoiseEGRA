@@ -67,12 +67,13 @@ class Tiny(EGRA):
 
 print("== task setup ==")
 pairs = load_pairs(ROOT / "noiseegra" / "data" / "steering_pairs_en.json")
-check("English pair file holds the sixteen extractable directions",
+check("English pair file holds the seventeen extractable directions",
       sorted(pairs) == ["closure", "dialogue", "in_story", "named_character",
                         "no_heading", "not_advising", "not_planning",
                         "not_refusing", "plain_words", "present_tense", "sensory",
-                        "simple_register", "simple_syntax", "story_format",
-                        "terse", "varied_openers"], f"{sorted(pairs)}")
+                        "simple_register", "simple_syntax", "something_happens",
+                        "story_format", "terse", "varied_openers"],
+      f"{sorted(pairs)}")
 
 # The first pair set was length-confounded: three of its four directions had a
 # positive side 11 to 14 words shorter than the negative, so "simple register"
@@ -110,7 +111,7 @@ check("reddit tags are stripped from prompts",
 # it, and it is never pushed and never asked for. Build the prompt from the
 # names that do map to a scored constraint.
 _STEER_ONLY = {"no_heading", "story_format", "in_story", "not_refusing",
-               "not_planning", "not_advising"}
+               "not_planning", "not_advising", "something_happens"}
 msgs = wp.build_messages("You are the last human alive.",
                          [n for n in pairs if n not in _STEER_ONLY])
 _scenario_names = [n for n in pairs if n not in _STEER_ONLY]

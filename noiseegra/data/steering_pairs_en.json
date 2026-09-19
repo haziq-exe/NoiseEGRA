@@ -1030,6 +1030,71 @@
      "negative": "That is the kind of energy I love and you have got real fire."
     }
    ]
+  },
+  "something_happens": {
+   "targets": "something_happens",
+   "pairs": [
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Mara drops the letter into the postbox and walks away without looking back.",
+     "negative": "The postbox stands red against the grey wall at the end of the lane."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Theo trips on the step and the tray of cups hits the floor hard.",
+     "negative": "The tray of cups sits on the table beside the window in sunlight."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Nia pushes the window open and climbs out onto the flat warm roof.",
+     "negative": "The window is open and the flat roof is warm in the afternoon."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Jonah hands the ticket back and asks the driver to stop the bus.",
+     "negative": "The bus is quiet and the driver watches the road ahead of him."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Sam finds the key under the mat and turns it in the stiff lock.",
+     "negative": "The key is cold under the mat and the lock is old and stiff."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Priya cuts the rope and the boat swings away from the wooden dock.",
+     "negative": "The boat is small and the wooden dock smells of salt and weed."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Elena tears the page out and folds it into her deep coat pocket.",
+     "negative": "The page is thin and the coat pocket is deep and rather dark."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Marcus jumps the fence and lands badly on the pale gravel below it.",
+     "negative": "The fence is tall and the gravel below is pale in the light."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Ivy blocks the shot and the whistle goes before anyone else can move.",
+     "negative": "The gym is loud and the whistle hangs around the coach's thick neck."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Dad slams the oven shut and calls everyone to the kitchen table now.",
+     "negative": "The oven is warm and the kitchen table is covered with white plates."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Noor drops her bag and runs back towards the shouting in the hall.",
+     "negative": "The hall is full of noise and her bag is heavy on her shoulder."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Leo grabs the handle and pulls the heavy door closed behind them both.",
+     "negative": "The door is heavy and the handle is cold beneath his open palm."
+    }
+   ]
   }
  }
 }
