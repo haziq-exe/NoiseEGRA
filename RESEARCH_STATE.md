@@ -39,6 +39,29 @@ roughly 150 words instead of 60 -- it did not, and this branch exists to make it
 compliance, all at once, and beat raised-temperature decoding. The novelty bar
 in `astar-novelty-bar` still applies.
 
+### Read this before trusting any coherence or variety number below
+
+**Every number written before round 76 counts a class of failure as success.**
+The coherence checks ask whether the text is degenerate -- garbled, repetitive,
+looping, stripped of function words. None of them asked whether it is a story.
+So this passed, and was counted as one of a hundred coherent stories:
+
+    Ah! I see you've discovered your new adventure in the world of creative art
+    and storytelling. If you're feeling inspired to explore even more, here's a
+    few ideas to keep the creativity alive:
+    1. **Sketchbook Adventures**: ...
+
+And it is exactly what inflates a diversity score: a list of drawing tips is
+enormously unlike a story about a girl at a bus stop. `is_not_a_story` now
+catches it and it is scored as a broken story, because unlike a heading or a
+preamble there is no story underneath.
+
+The untouched model and both raised-temperature baselines produce **none** of
+it. The arms that aim the displacement at one of the model's own sampled
+stories produce up to a quarter. Rescoring moved those arms down by 20 to 35
+stories in 200 and removed every variety win this branch had reported. The
+arms that draw the displacement from the subspace instead lost 1 to 5.
+
 ### Read this before using any displacement size below
 
 **The size of the per-story displacement was measured in the wrong unit for the
