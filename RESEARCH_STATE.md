@@ -39,7 +39,30 @@ roughly 150 words instead of 60 -- it did not, and this branch exists to make it
 compliance, all at once, and beat raised-temperature decoding. The novelty bar
 in `astar-novelty-bar` still applies.
 
+### Read this before using any displacement size below
+
+**The size of the per-story displacement was measured in the wrong unit for the
+whole of rounds 1 to 55**, and every number in this document written before
+round 56 inherits it. The size was set as a fraction of the hidden state's own
+length, which has no relation to how far the model's stories sit from one
+another. On Qwen3-1.7B a story of the model's own sits 6.9 from the average of
+the sampled stories at layer 6; the size every good arm ran at, 0.15, works out
+at 15.0. Every arm displaced at least twice as far out as any story the model
+wrote, and the refusals that cap the method are that.
+
+`--offset-norm story` measures it against the data instead, where 1.0 is one
+story's distance from the average. Sizes quoted in the old unit are roughly 1.5
+to 2.2 in the new one. Do not compare a size across the two.
+
 ### Where it stands (round 42, 200 stories a condition, one run, Qwen3-1.7B)
+
+*Scored before the preamble was counted, so the formatting numbers in this
+section are about half their true value; see round 50 onward in
+`EXPERIMENT_LOG.md`. The best configuration since is a displacement whose size
+varies between stories, with the story-register direction shielded: 100 of 100
+coherent at 2.65 requirements broken, against 3.92 and 3.95 for the two
+raised-temperature baselines.*
+
 
 The untouched model, both decoding baselines and the method generated in a
 single run at 200 stories each, sharing one prompt, one seed sequence and one
