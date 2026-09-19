@@ -4646,3 +4646,61 @@ against nucleus sampling from two stories out.
 top-k's own lead over nucleus on that axis is +1.5 [-0.4, +3.1] at this pooling
 -- also a tie -- so the axis is noisy and the baselines are close together on
 it, but a tie is a tie and the goal asks for better.
+
+## Round 78 - the push had nothing that asks for an event, and that was the ceiling
+
+Reading which words the stories use, rather than sweeping the perturbation
+again:
+
+| | commonest content words in the first 40 words |
+|---|---|
+| temperature 1.8, nucleus | look 39%, sun 28%, wind 25%, eye 22%, sky 22%, air 22%, stand 21%, **window** 20%, smell 20%, **backpack** 17% |
+| the method, 2.0 out | air 32%, sun 30%, **scent 29%**, old 18%, wind 18%, feel 17%, walk 17%, quiet 15%, tree 15%, forest 15% |
+
+The baseline's commonest words include objects and actions -- a backpack, a
+window, someone standing, someone looking. The method's are weather: scent, air,
+sun, earth, tree, forest. **The push asks for present tense, sensory detail, a
+named character and correct format, and nothing in it asks for anything to
+happen.** It produces an atmospheric vignette, and a set of atmospheric
+vignettes cannot vary much in what happens however far the state is displaced.
+
+That is a property of what is being steered, not of the perturbation, which is
+why every perturbation change -- siting, magnitude, draw shape, frame, spread,
+shield, shortening -- tied on this axis and only this axis.
+
+So a fifth direction, `something_happens`: twelve pairs contrasting a character
+doing something that changes the situation with the same scene described.
+
+    Mara drops the letter into the postbox and walks away without looking back.
+    The postbox stands red against the grey wall at the end of the lane.
+
+Matched to within a word and identical at 13.2 words a sentence, so it carries
+event-against-description and nothing else. It is steered, not shielded, and the
+total push is raised from 2 to 2.5 so the original four keep the strength they
+had -- two earlier rounds showed a fifth direction taken out of a fixed budget
+costs compliance, and round 62 showed a total of 3 behaves exactly like 2, so
+the extra half is free.
+
+### It works, and it is the first honest win on that axis
+
+200 stories, differences from raised temperature with nucleus sampling, 300
+subsamples of 118.
+
+| condition | coherent | broken /12 | happens | wording |
+|---|---|---|---|---|
+| temperature 1.8, nucleus (top-p) | 200/200 | 3.92 | reference | reference |
+| temperature 1.8, top-k | 199/200 | 3.95 | +4.3 [+1.4, +7.0] | +1.7 [-0.4, +3.7] |
+| four directions, 2.0 out | 186/200 | **3.04** | +1.4 [-1.6, +4.0] | **+4.9** [+2.5, +7.1] |
+| **events steered, 2.0 out** | 170/200 | 3.35 | **+4.9** [+2.5, +7.5] | **+5.1** [+3.2, +7.2] |
+
+**+4.9 on variety of what happens, on an interval clear of zero, and level with
+top-k's own +4.3.** The commonest words move from air, sun and scent to run,
+grab and hit. Four rounds of perturbation tuning could not touch this axis
+because the perturbation was never what was holding it down.
+
+**The cost is coherence**: 170 of 200, with a tenth of the stories not stories
+and a sixth carrying a heading. A fifth direction at a raised total pushes
+harder overall and the familiar register failure follows. Rounds 79 run the
+same five directions at 1.5 and 1.75 stories out, where the drawn displacement
+was clean at 0% and 3%, to find where the event direction's content and the
+short displacement's coherence meet.
