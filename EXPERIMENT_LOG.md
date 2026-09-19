@@ -4355,3 +4355,47 @@ would be dropping them again under another name.
 
 The calibration that names them is the same probe as before, so this costs
 nothing extra to determine.
+
+## Round 68 - the blind calibration reaches top-k's coherence, and loses the variety
+
+The calibration names twelve sampled stories without being told the answer: run
+a hundred stories at the working displacement, aim each at one of the thirty-two
+in turn, and drop any that produced a rejected story at all. That is the method;
+round 67's eight were picked by hand after looking at six runs and are not.
+
+200 stories a condition, differences from raised temperature with top-k, 300
+subsamples of 123.
+
+| sampled stories removed | coherent | refusals | broken /12 | happens | wording |
+|---|---|---|---|---|---|
+| none | 176/200 | 9 | 3.52 | **+3.5** [+1.1, +6.2] | **+9.0** [+6.7, +11.1] |
+| the eight picked by hand | 189/200 | 2 | 3.57 | +0.6 [-2.4, +3.4] | **+7.0** [+4.6, +9.7] |
+| **the twelve the calibration flags** | **199/200** | **0** | **3.48** | **-6.3** [-9.8, -2.9] | **+3.2** [+1.1, +5.6] |
+| the same twelve, two stories out | 193/200 | 0 | | -2.0 [-5.1, +1.3] | **+6.0** [+3.5, +8.3] |
+
+**199 of 200 is level with top-k and one story short of nucleus.** Refusals are
+gone entirely and leaked planning is down to one story in two hundred, at 3.48
+requirements broken against the baselines' 3.95 and 3.92.
+
+**The procedure beat the hand-picked list**, which is worth recording. The
+calibration's twelve include four that caused a single rejection each across six
+runs and which I had written off as false alarms. Removing them was right. "Drop
+any sampled story that caused a rejection" is a blunter rule than "drop the ones
+that caused the most", and it is both better and the one that needs no hindsight.
+
+**And the variety of what happens is gone**, from a win clear of zero to a loss
+clear of zero. Set out in order the trade is exact:
+
+    sampled stories removed :   0      8     12
+    stories coherent        : 176    189    199   of 200
+    variety of what happens :  +3.5   +0.6   -6.3  against top-k
+
+Monotone in both columns. Coherence and variety of what happens trade directly
+against each other through the number of the model's own stories the
+displacement is allowed to aim at. There is no setting of this knob that has
+both.
+
+That is the clearest statement of the branch's central tension so far, and it
+points at what to try: the knob is the wrong shape. Removing a story removes its
+direction. Round 69 and 70 keep every direction and shorten the distance
+travelled along the risky ones instead, at factors of 0.4, 0.5 and 0.7.
