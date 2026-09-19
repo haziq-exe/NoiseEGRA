@@ -223,6 +223,13 @@ def main() -> None:
                          "'in_story' is the one that exists: it separates telling the "
                          "story from talking about the task, which is what the stories "
                          "the perturbation breaks are actually doing.")
+    ap.add_argument("--shield-rank", type=int, default=0,
+                    help="how many directions each shielded name contributes. 0 is "
+                         "its mean difference alone; above that its top principal "
+                         "components are added, so the perturbation is held clear of "
+                         "a subspace rather than a single axis. The mean alone "
+                         "removed every refusal at a perturbation of 0.15 and none "
+                         "of them at 0.25.")
     ap.add_argument("--num-prompts", type=int, default=10)
     ap.add_argument("--stories-per-prompt", type=int, default=5)
     ap.add_argument("--prompt-seed", type=int, default=0)
@@ -641,7 +648,7 @@ def main() -> None:
             components={n: {l: _t.linalg.qr(_t.randn(_dim, _rank))[0] for l in _layers}
                         for n in _all},
             positives={n: {l: _t.randn(_dim) for l in _layers} for n in args.steer_vectors},
-            shield=list(args.shield_vectors),
+            shield=list(args.shield_vectors), shield_rank=int(args.shield_rank),
         )
         args.targets = _vecs.positives
         args.offset_basis = {l: _t.linalg.qr(_t.randn(_dim, 24))[0] for l in _layers}
@@ -904,6 +911,7 @@ def main() -> None:
             vectors.save(vec_path)
             print(f"steering vectors: saved to {vec_path.name}")
         vectors.shield = list(args.shield_vectors)
+        vectors.shield_rank = int(args.shield_rank)
         if vectors.shield:
             missing = [n for n in vectors.shield if n not in vectors.vectors]
             if missing:
@@ -911,7 +919,10 @@ def main() -> None:
                     f"--shield-vectors {missing} were not extracted. Delete "
                     f"{vec_path.name} and rerun so they are."
                 )
-            print(f"shielded from the perturbation: {', '.join(vectors.shield)}")
+            span = ("its mean direction" if vectors.shield_rank <= 0
+                    else f"its mean direction and top {vectors.shield_rank} components")
+            print(f"shielded from the perturbation: {', '.join(vectors.shield)} "
+                  f"({span} per name, per layer)")
         args.direction_source = "random" if args.random_directions else "extracted"
         if args.random_directions:
             gen = torch.Generator().manual_seed(1234)

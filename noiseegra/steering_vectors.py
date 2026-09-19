@@ -69,6 +69,15 @@ class SteeringVectorSet:
     # A run-time choice, not something the extraction produces, so it is not
     # saved with the vectors: a cached file loads with nothing shielded.
     shield: List[str] = field(default_factory=list)
+    # How many directions each shielded name contributes. 0 is the mean
+    # difference alone, one direction. Above that, its top principal components
+    # are added, so the shield is a subspace rather than a single axis.
+    #
+    # This matters because the mean alone is enough at a small perturbation and
+    # not at a large one: at 0.15 it removed every refusal and every leaked
+    # plan, and at 0.25 those failures came back in full. A region bounded in
+    # many directions is not kept out of by naming one of them.
+    shield_rank: int = 0
 
     @property
     def names(self) -> List[str]:
@@ -179,8 +188,25 @@ class SteeringVectorSet:
                     f"no direction extracted for the shielded name '{name}'; "
                     "it has to be extracted even though it is never pushed."
                 )
+            comps = self.components.get(name) if self.shield_rank > 0 else None
+            if self.shield_rank > 0 and not comps:
+                raise KeyError(
+                    f"shield rank {self.shield_rank} was asked for but no principal "
+                    f"components are stored for '{name}'; re-extract with a pca_rank "
+                    "at least that large."
+                )
             for layer, vec in per.items():
-                col = vec.detach().to(torch.float32).reshape(-1, 1)
+                cols = [vec.detach().to(torch.float32).reshape(-1, 1)]
+                if comps is not None:
+                    have = comps[layer].shape[1]
+                    if have < self.shield_rank:
+                        raise ValueError(
+                            f"shield rank {self.shield_rank} was asked for but only "
+                            f"{have} components are stored for '{name}' at layer {layer}."
+                        )
+                    cols.append(comps[layer][:, :self.shield_rank].detach()
+                                .to(torch.float32))
+                col = torch.cat(cols, dim=1)
                 out[layer] = col if layer not in out else torch.cat([out[layer], col], dim=1)
         return out or None
 

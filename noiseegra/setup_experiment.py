@@ -241,6 +241,11 @@ def _ortho_tag(model_name: str, spec: ExperimentSpec) -> str:
     shielded = list(getattr(plan, "shield_names", ()) or ())
     if shielded:
         parts.append("__sh" + "-".join(n[:4] for n in sorted(shielded)))
+        # How wide the shield is, not only what it is named after. A one-axis
+        # shield and a subspace shield of the same name are different arms.
+        rank = int(getattr(plan, "shield_rank", 0) or 0)
+        if rank:
+            parts.append(f"r{rank}")
     if getattr(plan, "guard_direction", ""):
         parts.append(f"__guard{plan.guard_direction[:4]}")
     if getattr(plan, "offset_gamma_spread", 0.0):

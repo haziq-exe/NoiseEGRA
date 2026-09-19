@@ -194,6 +194,7 @@ def make_plan(
     # steered constraints, and a tag computed from its rank said "shielded" on
     # every run including the unshielded control.
     plan.shield_names = list(getattr(vectors, "shield", ()) or ())
+    plan.shield_rank = int(getattr(vectors, "shield_rank", 0) or 0)
     return plan
 
 
