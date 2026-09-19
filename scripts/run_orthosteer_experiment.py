@@ -72,7 +72,7 @@ DEFAULT_SCHEDULES = {}   # flat for every direction unless a caller says otherwi
 # generated and scored before anyone noticed it had not been varying the size at
 # all. Anything a command-line flag sets for a whole run belongs here.
 RUN_DEFAULTS = {"offset_gamma_spread": 0.0, "offset_anchors": None,
-                "offset_norm": "energy"}
+                "anchor_scale": None, "offset_norm": "energy"}
 
 
 def make_plan(
@@ -161,6 +161,7 @@ def make_plan(
         offset_scale=offset_scale,
         offset_draw_shape=offset_draw_shape,
         offset_anchors=RUN_DEFAULTS["offset_anchors"],
+        anchor_scale=RUN_DEFAULTS["anchor_scale"],
         offset_gamma_spread=offset_gamma_spread,
         guard_direction=guard_direction,
         protect_extra=extra,

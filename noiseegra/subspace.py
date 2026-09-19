@@ -317,6 +317,11 @@ class LayerPlan:
     # run at -- is 15.0, already twice as far out as any story the model wrote.
     # Every arm has been extrapolating, which is what the refusals are.
     story_radius: Optional[float] = None
+    # A multiplier per sampled story, applied to the displacement's size when it
+    # aims at that one. Removing the eight sampled stories that break the writing
+    # costs the variety they were carrying -- the same eight are responsible for
+    # both -- so they are travelled towards less far instead of being dropped.
+    anchor_scale: Optional[torch.Tensor] = None
     report: Dict[str, object] = field(default_factory=dict)
     offset_basis: Optional[torch.Tensor] = None   # (dim, M) directions offsets may use
     # (M,) how far stories actually spread along each of those directions. Used
@@ -339,8 +344,8 @@ class LayerPlan:
         being in the right place says nothing about the others. Two crashes came
         from assuming it did.
         """
-        for name in ("basis", "protect", "offset_basis", "offset_anchors", "offset",
-                     "jitter",
+        for name in ("basis", "protect", "offset_basis", "offset_anchors",
+                     "anchor_scale", "offset", "jitter",
                      "amp_basis", "amp_mean", "jitter_basis", "raw_basis",
                      "target", "offset_scale"):
             t = getattr(self, name, None)
@@ -826,6 +831,7 @@ class SteeringPlan:
         offset_scale: Optional[Mapping[int, torch.Tensor]] = None,
         offset_draw_shape: str = "sphere",
         offset_anchors: Optional[Mapping[int, torch.Tensor]] = None,
+        anchor_scale: Optional[torch.Tensor] = None,
         offset_gamma_spread: float = 0.0,
         guard_direction: str = "",
         protect_extra: Optional[Mapping[int, torch.Tensor]] = None,
@@ -972,6 +978,7 @@ class SteeringPlan:
                 offset_basis=ob,
                 offset_anchors=(None if offset_anchors is None
                                 else offset_anchors.get(layer)),
+                anchor_scale=anchor_scale,
                 story_radius=(None if offset_anchors is None
                               or offset_anchors.get(layer) is None
                               else float(offset_anchors[layer].norm(dim=1).mean())),
@@ -1269,6 +1276,7 @@ class SteeringPlan:
         """
         self.resample_jitter()
         self._gamma_this_story = None
+        self._anchor_gain = 1.0
         # A fresh story restarts the walk, so one story's wandering aim is not
         # inherited by the next.
         self._jitter_step = -1
@@ -1310,6 +1318,8 @@ class SteeringPlan:
                 which = (0 if story_index is None
                          else int(story_index) % int(rows.shape[0]))
                 vec = rows[which].to(device=dev, dtype=dt)
+                if lp.anchor_scale is not None:
+                    self._anchor_gain = float(lp.anchor_scale[which])
                 # The anchors are raw activations, not the complement basis, so
                 # they still have to be taken out of the constraint subspace by
                 # hand; the basis path gets this for free at build time.
@@ -1338,11 +1348,11 @@ class SteeringPlan:
             # This story's displacement size, drawn once per story, uniform
             # about the nominal size so the stories fill the ball rather than
             # sitting on a shell. The mean size is unchanged.
-            gamma = self.offset_gamma
+            gamma = self.offset_gamma * float(getattr(self, "_anchor_gain", 1.0) or 1.0)
             if self.offset_gamma_spread > 0:
                 if getattr(self, "_gamma_this_story", None) is None:
                     u = float(torch.rand(1).item())
-                    self._gamma_this_story = self.offset_gamma * (
+                    self._gamma_this_story = gamma * (
                         1.0 + self.offset_gamma_spread * (2.0 * u - 1.0))
                 gamma = float(self._gamma_this_story)
                 # Protect this story in proportion to how far it is displaced.

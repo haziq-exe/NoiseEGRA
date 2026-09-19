@@ -223,6 +223,17 @@ def main() -> None:
                          "'in_story' is the one that exists: it separates telling the "
                          "story from talking about the task, which is what the stories "
                          "the perturbation breaks are actually doing.")
+    ap.add_argument("--shrink-anchors", nargs="*", type=int, default=[],
+                    help="sampled stories to travel only part of the way towards, "
+                         "by index. Removing them outright costs the variety they "
+                         "carry -- measured: dropping the eight that break the "
+                         "writing took coherence from 176 of 200 to 189 and turned "
+                         "a win on variety of what happens into a tie, because the "
+                         "same eight were responsible for both. Shrinking keeps "
+                         "their direction and shortens the distance.")
+    ap.add_argument("--shrink-factor", type=float, default=0.5,
+                    help="how far towards a shrunk story to travel, as a fraction "
+                         "of the usual distance")
     ap.add_argument("--drop-anchors", nargs="*", type=int, default=[],
                     help="sampled stories the displacement must not aim at, by "
                          "index. The coherence loss is not spread evenly across "
@@ -1118,6 +1129,21 @@ def main() -> None:
             torch.save(cached, pc_path)
             print(f"activation basis (step): saved to {pc_path.name}")
 
+        if args.shrink_anchors:
+            import torch as _t
+            n0 = cached.anchors[sorted(cached.anchors)[0]].shape[0]
+            scale = _t.ones(n0)
+            for i in sorted(set(int(x) for x in args.shrink_anchors)):
+                if not 0 <= i < n0:
+                    raise SystemExit(f"--shrink-anchors {i} is not one of the {n0} "
+                                     "sampled stories")
+                scale[i] = float(args.shrink_factor)
+            _ro.RUN_DEFAULTS["anchor_scale"] = scale
+            print(f"  travelling only {args.shrink_factor:g} of the way towards "
+                  f"sampled stories {sorted(set(args.shrink_anchors))}, "
+                  f"the full distance towards the other "
+                  f"{n0 - len(set(args.shrink_anchors))}")
+
         if args.drop_anchors:
             drop = sorted(set(int(i) for i in args.drop_anchors))
             n0 = cached.anchors[sorted(cached.anchors)[0]].shape[0]
@@ -1171,6 +1197,10 @@ def main() -> None:
             # Into the run id, so an arm measured against steered stories and
             # one measured against untouched stories cannot share a file.
             args.offset_basis_kind = args.offset_basis_kind + "push"
+        if args.shrink_anchors and "shrink" not in args.offset_basis_kind:
+            args.offset_basis_kind += (
+                f"shrink{len(set(args.shrink_anchors))}"
+                f"at{str(args.shrink_factor).replace('.', 'p')}")
         if args.drop_anchors and "drop" not in args.offset_basis_kind:
             # Into the run id: an arm aiming at a reduced set of sampled stories
             # is a different arm and must not share a file with the full one.
