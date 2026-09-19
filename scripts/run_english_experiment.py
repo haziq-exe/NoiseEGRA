@@ -921,10 +921,16 @@ def main() -> None:
             print("  directions replaced with random draws of the same norm "
                   "(control arm; the extraction is not being used)")
 
-        for name in args.steer_vectors:
+        # Shielded names are reported too. A shield built from a direction the
+        # pairs do not agree on removes an arbitrary direction from the
+        # perturbation's subspace and is worth knowing about before the run.
+        for name in list(args.steer_vectors) + [n for n in args.shield_vectors
+                                                if n not in args.steer_vectors]:
             cons = [vectors.diagnostics[name][l]["consistency"] for l in layers]
             flag = "" if min(cons) > 0.3 else "   <-- weak, direction may be mostly noise"
-            print(f"  {name:<16} agreement across pairs: {min(cons):.2f}-{max(cons):.2f}{flag}")
+            role = "" if name in args.steer_vectors else "  (shielded, not pushed)"
+            print(f"  {name:<16} agreement across pairs: "
+                  f"{min(cons):.2f}-{max(cons):.2f}{flag}{role}")
 
         # ---- activation scale, keyed by model+layers -------------------------- #
         cal_key = f"{args.model}|{lo}-{hi}"
