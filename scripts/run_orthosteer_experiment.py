@@ -123,7 +123,7 @@ def make_plan(
         ConstraintSpec(n, beta=betas.get(n, 0.0), schedule=schedules.get(n, "constant"))
         for n in names
     ]
-    extra = vectors.protect_extra(names, protect_rank) if protect_rank > 0 else None
+    extra = vectors.shielded_subspace(names, protect_rank)
     return SteeringPlan.build(
         vectors.vectors,
         layers,

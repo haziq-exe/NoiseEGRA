@@ -215,6 +215,14 @@ def main() -> None:
     ap.add_argument("--steer-vectors", nargs="*", default=list(EN_STEER_VECTORS),
                     help="which of those steering is applied along; the rest are asked "
                          "for in the prompt only")
+    ap.add_argument("--shield-vectors", nargs="*", default=[],
+                    help="directions the per-story perturbation is forbidden to move "
+                         "along. They are extracted and removed from the subspace the "
+                         "perturbation is drawn from, but never pushed, so the steering "
+                         "budget and the dose along every constraint are unchanged. "
+                         "'in_story' is the one that exists: it separates telling the "
+                         "story from talking about the task, which is what the stories "
+                         "the perturbation breaks are actually doing.")
     ap.add_argument("--num-prompts", type=int, default=10)
     ap.add_argument("--stories-per-prompt", type=int, default=5)
     ap.add_argument("--prompt-seed", type=int, default=0)
@@ -605,7 +613,8 @@ def main() -> None:
         print("arguments parse. suites requested: " + " ".join(args.suite))
         print(f"model {args.model}, {args.stories} stories, "
               f"constraints {len(args.constraints)}, "
-              f"steer vectors {list(args.steer_vectors)}")
+              f"steer vectors {list(args.steer_vectors)}"
+              + (f", shielded {list(args.shield_vectors)}" if args.shield_vectors else ""))
         # The settings that reach the prompt or the generation but are not named
         # by any flag on a typical command line. A launch that left one of them
         # at the children's-task default cut every story off at 97 words while
@@ -620,11 +629,14 @@ def main() -> None:
         _layers = list(range(_lo, _hi))
         _dim, _rank = 64, max(args.protect_rank, 1)
         _t.manual_seed(0)
+        _all = list(args.steer_vectors) + [n for n in args.shield_vectors
+                                           if n not in args.steer_vectors]
         _vecs = _SVS(
-            vectors={n: {l: _t.randn(_dim) for l in _layers} for n in args.steer_vectors},
+            vectors={n: {l: _t.randn(_dim) for l in _layers} for n in _all},
             components={n: {l: _t.linalg.qr(_t.randn(_dim, _rank))[0] for l in _layers}
-                        for n in args.steer_vectors},
+                        for n in _all},
             positives={n: {l: _t.randn(_dim) for l in _layers} for n in args.steer_vectors},
+            shield=list(args.shield_vectors),
         )
         args.targets = _vecs.positives
         args.offset_basis = {l: _t.linalg.qr(_t.randn(_dim, 24))[0] for l in _layers}
@@ -859,7 +871,14 @@ def main() -> None:
         # would load a cached file extracted from the children's pairs and report
         # the result under the new name.
         pair_tag = "" if args.pairs == "children" else f"_{args.pairs}"
-        vec_path = out / f"steering{ctx_tag}{win_tag}{pair_tag}_{args.model}.pt"
+        # A shielded name is extracted like any other, so a cache written before
+        # it was asked for does not contain it. Keyed separately, or the load
+        # silently returns a set with the shield direction missing.
+        wanted = list(args.steer_vectors) + [n for n in args.shield_vectors
+                                             if n not in args.steer_vectors]
+        shield_tag = "" if not args.shield_vectors else "_sh" + "-".join(
+            n[:3] for n in sorted(args.shield_vectors))
+        vec_path = out / f"steering{ctx_tag}{win_tag}{pair_tag}{shield_tag}_{args.model}.pt"
         if vec_path.is_file():
             vectors = SteeringVectorSet.load(vec_path)
             print(f"steering vectors: loaded from {vec_path.name}")
@@ -875,10 +894,19 @@ def main() -> None:
                 load_pairs(PAIR_SETS[args.pairs]), layers,
                 system=ex_system, user=ex_user,
                 window=args.read_window, window_tokens=args.read_tokens,
-                pca_rank=args.pca_rank, only=args.steer_vectors, verbose=False,
+                pca_rank=args.pca_rank, only=wanted, verbose=False,
             )
             vectors.save(vec_path)
             print(f"steering vectors: saved to {vec_path.name}")
+        vectors.shield = list(args.shield_vectors)
+        if vectors.shield:
+            missing = [n for n in vectors.shield if n not in vectors.vectors]
+            if missing:
+                raise SystemExit(
+                    f"--shield-vectors {missing} were not extracted. Delete "
+                    f"{vec_path.name} and rerun so they are."
+                )
+            print(f"shielded from the perturbation: {', '.join(vectors.shield)}")
         args.direction_source = "random" if args.random_directions else "extracted"
         if args.random_directions:
             gen = torch.Generator().manual_seed(1234)

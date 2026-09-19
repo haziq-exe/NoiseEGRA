@@ -67,9 +67,9 @@ class Tiny(EGRA):
 
 print("== task setup ==")
 pairs = load_pairs(ROOT / "noiseegra" / "data" / "steering_pairs_en.json")
-check("English pair file holds the twelve steerable directions",
-      sorted(pairs) == ["closure", "dialogue", "named_character", "no_heading",
-                        "plain_words", "present_tense", "sensory",
+check("English pair file holds the thirteen extractable directions",
+      sorted(pairs) == ["closure", "dialogue", "in_story", "named_character",
+                        "no_heading", "plain_words", "present_tense", "sensory",
                         "simple_register", "simple_syntax", "story_format",
                         "terse", "varied_openers"], f"{sorted(pairs)}")
 
@@ -104,9 +104,11 @@ check("reddit tags are stripped from prompts",
 # Not every extracted direction is a scored requirement with its own bullet.
 # `no_heading` steers the instruction's closing line -- "write only the story
 # itself: no title, heading, preamble or commentary" -- which the prompt already
-# states once and which no bullet repeats. Build the prompt from the names that
-# do map to a scored constraint.
-_STEER_ONLY = {"no_heading", "story_format"}
+# states once and which no bullet repeats. `in_story` is not a requirement at
+# all: it is extracted only so the per-story perturbation can be held clear of
+# it, and it is never pushed and never asked for. Build the prompt from the
+# names that do map to a scored constraint.
+_STEER_ONLY = {"no_heading", "story_format", "in_story"}
 msgs = wp.build_messages("You are the last human alive.",
                          [n for n in pairs if n not in _STEER_ONLY])
 _scenario_names = [n for n in pairs if n not in _STEER_ONLY]

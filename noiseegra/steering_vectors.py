@@ -65,6 +65,10 @@ class SteeringVectorSet:
     positives: Dict[str, Dict[int, torch.Tensor]] = field(default_factory=dict)
     diagnostics: Dict[str, Dict[int, Dict[str, float]]] = field(default_factory=dict)
     meta: Dict[str, object] = field(default_factory=dict)
+    # Names whose direction the per-story perturbation must never move along.
+    # A run-time choice, not something the extraction produces, so it is not
+    # saved with the vectors: a cached file loads with nothing shielded.
+    shield: List[str] = field(default_factory=list)
 
     @property
     def names(self) -> List[str]:
@@ -140,6 +144,45 @@ class SteeringVectorSet:
                 take = comp[:, :rank]
                 out[layer] = take if layer not in out else torch.cat([out[layer], take], dim=1)
         return out
+
+    def shielded_subspace(self, names: Sequence[str],
+                          rank: int) -> Optional[Dict[int, torch.Tensor]]:
+        """Every direction the perturbation is to be projected clear of.
+
+        Two different things end up in the same protected subspace.
+
+        The first is ``protect_extra``: extra principal components of the
+        *steered* constraints, which exist so that a perturbation cannot undo by
+        accident the constraint the push is applying.
+
+        The second is ``shield``, and it is not a constraint at all. The
+        perturbation's measured cost is coherence, and reading the stories it
+        breaks shows why: the failures are not garbled prose but the model
+        leaving the story altogether -- refusing, or narrating its own planning
+        ("The user wants a short story ..."). A large enough perturbation in an
+        arbitrary direction moves the state out of the register that tells
+        stories and into the one that talks about the task. Naming that axis and
+        removing it from the subspace the perturbation is drawn from forbids the
+        move, at the cost of one direction out of a few dozen.
+
+        Nothing here is pushed. The steering basis is untouched, so the budget,
+        the dose along every constraint and the text the push produces are all
+        unchanged; only what the perturbation is allowed to do changes.
+        """
+        out: Dict[int, torch.Tensor] = {}
+        if rank > 0:
+            out = {l: v.clone() for l, v in self.protect_extra(names, rank).items()}
+        for name in self.shield:
+            per = self.vectors.get(name)
+            if not per:
+                raise KeyError(
+                    f"no direction extracted for the shielded name '{name}'; "
+                    "it has to be extracted even though it is never pushed."
+                )
+            for layer, vec in per.items():
+                col = vec.detach().to(torch.float32).reshape(-1, 1)
+                out[layer] = col if layer not in out else torch.cat([out[layer], col], dim=1)
+        return out or None
 
     def print_report(self) -> None:
         print("=== Steering Vector Extraction ===")

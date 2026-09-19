@@ -231,6 +231,13 @@ def _ortho_tag(model_name: str, spec: ExperimentSpec) -> str:
         parts.append(f"__ol{ol[0]}-{ol[-1]}")
     if pl and ol and pl != ol:
         parts.append(f"__pl{pl[0]}-{pl[-1]}")
+    # Directions the perturbation is held clear of beyond the steered ones
+    # themselves. Without this in the id a shielded arm and an unshielded one
+    # share a name and the second overwrites the first, which is the fault that
+    # produced byte-identical arms three times on this project.
+    spare = int(getattr(plan, "protect_rank", 0) or 0) - len(plan.specs)
+    if spare > 0:
+        parts.append(f"__sh{spare}")
     if getattr(plan, "guard_direction", ""):
         parts.append(f"__guard{plan.guard_direction[:4]}")
     if getattr(plan, "offset_gamma_spread", 0.0):
