@@ -201,6 +201,8 @@ def _ortho_tag(model_name: str, spec: ExperimentSpec) -> str:
         parts.append(f"__j{_float_tag(plan.jitter_kappa)}{plan.jitter_mode}")
         if getattr(plan, "jitter_draw", "iso") != "iso":
             parts.append(f"__jd{plan.jitter_draw}")
+        if getattr(plan, "jitter_walk", 0.0):
+            parts.append(f"__jw{_float_tag(plan.jitter_walk)}")
     if not getattr(plan, "steer_decode", True):
         parts.append("__sdec0")
     if getattr(plan, "direction_source", "extracted") != "extracted":

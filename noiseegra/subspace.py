@@ -512,6 +512,34 @@ class SteeringPlan:
     # "basis" a draw restricted to the activation subspace, which keeps f(S_c) on
     # the manifold the model's own states occupy.
     jitter_draw: str = "iso"
+    # How fast f(S_c) changes from one decode step to the next, between 0 and 1.
+    #
+    # 0 is what every run so far has done: one draw per story, the same f(S_c)
+    # at every token, so what varies is which f the story is written under and
+    # not which one each token is written under. 1 redraws independently at
+    # every step, which is white noise on the aim. In between, the aim performs
+    # a correlated random walk -- j <- normalise(sqrt(1-w^2) * j + w * xi) --
+    # whose correlation time is about 1/w steps.
+    #
+    # The reason to want the middle is the difference between the two ends. A
+    # per-story draw cannot give token-level variety, and token-level variety is
+    # the one axis the method does not win: raised temperature with top-k
+    # sampling varies at every token and leads variety of what happens by 5.2 on
+    # an interval that clears zero, and nothing that changes where, how hard or
+    # how the perturbation is drawn has closed it. White noise gives token-level
+    # variety and destroys the text: on this model the published per-token noise
+    # broke every opening story at 0.4 and matched the baseline exactly at 0.2.
+    #
+    # A walk is the object between them. Adjacent tokens see almost the same
+    # aim, so nothing breaks locally; over a story the aim explores, so what the
+    # story is about can drift. In "rotate" mode the length of the push is
+    # preserved exactly at every step, so the model is pushed as hard as ever
+    # and only where it is aimed wanders -- which is why this is a function of
+    # the constraint vector rather than a term added beside it.
+    jitter_walk: float = 0.0
+    # Which decode step the walk has been advanced to, so every layer sees the
+    # same step rather than each advancing it again.
+    _jitter_step: int = -1
     # Whether the (possibly jittered) constraint vector is added during decode.
     # Off, with ``steer_prefill`` on, gives the prompt-only variant: the model is
     # pushed once while it reads the instruction and then writes unperturbed.
@@ -729,6 +757,7 @@ class SteeringPlan:
         jitter_kappa: float = 0.0,
         jitter_mode: str = "none",
         jitter_draw: str = "iso",
+        jitter_walk: float = 0.0,
         steer_decode: bool = True,
         steer_budget: Optional[float] = None,
         steer_mode: str = "constant",
@@ -920,6 +949,7 @@ class SteeringPlan:
             noise_horizon=None if noise_horizon is None else int(noise_horizon),
             jitter_kappa=float(jitter_kappa),
             jitter_mode=jitter_mode,
+            jitter_walk=float(jitter_walk),
             jitter_draw=jitter_draw,
             steer_decode=bool(steer_decode),
             steer_budget=None if steer_budget is None else float(steer_budget),
@@ -1027,6 +1057,33 @@ class SteeringPlan:
             else:
                 vec = torch.randn(self.dim, dtype=dt, device=dev)
             lp.jitter = vec / vec.norm().clamp_min(1e-12)
+
+    def step_jitter(self, t: int) -> None:
+        """Advance f(S_c)'s aim one decode step, if it is set to wander.
+
+        j <- normalise(sqrt(1-w^2) j + w xi), a correlated random walk on the
+        sphere with a correlation time of about 1/w steps. At w = 0 nothing
+        moves and the story is written under one f, as before; at w = 1 the aim
+        is redrawn independently every step, which is white noise on the
+        direction.
+
+        Called once per decode step, before the layers are visited, so every
+        layer sees the same step of the walk rather than each taking its own.
+        """
+        w = float(self.jitter_walk)
+        if w <= 0 or self.jitter_mode not in ("perp", "rotate"):
+            return
+        if t == self._jitter_step:
+            return
+        self._jitter_step = t
+        keep = math.sqrt(max(0.0, 1.0 - w * w))
+        for lp in self.layer_plans.values():
+            if lp.jitter is None:
+                continue
+            xi = torch.randn(lp.jitter.shape, dtype=lp.jitter.dtype,
+                             device=lp.jitter.device)
+            j = lp.jitter * keep + xi * w
+            lp.jitter = j / j.norm().clamp_min(1e-12)
 
     def jitter_steering(
         self,
@@ -1154,6 +1211,9 @@ class SteeringPlan:
         constraint direction biases that constraint for the entire story.
         """
         self.resample_jitter()
+        # A fresh story restarts the walk, so one story's wandering aim is not
+        # inherited by the next.
+        self._jitter_step = -1
         if self.offset_mode == "none" or self.offset_gamma <= 0:
             for lp in self.layer_plans.values():
                 lp.offset = None
@@ -1252,6 +1312,10 @@ class SteeringPlan:
             lp.relocate(device)
 
         h = self.horizon if horizon is None else horizon
+        # Advance f(S_c)'s aim once per decode step. Guarded on the step number
+        # inside, so the first layer to arrive moves it and the rest see the
+        # same move.
+        self.step_jitter(t)
         delta = None
         if (self.steer_decode and self.steer_mode not in ("feedback", "error")
                 and (not self.push_layers or layer in self.push_layers)):
@@ -1520,6 +1584,7 @@ class SteeringPlan:
             "jitter_mode": self.jitter_mode,
             "jitter_kappa": self.jitter_kappa,
             "jitter_draw": self.jitter_draw,
+            "jitter_walk": self.jitter_walk,
             "steer_decode": self.steer_decode,
             "steer_budget": self.steer_budget,
             "steer_mode": self.steer_mode,

@@ -102,6 +102,7 @@ def make_plan(
     noise_horizon=None,
     jitter_kappa=0.0,
     jitter_mode="none",
+    jitter_walk=0.0,
     jitter_draw="iso",
     steer_decode=True,
     steer_budget=None,
@@ -157,6 +158,7 @@ def make_plan(
         noise_horizon=noise_horizon,
         jitter_kappa=jitter_kappa,
         jitter_mode=jitter_mode,
+        jitter_walk=jitter_walk,
         jitter_draw=jitter_draw,
         steer_decode=steer_decode,
         steer_budget=steer_budget,
@@ -1177,6 +1179,65 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             + ", against the untouched model. Run a second time with "
               "--random-directions to separate what the extracted directions do "
               "from what any push of that size does")
+
+    if name == "wander":
+        # The aim of the constraint push performs a correlated random walk over
+        # decode steps, at a length that never changes.
+        #
+        # Everything the method does today is decided once per story: which
+        # perturbation, which f(S_c), which draw. Raised temperature with top-k
+        # sampling varies at every token and leads variety of what happens by
+        # 5.2 on an interval that clears zero, and nothing that changes where
+        # the perturbation lands, how big it is, which layers it touches, which
+        # steps it is let through at, or how its directions are drawn has closed
+        # that. A once-per-story mechanism cannot buy token-level variety.
+        #
+        # The two things that do vary per token are both unusable as they
+        # stand. Raising the sampling temperature is out by the terms of the
+        # task. Fresh noise at every step is the published method's own and on
+        # this model it broke every opening story at 0.4 and matched the
+        # baseline's variety exactly at 0.2 -- white noise on the residual
+        # stream destroys local structure precisely because it is white.
+        #
+        # This is the object in between, and it is a function of the constraint
+        # vector rather than a term beside it. The push is rotated by a
+        # direction that wanders: adjacent tokens are aimed almost identically,
+        # so nothing breaks locally, while over a story the aim explores. In
+        # rotate mode the length is preserved exactly at every step, so the
+        # model is pushed as hard as ever and only the aim moves -- which is why
+        # this should not cost compliance the way adding energy does.
+        #
+        # kappa is how far off the nominal aim the walk can sit; the walk rate
+        # is how fast it gets there, with a correlation time of about its
+        # reciprocal in steps.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        kind = getattr(args, "offset_basis_kind", "story")
+        flat = {n: 1.0 for n in names}
+        b = float(getattr(args, "steer_budget", None) or 2.0)
+        g = float(getattr(args, "main_gamma", 0.15))
+        keep = int(getattr(args, "prompt_tail", 8) or 8)
+        kappas = [float(x) for x in (getattr(args, "kappa_sweep", None) or (0.3,))]
+        walks = [float(x) for x in (getattr(args, "walk_sweep", None) or (0.05, 0.15))]
+
+        items = []
+        for kap in kappas:
+            for w in walks:
+                items.append({"plan": make_plan(
+                    beta=flat, steer_budget=b,
+                    jitter_mode="rotate", jitter_kappa=kap, jitter_walk=w,
+                    offset_gamma=g, offset_mode="orth",
+                    offset_basis=offset_basis, offset_basis_kind=kind,
+                    offset_scale=getattr(args, "offset_scale", None),
+                    offset_draw_shape=getattr(args, "offset_draw_shape", "sphere"),
+                    steer_prefill=True, prompt_tail_clear=keep,
+                    offset_prefill=True, offset_decode=False, **quiet, **base)})
+        return items, (
+            "the constraint push turned by "
+            + ", ".join(f"{k:g}" for k in kappas)
+            + " and its aim wandering at "
+            + ", ".join(f"{w:g}" for w in walks)
+            + " a step, at a length that never changes")
 
     if name == "pertoken":
         # The published method's own noise, under the constraint push, on this
