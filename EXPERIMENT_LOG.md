@@ -4094,3 +4094,59 @@ itself: it is what holds a story compliant and coherent, it has been fixed at a
 total of 2 since round 37, and the one earlier test of raising it was run
 without a large displacement and in the wrong size unit. Rounds 62 test totals
 of 3 and 4 at the displacements where the anchored arm has its variety.
+
+## Round 62 - raising the push is settled as a dead end
+
+The push's total has been fixed at 2 since round 37 and the one earlier test of
+raising it was run without a large displacement and in the wrong size unit. Run
+again at the displacements where the anchored arm has its variety, measured
+against the steered cloud:
+
+| total push | 1.5 stories out | 2.0 stories out |
+|---|---|---|
+| 2 | 92/100 | 83/100 |
+| 3 | 92/100 | 83/100 |
+| 4 | 73/100 | 63/100 |
+
+Three changes nothing at all and four is much worse. Settled.
+
+## Round 63 - against top-k directly, which is the comparison the goal asks for
+
+Every interval up to here was measured against nucleus sampling, and where the
+method stood against top-k was inferred from the two gaps. That is a weaker
+inference than measuring it, and top-k's own lead over nucleus on variety of
+what happens is marginal -- +1.6 [-0.5, +3.5] in one pooling, +1.7 [+0.0, +3.3]
+in another -- so the inference turns on which side of the tie boundary top-k
+lands.
+
+Measured directly, differences from raised temperature with top-k, 250
+subsamples of 60:
+
+| condition | coherent | broken /12 | happens | wording |
+|---|---|---|---|---|
+| temperature 1.8, top-k 40 | 199/200 | 3.95 | reference | reference |
+| temperature 1.8, nucleus 0.95 | 200/200 | 3.92 | -1.7 [-3.6, +0.2] | -1.0 [-3.5, +1.2] |
+| drawn 1.5, steered basis | **100/100** | **2.75** | -2.6 [-4.3, -0.7] | -0.1 [-2.2, +1.9] |
+| **drawn 2.0, steered basis** | 97/100 | **3.21** | +0.1 [-1.5, +1.6] | **+2.8** [+0.5, +5.0] |
+| anchored 1.25, steered basis | 95/100 | 3.48 | -0.6 [-2.7, +1.5] | **+4.5** [+2.0, +6.9] |
+| anchored 1.5, steered basis | 92/100 | 3.54 | -0.5 [-2.5, +1.6] | **+5.9** [+2.7, +8.4] |
+| anchored 1.5, untouched basis | 87/100 | 3.48 | +1.4 [-0.3, +2.9] | +4.4 [+1.8, +6.9] |
+
+**The best position the method has reached.** At two stories out on the steered
+basis: requirement compliance 3.21 against top-k's 3.95 and nucleus's 3.92,
+variety of wording +2.8 on an interval clear of zero against *top-k*, variety of
+what happens level with top-k, and 97 stories of 100 coherent.
+
+Against the two baselines that is two wins, one tie and a small loss on
+coherence -- 97 of 100 against 199 of 200 and 200 of 200.
+
+**What is still not won is variety of what happens.** No arm beats top-k on it
+on an interval clear of zero. The closest is the untouched basis at 1.5, +1.4
+[-0.3, +2.9], which is a tie by a hair and comes with 87 stories of 100. Against
+nucleus the same arms do win it, but nucleus is the weaker of the two baselines
+on that axis and the goal names both.
+
+All of these are hundred-story conditions and the intervals are wide enough that
+the tie boundary moves with the pooling, so the frontier point between the arm
+that keeps every story (1.5, 100 of 100) and the arm that wins two axes (2.0, 97
+of 100) is being run at 200 stories.
