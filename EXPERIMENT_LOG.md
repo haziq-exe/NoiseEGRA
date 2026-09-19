@@ -4315,3 +4315,43 @@ which is the best the idea can do, and round 68 drops the twelve the calibration
 flags, which is what the method would actually do on a model it had not seen.
 Both at 200 stories, and round 68 also at two stories out, where the variety is
 larger.
+
+### What round 67 returned: the variety and the breakage are the same eight stories
+
+| at one and a half stories out, 200 stories | coherent | broken /12 | happens | wording | titled |
+|---|---|---|---|---|---|
+| temperature 1.8, top-k | 199/200 | 3.95 | reference | reference | 0% |
+| aiming at all 32 | 176/200 | 3.52 | **+3.5** [+1.1, +6.2] | **+9.0** [+6.7, +11.1] | 8% |
+| the eight removed | **189/200** | 3.57 | +0.6 [-2.4, +3.4] | **+7.0** [+4.6, +9.7] | 14% |
+
+**Thirteen stories of coherence, and the win on variety of what happens goes
+with them.** Refusals fall from nine to two, which is the mechanism working
+exactly as intended, and the axis the whole branch has been chasing drops from a
+win clear of zero to a tie.
+
+So the eight sampled stories that stop the model writing are the same eight that
+make its writing varied. That is the trade this branch keeps meeting, now at the
+finest grain it has: not a property of the method's settings but of individual
+stories the model wrote.
+
+Headings also rose, 8% to 14%. Removing eight redistributes every story index
+over the remaining twenty-four, so this is a different assignment rather than
+the old one minus its failures.
+
+## Round 69 - keep the direction, shorten the distance
+
+If a sampled story is worth aiming at and dangerous to reach, travel part of the
+way. A story aiming at one of the eight goes half as far; a story aiming at any
+of the other twenty-four goes the full distance. All thirty-two directions are
+kept, so the range the displacement varies over is untouched; only the reach
+along the risky ones is cut.
+
+`--shrink-anchors ... --shrink-factor 0.5`.
+`tests/test_shrink_anchors.py` checks that the named stories are travelled
+towards at exactly the stated fraction, that their direction is unchanged to
+within 0.999 of a cosine -- shortening must not turn them, or the variety they
+carry goes with the turn -- and that none of them is displaced by zero, which
+would be dropping them again under another name.
+
+The calibration that names them is the same probe as before, so this costs
+nothing extra to determine.
