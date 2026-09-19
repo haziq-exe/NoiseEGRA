@@ -4399,3 +4399,42 @@ That is the clearest statement of the branch's central tension so far, and it
 points at what to try: the knob is the wrong shape. Removing a story removes its
 direction. Round 69 and 70 keep every direction and shorten the distance
 travelled along the risky ones instead, at factors of 0.4, 0.5 and 0.7.
+
+## Round 69 - the direction carries the variety, the distance carries the risk
+
+The eight sampled stories that break the writing are travelled towards at half
+the distance instead of being removed. Every direction kept; only the reach
+along the risky ones cut. 200 stories, differences from raised temperature with
+top-k, 300 subsamples of 123.
+
+| at one and a half stories out | coherent | broken /12 | happens | wording | headings |
+|---|---|---|---|---|---|
+| temperature 1.8, top-k | 199/200 | 3.95 | reference | reference | 0% |
+| temperature 1.8, nucleus | 200/200 | 3.92 | -4.5 [-6.8, -2.2] | -1.8 [-3.5, +0.2] | 0% |
+| aiming at all 32, full distance | 176/200 | 3.52 | **+3.5** [+1.1, +6.2] | **+9.0** [+6.7, +11.1] | 8% |
+| the eight removed | 189/200 | 3.57 | +0.6 [-2.4, +3.4] | **+7.0** [+4.6, +9.7] | 14% |
+| **the eight shortened to half** | **189/200** | **3.41** | **+3.4** [+0.7, +6.1] | **+7.2** [+4.7, +9.7] | **7%** |
+| the twelve removed | **199/200** | 3.48 | -6.3 [-9.9, -2.7] | +3.4 [+1.2, +5.9] | 9% |
+
+**The two mechanisms are matched on coherence and differ on everything else.**
+Removing the eight and shortening them both give 189 stories of 200. Removing
+them leaves variety of what happens at +0.6, a tie; shortening them leaves it at
++3.4, a win clear of zero, and within noise of the +3.5 the full distance gets.
+Compliance is better shortened than either removed or left alone, 3.41 against
+3.57 and 3.52. Headings are half what removal produces, 7% against 14%, because
+shortening does not reassign every story index to a different sampled story the
+way removal does.
+
+**So the direction carries the variety and the distance carries the risk, and
+they separate.** That is the first mechanism on this branch to take something
+off the frontier rather than slide along it. Every earlier attempt -- a wider
+shield, a better-aimed shield, a wider spread of sizes, a stronger push, the
+steered frame, the mixed cloud, removing the stories outright -- moved along it.
+
+Against both baselines this arm wins requirement compliance, variety of what
+happens and variety of wording, and loses coherence 189 of 200 against 199 and
+200.
+
+**What follows immediately**: the twelve the blind calibration flags reach 199
+of 200 when removed. Shortened rather than removed, at factors of 0.4, 0.5 and
+0.7, they are the obvious candidate for the whole goal at once.
