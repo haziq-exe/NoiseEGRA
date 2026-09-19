@@ -4704,3 +4704,38 @@ harder overall and the familiar register failure follows. Rounds 79 run the
 same five directions at 1.5 and 1.75 stories out, where the drawn displacement
 was clean at 0% and 3%, to find where the event direction's content and the
 short displacement's coherence meet.
+
+## Round 79 - the event direction moves the curve but does not break the trade
+
+The same five directions at three displacements. 200 stories each, differences
+from raised temperature with nucleus sampling, 300 subsamples of 118.
+
+| events steered, displacement | coherent | not a story | broken /12 | happens | wording |
+|---|---|---|---|---|---|
+| temperature 1.8, nucleus (top-p) | 200/200 | 0% | 3.92 | reference | reference |
+| temperature 1.8, top-k | 199/200 | 0% | 3.95 | +4.3 [+1.4, +7.0] | +1.7 [-0.4, +3.7] |
+| **1.5 out** | **190/200** | **2%** | **2.83** | +0.5 [-2.5, +3.4] | -0.2 [-2.1, +1.7] |
+| 1.75 out | 177/200 | 7% | 3.25 | **+3.0** [+0.1, +5.6] | **+2.7** [+0.8, +4.7] |
+| 2.0 out | 170/200 | 10% | 3.35 | **+4.8** [+2.3, +7.3] | **+5.2** [+3.2, +6.9] |
+
+**The variety still decays with the displacement**, so the event direction has
+not separated the two; it has moved the whole curve. Where four directions at
+two stories out gave 186 of 200 and a tie on what happens, five directions at
+one and three quarter stories give 177 of 200 and a win. Better, and the same
+shape.
+
+**And the shortest setting gives the best compliance measured honestly
+anywhere**: 2.83 requirements broken of twelve at 190 of 200 coherent, with 2%
+not-a-story against the baselines' 0%.
+
+### What the shape says to try next
+
+The event direction is *steered*, not displaced. Its contribution to what
+happens should not require a long displacement -- that it currently does is a
+sign it is being pushed too weakly to act on its own, so the displacement is
+doing the work and paying for it.
+
+So round 80 gives the event direction twice and three times the share of the
+others, with the total raised to 3, at the displacements where coherence is
+good. If the content it supplies is really independent of the displacement, a
+harder event push at 1.5 stories out should win what happens at 190 of 200.
