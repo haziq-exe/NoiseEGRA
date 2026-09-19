@@ -117,6 +117,7 @@ def make_plan(
     jitter_kappa=0.0,
     jitter_mode="none",
     jitter_walk=0.0,
+    jitter_names=None,
     jitter_draw="iso",
     steer_decode=True,
     steer_budget=None,
@@ -181,6 +182,7 @@ def make_plan(
         jitter_kappa=jitter_kappa,
         jitter_mode=jitter_mode,
         jitter_walk=jitter_walk,
+        jitter_names=jitter_names,
         jitter_draw=jitter_draw,
         steer_decode=steer_decode,
         steer_budget=steer_budget,
@@ -1366,6 +1368,51 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             + ", ".join(f"{a:g}" for a in alphas)
             + f", under the push at {b:g} -- alone and with the per-story "
               f"perturbation at {g:g}")
+
+    if name == "eventvary":
+        # A per-story gain on ONE named direction, rather than a displacement of
+        # the whole hidden state.
+        #
+        # The displacement buys variety by moving the state off the region the
+        # model writes stories from, which is what it pays for in coherence.
+        # Varying how hard a single steered direction is pushed does not leave
+        # that region at all: every story is written from a state the push itself
+        # produced, just with more or less of one thing in it.
+        #
+        # It was measured flat when every steered direction was about how a
+        # sentence is formed -- varying those varies the style, not the story.
+        # With a direction that asks for an event, varying its strength varies
+        # how much happens, which is the axis this branch has never won.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        kind = getattr(args, "offset_basis_kind", "story")
+        b = float(getattr(args, "steer_budget", None) or 2.0)
+        g = float(getattr(args, "main_gamma", 0.15))
+        keep = int(getattr(args, "prompt_tail", 8) or 8)
+        target = getattr(args, "quieten", None) or "something_happens"
+        kappas = [float(x) for x in (getattr(args, "kappa_sweep", None) or (0.4, 0.8))]
+        if target not in names:
+            raise ValueError(
+                f"suite 'eventvary' varies the push on {target!r}, which is not in "
+                f"the steered set ({sorted(names)}). Every arm would be identical. "
+                "Pass --quieten with a direction that is steered."
+            )
+        flat = {n: 1.0 for n in names}
+        items = []
+        for k in kappas:
+            items.append({"plan": make_plan(
+                beta=flat, steer_budget=b, offset_gamma=g, offset_mode="orth",
+                offset_basis=offset_basis, offset_basis_kind=kind,
+                offset_scale=getattr(args, "offset_scale", None),
+                offset_draw_shape=getattr(args, "offset_draw_shape", "sphere"),
+                offset_gamma_spread=getattr(args, "offset_gamma_spread", 0.0),
+                jitter_mode="gain", jitter_kappa=k, jitter_names=[target],
+                steer_prefill=True, prompt_tail_clear=keep,
+                offset_prefill=True, offset_decode=False, **quiet, **base)})
+        return items, (
+            f"how hard the {target} direction is pushed drawn afresh for each "
+            "story, at spreads of " + ", ".join(f"{k:g}" for k in kappas)
+            + "; every story still written from a state the push produced")
 
     if name == "quieten":
         # One named direction given *less* of the push than the others.

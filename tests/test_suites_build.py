@@ -94,7 +94,7 @@ import run_english_experiment as _R  # noqa: E402
 # without it every arm would be identical. Refusing loudly is the correct
 # behaviour and is what this list records; silently building identical arms is
 # the fault.
-NEEDS_ITS_OWN_DIRECTIONS = {"weighted", "quieten"}
+NEEDS_ITS_OWN_DIRECTIONS = {"weighted", "quieten", "eventvary"}
 
 for suite in SUITES:
     if suite in NEEDS_ITS_OWN_DIRECTIONS:

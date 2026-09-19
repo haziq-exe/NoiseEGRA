@@ -555,6 +555,17 @@ class SteeringPlan:
     # and only where it is aimed wanders -- which is why this is a function of
     # the constraint vector rather than a term added beside it.
     jitter_walk: float = 0.0
+    # Which directions a per-story gain varies. None varies all of them.
+    #
+    # It matters which. For most of this project every steered direction was
+    # about how a sentence is formed -- present tense, sensory words, a named
+    # character, the format -- so varying their strength between stories varied
+    # the style and not what the story was about, and measured flat. The event
+    # direction is the first that changes what happens, so varying that one
+    # alone gives between-story variation in content without displacing the
+    # state off the region the model writes from, which is what the per-story
+    # displacement costs coherence for.
+    jitter_names: Optional[List[str]] = None
     # Which decode step the walk has been advanced to, so every layer sees the
     # same step rather than each advancing it again.
     _jitter_step: int = -1
@@ -810,6 +821,7 @@ class SteeringPlan:
         jitter_mode: str = "none",
         jitter_draw: str = "iso",
         jitter_walk: float = 0.0,
+        jitter_names: Optional[Sequence[str]] = None,
         steer_decode: bool = True,
         steer_budget: Optional[float] = None,
         steer_mode: str = "constant",
@@ -1012,6 +1024,7 @@ class SteeringPlan:
             jitter_kappa=float(jitter_kappa),
             jitter_mode=jitter_mode,
             jitter_walk=float(jitter_walk),
+            jitter_names=(None if not jitter_names else list(jitter_names)),
             jitter_draw=jitter_draw,
             steer_decode=bool(steer_decode),
             steer_budget=None if steer_budget is None else float(steer_budget),
@@ -1083,7 +1096,12 @@ class SteeringPlan:
             # and no draw can flip a constraint's sign and push against it.
             k = self.jitter_kappa
             z = torch.randn(len(self.specs))
-            self.gains = [float(math.exp(k * float(zi) - 0.5 * k * k)) for zi in z]
+            want = None if not self.jitter_names else set(self.jitter_names)
+            self.gains = [
+                float(math.exp(k * float(zi) - 0.5 * k * k))
+                if want is None or sp.name in want else 1.0
+                for sp, zi in zip(self.specs, z)
+            ]
             for lp in self.layer_plans.values():
                 lp.jitter = None
             return

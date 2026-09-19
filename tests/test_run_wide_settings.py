@@ -32,7 +32,7 @@ from test_suites_build import ARGS, LAYERS, NAMES, SUITES, VECS  # noqa: E402
 # its own value at every arm and must not be overridden by the run's.
 SWEEPS_IT = {"varysize"}
 # These refuse this fixed name list for their own reasons, checked elsewhere.
-SKIP = {"weighted", "quieten", "baseline", "sampling"}
+SKIP = {"weighted", "quieten", "eventvary", "baseline", "sampling"}
 
 SPREAD = 0.5
 
