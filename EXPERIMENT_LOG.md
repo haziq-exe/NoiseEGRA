@@ -4210,3 +4210,59 @@ that a real share of each survives, and that the result is not simply the
 steered cloud again. Its stand-in clouds are built related rather than
 independent, because two independent 31-direction subspaces of a 2048-wide
 stream are nearly orthogonal and keep 12% where the real ones keep 58%.
+
+## Round 66 - the mixed cloud, and a prediction that held
+
+Aim at an untouched story but drop the part of its difference that points out of
+the subspace the steered stories occupy. 200 stories, against the arm it is
+meant to improve.
+
+| at one and a half stories out | coherent | refusals | leaked plans |
+|---|---|---|---|
+| aimed at untouched stories | 176/200 | 9 | 9 |
+| aimed at untouched stories, projected | 179/200 | 6 | 2 |
+
+**Three stories, which is nothing at 200.** The mechanism was predicted to fail
+before it landed, from a check that cost no GPU at all: if sticking out of the
+steered cloud were what breaks a story, the sampled stories that stick out most
+would be the ones that break most. They are not. The correlation between how
+much of a sampled story lies inside the steered cloud and how many rejections it
+causes is **+0.09** -- none. Dropping a component that does not predict the
+failure does not prevent the failure.
+
+Worth keeping as a method for how to spend GPU time: the check took one script
+against files already on disk.
+
+## Round 67 - the real structure of the coherence loss
+
+The displacement aims at one of 32 sampled stories, chosen by story number. The
+rejections are not spread over those 32 evenly, and the same ones fail every
+time. Across six independent runs of the arms that aim at a story:
+
+| sampled story | 1 | 5 | 10 | 12 | 15 | 6 | 14 | 18 | the other 24 |
+|---|---|---|---|---|---|---|---|---|---|
+| rejections caused | 16 | 9 | 11 | 7 | 6 | 5 | 4 | 4 | 14 |
+
+**Eight of the thirty-two account for 62 of the 76 rejected stories, and
+twenty-one of them never cause a rejection at all.** Aiming along a story's
+direction amplifies whatever makes that story unusual, and a few of them are
+unusual in a way that stops the model writing a story.
+
+Two ways of spotting them in advance have failed:
+
+* how far the sampled story leans away from telling a story, measured against
+  the same contrast direction the shield uses -- the ten worst account for 18 of
+  48, against about 15 by chance;
+* how much of it lies outside the cloud of stories written under the push --
+  correlation +0.09.
+
+So round 67 names them directly and removes them, which is a test of whether
+they are the cause rather than a symptom. It is a real test: removing eight
+changes which sampled story nearly every story index aims at, so only 29 of 200
+keep their old aim and all 200 stories are regenerated under a different
+assignment.
+
+If it works, the honest next step is a calibration that finds them without
+having seen the answer -- probing each sampled story a few times during setup,
+in the same way this project already calibrates the activation scale and the
+entropy threshold once per model. Naming them by hand is a test, not a method.
