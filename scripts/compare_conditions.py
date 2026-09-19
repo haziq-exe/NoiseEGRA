@@ -46,7 +46,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np  # noqa: E402
 
 from noiseegra.coherence import (  # noqa: E402
-    CoherenceFilter, opens_with_a_title, trim_title,
+    CoherenceFilter, opens_with_a_title, trim_lead, trim_title,
 )
 from noiseegra.constraint_metrics_en import (  # noqa: E402
     MIDDLE_CONSTRAINTS, MONOTONE_CONSTRAINTS, EnglishConstraintChecker,
@@ -156,9 +156,16 @@ def main() -> None:
         # reported, and the text is still measured with the heading removed,
         # because a title is distinctive content sitting in exactly the opening
         # words the diversity scores are computed over.
-        title_flags = [opens_with_a_title(t) for t in texts]
+        # The preamble comes off before the heading is looked for. A story that
+        # opens "Certainly! Here's a short story:" and then puts a heading under
+        # it was read as untitled, because the heading test saw the preamble as
+        # the first line -- which halved the reported rate on every perturbed
+        # arm and left the preamble itself uncounted anywhere.
+        lead_flags = [trim_lead(t)[1] > 0 for t in texts]
+        preambled = float(np.mean(lead_flags))
+        title_flags = [opens_with_a_title(trim_lead(t)[0]) for t in texts]
         titled = float(np.mean(title_flags))
-        scored_text = [trim_title(t)[0] for t in texts]
+        scored_text = [trim_title(trim_lead(t)[0])[0] for t in texts]
 
         reports = [coherence.check(t) for t in scored_text]
         kept = [r.text for r in reports if r.ok]
@@ -192,7 +199,7 @@ def main() -> None:
             present=float(np.mean([s.present_ratio for s in per_story
                                    if s.present_ratio is not None] or [float("nan")])),
             wrong_open=float(np.mean([opens_in_the_wrong_tense(t, checker) for t in kept])),
-            titled=titled, usable=usable,
+            titled=titled, preambled=preambled, usable=usable,
             pass_rate={r: float(np.mean([s.checks.get(r, True) for s in per_story]))
                        for r in rules},
             happens_vectors=trim_isolated(
@@ -215,7 +222,7 @@ def main() -> None:
           f"every condition pooled at {pool}.\n")
     head = (f"{'condition':<{width}}  {'coherent':>9}  {'broken':>7}  {'happens':>8}  "
             f"{'wording':>8}  {'grade':>6}  {'w/sent':>7}  {'sents':>6}  "
-            f"{'uncommon':>9}  {'opener':>7}  {'present':>8}  {'past open':>10}  {'titled':>7}  {'usable':>7}")
+            f"{'uncommon':>9}  {'opener':>7}  {'present':>8}  {'past open':>10}  {'preamble':>9}  {'titled':>7}  {'usable':>7}")
     print(head)
     print("-" * len(head))
     for name in order:
@@ -224,7 +231,7 @@ def main() -> None:
               f"{v['happens']:>8.1f}  {v['wording']:>8.1f}  {v['grade']:>6.2f}  "
               f"{v['words_per_sentence']:>7.1f}  {v['sentences']:>6.1f}  "
               f"{v['uncommon']:>8.1%}  {v['opener']:>6.0%}  {v['present']:>7.0%}  "
-              f"{v['wrong_open']:>9.0%}  {v['titled']:>6.0%}  {v['usable']:>6.0%}")
+              f"{v['wrong_open']:>9.0%}  {v['preambled']:>8.0%}  {v['titled']:>6.0%}  {v['usable']:>6.0%}")
 
     if args.interval:
         # Subsample without replacement: a bootstrap that draws with replacement
@@ -284,6 +291,9 @@ def main() -> None:
     print("  present   share of finite verbs in the present tense, before any threshold")
     print("  past open share of stories opening in the past tense then narrating in the")
     print("            present -- a flaw the whole-story share above cannot see")
+    print("  preamble  share opening by answering the reader -- \"Certainly! Here's")
+    print("            a short story:\" -- which the instruction forbids in the same")
+    print("            line as the heading. Removed before every other number")
     print("  titled    share opening with a title or heading, which the instruction")
     print("            forbids. Removed before every other number in the row")
     print("  usable    share whose prose the coherence checks accept. A heading or")

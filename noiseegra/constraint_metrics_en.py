@@ -343,11 +343,32 @@ def _badly_formatted(text: str) -> bool:
     produces good prose under a heading has produced a story, and it has also
     disobeyed an instruction.
 
+    Three shapes of the same failure, not two. The third is a preamble -- the
+    model answering the reader before writing:
+
+        Certainly! Here's a short story for a middle-school reader, meeting all
+        the criteria you mentioned:
+
+    The instruction's closing line forbids exactly this, in the same breath as
+    the heading: "no title, heading, preamble or commentary". It went uncounted
+    for a long time because the coherence filter strips it before scoring, which
+    is right -- the story underneath is usually good -- and nothing then charged
+    the model for having written it. Neither baseline produces one at all; the
+    perturbed arms produce 3% to 10%, and most of them hide a heading behind the
+    preamble, which the heading test could not see because it was reading the
+    preamble as the first line.
+
     Kept in step with `coherence.opens_with_a_title`, which is the same test.
     """
+    from .coherence import trim_lead
+
     stripped = text.lstrip()
     if not stripped:
         return True
+    body, preamble_words = trim_lead(stripped)
+    if preamble_words > 0:
+        return True
+    stripped = body.lstrip() or stripped
     first = stripped.split("\n")[0].strip()
     if _TITLE_LINE.match(first):
         return True
@@ -904,7 +925,12 @@ class EnglishConstraintChecker:
             # fine, so both cost one requirement rather than the whole story.
             "story_format": not _badly_formatted(text),
         }
-        violations = sum(1 for c in self.constraints if checks[c] is False)
+        # A rule that could not be evaluated has not been satisfied. `is False`
+        # let a story with no finite verb at all pass the present-tense rule for
+        # free -- and a story with no finite verb is one of the failures the
+        # perturbation produces, so the rule was being lenient in exactly the
+        # place it needed not to be.
+        violations = sum(1 for c in self.constraints if checks[c] is not True)
 
         return StoryMetrics(
             story_index=story_index,
