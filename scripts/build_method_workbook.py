@@ -509,6 +509,160 @@ METHODS = [
             "  --shield-vectors in_story --steer-budget 2"
         ),
     ),
+    dict(
+        id="M19", label="Aimed at a story, 1.5 out, twelve removed",
+        run="r68-calibrated", frag="g1p5orth", family="Risky stories handled",
+        stories=200,
+        summary=(
+            "The twelve sampled stories that break the writing are not aimed at "
+            "at all. Reaches the baselines' coherence and loses the variety."
+        ),
+        works=(
+            "The displacement aims at one of 32 sampled stories, picked by story "
+            "number. A calibration run aims each story at one of them in turn and "
+            "drops any that produced a rejected story. Twelve are dropped here; "
+            "the remaining twenty are aimed at as before."
+        ),
+        different=(
+            "199 of 200 coherent, level with top-k, with no refusal anywhere. But "
+            "variety of what happens falls to a real loss: removing a story "
+            "removes its direction, and those twelve directions were carrying the "
+            "variety as well as the risk."
+        ),
+        command=(
+            "scripts/kaggle_run.sh r68-calibrated --profile <account> --shards 2 -- \\\n"
+            "  " + COMMON.format(stories=200) + " \\\n"
+            "  --peek-stories 6 --abort-broken-arms --suite boundary --tail-sweep 8 \\\n"
+            "  --gamma-sweep 1.5 --offset-norm story --offset-gamma-spread 0.5 \\\n"
+            "  --offset-draw-shape anchor --drop-anchors 1 2 5 6 10 12 14 15 17 18 24 28 \\\n"
+            "  --steer-vectors present_tense sensory named_character no_heading \\\n"
+            "  --shield-vectors in_story --steer-budget 2"
+        ),
+    ),
+    dict(
+        id="M20", label="Eight risky stories shortened to half",
+        run="r69-shrink", frag="g1p5orth", family="Risky stories handled",
+        stories=200,
+        summary=(
+            "Instead of not aiming at the risky stories, aim at them and travel "
+            "only half the distance. Keeps the variety that removing them lost."
+        ),
+        works=(
+            "Every one of the 32 directions is kept. A story aiming at one of the "
+            "eight riskiest travels half as far; a story aiming at any other "
+            "travels the full distance."
+        ),
+        different=(
+            "Matched against removal at the same coherence, 189 of 200 both ways: "
+            "removing leaves variety of what happens at a tie, shortening leaves "
+            "it at a win clear of zero. The direction carries the variety and the "
+            "distance carries the risk, and they separate. This is the first "
+            "mechanism in the project to take something off that trade rather "
+            "than slide along it."
+        ),
+        command=(
+            "scripts/kaggle_run.sh r69-shrink --profile <account> --shards 2 -- \\\n"
+            "  " + COMMON.format(stories=200) + " \\\n"
+            "  --peek-stories 6 --abort-broken-arms --suite boundary --tail-sweep 8 \\\n"
+            "  --gamma-sweep 1.5 --offset-norm story --offset-gamma-spread 0.5 \\\n"
+            "  --offset-draw-shape anchor \\\n"
+            "  --shrink-anchors 1 5 6 10 12 14 15 18 --shrink-factor 0.5 \\\n"
+            "  --steer-vectors present_tense sensory named_character no_heading \\\n"
+            "  --shield-vectors in_story --steer-budget 2"
+        ),
+    ),
+    dict(
+        id="M21", label="Twelve risky stories shortened to 0.4",
+        run="r70-shrink12", frag="g1p5orth", family="Risky stories handled",
+        stories=200,
+        summary="The same, applied to all twelve the calibration flags.",
+        works="As M20 with twelve stories shortened, each to 0.4 of the distance.",
+        different=(
+            "196 of 200 with the best formatting in the project at the time. "
+            "Shortening all twelve alike turns out to be blunt: the four that "
+            "failed only once in calibration are shortened as hard as the one "
+            "that failed five times, and lose their variety for nothing."
+        ),
+        command=(
+            "scripts/kaggle_run.sh r70-shrink12 --profile <account> --shards 2 -- \\\n"
+            "  (as M20, with --shrink-anchors 1 2 5 6 10 12 14 15 17 18 24 28 \\\n"
+            "   --shrink-factor 0.4)"
+        ),
+    ),
+    dict(
+        id="M22", label="Shortening graded by measured risk, 1.5 out",
+        run="r72-graded", frag="g1p5orth", family="Risky stories handled",
+        stories=200,
+        summary=(
+            "Each risky story shortened by its own fraction. The best requirement "
+            "compliance in the project, and no register failure at all."
+        ),
+        works=(
+            "The fraction is one over one plus the number of rejections that story "
+            "caused in the calibration probe. The worst -- five failures in eight "
+            "uses -- is travelled towards at a sixth of the distance; the mildest "
+            "at a half. The counts come from the probe alone, so nothing is fitted "
+            "to the arm being measured."
+        ),
+        different=(
+            "198 of 200 coherent with not one refusal and not one leaked plan, at "
+            "3.25 requirements broken of twelve against the baselines' 3.95 and "
+            "3.92 and the untouched model's 4.30. Variety of wording beats top-k "
+            "clear of zero; variety of what happens is level with it."
+        ),
+        command=(
+            "scripts/kaggle_run.sh r72-graded --profile <account> --shards 2 -- \\\n"
+            "  " + COMMON.format(stories=200) + " \\\n"
+            "  --peek-stories 6 --abort-broken-arms --suite boundary --tail-sweep 8 \\\n"
+            "  --gamma-sweep 1.5 --offset-norm story --offset-gamma-spread 0.5 \\\n"
+            "  --offset-draw-shape anchor \\\n"
+            "  --shrink-anchors 1:0.17 2:0.5 5:0.33 6:0.5 10:0.25 12:0.33 \\\n"
+            "                   14:0.5 15:0.33 17:0.5 18:0.5 24:0.5 28:0.5 \\\n"
+            "  --steer-vectors present_tense sensory named_character no_heading \\\n"
+            "  --shield-vectors in_story --steer-budget 2"
+        ),
+    ),
+    dict(
+        id="M23", label="The same grading, two stories out",
+        run="r72-gradedfar", frag="g2orth", family="Risky stories handled",
+        stories=200,
+        summary=(
+            "The largest variety of either kind measured anywhere, at the cost of "
+            "coherence."
+        ),
+        works="As M22 at a displacement of two stories rather than one and a half.",
+        different=(
+            "Variety of what happens and variety of wording are both won against "
+            "top-k by the largest margins in the project. 183 of 200 coherent. "
+            "This and M22 are the two ends of one arm and show what the remaining "
+            "trade costs."
+        ),
+        command="(same as M22 with --gamma-sweep 2.0)",
+    ),
+    dict(
+        id="M24", label="Drawn displacement, 2.0 out, steered frame",
+        run="r65-drawn200", frag="g2orth", family="Steered frame", stories=200,
+        summary="The best all-round arm that does not aim at a particular story.",
+        works=(
+            "The displacement is drawn from the subspace rather than aimed at one "
+            "story, measured against stories sampled under the push, two stories "
+            "from their average."
+        ),
+        different=(
+            "191 of 200 coherent at 3.06 requirements broken, with variety of "
+            "wording beating top-k clear of zero and variety of what happens level "
+            "with it. Needs no calibration of risky stories at all."
+        ),
+        command=(
+            "scripts/kaggle_run.sh r65-drawn200 --profile <account> --shards 2 -- \\\n"
+            "  " + COMMON.format(stories=200) + " --basis-under-push \\\n"
+            "  --peek-stories 6 --abort-broken-arms --suite boundary --tail-sweep 8 \\\n"
+            "  --gamma-sweep 2.0 --offset-norm story --offset-gamma-spread 0.5 \\\n"
+            "  --offset-draw-shape manifold \\\n"
+            "  --steer-vectors present_tense sensory named_character no_heading \\\n"
+            "  --shield-vectors in_story --steer-budget 2"
+        ),
+    ),
 ]
 
 ALL = BASELINES + METHODS
@@ -762,6 +916,18 @@ def main():
             "different things. The untouched model's stories carry the variation "
             "in what happens; the stories written under the push are where the "
             "model still reliably writes from. Nothing found so far has both.")),
+        ("The mechanism that changed it", (
+            "The displacement aims at, or is drawn from, 32 stories the model "
+            "wrote once during setup. Across six runs, eight of those 32 caused "
+            "62 of the 76 rejected stories and twenty-one caused none. A "
+            "calibration run finds them without being told -- aim each story at "
+            "one of the 32 in turn and note which ones produced a rejection. "
+            "REMOVING them reaches the baselines' coherence and loses the variety, "
+            "because removing a story removes its direction. TRAVELLING PART OF "
+            "THE WAY towards them keeps both: the direction carries the variety "
+            "and the distance carries the risk, and they separate. Shortening each "
+            "by its own measured risk gives 198 of 200 coherent at the best "
+            "requirement compliance in the project.")),
         ("A lead worth following", (
             "The coherence loss is not spread evenly. The displacement aims at one "
             "of 32 sampled stories, chosen by story number, and across six "
