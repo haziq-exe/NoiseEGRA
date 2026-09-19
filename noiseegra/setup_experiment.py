@@ -234,10 +234,13 @@ def _ortho_tag(model_name: str, spec: ExperimentSpec) -> str:
     # Directions the perturbation is held clear of beyond the steered ones
     # themselves. Without this in the id a shielded arm and an unshielded one
     # share a name and the second overwrites the first, which is the fault that
-    # produced byte-identical arms three times on this project.
-    spare = int(getattr(plan, "protect_rank", 0) or 0) - len(plan.specs)
-    if spare > 0:
-        parts.append(f"__sh{spare}")
+    # produced byte-identical arms three times on this project. Named, not
+    # counted: the first version of this counted the protected subspace's rank,
+    # which the steered constraints' principal components also enlarge, so it
+    # printed the same thing on a shielded arm and on its unshielded control.
+    shielded = list(getattr(plan, "shield_names", ()) or ())
+    if shielded:
+        parts.append("__sh" + "-".join(n[:4] for n in sorted(shielded)))
     if getattr(plan, "guard_direction", ""):
         parts.append(f"__guard{plan.guard_direction[:4]}")
     if getattr(plan, "offset_gamma_spread", 0.0):

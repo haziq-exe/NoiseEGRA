@@ -62,6 +62,17 @@ DEFAULT_CONSTRAINTS = ["closure", "present_tense", "simple_register"]
 # stay constant.
 DEFAULT_SCHEDULES = {}   # flat for every direction unless a caller says otherwise
 
+# Settings that belong to the whole run rather than to one suite. A suite that
+# sweeps one of them passes it explicitly and wins; every other suite gets the
+# run's value without its own call site having to name it.
+#
+# This exists because naming them at each call site does not work. The
+# displacement-size spread was added to two of the twenty-odd `make_plan` calls,
+# so every other suite quietly ran at zero -- and a three-arm run was launched,
+# generated and scored before anyone noticed it had not been varying the size at
+# all. Anything a command-line flag sets for a whole run belongs here.
+RUN_DEFAULTS = {"offset_gamma_spread": 0.0}
+
 
 def make_plan(
     vectors: SteeringVectorSet,
@@ -85,7 +96,7 @@ def make_plan(
     offset_decode_steps=0,
     offset_scale=None,
     offset_draw_shape="sphere",
-    offset_gamma_spread=0.0,
+    offset_gamma_spread=None,
     guard_direction="",
     noise_norm_match="energy",
     noise_schedule="constant",
@@ -124,7 +135,9 @@ def make_plan(
         for n in names
     ]
     extra = vectors.shielded_subspace(names, protect_rank)
-    return SteeringPlan.build(
+    if offset_gamma_spread is None:
+        offset_gamma_spread = RUN_DEFAULTS["offset_gamma_spread"]
+    plan = SteeringPlan.build(
         vectors.vectors,
         layers,
         specs,
@@ -175,6 +188,13 @@ def make_plan(
         gate_threshold=gate_threshold,
         gate_level=gate_level,
     )
+    # Which directions the perturbation was held clear of, carried on the plan so
+    # the run id can name them. Read off `vectors`, not off `protect_rank`: the
+    # protected subspace is also enlarged by the principal components of the
+    # steered constraints, and a tag computed from its rank said "shielded" on
+    # every run including the unshielded control.
+    plan.shield_names = list(getattr(vectors, "shield", ()) or ())
+    return plan
 
 
 def build_suite(name, vectors, layers, names, rms_scale, args):

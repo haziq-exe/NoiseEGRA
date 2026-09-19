@@ -598,6 +598,11 @@ def main() -> None:
         if args.present_ratio == DEFAULT_PRESENT_RATIO:
             args.present_ratio = EN_MIDDLE_PRESENT_RATIO
 
+    # Settings that apply to the whole run, published once so that every suite
+    # gets them whether or not its own call site names them. Set before the dry
+    # run, so the dry run builds the same conditions the real run will.
+    import run_orthosteer_experiment as _ro
+    _ro.RUN_DEFAULTS["offset_gamma_spread"] = float(args.offset_gamma_spread)
 
     if args.dry_run:
         # Parsing the flags is the easy half. Two runs have now reached Kaggle,
