@@ -223,6 +223,19 @@ def main() -> None:
                          "'in_story' is the one that exists: it separates telling the "
                          "story from talking about the task, which is what the stories "
                          "the perturbation breaks are actually doing.")
+    ap.add_argument("--anchor-source", default="self", choices=("self", "untouched"),
+                    help="which stories an anchored displacement aims at. 'self' "
+                         "uses the same cloud the basis came from. 'untouched' "
+                         "takes the deviations of the untouched model's stories and "
+                         "projects them onto the directions the steered stories vary "
+                         "along, which needs --basis-under-push. The point is that "
+                         "the two clouds are good at different things: the untouched "
+                         "one carries far more variation in what happens, and the "
+                         "steered one is where the model still writes stories from. "
+                         "Projecting keeps the part of an untouched story's "
+                         "difference that the steered model also expresses and drops "
+                         "the part that would take the state out of its own "
+                         "distribution.")
     ap.add_argument("--basis-under-push", action="store_true",
                     help="sample the stories the perturbation is measured against "
                          "while the constraint push is applied, instead of from the "
@@ -1095,10 +1108,49 @@ def main() -> None:
             torch.save(cached, pc_path)
             print(f"activation basis (step): saved to {pc_path.name}")
 
+        if args.anchor_source == "untouched":
+            if not args.basis_under_push:
+                raise SystemExit(
+                    "--anchor-source untouched projects the untouched stories onto "
+                    "the directions the steered stories vary along, so it needs "
+                    "--basis-under-push to have those directions."
+                )
+            plain_path = out / f"actpcs_{kind}_{args.model}.pt"
+            if plain_path.is_file():
+                plain = torch.load(plain_path, map_location="cpu", weights_only=False)
+                print(f"untouched stories: loaded from {plain_path.name}")
+            else:
+                print("untouched stories: sampling them as well, to aim at "
+                      "(once) ...", flush=True)
+                plain = collect_story_pcs(
+                    get_model(), messages[0], layers,
+                    n_stories=args.offset_basis_stories,
+                    rank=args.offset_rank,
+                    max_new_tokens=args.offset_basis_tokens,
+                )
+                torch.save(plain, plain_path)
+            kept = []
+            for layer, steered_dirs in cached.basis.items():
+                a = plain.anchors[layer].to(torch.float32)
+                b = steered_dirs.to(torch.float32)
+                before = float(a.norm(dim=1).mean())
+                a = (a @ b) @ b.t()
+                cached.anchors[layer] = a.contiguous()
+                kept.append(float(a.norm(dim=1).mean()) / max(before, 1e-9))
+            print(f"  aiming at the untouched model's stories, confined to the "
+                  f"directions the steered ones vary along: "
+                  f"{sum(kept) / len(kept):.0%} of each story's difference survives "
+                  f"the projection")
+
         if args.basis_under_push and not args.offset_basis_kind.endswith("push"):
             # Into the run id, so an arm measured against steered stories and
             # one measured against untouched stories cannot share a file.
             args.offset_basis_kind = args.offset_basis_kind + "push"
+        if (args.anchor_source == "untouched"
+                and not args.offset_basis_kind.endswith("mix")):
+            # Into the run id: an arm aiming at untouched stories and one aiming
+            # at steered stories are different arms and must not share a file.
+            args.offset_basis_kind = args.offset_basis_kind + "mix"
 
         # The story-level estimate carries the mean the directions are measured
         # from, which amplification needs; the decode-step one is a bare basis and
