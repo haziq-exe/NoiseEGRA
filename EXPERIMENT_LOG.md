@@ -4588,3 +4588,61 @@ failures is the model addressing the *task*.
 **Every result on this branch from round 64 onward is affected** and is being
 rescored. The arms that displace least are barely touched; the arms that won
 variety of what happens are the ones that produce the most of this.
+
+## Round 76 - the shield does not generalise, and the honest frontier
+
+**Shielding the helpful-assistant direction is a null.** A contrast set was
+written for exactly the failure that remained -- twelve pairs, positives a line
+of story, negatives a line of assistant helpfulness, matched within a word --
+extracted and added to the protected subspace beside `in_story`. Not-a-story
+falls from 23% to 20% and coherence rises from 141 of 200 to 143. Nothing.
+
+That bounds the shield mechanism rather than extending it. Refusals are a
+direction and can be forbidden; being helpful is not, or not one that a
+mean-difference of twelve pairs finds.
+
+### Which mechanism produces the failure
+
+| condition | draw | coherent | not a story |
+|---|---|---|---|
+| 1.0 out, steered cloud | drawn | **100/100** | **0%** |
+| 1.5 out, steered cloud | drawn | **100/100** | **0%** |
+| 1.75 out, steered cloud | drawn | 194/200 | 3% |
+| 2.0 out, steered cloud | drawn | 186/200 | 6% |
+| 2.5 out, steered cloud | drawn | 81/100 | 12% |
+| 1.0 out, untouched cloud | anchored | 89/100 | 5% |
+| 1.5 out, untouched cloud | anchored | 67/100 | **25%** |
+
+**Aiming at one of the model's own stories is what does it.** Drawing from the
+subspace stays clean. Every variety win reported on this branch came from an
+anchored arm, and a quarter of an anchored arm's output is the model being
+helpful rather than telling a story. The win and the failure were the same
+thing: a list of drawing tips is enormously unlike a story about a girl at a bus
+stop, which is what a diversity score rewards.
+
+### The honest frontier
+
+Drawn displacement against the steered cloud, scored with not-a-story counted as
+a broken story, differences from raised temperature with nucleus sampling, 300
+subsamples.
+
+| condition | coherent | broken /12 | happens | wording |
+|---|---|---|---|---|
+| temperature 1.8, nucleus (top-p) | 200/200 | 3.92 | reference | reference |
+| temperature 1.8, top-k | 199/200 | 3.95 | +1.5 [-0.4, +3.1] | +1.0 [-1.5, +3.9] |
+| the untouched model | 194/200 | 4.30 | -8.0 [-10.2, -5.8] | -4.2 [-6.1, -2.2] |
+| **1.5 out** | **100/100** | **2.75** | -0.7 [-2.5, +1.1] | +1.0 [-1.2, +3.4] |
+| 1.75 out | 194/200 | 3.00 | -0.3 [-2.4, +2.0] | +1.7 [-0.6, +3.8] |
+| **2.0 out** | 186/200 | 3.04 | +0.6 [-1.4, +2.6] | **+3.2** [+0.2, +6.0] |
+| 2.5 out | 81/100 | | +0.7 [-0.9, +2.2] | **+4.4** [+1.9, +6.8] |
+
+**What is won, honestly.** Requirement compliance, by about a whole requirement
+of twelve, everywhere, on intervals well clear of zero -- 2.75 against 3.92 and
+3.95. At one and a half stories out that comes with every story coherent, no
+refusal, no leaked plan, no preamble and no list. Variety of wording is won
+against nucleus sampling from two stories out.
+
+**What is not.** Variety of what happens is a tie everywhere. Worth noting that
+top-k's own lead over nucleus on that axis is +1.5 [-0.4, +3.1] at this pooling
+-- also a tie -- so the axis is noisy and the baselines are close together on
+it, but a tie is a tie and the goal asks for better.
