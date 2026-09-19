@@ -724,6 +724,21 @@ class SteeringPlan:
     # given length lands far outside anything the model does. Shaping the draw
     # by the observed spread keeps it inside.
     offset_draw_shape: str = "sphere"
+    # How much the size of the per-story displacement varies between stories,
+    # as a fraction of its nominal size. 0 gives every story the same
+    # displacement, which is what every run so far has done.
+    #
+    # A fixed size puts every story on a shell around the unperturbed state
+    # rather than filling the ball inside it, and Vendi measures spread. On the
+    # geometry alone -- a hundred points at this basis's rank, scored with the
+    # same Vendi -- drawing the radius uniformly over [0, 2r] scores 2.3 against
+    # 1.9 for a fixed radius, with the mean displacement unchanged.
+    #
+    # It is the one property of the displacement never varied. Where it points
+    # has been swept, how it is drawn has been swept, where it is applied has
+    # been swept, and how far it goes has been swept in the mean -- never in the
+    # spread.
+    offset_gamma_spread: float = 0.0
     protect_rank: int = 0
 
     # ---- construction ---------------------------------------------------- #
@@ -778,6 +793,7 @@ class SteeringPlan:
         offset_decode_steps: int = 0,
         offset_scale: Optional[Mapping[int, torch.Tensor]] = None,
         offset_draw_shape: str = "sphere",
+        offset_gamma_spread: float = 0.0,
         protect_extra: Optional[Mapping[int, torch.Tensor]] = None,
         device: Optional[torch.device] = None,
     ) -> "SteeringPlan":
@@ -969,6 +985,7 @@ class SteeringPlan:
             offset_layers=frozenset(int(x) for x in (offset_layers or ())),
             offset_decode_steps=int(offset_decode_steps),
             offset_draw_shape=str(offset_draw_shape),
+            offset_gamma_spread=float(offset_gamma_spread),
             protect_rank=protect_rank,
         )
 
@@ -1211,6 +1228,7 @@ class SteeringPlan:
         constraint direction biases that constraint for the entire story.
         """
         self.resample_jitter()
+        self._gamma_this_story = None
         # A fresh story restarts the walk, so one story's wandering aim is not
         # inherited by the next.
         self._jitter_step = -1
@@ -1261,6 +1279,16 @@ class SteeringPlan:
                                                                   device=dev)
                 if self.offset_mode == "orth" and lp.protect is not None:
                     vec = vec - lp.protect @ (lp.protect.t() @ vec)
+            # This story's displacement size, drawn once per story, uniform
+            # about the nominal size so the stories fill the ball rather than
+            # sitting on a shell. The mean size is unchanged.
+            gamma = self.offset_gamma
+            if self.offset_gamma_spread > 0:
+                if getattr(self, "_gamma_this_story", None) is None:
+                    u = float(torch.rand(1).item())
+                    self._gamma_this_story = self.offset_gamma * (
+                        1.0 + self.offset_gamma_spread * (2.0 * u - 1.0))
+                gamma = float(self._gamma_this_story)
             if self.offset_norm == "energy":
                 # Fixed length, so gamma means the same thing whatever the rank of
                 # the subspace the offset was drawn from. A draw from a rank-r
@@ -1269,9 +1297,9 @@ class SteeringPlan:
                 # asked of the isotropic arm -- a factor of 8 at rank 64 in a
                 # 4096-dimensional stream.
                 vec = vec / vec.norm().clamp_min(1e-12)
-                lp.offset = vec * (self.offset_gamma * self.rms_scale * math.sqrt(self.dim))
+                lp.offset = vec * (gamma * self.rms_scale * math.sqrt(self.dim))
             else:
-                lp.offset = vec * (self.offset_gamma * self.rms_scale)
+                lp.offset = vec * (gamma * self.rms_scale)
 
     def delta_for(
         self,
@@ -1600,6 +1628,7 @@ class SteeringPlan:
             "offset_layers": sorted(self.offset_layers),
             "offset_decode_steps": self.offset_decode_steps,
             "offset_draw_shape": self.offset_draw_shape,
+            "offset_gamma_spread": self.offset_gamma_spread,
             "protect_rank": self.protect_rank,
             "per_layer": per_layer,
         }

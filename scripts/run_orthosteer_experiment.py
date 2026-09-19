@@ -85,6 +85,7 @@ def make_plan(
     offset_decode_steps=0,
     offset_scale=None,
     offset_draw_shape="sphere",
+    offset_gamma_spread=0.0,
     noise_norm_match="energy",
     noise_schedule="constant",
     offset_gamma=0.0,
@@ -142,6 +143,7 @@ def make_plan(
         offset_decode_steps=offset_decode_steps,
         offset_scale=offset_scale,
         offset_draw_shape=offset_draw_shape,
+        offset_gamma_spread=offset_gamma_spread,
         protect_extra=extra,
         offset_gamma=offset_gamma,
         offset_mode=offset_mode,
@@ -1179,6 +1181,50 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             + ", against the untouched model. Run a second time with "
               "--random-directions to separate what the extracted directions do "
               "from what any push of that size does")
+
+    if name == "varysize":
+        # The per-story displacement given a size that varies between stories.
+        #
+        # Every run so far gives every story the same size, which puts them all
+        # on a shell around the unperturbed state rather than filling the ball
+        # inside it. Vendi measures spread and a shell has less of it: on the
+        # geometry alone, a hundred points at this basis's rank scored with the
+        # same Vendi, a radius drawn uniformly over [0, 2r] scores 2.3 against
+        # 1.9 for a fixed radius, with the mean displacement unchanged.
+        #
+        # It is the one property of the displacement never varied. Where it
+        # points, how it is drawn, where it is applied and how far it goes on
+        # average have all been swept; how much that distance differs between
+        # stories has not.
+        #
+        # It is also the only remaining candidate that is between-story --
+        # which is the only kind of variation that has ever moved this axis --
+        # and that does not raise the mean displacement, which is what the
+        # formatting ceiling is a ceiling on.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        kind = getattr(args, "offset_basis_kind", "story")
+        flat = {n: 1.0 for n in names}
+        b = float(getattr(args, "steer_budget", None) or 2.0)
+        g = float(getattr(args, "main_gamma", 0.15))
+        keep = int(getattr(args, "prompt_tail", 8) or 8)
+        spreads = [float(x) for x in (getattr(args, "spread_sweep", None)
+                                      or (0.5, 1.0))]
+
+        items = []
+        for sp in spreads:
+            items.append({"plan": make_plan(
+                beta=flat, steer_budget=b, offset_gamma=g, offset_mode="orth",
+                offset_basis=offset_basis, offset_basis_kind=kind,
+                offset_scale=getattr(args, "offset_scale", None),
+                offset_draw_shape=getattr(args, "offset_draw_shape", "sphere"),
+                offset_gamma_spread=sp,
+                steer_prefill=True, prompt_tail_clear=keep,
+                offset_prefill=True, offset_decode=False, **quiet, **base)})
+        return items, (
+            f"the per-story displacement at a mean of {g:g} with its size "
+            "varying between stories by "
+            + ", ".join(f"{s:g}" for s in spreads) + " of that")
 
     if name == "wander":
         # The aim of the constraint push performs a correlated random walk over
