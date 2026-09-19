@@ -223,14 +223,19 @@ def main() -> None:
                          "'in_story' is the one that exists: it separates telling the "
                          "story from talking about the task, which is what the stories "
                          "the perturbation breaks are actually doing.")
-    ap.add_argument("--shrink-anchors", nargs="*", type=int, default=[],
+    ap.add_argument("--shrink-anchors", nargs="*", default=[],
                     help="sampled stories to travel only part of the way towards, "
                          "by index. Removing them outright costs the variety they "
                          "carry -- measured: dropping the eight that break the "
                          "writing took coherence from 176 of 200 to 189 and turned "
                          "a win on variety of what happens into a tie, because the "
                          "same eight were responsible for both. Shrinking keeps "
-                         "their direction and shortens the distance.")
+                         "their direction and shortens the distance. Each entry "
+                         "is a story number, using --shrink-factor, or "
+                         "'number:fraction' to give that one its own, so a story "
+                         "that broke the writing five times in the calibration can "
+                         "be travelled towards less far than one that broke it "
+                         "once.")
     ap.add_argument("--shrink-factor", type=float, default=0.5,
                     help="how far towards a shrunk story to travel, as a fraction "
                          "of the usual distance")
@@ -1133,16 +1138,25 @@ def main() -> None:
             import torch as _t
             n0 = cached.anchors[sorted(cached.anchors)[0]].shape[0]
             scale = _t.ones(n0)
-            for i in sorted(set(int(x) for x in args.shrink_anchors)):
+            named = {}
+            for entry in args.shrink_anchors:
+                s = str(entry)
+                i, _, f = s.partition(":")
+                i = int(i)
                 if not 0 <= i < n0:
                     raise SystemExit(f"--shrink-anchors {i} is not one of the {n0} "
                                      "sampled stories")
-                scale[i] = float(args.shrink_factor)
+                named[i] = float(f) if f else float(args.shrink_factor)
+                if not 0 < named[i] <= 1:
+                    raise SystemExit(f"--shrink-anchors {s}: the fraction must be "
+                                     "above zero and at most one; zero would be "
+                                     "dropping the story, which loses its direction")
+                scale[i] = named[i]
             _ro.RUN_DEFAULTS["anchor_scale"] = scale
-            print(f"  travelling only {args.shrink_factor:g} of the way towards "
-                  f"sampled stories {sorted(set(args.shrink_anchors))}, "
-                  f"the full distance towards the other "
-                  f"{n0 - len(set(args.shrink_anchors))}")
+            how = ", ".join(f"{i} at {named[i]:g}" for i in sorted(named))
+            print(f"  travelling part of the way towards {len(named)} sampled "
+                  f"stories ({how}); the full distance towards the other "
+                  f"{n0 - len(named)}")
 
         if args.drop_anchors:
             drop = sorted(set(int(i) for i in args.drop_anchors))
@@ -1198,9 +1212,10 @@ def main() -> None:
             # one measured against untouched stories cannot share a file.
             args.offset_basis_kind = args.offset_basis_kind + "push"
         if args.shrink_anchors and "shrink" not in args.offset_basis_kind:
-            args.offset_basis_kind += (
-                f"shrink{len(set(args.shrink_anchors))}"
-                f"at{str(args.shrink_factor).replace('.', 'p')}")
+            graded = any(":" in str(x) for x in args.shrink_anchors)
+            tag = ("graded" if graded
+                   else f"at{str(args.shrink_factor).replace('.', 'p')}")
+            args.offset_basis_kind += f"shrink{len(set(str(x).split(':')[0] for x in args.shrink_anchors))}{tag}"
         if args.drop_anchors and "drop" not in args.offset_basis_kind:
             # Into the run id: an arm aiming at a reduced set of sampled stories
             # is a different arm and must not share a file with the full one.

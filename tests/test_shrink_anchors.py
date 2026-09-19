@@ -107,8 +107,34 @@ def test_it_is_not_the_same_as_dropping_them() -> None:
     print("every story is still displaced, so no direction is lost")
 
 
+def test_each_story_can_have_its_own_fraction() -> None:
+    """One factor for all of them is blunt: some break the writing far more often.
+
+    The fraction comes from the calibration's own count -- one over one plus the
+    number of rejections that story caused -- so a story that broke it five
+    times is travelled towards at a sixth of the distance and one that broke it
+    once at a half.
+    """
+    counts = {1: 5, 5: 2, 6: 1}
+    scale = torch.ones(N)
+    for i, c in counts.items():
+        scale[i] = 1.0 / (1.0 + c)
+    short, full = _lengths(_plan(scale)), _lengths(_plan(None))
+    for i, c in counts.items():
+        want = full[i] / (1.0 + c)
+        assert abs(short[i] - want) < 0.05 * want, (
+            f"story {i} broke the writing {c} times and travelled {short[i]:.2f} "
+            f"where {want:.2f} was asked for")
+    assert short[1] < short[5] < short[6], (
+        "the story that broke the writing most is not the one travelled towards "
+        "least far")
+    print("each story is travelled towards by its own fraction, shortest for the "
+          "one that broke the writing most")
+
+
 if __name__ == "__main__":
     test_the_named_stories_are_travelled_towards_less_far()
     test_their_direction_is_unchanged()
     test_it_is_not_the_same_as_dropping_them()
+    test_each_story_can_have_its_own_fraction()
     print("\nok")
