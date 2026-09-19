@@ -3224,3 +3224,91 @@ markedly higher reading level, 5.22 against 3.45 and 3.60, at 12.6 words a
 sentence against 8.9 and 9.1. It beats nucleus sampling on variety of wording.
 It does not beat either baseline on variety of what happens, and it is five
 stories short of nucleus sampling on coherence.
+
+## Rounds 43-44 - what is running, and why
+
+Two runs in flight at the time of writing, both on the four-direction set
+(present tense, the senses, a named character, the story's format) at a total
+push of 2 with the shaped per-story perturbation at 0.15.
+
+**Per-token noise under the constraint push.** Never run on this task before --
+it appears only on the 8B children's-task rounds. The reason to run it now is
+structural rather than hopeful. The per-story perturbation displaces the prompt
+once and the story is written from that one shifted place; raised temperature
+with top-k sampling varies at every token and leads variety of what happens by
+5.2 on an interval that clears zero. Nothing tried -- siting, magnitude, entropy
+gate, draw shape, layer band -- has closed that, which is what a limit of the
+mechanism looks like rather than a tuning failure. Per-token noise is the only
+thing in this architecture that varies at every step, and it is the published
+Arabic study's own mechanism. Alone on this model it was unusable: 0.4 broke
+every opening story, 0.2 matched the baseline's variety exactly. Under the push
+it survives -- the first stories at 0.1 and 0.2 are ordinary prose -- which is
+the protective effect showing up a fourth time. Alphas 0.1 and 0.2, each alone
+under the push and with the per-story perturbation, noise projected clear of the
+constraint directions.
+
+**Quietening the senses direction.** Three of the five stories the method loses
+at 200 are the senses direction enumerating rather than narrating, while its own
+requirement passes comfortably -- an overshoot. The suite gives one named
+direction a fraction of the others' push at a fixed total, so quietening it
+hands strength to the other three. Weights 0.5 and 0.25.
+
+## The state of the method, for a reader arriving cold
+
+**What the method is, as it now stands.** Qwen3-1.7B, layers 6-13 of 28,
+sampling temperature 1.0 throughout. Four contrastive directions extracted from
+minimal pairs -- present tense, the senses, a named character, and the story's
+format -- orthogonalised against each other and summed to a fixed total strength
+of 2, added at the prompt positions and at every decode step. One per-story
+perturbation of size 0.15, drawn from the subspace the model's own stories
+differ along, weighted by how far they spread along each direction, projected
+clear of the constraint directions, added at the prompt positions only, with the
+last eight prompt positions left alone.
+
+**What each part is for, and the measurement that put it there.**
+
+* *The push at decode steps* buys requirement compliance. It is also protective:
+  the perturbation alone at 0.15 keeps 84 stories of 100 coherent and 99 with the
+  push; dropping a direction, which pushes the rest harder, collapses coherence
+  to 83%; removing the push from the prompt admits headings.
+* *The push at the prompt* buys variety of wording and no compliance at all --
+  the tense requirement stays at the untouched model's level. The two sitings do
+  different jobs; the literature reports the opposite for refusal behaviour,
+  which is a one-shot commitment rather than a sustained property.
+* *Four directions, not more.* Five was worse: the speech direction and the
+  varied-openings direction each improved their own requirement when *removed*,
+  and each cost sentence length, because their property is expressed by starting
+  another unit of text. Three is the floor -- going to two collapses coherence,
+  since a fixed total divided among fewer directions pushes each harder.
+* *The story-format direction* exists because the perturbation makes the model
+  break an instruction no baseline breaks: 29% of stories opened with a heading
+  at 0.15 unspared. Steering it took that to none at 0.125 and lifted the
+  perturbation ceiling.
+* *The perturbation at the prompt, not while writing.* Perturbing during
+  decoding never breaks formatting and barely changes content (63.1 at 0.1
+  against 74.6 for a smaller perturbation at the prompt), because the cached
+  prompt stays clean and only the current position moves.
+* *The shaped draw* spends the displacement on which story rather than how it is
+  worded: content variety +0.2 to +1.0, wording +2.2 to +1.1, same size.
+* *Sparing the last eight prompt positions* keeps the chat template's own
+  tokens, which mark that the instruction has ended, out of the perturbation.
+
+**Where it stands at 200 stories, one run, intervals from 300 subsamples.**
+Compliance won outright, 2.99 of twelve against 3.92 and 3.95. Variety of
+wording won against nucleus sampling, +1.6 [+0.1, +3.1]. Reading level 5.22
+against 3.45 at 12.6 words a sentence against 8.9. Variety of what happens a tie
+with nucleus sampling, +1.2 [-1.3, +3.6], and a real loss to top-k sampling,
+which leads nucleus by +5.2 [+2.5, +7.3]. Coherence 195 of 200 against 200.
+
+**The two measurement corrections that changed what the numbers mean.** A
+formatting slip is scored as one broken requirement rather than a broken story,
+because the prose underneath is fine; the prompt was not changed to do it. And
+every variety number carries an interval, measured by subsampling without
+replacement -- margins of half a point were being read as results for two days,
+and one such claim was withdrawn.
+
+**Nulls worth not repeating.** Contrast pairs rewritten in the middle-school
+register. A richer perturbation basis under the even draw. Raising the total
+push above 2. Weighting the format direction above the others. Sparing the start
+of the prompt. The opening-decode-window siting. The entropy gate, which raises
+the magnitude the text survives by more than twice and buys no content variety.
