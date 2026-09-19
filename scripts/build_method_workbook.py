@@ -41,7 +41,7 @@ from openpyxl.utils import get_column_letter  # noqa: E402
 
 from compare_conditions import opener_share, stories_from_run  # noqa: E402
 from noiseegra.coherence import (  # noqa: E402
-    CoherenceFilter, opens_with_a_title, trim_lead, trim_title,
+    CoherenceFilter, is_not_a_story, opens_with_a_title, trim_lead, trim_title,
 )
 from noiseegra.constraint_metrics_en import (  # noqa: E402
     MIDDLE_CONSTRAINTS, EnglishConstraintChecker, opens_in_the_wrong_tense,
@@ -732,6 +732,7 @@ def score_all(entries, interval=INTERVAL_DRAWS):
             broken_each=np.array([s.violations for s in per], float),
             grade=agg["mean_grade_level"],
             preambled=float(np.mean(lead)), titled=float(np.mean(titled)),
+            not_a_story=float(np.mean([is_not_a_story(x) for x in texts])),
             usable=float(np.mean([r.ok for r in reports])),
             uncommon=float(np.mean(uncommon_word_share(kept))),
             opener=float(np.mean([opener_share(t) for t in kept])),
@@ -903,6 +904,21 @@ def main():
             "sitting in exactly the opening words the score is computed over.")),
         ("Markdown mid-story", "Not penalised anywhere. It is a training artefact, not a defect."),
         ("", ""),
+        ("READ THIS BEFORE THE NUMBERS", (
+            "An earlier version of this file was wrong, and the way it was wrong "
+            "is worth knowing. One arm scored 200 of 200 coherent and beat both "
+            "baselines on every variety measure. Reading its stories showed that "
+            "a quarter of them were not stories: numbered lists of drawing tips, "
+            "chat with the reader, descriptions with no character and nothing "
+            "happening. Every check passed them, because every check asked "
+            "whether the text was degenerate and none asked whether it was a "
+            "story. And that is exactly what inflates a diversity score -- a list "
+            "of drawing tips is enormously unlike a story about a girl at a bus "
+            "stop. The 'not a story' column counts them and they are now scored "
+            "as broken stories. Both baselines and the untouched model produce "
+            "none at all; the arms that aim the displacement at one of the "
+            "model's own sampled stories produce up to a quarter.")),
+        ("", ""),
         ("WHERE THINGS STAND", (
             "Three of the four things the goal asks for are won. Requirement "
             "compliance beats both raised-temperature baselines by a wide margin "
@@ -981,12 +997,12 @@ def write_metrics(wb, title, entries, S, nucleus, topk, note=None):
             "Variety: what happens", "vs nucleus", "vs top-k",
             "Variety: wording", "vs nucleus", "vs top-k",
             "Reading grade", "Words per sentence", "Words per story",
-            "Sentences per story", "Preamble %", "Heading %",
+            "Sentences per story", "Not a story %", "Preamble %", "Heading %",
             "Uncommon words %", "Commonest opener %",
             "Run folder", "Run id"]
     header(ws, start, cols)
     fit(ws, [6, 46, 22, 8, 10, 10, 13, 20, 20, 12, 20, 20, 12, 20, 20,
-             9, 11, 11, 11, 9, 9, 10, 11, 16, 60])
+             9, 11, 11, 11, 11, 9, 9, 10, 11, 16, 60])
     for r, e in enumerate(entries, start=start + 1):
         v = S[e["id"]]
         bn, bn_tag = broken_diff(v, nucleus)
@@ -1002,13 +1018,14 @@ def write_metrics(wb, title, entries, S, nucleus, topk, note=None):
                 round(v["wording"], 1), wn, wk,
                 round(v["grade"], 2), round(v["words_per_sentence"], 1),
                 round(v["words"], 0), round(v["sentences"], 1),
-                v["preambled"], v["titled"], v["uncommon"], v["opener"],
+                v["not_a_story"], v["preambled"], v["titled"],
+                v["uncommon"], v["opener"],
                 v["run"], v["rid"]]
         for i, val in enumerate(vals, start=1):
             c = ws.cell(row=r, column=i, value=val)
-            c.alignment = Alignment(vertical="top", wrap_text=(i in (2, 25)))
+            c.alignment = Alignment(vertical="top", wrap_text=(i in (2, 26)))
         ws.cell(row=r, column=6).number_format = "0%"
-        for i in (20, 21, 22, 23):
+        for i in (20, 21, 22, 23, 24):
             ws.cell(row=r, column=i).number_format = "0%"
         for col, tag in ((8, bn_tag), (9, bk_tag), (11, hn_tag), (12, hk_tag),
                          (14, wn_tag), (15, wk_tag)):
