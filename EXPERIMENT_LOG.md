@@ -3500,3 +3500,83 @@ unevenly, only by raising what an individual story can take.
 At full spread the extra reach costs more than it buys -- coherence 90 of 100
 and variety of what happens back below nucleus sampling -- so half is the
 setting.
+
+# The configuration to reproduce, in full
+
+The arm that keeps every story coherent, beats both decoding baselines on
+requirement compliance and on variety of wording, ties raised temperature with
+nucleus sampling on variety of what happens, and loses that one axis only to
+raised temperature with top-k sampling. Round 37, `r37-noheading`, at a
+perturbation of 0.15.
+
+| | coherent | broken /12 | happens | wording | grade | words/sentence |
+|---|---|---|---|---|---|---|
+| untouched model | 98% | 4.31 | 57.5 | 9.8 | 3.06 | 9.1 |
+| temperature 1.8, nucleus 0.95 | **100%** | 3.97 | 74.2 | 16.5 | 3.46 | 8.9 |
+| temperature 1.8, top-k 40 | 99% | 3.91 | **78.3** | 17.8 | 3.63 | 9.1 |
+| **this configuration** | **100%** | **2.86** | 74.6 | **19.3** | **5.70** | 11.7 |
+
+Scored with a heading counted as one broken requirement rather than as a broken
+story. 3% of its stories open with one.
+
+## The command
+
+    scripts/kaggle_run.sh r37-noheading --profile <account> --shards 2 -- \
+      --model Qwen3-1.7B --task generic --constraint-set middle \
+      --stories 100 --layers 6 14 --temperature 1.0 \
+      --story-target 150 --truncate-words 40 --pairs children \
+      --peek-stories 6 --abort-broken-arms --offset-basis story \
+      --suite boundary \
+      --steer-vectors present_tense sensory named_character no_heading \
+      --steer-budget 2 --tail-sweep 8 --gamma-sweep 0.125 0.15
+
+The run id it produces, which is the thing to match if anything is rebuilt:
+
+    Qwen3-1.7B__ORTHO__L6-13__Cpre-sen-nam-no___b1-1-1-1__lowdin__nznone__a0
+    __k36__g0p15orth__obstory__opre__ponly__bud2__tail8__prefill
+
+## Every setting it depends on
+
+**Model and site.** Qwen3-1.7B. Layers 6 to 13 inclusive -- `--layers 6 14` is
+exclusive of the upper bound. Sampling temperature 1.0, nothing raised.
+
+**The four steered directions**, extracted from the children's contrast pair
+file, `noiseegra/data/steering_pairs_en.json`, in the task's own conversational
+context: `present_tense`, `sensory`, `named_character`, `no_heading`. Not five:
+the speech and varied-openings directions each *improve their own requirement*
+when removed and each cost sentence length. Not three: two directions collapse
+coherence to 83%, because a fixed total divided among fewer pushes each harder.
+
+**The push.** Löwdin-orthogonalised, summed, renormalised to a total strength of
+2, applied at the prompt positions *and* at every decode step (`--suite
+boundary` sets `steer_prefill=True`). Both sitings matter and do different jobs:
+decoding supplies compliance, the prompt supplies variety of wording.
+
+**The per-story perturbation.** Size 0.15, drawn from the subspace the model's
+own stories differ along (`--offset-basis story`, 32 sampled stories, rank 31),
+projected clear of the constraint directions, added at the **prompt positions
+only**, with the **last 8 prompt positions left unperturbed**. Perturbing while
+the story is written instead barely changes what happens. The spared tail is the
+chat template's own tokens; without it 29% of stories open with a heading.
+
+**The task.** The middle-school rule set, eleven bulleted requirements plus the
+story-format rule scored from the instruction's closing line and given no bullet
+of its own. Story target 150 words, length rule 200, generation stopped at 300
+words or 600 tokens, a word may be reused 5 times, no word may begin more than 5
+sentences, at most 5 adverbs, at least 6 sensory words, the present-tense rule
+met at a 0.9 share of finite verbs, the reading floor at grade 3.
+
+Those thresholds are part of the prompt. `r42-final`, the 200-story comparison,
+carries exactly the same ones, which is why the two can be read together.
+
+## What is NOT in it
+
+Added later and **not** part of this configuration: the shaped (manifold)
+perturbation draw, the varying displacement size, the story-format direction
+that also covers lost capitals, per-token noise, the wandering aim, the
+proportional guard. Each is recorded in its own round with what it did.
+
+At 200 stories (`r42-final`) the same configuration with the shaped draw scores
+195 of 200 coherent, 2.99 broken, and variety of what happens +1.2 [-1.3, +3.6]
+against nucleus sampling -- so the 100% coherence above is a hundred-story
+figure and the larger sample puts it at 97.5%.
