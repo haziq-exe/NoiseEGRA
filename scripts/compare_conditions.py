@@ -200,7 +200,11 @@ def main() -> None:
                                    if s.present_ratio is not None] or [float("nan")])),
             wrong_open=float(np.mean([opens_in_the_wrong_tense(t, checker) for t in kept])),
             titled=titled, preambled=preambled, usable=usable,
-            pass_rate={r: float(np.mean([s.checks.get(r, True) for s in per_story]))
+            # `is True`, not truthiness: a rule that could not be evaluated --
+            # the present-tense share of a story with no finite verb -- comes
+            # back as None, and None is a failure to satisfy the rule, not a
+            # pass and not something to crash on.
+            pass_rate={r: float(np.mean([s.checks.get(r) is True for s in per_story]))
                        for r in rules},
             happens_vectors=trim_isolated(
                 _set_vectors(content_lemma_sets(kept, args.truncate_words))),
