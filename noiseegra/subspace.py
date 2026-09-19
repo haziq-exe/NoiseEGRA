@@ -739,6 +739,25 @@ class SteeringPlan:
     # been swept, and how far it goes has been swept in the mean -- never in the
     # spread.
     offset_gamma_spread: float = 0.0
+    # The name of a direction whose share of the push is scaled, per story, by
+    # how far that story was displaced.
+    #
+    # The formatting ceiling binds per story and not on the average. Varying the
+    # displacement size took headings from 2% to 9% while the *mean*
+    # displacement stayed put, so the stories drawn near the top of the range
+    # are crossing the threshold individually while the ones near the bottom are
+    # nowhere near it. A push that is the same for both spends protection where
+    # it is not needed and withholds it where it is.
+    #
+    # This gives the named direction a coefficient proportional to this story's
+    # displacement. The total push is still renormalised to the same budget, so
+    # a story that is displaced far trades some of its other steering for
+    # formatting, and a story that is barely displaced keeps it.
+    #
+    # It is the one route left to more content variety that the measurements
+    # allow: they say the cap cannot be got round by spending the same budget
+    # unevenly, only by raising what an individual story can absorb.
+    guard_direction: str = ""
     protect_rank: int = 0
 
     # ---- construction ---------------------------------------------------- #
@@ -794,6 +813,7 @@ class SteeringPlan:
         offset_scale: Optional[Mapping[int, torch.Tensor]] = None,
         offset_draw_shape: str = "sphere",
         offset_gamma_spread: float = 0.0,
+        guard_direction: str = "",
         protect_extra: Optional[Mapping[int, torch.Tensor]] = None,
         device: Optional[torch.device] = None,
     ) -> "SteeringPlan":
@@ -986,6 +1006,7 @@ class SteeringPlan:
             offset_decode_steps=int(offset_decode_steps),
             offset_draw_shape=str(offset_draw_shape),
             offset_gamma_spread=float(offset_gamma_spread),
+            guard_direction=str(guard_direction),
             protect_rank=protect_rank,
         )
 
@@ -1289,6 +1310,17 @@ class SteeringPlan:
                     self._gamma_this_story = self.offset_gamma * (
                         1.0 + self.offset_gamma_spread * (2.0 * u - 1.0))
                 gamma = float(self._gamma_this_story)
+                # Protect this story in proportion to how far it is displaced.
+                # The budget renormalises afterwards, so a far-displaced story
+                # trades other steering for formatting and a near one does not.
+                if self.guard_direction:
+                    names = [sp.name for sp in self.specs]
+                    if self.guard_direction in names:
+                        k = names.index(self.guard_direction)
+                        share = gamma / max(self.offset_gamma, 1e-9)
+                        g = [1.0] * len(names)
+                        g[k] = max(share, 0.05)
+                        self.gains = g
             if self.offset_norm == "energy":
                 # Fixed length, so gamma means the same thing whatever the rank of
                 # the subspace the offset was drawn from. A draw from a rank-r
@@ -1629,6 +1661,7 @@ class SteeringPlan:
             "offset_decode_steps": self.offset_decode_steps,
             "offset_draw_shape": self.offset_draw_shape,
             "offset_gamma_spread": self.offset_gamma_spread,
+            "guard_direction": self.guard_direction,
             "protect_rank": self.protect_rank,
             "per_layer": per_layer,
         }

@@ -86,6 +86,7 @@ def make_plan(
     offset_scale=None,
     offset_draw_shape="sphere",
     offset_gamma_spread=0.0,
+    guard_direction="",
     noise_norm_match="energy",
     noise_schedule="constant",
     offset_gamma=0.0,
@@ -144,6 +145,7 @@ def make_plan(
         offset_scale=offset_scale,
         offset_draw_shape=offset_draw_shape,
         offset_gamma_spread=offset_gamma_spread,
+        guard_direction=guard_direction,
         protect_extra=extra,
         offset_gamma=offset_gamma,
         offset_mode=offset_mode,
@@ -1219,6 +1221,7 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                 offset_scale=getattr(args, "offset_scale", None),
                 offset_draw_shape=getattr(args, "offset_draw_shape", "sphere"),
                 offset_gamma_spread=sp,
+                guard_direction=getattr(args, "guard_direction", ""),
                 steer_prefill=True, prompt_tail_clear=keep,
                 offset_prefill=True, offset_decode=False, **quiet, **base)})
         return items, (
