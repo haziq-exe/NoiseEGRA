@@ -965,6 +965,71 @@
      "negative": "The story should open in the present tense, so let me check that word count."
     }
    ]
+  },
+  "not_advising": {
+   "targets": "not_advising",
+   "pairs": [
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Mara steps onto the bus and scans the rows for an empty seat near the back.",
+     "negative": "Here is a list of ideas to keep your own creativity alive as you write today."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Theo forgets his lines and the auditorium goes very quiet around him then.",
+     "negative": "I see you have discovered a new adventure in the world of art."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Rain slides down the window while Nia waits for her name to be called.",
+     "negative": "How about we talk about your favourite hobbies or the adventures you enjoy?"
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Jonah grips the handlebars and pushes off before he can change his mind.",
+     "negative": "Let us dive into a playful tale with a dash of magic and humour."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Sam counts the coins twice and still comes up two whole dollars short here.",
+     "negative": "Feel free to try sketching your favourite scenes and see how it goes."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "The dog barks once and Priya drops the leash onto the wet grey pavement.",
+     "negative": "Here is a gentle description of a quiet moment for you to enjoy."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Elena hears the bell and shoves the note deep into her jacket pocket now.",
+     "negative": "I would love to hear the stories that you have written so far."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Marcus tastes salt on the wind and knows the tide is coming in very fast.",
+     "negative": "I hope you enjoy this sample and can use it for your own work."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Ivy's sneakers squeak across the gym floor as the whistle cuts the air.",
+     "negative": "Would you like me to write another version with a different tone?"
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Dad burns the toast again and the smoke alarm answers from the hallway.",
+     "negative": "Here is a sample conversation between two friends about their school day."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Noor pushes the door open and the cold wind hits her face like water.",
+     "negative": "I am happy to help you explore more ways to express your ideas."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "The bus pulls away and Leo realises his backpack is still on the curb.",
+     "negative": "That is the kind of energy I love and you have got real fire."
+    }
+   ]
   }
  }
 }
