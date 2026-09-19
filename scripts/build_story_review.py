@@ -58,6 +58,7 @@ RULE_TEXT = {
     "no_repetition": "no 5-word run repeated", "distinct_sentences": "no sentence written twice",
     "fresh_openings": "no two words begin more than 3 sentences",
     "mature_register": "sentences with some length and range",
+    "story_format": "no title or heading, sentences keep their capitals",
 }
 
 
@@ -88,7 +89,11 @@ def main() -> None:
     ap.add_argument("--constraint-set", choices=("monotone", "middle"), default="monotone")
     ap.add_argument("--truncate-words", type=int, default=40)
     ap.add_argument("--min-grade", type=float, default=3.0)
-    ap.add_argument("--max-word-uses", type=int, default=3)
+    ap.add_argument("--max-word-uses", type=int, default=5)
+    ap.add_argument("--max-opener-uses", type=int, default=5)
+    ap.add_argument("--max-adverbs", type=int, default=5)
+    ap.add_argument("--min-sensory", type=int, default=6)
+    ap.add_argument("--present-ratio", type=float, default=0.9)
     ap.add_argument("--out", default="story_review.xlsx")
     args = ap.parse_args()
 
@@ -98,8 +103,12 @@ def main() -> None:
 
     rules = (MIDDLE_CONSTRAINTS if args.constraint_set == "middle"
              else MONOTONE_CONSTRAINTS)
-    ck = EnglishConstraintChecker(backend="spacy", constraints=rules, max_opener_uses=3,
+    ck = EnglishConstraintChecker(backend="spacy", constraints=rules,
+                                  max_opener_uses=args.max_opener_uses,
                                   max_word_uses=args.max_word_uses,
+                                  max_adverbs=args.max_adverbs,
+                                  min_sensory=args.min_sensory,
+                                  present_ratio_threshold=args.present_ratio,
                                   min_grade_level=args.min_grade, max_words=200)
     filt = CoherenceFilter()
     emb = dict(kv.split("=", 1) for kv in args.embedding_vendi)
