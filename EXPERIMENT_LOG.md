@@ -4474,3 +4474,47 @@ the writing five times in eight uses and four broke it once. So each gets its
 own fraction, one over one plus its count: the worst travelled towards at a
 sixth of the distance, the mildest at a half. The counts come from the probe
 runs alone, so nothing is fitted to the arms being measured.
+
+## Round 72 - grading the shortening by measured risk
+
+Each shortened story gets its own fraction, one over one plus the number of
+rejections it caused in the probe. The worst -- five failures in eight uses --
+is travelled towards at a sixth of the distance, the mildest at a half. The
+counts come from the probe runs alone. 200 stories a condition, differences from
+raised temperature with top-k, 300 subsamples of 128.
+
+| arm | coherent | refusals | leaked plans | broken /12 | happens | wording |
+|---|---|---|---|---|---|---|
+| temperature 1.8, top-k | 199/200 | 0 | 0 | 3.95 | reference | reference |
+| temperature 1.8, nucleus | 200/200 | 0 | 0 | 3.92 | -4.8 [-7.4, -2.0] | -1.7 [-3.5, -0.0] |
+| the untouched model | 194/200 | 0 | 0 | 4.30 | -28.6 [-31.4, -26.0] | -8.1 [-9.6, -6.7] |
+| **graded, 1.5 out** | **198/200** | **0** | **0** | **3.25** | +1.5 [-1.6, +4.1] | **+5.4** [+3.1, +7.6] |
+| flat 0.4 on twelve, 1.5 out | 196/200 | 3 | 0 | 3.36 | +1.7 [-1.1, +4.1] | **+5.3** [+2.6, +8.0] |
+| eight at 0.5, 1.5 out | 189/200 | 3 | 7 | 3.41 | **+3.5** [+0.7, +6.1] | **+7.4** [+5.1, +9.8] |
+| **graded, 2.0 out** | 183/200 | 2 | 5 | 3.49 | **+4.1** [+1.6, +7.4] | **+9.0** [+6.6, +11.2] |
+
+**Two results, at the two ends of the same arm.**
+
+At one and a half stories out: **198 of 200 coherent, no refusal and no leaked
+plan anywhere, and 3.25 requirements broken of twelve** -- the best compliance
+measured in this project, against the baselines' 3.95 and 3.92 and the untouched
+model's 4.30. Variety of wording beats top-k by 5.4 on an interval clear of
+zero. Variety of what happens is a tie.
+
+At two stories out: **variety of what happens +4.1 and variety of wording +9.0,
+the largest of either measured**, both clear of zero against the stronger
+baseline, at 183 of 200 coherent.
+
+**So the frontier is still there, and it is much better placed than it was.** A
+month of rounds ago the choice was 176 of 200 with the variety or 199 with none
+of it. It is now 198 of 200 with one variety measure won and the other level, or
+183 with both won by margins larger than anything earlier.
+
+**Grading beats the flat factor it replaces**, which is what the eight-against-
+twelve comparison predicted: 198 of 200 against 196, and 3.25 broken against
+3.36, with the register failures gone entirely rather than merely reduced.
+
+Rounds 74 test the two obvious points: the same grading at one and three
+quarter stories out, between the two ends above, and a harder grading -- one
+over one plus twice the count -- at two stories out, to see whether the larger
+variety can be kept while the coherence is recovered.
