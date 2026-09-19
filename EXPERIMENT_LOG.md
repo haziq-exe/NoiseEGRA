@@ -4230,8 +4230,29 @@ much of a sampled story lies inside the steered cloud and how many rejections it
 causes is **+0.09** -- none. Dropping a component that does not predict the
 failure does not prevent the failure.
 
-Worth keeping as a method for how to spend GPU time: the check took one script
-against files already on disk.
+And it does not merely fail to help. Scored at 200 stories against top-k:
+
+| condition | coherent | broken /12 | happens | wording |
+|---|---|---|---|---|
+| temperature 1.8, top-k | 199/200 | 3.95 | reference | reference |
+| aimed at untouched stories | 176/200 | 3.52 | **+3.5** [+1.1, +6.2] | **+9.0** [+6.7, +11.1] |
+| the same, projected | 178/200 | 3.59 | -2.5 [-5.2, +0.2] | -0.1 [-1.9, +2.0] |
+| drawn 2.0, steered cloud | 191/200 | 3.06 | -2.4 [-4.8, +0.0] | **+3.2** [+1.1, +5.2] |
+
+**The projection throws the variety away.** Variety of what happens goes from a
+win of +3.5 to a loss, and variety of wording from +9.0 to nothing, for two
+stories of coherence. The 58% of each story that survives the projection is
+evidently not the 58% that was carrying the variety. Worse than either of the
+two things it was made from.
+
+Worth keeping as a lesson about how to spend GPU time: the check that predicted
+this took one script against files already on disk, and would have saved two
+200-story runs had it been run before them rather than after.
+
+**Also at 200 stories, the drawn displacement two stories out against the steered
+cloud**: 191 of 200 coherent, 3.06 requirements broken against the baselines'
+3.95 and 3.92, variety of wording +3.2 clear of zero against top-k, variety of
+what happens a tie. That is the best all-round arm that does not lose coherence.
 
 ## Round 67 - the real structure of the coherence loss
 
