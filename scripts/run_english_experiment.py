@@ -255,13 +255,18 @@ def main() -> None:
                          "intervention that makes the model less certain from one "
                          "that moves it somewhere else while leaving it as certain")
     ap.add_argument("--offset-draw-shape", default="sphere",
-                    choices=("sphere", "manifold"),
+                    choices=("sphere", "manifold", "anchor"),
                     help="how the per-story perturbation's coefficients are drawn. "
                          "'sphere' weights every direction equally, which is what "
                          "every run so far used. 'manifold' weights them by how far "
                          "the sampled stories actually spread along each, so a "
                          "perturbation of a given size is shaped like a real "
-                         "difference between two of the model's own stories")
+                         "difference between two of the model's own stories. "
+                         "'anchor' stops drawing altogether and aims each story at "
+                         "one of the sampled stories themselves, so at full size "
+                         "the state lands where the model has genuinely been. The "
+                         "refusals that cap the displacement are the model finding "
+                         "itself somewhere it never writes from.")
     ap.add_argument("--guard-direction", default="",
                     help="a direction whose share of the push is scaled per story "
                          "by how far that story was displaced, so the stories that "
@@ -1058,6 +1063,21 @@ def main() -> None:
             # them rather than treating every direction alike.
             args.offset_scale = getattr(cached, "scale", None)
             args.amplify_mean = cached.mean
+            # The sampled stories themselves, for a displacement aimed at one of
+            # them rather than drawn in the span of their principal components.
+            # Published for the whole run, so no suite has to name it.
+            anchors = getattr(cached, "anchors", None) or None
+            _ro.RUN_DEFAULTS["offset_anchors"] = anchors
+            if args.offset_draw_shape == "anchor":
+                if not anchors:
+                    raise SystemExit(
+                        "--offset-draw-shape anchor needs the sampled stories "
+                        f"themselves, and {pc_path.name} was written before they "
+                        "were kept. Delete it and rerun so it is taken again."
+                    )
+                n = anchors[sorted(anchors)[0]].shape[0]
+                print(f"  the perturbation aims at one of {n} stories the model "
+                      "wrote, not at a point in the span of their directions")
         else:
             args.offset_basis = args.amplify_basis = cached
         rank0 = args.offset_basis[sorted(args.offset_basis)[0]].shape[1]

@@ -47,6 +47,18 @@ class StoryAxes:
     # draw by this makes a perturbation of a given size look like a real
     # story-to-story difference instead.
     scale: Dict[int, torch.Tensor] = field(default_factory=dict)
+    # The sampled stories themselves, centred: ``anchors[layer]`` is
+    # (n_stories, hidden_size), one row per story, each the mean of that story's
+    # decode-step activations minus ``mean[layer]``.
+    #
+    # The basis is a summary of these, and throwing them away costs something. A
+    # displacement drawn in the span of the principal components is a mixture of
+    # directions, and at a large enough magnitude it lands somewhere no story of
+    # the model's own ever sat -- which is when the model stops writing a story
+    # and starts refusing. A displacement aimed at one of these rows cannot: at
+    # full magnitude it lands exactly on a state the model produced while
+    # writing one.
+    anchors: Dict[int, torch.Tensor] = field(default_factory=dict)
     explained: float = 0.0
     n_stories: int = 0
 
@@ -261,6 +273,7 @@ def collect_story_pcs(
     centre: Dict[int, torch.Tensor] = {}
     explained, n_used = 0.0, 0
     spread: Dict[int, torch.Tensor] = {}
+    anchors: Dict[int, torch.Tensor] = {}
     for li, means in story_means.items():
         if len(means) < 3:
             raise RuntimeError(f"only {len(means)} usable stories for layer {li}.")
@@ -268,6 +281,7 @@ def collect_story_pcs(
         mu = mat.mean(dim=0)
         centre[li] = mu.contiguous()
         mat = mat - mu.unsqueeze(0)
+        anchors[li] = mat.contiguous()
         k = min(rank, mat.shape[0] - 1, mat.shape[1])
         _, sv, vh = torch.linalg.svd(mat, full_matrices=False)
         basis[li] = vh[:k].t().contiguous()
@@ -280,7 +294,7 @@ def collect_story_pcs(
             if verbose:
                 print(f"  [story basis] rank {k} from {n_used} stories; those "
                       f"directions carry {explained:.0%} of the between-story variation")
-    return StoryAxes(basis=basis, mean=centre, scale=spread,
+    return StoryAxes(basis=basis, mean=centre, scale=spread, anchors=anchors,
                      explained=explained, n_stories=n_used)
 
 

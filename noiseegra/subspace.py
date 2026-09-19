@@ -305,6 +305,10 @@ class LayerPlan:
     layer: int
     basis: torch.Tensor                    # (dim, C) unit steering directions
     protect: Optional[torch.Tensor]        # (dim, k) orthonormal protected basis
+    # The sampled stories themselves, centred: (n_stories, dim), one row per
+    # story. Used when the displacement is aimed at a story rather than drawn in
+    # the span of the principal components summarising them.
+    offset_anchors: Optional[torch.Tensor] = None
     report: Dict[str, object] = field(default_factory=dict)
     offset_basis: Optional[torch.Tensor] = None   # (dim, M) directions offsets may use
     # (M,) how far stories actually spread along each of those directions. Used
@@ -327,7 +331,8 @@ class LayerPlan:
         being in the right place says nothing about the others. Two crashes came
         from assuming it did.
         """
-        for name in ("basis", "protect", "offset_basis", "offset", "jitter",
+        for name in ("basis", "protect", "offset_basis", "offset_anchors", "offset",
+                     "jitter",
                      "amp_basis", "amp_mean", "jitter_basis", "raw_basis",
                      "target", "offset_scale"):
             t = getattr(self, name, None)
@@ -812,6 +817,7 @@ class SteeringPlan:
         offset_decode_steps: int = 0,
         offset_scale: Optional[Mapping[int, torch.Tensor]] = None,
         offset_draw_shape: str = "sphere",
+        offset_anchors: Optional[Mapping[int, torch.Tensor]] = None,
         offset_gamma_spread: float = 0.0,
         guard_direction: str = "",
         protect_extra: Optional[Mapping[int, torch.Tensor]] = None,
@@ -956,6 +962,8 @@ class SteeringPlan:
             layer_plans[layer] = LayerPlan(
                 layer=layer, basis=basis, protect=protect, report=report,
                 offset_basis=ob,
+                offset_anchors=(None if offset_anchors is None
+                                else offset_anchors.get(layer)),
                 offset_scale=(None if offset_scale is None
                               else offset_scale.get(layer)),
                 amp_basis=ab, amp_mean=am, jitter_basis=jb,
@@ -1280,7 +1288,23 @@ class SteeringPlan:
                 coeff = pts[int(story_index) % pts.shape[0]].to(device=dev, dtype=dt)
             else:
                 coeff = None
-            if lp.offset_basis is not None:
+            if self.offset_draw_shape == "anchor" and lp.offset_anchors is not None:
+                # Aim at one of the model's own stories rather than at a point in
+                # the span of the directions summarising them. Every displacement
+                # is then a direction in which the model's own writing actually
+                # varies, and at full magnitude the state lands on a place it has
+                # genuinely been -- which a mixture of principal components, at a
+                # large enough magnitude, does not.
+                rows = lp.offset_anchors
+                which = (0 if story_index is None
+                         else int(story_index) % int(rows.shape[0]))
+                vec = rows[which].to(device=dev, dtype=dt)
+                # The anchors are raw activations, not the complement basis, so
+                # they still have to be taken out of the constraint subspace by
+                # hand; the basis path gets this for free at build time.
+                if self.offset_mode == "orth" and lp.protect is not None:
+                    vec = vec - lp.protect @ (lp.protect.t() @ vec)
+            elif lp.offset_basis is not None:
                 if coeff is None:
                     coeff = torch.randn(lp.offset_basis.shape[1], dtype=dt, device=dev)
                     # Shape the draw like a real difference between two of the

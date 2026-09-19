@@ -71,7 +71,7 @@ DEFAULT_SCHEDULES = {}   # flat for every direction unless a caller says otherwi
 # so every other suite quietly ran at zero -- and a three-arm run was launched,
 # generated and scored before anyone noticed it had not been varying the size at
 # all. Anything a command-line flag sets for a whole run belongs here.
-RUN_DEFAULTS = {"offset_gamma_spread": 0.0}
+RUN_DEFAULTS = {"offset_gamma_spread": 0.0, "offset_anchors": None}
 
 
 def make_plan(
@@ -157,6 +157,7 @@ def make_plan(
         offset_decode_steps=offset_decode_steps,
         offset_scale=offset_scale,
         offset_draw_shape=offset_draw_shape,
+        offset_anchors=RUN_DEFAULTS["offset_anchors"],
         offset_gamma_spread=offset_gamma_spread,
         guard_direction=guard_direction,
         protect_extra=extra,
