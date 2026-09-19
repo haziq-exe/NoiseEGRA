@@ -3748,3 +3748,63 @@ The run's value now lives in one place and 32 suites inherit it;
 constraints' principal components also enlarge, so it printed the same thing on
 the shielded arm and on its unshielded control. It names the shielded directions
 now.
+
+## Round 51 - the format guard, scaled to each story's displacement, is a loss
+
+The idea, built two rounds earlier and not run until now: a story displaced far
+is the one most likely to come back with a heading, so give the format direction
+a share of the push scaled by that story's own displacement rather than a fixed
+share. It needs the format direction steered, so the push is divided five ways
+instead of four. 100 stories a condition, the shield on, displacement size
+varying by 0.5.
+
+| condition | coherent | broken /12 | happens | wording | titled |
+|---|---|---|---|---|---|
+| temperature 1.8, nucleus | 200/200 | 3.92 | reference | reference | 0% |
+| temperature 1.8, top-k | 199/200 | 3.95 | +1.8 [-0.0, +3.9] | +1.1 [-1.2, +4.1] | 0% |
+| shield only, 0.15 | 99/100 | **2.39** | -0.7 [-2.7, +1.6] | -0.3 [-2.4, +1.8] | **2%** |
+| varying size 0.5, no shield | 96/100 | 2.70 | +0.9 [-1.0, +2.5] | +2.7 [+0.6, +5.0] | 9% |
+| shield + guard, 0.15 | 99/100 | 2.86 | **-2.4 [-4.4, -0.5]** | -1.3 [-3.4, +0.4] | 6% |
+| shield + guard, 0.20 | 91/100 | 3.37 | +0.3 [-1.6, +2.0] | +2.3 [+0.1, +4.3] | 10% |
+
+**Worse on every axis it was meant to help.** Headings go up, not down -- 6%
+against the 2% of the same setting without it. Compliance falls from 2.39 to
+2.86. And variety of what happens drops to a real loss against nucleus sampling,
+-2.4 on an interval clear of zero, the first arm on this branch to lose that
+axis outright.
+
+The reason is the one round 49 already found and is now confirmed twice: the
+push has a fixed total, so a fifth direction is not added, it is taken from the
+other four. Weighting a direction by anything at all costs the requirements the
+other directions were holding up, and more than it buys.
+
+**Stop dividing the budget.** Two rounds have now spent it differently -- a
+smaller share to one direction, a story-scaled share to another -- and both came
+back worse on compliance. The four directions at equal shares is not a setting
+that has gone untested; it is the best of everything tried.
+
+## Round 52 - the shield as a subspace: it is what the ceiling is made of
+
+The mean contrast direction plus its top six principal components, so the
+perturbation is held clear of a seven-direction subspace per layer rather than
+one axis. Run at the displacements where the variety is and the coherence is
+not.
+
+| | coherent | refusals | leaked plans | broken /12 | happens |
+|---|---|---|---|---|---|
+| 0.25, one axis | 73/100 | 16 | 6 | 3.52 | 50.6 |
+| **0.25, rank 6** | **84/100** | **8** | **2** | 3.36 | 53.9 |
+| 0.35, one axis | 64/100 | 24 | 7 | 3.45 | 55.7 |
+| **0.35, rank 6** | **81/100** | **10** | 6 | 3.79 | 56.0 |
+
+**Refusals halve and coherence climbs by eleven and seventeen stories in a
+hundred.** The failure that caps the displacement is the one the shield names,
+and naming more of it works. That confirms the reading of round 50: the region
+of the stream that writes stories is bounded in many directions, and a wider
+shield keeps the perturbation inside more of them.
+
+Read with one caution. These wide-shield arms also carry a displacement size
+varying by 0.5, which the one-axis arms of round 50 did not, because of the
+runner fault that dropped it. Some of the coherence gain could be the varying
+size rather than the wider shield. The matched control -- one axis, same varying
+size, same displacement -- is the 0.25 arm of round 51 and settles it.
