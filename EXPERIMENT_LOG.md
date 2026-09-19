@@ -3861,3 +3861,65 @@ nine of its twelve pairs being planning monologue and three being refusals,
 while the failure it has to stop at 0.25 is mostly refusal. Splitting it into
 `not_refusing` and `not_planning`, twelve balanced pairs each, gives two
 well-conditioned directions instead of one averaged one. That is the next run.
+
+## Rounds 53 to 55 - three nulls, and then the thing that was wrong all along
+
+**Round 53, the split shield: null.** `in_story` averages nine planning pairs
+against three refusals, and refusal is what breaks the stories at the
+displacement where the variety is, so it was split into `not_refusing` and
+`not_planning`, twelve balanced pairs each. It keeps exactly the same stories:
+91 of 100 against 91, and 85 against 84, with compliance slightly worse at the
+larger displacement.
+
+**Round 54, a wider spread of displacement sizes: worse.** At the same mean,
+spreads of 0.75 and 1.0 keep 79 and 80 stories of 100 against the 84 that a
+spread of 0.5 keeps, with less variety as well.
+
+That made four ways of attacking the refusals that had failed -- a wider shield,
+a better-aimed shield, a wider spread of sizes, and an extra steered direction.
+All four assume the failure is about *which way* the displacement points.
+
+**Round 55, aiming at one of the model's own stories.** The sampled stories'
+activations were being computed to take their principal components and then
+thrown away. Kept instead, a displacement can aim at one of them rather than at
+a drawn point in their span. It bought variety -- variety of what happens +2.8
+[+1.2, +4.7] over nucleus sampling at a size where the drawn displacement scores
+-1.2 -- and cost a great deal of compliance, 3.83 broken against 2.65.
+
+Where it lost is the whole story. Per requirement, against the drawn
+displacement at the same size: a named character 41% to 17%, sensory detail 75%
+to 52%, and those are two of the four directions the push is steering. It was
+undoing the steering.
+
+### The measurement that was wrong for fifty rounds
+
+The displacement's size has always been set as a fraction of the hidden state's
+own length: `gamma * rms * sqrt(dim)`. That number has no relation to how far
+the model's stories sit from one another, and nothing had ever checked it
+against them.
+
+    a story of the model's own sits 6.9 from the average of the sampled
+    stories at layer 6, 8.1 at layer 7, 9.7 at layer 8
+
+    a displacement of 0.15 -- the size every good arm was run at -- is 15.0
+    a displacement of 0.25 is 25.1
+    a displacement of 0.50 is 50.1
+
+**Every arm in this project has displaced at least twice as far out as any
+story the model has written**, including the one that keeps all hundred stories
+coherent. The refusals are not a ceiling of unknown cause; they are the model
+finding itself far outside its own distribution and falling back on being an
+assistant. And the anchored displacement was never tested as described: aiming
+at a story and then travelling twice its distance does not land on it, it
+overshoots it and exaggerates whatever made it unusual -- which is exactly the
+per-requirement pattern above.
+
+Fixed by `--offset-norm story`, which measures the size against the data: 1.0
+puts the displaced state as far from the average as a typical story, so below
+1.0 is inside the cloud and above it is outside. In these units the whole of
+this project has lived between about 1.5 and 2.2, and everything below 1.0 is
+territory it has never entered.
+
+`tests/test_story_scaled_size.py` pins the arithmetic, including the ratio
+between the two units at the real hidden size, so the claim above stops being
+true loudly rather than quietly.
