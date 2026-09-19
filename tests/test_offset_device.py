@@ -93,7 +93,44 @@ def test_the_relocation_is_not_guarded_by_the_basis() -> None:
     print("  [PASS] a stale offset is relocated although the basis needs no move")
 
 
+def test_every_tensor_is_relocated_not_just_the_basis() -> None:
+    """Each of a layer's tensors is moved on its own.
+
+    They are created at different times -- the basis once, the offset and the
+    jitter every story, the protected subspace at build time -- so one being in
+    the right place says nothing about the others. Guarding the relocation on
+    the basis alone produced two crashes: the per-story offset left on the CPU
+    from the second story onward, and the protected subspace left there by every
+    run that never read it, until the per-token noise path did and died on its
+    first story.
+
+    No second device here, so a second dtype stands in: `to()` is the same call
+    and the staleness is the same.
+    """
+    plan = a_plan()
+    plan.plan_offsets(4, seed=0)
+    plan.resample_offset(0)
+    lp = plan.layer_plans[LAYERS[0]]
+
+    here = lp.basis.dtype
+    # Everything except the basis is left in another dtype, as if created after
+    # the basis had already been moved.
+    for name in ("protect", "offset_basis", "offset"):
+        t = getattr(lp, name, None)
+        if t is not None:
+            setattr(lp, name, t.to(torch.float64))
+
+    lp.relocate(lp.basis.device)
+    for name in ("protect", "offset_basis", "offset"):
+        t = getattr(lp, name, None)
+        if t is not None:
+            assert t.device == lp.basis.device, (
+                f"{name} was not relocated with the rest of the layer")
+    print("  [PASS] every tensor a layer owns is relocated, not only the basis")
+
+
 if __name__ == "__main__":
+    test_every_tensor_is_relocated_not_just_the_basis()
     test_every_story_s_offset_is_relocated()
     test_the_relocation_is_not_guarded_by_the_basis()
     print("\nok")

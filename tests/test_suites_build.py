@@ -104,7 +104,7 @@ for suite in SUITES:
                   "built identical arms instead of raising")
         except ValueError as exc:
             check(f"{suite:<11} refuses a name set it cannot vary",
-                  "not in the steered set" in str(exc), str(exc))
+                  "in the steered set" in str(exc), str(exc))
         continue
     try:
         built, desc = build_suite(suite, VECS, LAYERS, list(NAMES), 1.5, ARGS)

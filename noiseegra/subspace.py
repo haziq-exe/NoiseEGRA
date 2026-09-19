@@ -318,6 +318,22 @@ class LayerPlan:
     raw_basis: Optional[torch.Tensor] = None      # (dim, C) before orthogonalisation
     target: Optional[torch.Tensor] = None         # (C,) where compliant text sits
 
+    def relocate(self, device: "torch.device") -> None:
+        """Move every tensor this layer owns onto ``device``, checking each.
+
+        Not guarded by any single tensor's location: they are created at
+        different times -- the basis once, the offset every story, the jitter
+        every story, the protected subspace at build time -- so one of them
+        being in the right place says nothing about the others. Two crashes came
+        from assuming it did.
+        """
+        for name in ("basis", "protect", "offset_basis", "offset", "jitter",
+                     "amp_basis", "amp_mean", "jitter_basis", "raw_basis",
+                     "target", "offset_scale"):
+            t = getattr(self, name, None)
+            if t is not None and hasattr(t, "device") and t.device != device:
+                setattr(self, name, t.to(device))
+
     def steering_delta(
         self,
         t: int,
@@ -1218,22 +1234,22 @@ class SteeringPlan:
         the plan work under ``device_map="auto"`` when blocks are sharded.
         """
         lp = self.layer_plans[layer]
-        if device is not None and lp.basis.device != device:
-            lp.basis = lp.basis.to(device)
-            if lp.protect is not None:
-                lp.protect = lp.protect.to(device)
-            if lp.offset_basis is not None:
-                lp.offset_basis = lp.offset_basis.to(device)
-            if lp.jitter is not None:
-                lp.jitter = lp.jitter.to(device)
-        # The offset is moved outside that guard because it is redrawn for every
-        # story, after the basis has already been relocated. Inside the guard it
-        # was moved once, for the first story, and every later draw stayed on the
-        # CPU. That never showed while the offset was only ever added at the
-        # prompt, where the prefill hook relocates it itself; the first run that
-        # added it at decode steps died on the second story of every shard.
-        if device is not None and lp.offset is not None and lp.offset.device != device:
-            lp.offset = lp.offset.to(device)
+        # Relocate every tensor this layer owns, each checked on its own.
+        #
+        # This used to be guarded by whether the *basis* was on the wrong
+        # device, which relocated the rest only on the call that moved the
+        # basis. Anything created or redrawn afterwards stayed where it was
+        # made, and the crash came at whichever later step first used it. That
+        # has now happened twice: the per-story offset, redrawn every story, was
+        # left on the CPU from the second story onward; and the protected
+        # subspace, which only the per-token noise path reads, was left there by
+        # every run that did not use it -- until one did, and died on its first
+        # story.
+        #
+        # Checking each tensor is a handful of device comparisons per decode
+        # step and removes the whole family.
+        if device is not None:
+            lp.relocate(device)
 
         h = self.horizon if horizon is None else horizon
         delta = None
