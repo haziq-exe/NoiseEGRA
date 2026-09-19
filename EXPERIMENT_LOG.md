@@ -3358,3 +3358,63 @@ rather than inferred. It is also exactly what a rotation should escape: turning
 the push preserves its length, so the dose along every constraint direction is
 unchanged and there is nothing for compliance to pay. Whether the aim wandering
 over decode steps buys variety at that unchanged dose is the next run.
+
+## Round 45 - the wandering aim, and why per-token mechanisms cannot buy this kind of variety
+
+The constraint push rotated by 0.3 with its aim performing a correlated random
+walk over decode steps, at a length preserved exactly at every step. Walk rates
+0.05 and 0.15, correlation times of about twenty and seven steps. 100 stories a
+condition, differences from nucleus sampling, intervals from 250 subsamples.
+
+| condition | coherent | broken /12 | happens | wording |
+|---|---|---|---|---|
+| temperature 1.8, nucleus 0.95 | 200/200 | 3.92 | reference | reference |
+| temperature 1.8, top-k 40 | 199/200 | 3.95 | **+2.0** [+0.1, +4.0] | +1.1 [-1.2, +3.5] |
+| the method, aim held still | 195/200 | **2.99** | +0.6 [-1.3, +2.4] | +1.2 [-0.9, +3.3] |
+| aim wandering at 0.05 | 99/100 | 3.09 | -0.6 [-2.4, +1.2] | +0.1 [-2.0, +1.8] |
+| aim wandering at 0.15 | 98/100 | 3.09 | -0.7 [-2.3, +1.2] | -0.1 [-2.0, +1.7] |
+
+**The mechanism works and buys nothing.** It was checked before it was scored,
+because two arms differing only in a walk rate producing the same stories is the
+silent-null signature this project has hit four times. They do not: 26 stories
+of 100 are identical between the two rates and the rest diverge, the first
+difference falling around word 44 -- exactly the signature of a correlated walk,
+where the aims start together and separate gradually.
+
+    walk 0.05: ... and she laughs. "Hey, Maya!" calls her friend, Leo, from behind.
+    walk 0.15: ... and she laughs. She spots her friend, Lena, sitting on a bench,
+
+Coherence holds at 99 and 98 of 100 and compliance is barely touched, 3.09
+against 2.99, which is what preserving the push's length predicted. But both
+varieties are ties with nucleus sampling and slightly below the aim held still.
+
+### Why, and what it says about the whole family
+
+Vendi measures how different the stories are **from each other**. The wandering
+aim varies *within* a story and is identically distributed *across* stories:
+every story wanders, and they all wander the same way, so they end up no further
+apart than before. Fresh per-token noise is the same object -- it varies within
+a story, is identically distributed across them, and measured *below* nucleus
+sampling on both varieties.
+
+That is one explanation covering two nulls, and it predicts the third thing
+already measured: the per-story perturbation is the only intervention here that
+differs **between** stories, and it is the only one that has ever moved this
+axis, by about 12 points for about 1.3 requirements.
+
+So per-token variation is not what raises between-story diversity, whatever
+raised temperature appears to suggest. Temperature does not add a per-token
+offset; it widens the distribution each token is drawn from, which makes the
+trajectories themselves spread apart. A fixed-length rotation or a fixed-scale
+noise does not widen anything.
+
+**What this rules out.** Any mechanism whose randomness is drawn afresh inside a
+story, at a scale that does not differ between stories, cannot raise variety of
+what happens here. That covers per-token noise, the wandering aim, the entropy
+gate, and the opening-window siting -- all four measured, all four nulls or
+worse on this axis, for the same reason.
+
+**What it leaves.** Between-story variation, which is the per-story
+perturbation, whose size is capped by coherence and formatting at 0.15; and
+widening the token distribution, which is sampling temperature and is excluded
+by the task.
