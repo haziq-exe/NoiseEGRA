@@ -4039,3 +4039,58 @@ coherent and variety of what happens is a tie. The next run takes the steered
 basis much further out -- 2.0, 2.5 and 3.0 -- on the reasoning that it survives
 distance far better, so the distance that gives the untouched basis its variety
 may be reachable on it without the breakage.
+
+## Rounds 59 to 61 - the corrected frame maps a frontier, not a way off it
+
+The full sweep with the displacement measured against stories sampled under the
+push, both draws, 100 stories a condition, intervals from 250 subsamples of 58.
+
+| condition | coherent | broken /12 | happens | wording | preamble | titled |
+|---|---|---|---|---|---|---|
+| temperature 1.8, nucleus | 200/200 | 3.92 | reference | reference | 0% | 0% |
+| temperature 1.8, top-k | 199/200 | 3.95 | +1.6 [-0.5, +3.5] | +1.1 [-1.2, +3.6] | 0% | 0% |
+| **drawn 1.0** | **100/100** | **2.01** | -2.5 [-4.4, -0.6] | -1.6 [-3.7, +0.1] | **0%** | **0%** |
+| **drawn 1.5** | **100/100** | 2.75 | -0.7 [-2.4, +1.1] | +1.0 [-1.3, +3.0] | 2% | 4% |
+| anchored 0.75 | 97/100 | 3.24 | -0.9 [-2.6, +1.2] | +0.5 [-1.7, +2.4] | 0% | 2% |
+| anchored 1.0 | 98/100 | 3.41 | +0.9 [-1.1, +3.0] | +2.4 [+0.4, +4.6] | 1% | 5% |
+| anchored 1.25 | 95/100 | 3.48 | +1.1 [-0.8, +3.3] | +5.5 [+3.3, +7.9] | 2% | 5% |
+| anchored 1.5 | 92/100 | 3.54 | +1.1 [-0.9, +3.2] | +6.7 [+4.0, +9.1] | 5% | 11% |
+| anchored 2.0 | 83/100 | 3.78 | +1.5 [-0.5, +3.6] | +7.9 [+5.4, +10.1] | 7% | 14% |
+| anchored 2.5 | 82/100 | | | | 12% | 21% |
+| anchored 3.0 | 77/100 | | | | 13% | 16% |
+
+**The first arm with no formatting failure of any kind.** The drawn displacement
+at one story out, measured against the steered cloud: 100 of 100 coherent, no
+refusal, no leaked plan, no preamble, no heading, and 2.01 requirements broken
+against the baselines' 3.92 and 3.95. Nothing in this project has previously
+produced a hundred stories with nothing wrong with the format of any of them.
+
+**Going further out does not buy variety back.** At 2.0, 2.5 and 3.0 the
+anchored arm reproduces the same collapse it shows on the untouched basis --
+refusals, leaked plans, preambles and headings all climbing together -- while
+variety of what happens stays a tie. That closes the "just go further" route and
+is the fourth consistent confirmation that these failures are one failure.
+
+**Variety of what happens is never won in this frame.** The best is +1.5 with an
+interval spanning zero. On the untouched basis the same mechanism reaches +3.1
+on an interval clear of zero. The steered cloud has less variation in what
+happens for a displacement to amplify, which is what a push that makes every
+story present-tense, sensory and about a named character is *for*.
+
+### What the two frames are, stated plainly
+
+They are two points on one frontier, not two attempts at the same thing.
+
+* **Untouched cloud:** richer directions, so more variety of what happens, and
+  the state leaves the region the model writes from sooner. Best arm 87 of 100
+  coherent with variety of what happens +3.1.
+* **Steered cloud:** the state stays where the model writes from, so coherence
+  and formatting are clean, and the directions carry less of what varies between
+  stories. Best arm 100 of 100 coherent with variety of what happens a tie.
+
+Moving between them slides along the frontier. Nothing tried so far moves off
+it. The one lever never tried at these distances is the strength of the push
+itself: it is what holds a story compliant and coherent, it has been fixed at a
+total of 2 since round 37, and the one earlier test of raising it was run
+without a large displacement and in the wrong size unit. Rounds 62 test totals
+of 3 and 4 at the displacements where the anchored arm has its variety.
