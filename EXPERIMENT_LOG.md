@@ -4518,3 +4518,73 @@ Rounds 74 test the two obvious points: the same grading at one and three
 quarter stories out, between the two ends above, and a harder grading -- one
 over one plus twice the count -- at two stories out, to see whether the larger
 variety can be kept while the coherence is recovered.
+
+## Round 73 - reading the stories overturns the result
+
+The arm that shortens the twelve calibrated stories to a quarter of the
+distance reached 200 of 200 coherent, 3.10 requirements broken against the
+baselines' 3.92 and 3.95, and beat raised-temperature nucleus sampling on both
+variety measures on intervals clear of zero. Every number said the goal was met.
+
+Then the stories were read. Story 0:
+
+    Ah! I see you've discovered your new adventure in the world of creative art
+    and storytelling. If you're feeling inspired to explore even more, here's a
+    few ideas to keep the creativity alive:
+
+    1. **Sketchbook Adventures**: Maybe try sketching your favourite scenes ...
+    2. **Mime & Whisper**: Experiment with different ways to express your ideas ...
+
+That is a numbered list of art tips. Story 91 is a preamble followed by a
+synopsis of a story rather than a story. Story 154 is atmospheric description
+with no character and nothing happening. All three passed every coherence check,
+because the checks look for garbled text, repetition, lost function words and
+degenerate loops -- and fluent second-person advice has none of those.
+
+**And it is exactly what inflates a diversity score.** A list of drawing tips is
+enormously unlike a story about a girl at a bus stop. The variety this arm was
+being credited with was partly the variety of not writing stories.
+
+### How much of it there is
+
+The model addressing the person who asked -- offering help, proposing what to do
+next, or handing over a labelled artefact that is not a story -- or producing a
+numbered list or a script:
+
+| condition | not a story |
+|---|---|
+| the untouched model | **0%** (0/200) |
+| temperature 1.8, nucleus | **0%** (0/200) |
+| temperature 1.8, top-k | **0%** (0/200) |
+| drawn 1.0 out, steered cloud | **0%** (0/100) |
+| round 42 method | 2% (5/200) |
+| drawn 1.75 out, steered cloud | 6% (13/200) |
+| **graded shortening at 1.5** | **15%** (30/200) |
+| **flat 0.25 at 1.5** | **16%** (31/200) |
+| aimed at all 32, full distance | **24%** (47/200) |
+
+**Three baselines at zero and the anchored arms up to a quarter.** So it is a
+cost of the intervention, not a property of the model, and it rises with how far
+the state is displaced -- the same ordering as the refusals and the leaked
+plans, which is what it is: the same failure, one step further along, where the
+model has stopped refusing and started being helpful instead.
+
+It is scored as a **broken story**, not a broken requirement. A heading or a
+preamble has a story underneath it; this does not.
+
+### Why the checks missed it, and what that costs
+
+Every check in `coherence.py` asks whether the text is degenerate. None asked
+whether it is a story. The gap was invisible for as long as the failures were
+refusals, because a refusal is short and blunt; this one is long, fluent and
+varied, and looks like success from every angle except reading it.
+
+`is_not_a_story` now catches it. Detecting it needed care: a story may be told
+in the second person -- "You tread cautiously through the forest, the crunch of
+leaves beneath your boots the only sound" is a story -- and three of the first
+eight that a bare second-person rule flagged were exactly that. What marks the
+failures is the model addressing the *task*.
+
+**Every result on this branch from round 64 onward is affected** and is being
+rescored. The arms that displace least are barely touched; the arms that won
+variety of what happens are the ones that produce the most of this.
