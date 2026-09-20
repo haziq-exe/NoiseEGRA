@@ -39,6 +39,42 @@ roughly 150 words instead of 60 -- it did not, and this branch exists to make it
 compliance, all at once, and beat raised-temperature decoding. The novelty bar
 in `astar-novelty-bar` still applies.
 
+### Where the middle-school branch actually ended up (round 83)
+
+Qwen3-1.7B, one instruction, temperature 1.0, 200 stories a condition, both
+baselines also at 200. Scored with a non-story counted as a broken story.
+Differences from raised temperature with nucleus sampling, 400 subsamples.
+
+| configuration | coherent | broken /12 | what happens | wording |
+|---|---|---|---|---|
+| temperature 1.8, nucleus (top-p) | 200/200 | 3.92 | reference | reference |
+| temperature 1.8, top-k | 199/200 | 3.95 | +4.6 [+2.0, +7.1] | +1.6 [-0.3, +3.4] |
+| the untouched model | 194/200 | 4.30 | -21 | -6 |
+| displacement 1.5 stories | 190/200 | **2.83** | tie | tie |
+| displacement 1.7 stories | 182/200 | 3.01 | **+3.3** [+0.7, +6.0] | tie |
+| **displacement 1.75 stories** | 178/200 | 3.25 | **+3.2** [+0.5, +5.8] | **+2.7** [+1.0, +4.6] |
+| displacement 2.0 stories | 170/200 | 3.35 | **+4.8** [+2.3, +7.3] | **+5.2** [+3.2, +6.9] |
+
+**Requirement compliance is won everywhere**, by about a requirement of twelve,
+on intervals well clear of zero. It is the one result that has survived every
+measurement correction, including the one that removed all the variety claims.
+
+**Both variety measures are won from 1.75 stories out**, against top-p. Against
+top-k, variety of what happens is a tie at every setting.
+
+**Coherence and variety trade, and the trade has not been broken.** Thirteen
+mechanisms were tried against it -- shield width, shield aim, a second shield
+for assistant helpfulness, the spread of displacement sizes, the total push, the
+frame the displacement is measured in, drawn against anchored draws, removing
+the risky sampled stories, shortening them, grading that shortening by measured
+risk, adding a direction that asks for an event, pushing that direction harder,
+and varying its strength per story. Every one either slides along the same curve
+or fails.
+
+The configuration to quote depends on which axis must not be given up:
+**1.5 stories out** for compliance and coherence with variety level, or
+**1.75 stories out** for compliance and both variety measures at 178 of 200.
+
 ### Read this before trusting any coherence or variety number below
 
 **Every number written before round 76 counts a class of failure as success.**

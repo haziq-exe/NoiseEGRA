@@ -4822,3 +4822,42 @@ both axes from a win on both.
 
 That is the thirteenth mechanism or setting tried against this trade and the
 first fine-grained sweep through it. Every one lands on the same curve.
+
+## Round 83 - the crossing, and the end of the sweep
+
+| five directions, displacement | coherent | not a story | broken /12 | happens | wording |
+|---|---|---|---|---|---|
+| 1.5 | 190/200 | 2% | **2.83** | +0.5 [-2.4, +3.1] | -0.1 [-1.9, +1.6] |
+| 1.6 | 185/200 | 5% | 2.97 | +0.9 [-1.8, +3.4] | +1.5 [-0.4, +3.3] |
+| **1.7** | 182/200 | 6% | 3.01 | **+3.3** [+0.7, +6.0] | +1.7 [-0.3, +3.4] |
+| 1.75 | 178/200 | 7% | 3.25 | **+3.2** [+0.5, +5.8] | **+2.7** [+1.0, +4.6] |
+| 2.0 | 170/200 | 10% | 3.35 | **+4.8** [+2.3, +7.3] | **+5.2** [+3.2, +6.9] |
+
+**Variety of what happens crosses between 1.6 and 1.7**, and wording between 1.7
+and 1.75. At 1.7 the method beats nucleus sampling on requirement compliance and
+on variety of what happens, with wording level, keeping 182 stories of 200. At
+1.75 it beats it on all three, keeping 178.
+
+**The sweep is finished.** Five displacements between 1.5 and 2.0, at 200 stories
+each, and the curve is smooth in coherence, in the non-story rate, in compliance
+and in both varieties. There is no setting that keeps every story and wins the
+content axis, and no discontinuity anywhere along it that a different mechanism
+might sit in.
+
+### What to put in the paper
+
+The compliance result, which is large, repeatable and has survived four separate
+measurement corrections: **2.83 requirements broken of twelve against 3.92 and
+3.95, at 190 stories of 200 coherent**. Alongside it, the frontier as measured,
+and the four negative results that explain why it is a frontier:
+
+* shielding a direction takes refusals to zero and does nothing against the
+  model being helpful, so not every failure is a direction;
+* varying a steered direction's strength between stories is inert, even when
+  that direction demonstrably controls what the story is about;
+* aiming the displacement at the model's own sampled stories manufactures
+  variety by breaking them -- the stories that carry the variety are the stories
+  that break;
+* a coherence filter built to catch degenerate text cannot see a fluent
+  non-story, and a fluent non-story *raises* a diversity score. That is a hazard
+  for anyone measuring generative diversity this way, not a bug in one function.
