@@ -1095,6 +1095,326 @@
      "negative": "The door is heavy and the handle is cold beneath his open palm."
     }
    ]
+  },
+  "mature_register": {
+   "pairs": [
+    {
+     "prefix": "The bus is late.",
+     "positive": "Because the bus was late again, Nadia counted the cracks in the pavement while the others argued about whose fault it was.",
+     "negative": "The bus was late. Nadia looked down. She saw cracks. The others argued. It was not her fault."
+    },
+    {
+     "prefix": "The lights go out.",
+     "positive": "When the lights went out across the whole block, the street felt wider than it had all summer, and nobody wanted to say so.",
+     "negative": "The lights went out. The block was dark. The street felt wide. Nobody spoke. It was strange."
+    },
+    {
+     "prefix": "She finds a key.",
+     "positive": "The key she found under the mat was heavier than it looked, and it did not fit any door she could think of.",
+     "negative": "She found a key. It was under the mat. It was heavy. It fit no door. She kept it."
+    },
+    {
+     "prefix": "The race starts.",
+     "positive": "By the time the whistle went, Tomas had already decided he would rather lose honestly than win the way his brother had.",
+     "negative": "The whistle went. Tomas ran. He could win. His brother cheated. He did not want to."
+    },
+    {
+     "prefix": "The kitchen floods.",
+     "positive": "Water was coming up through the kitchen tiles faster than they could sweep it back, which meant the pipe had finally given out.",
+     "negative": "Water came up. It came through the tiles. They swept it. The pipe broke. It was fast."
+    },
+    {
+     "prefix": "He misses the train.",
+     "positive": "Having missed the last train by less than a minute, Idris sat down on the cold bench and worked out how far he would have to walk.",
+     "negative": "He missed the train. It was close. He sat down. The bench was cold. He would walk."
+    },
+    {
+     "prefix": "The letter arrives.",
+     "positive": "The letter that arrived on Thursday was addressed to a woman who had not lived in the house for eleven years.",
+     "negative": "A letter came. It came on Thursday. It had a name. She had moved. That was years ago."
+    },
+    {
+     "prefix": "The dog runs off.",
+     "positive": "Although she called until her voice gave out, the dog kept going towards the tree line and did not once look back.",
+     "negative": "She called the dog. Her voice gave out. The dog ran. It went to the trees. It did not stop."
+    },
+    {
+     "prefix": "The power comes back.",
+     "positive": "When the power finally came back on, the fridge started humming again as though nothing at all had happened in the last two days.",
+     "negative": "The power came back. The fridge hummed. It was loud. Two days had passed. Nothing had changed."
+    },
+    {
+     "prefix": "They reach the top.",
+     "positive": "From the top of the hill, where the wind was strong enough to lean into, the town below looked smaller than either of them expected.",
+     "negative": "They reached the top. The wind was strong. They leaned on it. The town was below. It looked small."
+    },
+    {
+     "prefix": "The shop closes.",
+     "positive": "The shop had been closing at four all winter, which nobody minded until the week the buses changed their timetable.",
+     "negative": "The shop closed at four. It was winter. Nobody minded. Then the buses changed. Now they minded."
+    },
+    {
+     "prefix": "A storm comes in.",
+     "positive": "The storm arrived from the east, dragging a grey wall of rain behind it that swallowed the harbour one boat at a time.",
+     "negative": "The storm came. It came from the east. Rain fell. The harbour went grey. The boats went too."
+    }
+   ]
+  },
+  "fresh_words": {
+   "pairs": [
+    {
+     "prefix": "The market is open.",
+     "positive": "Stalls crowd the square, crates spill onto the kerb, and the whole street smells of oranges.",
+     "negative": "The market has market stalls and market crates and the market smell fills the market street."
+    },
+    {
+     "prefix": "She climbs the tree.",
+     "positive": "She hauls herself onto the lowest branch, then the next, until the ground looks far away.",
+     "negative": "She climbs the tree, then climbs higher up the tree, until the tree is all she can see."
+    },
+    {
+     "prefix": "The boat is small.",
+     "positive": "The hull barely clears the water, the deck is two paces wide, and the sail patches the sky.",
+     "negative": "The boat is a small boat, a boat with a small deck, and the small boat has a small sail."
+    },
+    {
+     "prefix": "He builds a fire.",
+     "positive": "He stacks kindling into a cone, strikes once, and watches the flame take hold of the bark.",
+     "negative": "He builds a fire. The fire is small. He feeds the fire. The fire grows. The fire is warm."
+    },
+    {
+     "prefix": "The room is cold.",
+     "positive": "Frost webs the inside of the glass, her breath hangs, and the radiator ticks without warming.",
+     "negative": "The cold room is very cold. The cold glass is cold. Her cold hands feel the cold air."
+    },
+    {
+     "prefix": "They find a path.",
+     "positive": "A track winds between the rocks, narrows to a ledge, and drops away towards the water.",
+     "negative": "They find a path. The path goes on. The path is narrow. The path turns. The path ends."
+    },
+    {
+     "prefix": "The cat is missing.",
+     "positive": "Nobody has seen her since Tuesday, and her bowl sits untouched beside the back door.",
+     "negative": "The cat is missing. The cat was here. The cat ate. Now the cat is gone. Find the cat."
+    },
+    {
+     "prefix": "The game begins.",
+     "positive": "The whistle cuts across the pitch, boots tear at the turf, and the ball is already gone.",
+     "negative": "The game starts. The game is fast. The game is hard. The game goes on. The game ends."
+    },
+    {
+     "prefix": "Rain falls hard.",
+     "positive": "Water sheets off the roof, floods the gutter, and drums on every parked car in the road.",
+     "negative": "The rain falls. The rain is hard. The rain fills the road. The rain hits. The rain stays."
+    },
+    {
+     "prefix": "The library shuts.",
+     "positive": "Shelves go dark one row at a time, a trolley squeaks, and the last reader gathers her coat.",
+     "negative": "The library shuts. The library is dark. The library is quiet. The library door locks."
+    },
+    {
+     "prefix": "He learns to swim.",
+     "positive": "He kicks, swallows half the pool, comes up furious, and pushes off from the tiles again.",
+     "negative": "He learns to swim. Swimming is hard. He swims badly. He swims again. He will swim well."
+    },
+    {
+     "prefix": "The bread burns.",
+     "positive": "Smoke rolls out of the oven, the crust is black, and the whole flat smells of it for hours.",
+     "negative": "The bread burns. The bread is black. The burnt bread smells. The bread is ruined bread."
+    }
+   ]
+  },
+  "no_repetition": {
+   "pairs": [
+    {
+     "prefix": "The door is locked.",
+     "positive": "She tries the handle, then the window, then the gate at the side of the house.",
+     "negative": "She tries the handle again. She tries the window again. She tries the gate again."
+    },
+    {
+     "prefix": "They wait for news.",
+     "positive": "Mum checks the phone. Dad stands by the window. Nobody wants to be the one who speaks.",
+     "negative": "They wait for the news. They wait for the news. Nobody says anything at all."
+    },
+    {
+     "prefix": "The bell rings.",
+     "positive": "Chairs scrape, bags swing off the backs of seats, and the corridor fills in seconds.",
+     "negative": "The bell rings and they go. The bell rings and they go. The corridor fills up."
+    },
+    {
+     "prefix": "She reads the sign.",
+     "positive": "The paint has flaked away from half the letters, but the arrow still points up the lane.",
+     "negative": "She reads the sign on the post. She reads the sign again slowly. The arrow points up."
+    },
+    {
+     "prefix": "The engine stops.",
+     "positive": "Something clicks twice under the bonnet, then nothing, and the car rolls to the kerb.",
+     "negative": "The engine will not start. The engine will not start. The car rolls to the kerb."
+    },
+    {
+     "prefix": "He counts the coins.",
+     "positive": "Four pounds and some copper, which is not enough, and he knew that before he started.",
+     "negative": "He counts the coins in his hand. He counts the coins in his hand. It is not enough."
+    },
+    {
+     "prefix": "The river rises.",
+     "positive": "It takes the bottom step, then the path, and by evening the bench has gone under.",
+     "negative": "The water is coming up fast. The water is coming up fast. The bench goes under."
+    },
+    {
+     "prefix": "She packs a bag.",
+     "positive": "Two shirts, the good boots, the photograph from the hall, and nothing else she will miss.",
+     "negative": "She puts it in the bag. She puts it in the bag. Then she shuts the bag and goes."
+    },
+    {
+     "prefix": "The plan fails.",
+     "positive": "The rope is short, the gate is higher than it looked, and Sam is already laughing.",
+     "negative": "It did not work at all. It did not work at all. Sam is already laughing at them."
+    },
+    {
+     "prefix": "They dig a hole.",
+     "positive": "The spade turns clay, then stone, then something that rings when the blade touches it.",
+     "negative": "They dig down into the ground. They dig down into the ground. Something rings below."
+    },
+    {
+     "prefix": "The kite gets stuck.",
+     "positive": "String loops twice round a branch, and the tail hangs where nobody can reach it.",
+     "negative": "The kite is up in the tree. The kite is up in the tree. Nobody can reach it now."
+    },
+    {
+     "prefix": "Morning is quiet.",
+     "positive": "No traffic, no gulls, only the tap dripping into a pan somebody left in the sink.",
+     "negative": "There is nobody about at all. There is nobody about at all. Only the tap drips."
+    }
+   ]
+  },
+  "distinct_sentences": {
+   "pairs": [
+    {
+     "prefix": "The class waits.",
+     "positive": "Mr Ali is late. Someone opens a window. A paper plane crosses the room and lands badly.",
+     "negative": "Mr Ali is late. Someone opens a window. Mr Ali is late. A paper plane lands badly."
+    },
+    {
+     "prefix": "The tide goes out.",
+     "positive": "Weed lies flat on the rocks. Crabs move under it. The boats tilt where they were left.",
+     "negative": "The boats tilt where they were left. Crabs move under the weed. The boats tilt where they were left."
+    },
+    {
+     "prefix": "She cannot sleep.",
+     "positive": "The pipes knock. A car turns in the road below. Her alarm is set for six and she knows it.",
+     "negative": "The pipes knock. A car turns in the road below. The pipes knock. Her alarm is set for six."
+    },
+    {
+     "prefix": "The cake is ready.",
+     "positive": "Steam lifts off the top. Nadia burns two fingers. Nobody waits for it to cool properly.",
+     "negative": "Steam lifts off the top. Nobody waits for it to cool. Steam lifts off the top. Nadia burns two fingers."
+    },
+    {
+     "prefix": "The match is close.",
+     "positive": "Two minutes left. The keeper is limping. Someone on the touchline has stopped watching.",
+     "negative": "Two minutes left. The keeper is limping. Two minutes left. Someone has stopped watching."
+    },
+    {
+     "prefix": "They miss the turn.",
+     "positive": "The lane narrows. Hedges scrape both mirrors. Dad refuses to admit he has gone wrong.",
+     "negative": "The lane narrows. Dad refuses to admit he is wrong. The lane narrows. Hedges scrape the mirrors."
+    },
+    {
+     "prefix": "The shop is empty.",
+     "positive": "Shelves stand half stocked. A radio plays to nobody. The till drawer hangs open an inch.",
+     "negative": "A radio plays to nobody. Shelves stand half stocked. A radio plays to nobody. The till hangs open."
+    },
+    {
+     "prefix": "Snow starts falling.",
+     "positive": "It settles on the wall first. The road stays black for an hour. Then the road goes too.",
+     "negative": "It settles on the wall first. Then the road goes too. It settles on the wall first. The road is white."
+    },
+    {
+     "prefix": "He forgets the words.",
+     "positive": "The hall is silent. His sheet is somewhere under the piano. He starts again from the top.",
+     "negative": "The hall is silent. He starts again from the top. The hall is silent. His sheet is lost."
+    },
+    {
+     "prefix": "The lift stops.",
+     "positive": "The light flickers once. Farah presses every button. A voice asks if anyone is inside.",
+     "negative": "The light flickers once. A voice asks if anyone is inside. The light flickers once. Farah presses every button."
+    },
+    {
+     "prefix": "The fox comes back.",
+     "positive": "It crosses the lawn slowly. The bin lid is already off. Nobody gets up to chase it.",
+     "negative": "It crosses the lawn slowly. Nobody gets up to chase it. It crosses the lawn slowly. The bin lid is off."
+    },
+    {
+     "prefix": "They light a candle.",
+     "positive": "Wax runs onto the saucer. The room shrinks to one corner. Outside, the wind keeps on.",
+     "negative": "Wax runs onto the saucer. Outside, the wind keeps on. Wax runs onto the saucer. The room shrinks."
+    }
+   ]
+  },
+  "fresh_openings": {
+   "pairs": [
+    {
+     "prefix": "The camp wakes.",
+     "positive": "Tents sag with dew. Someone is already boiling water. Two boys argue over a missing boot.",
+     "negative": "She was cold. She was tired. She was hungry. She was ready to go home now."
+    },
+    {
+     "prefix": "The road floods.",
+     "positive": "Water covers the white line. Cars turn back one by one. A tractor comes through anyway.",
+     "negative": "There was water on the road. There was a queue of cars. There was a tractor coming."
+    },
+    {
+     "prefix": "She takes the test.",
+     "positive": "Paper rustles at the front. The clock is behind her on purpose. Her pen leaks on page two.",
+     "negative": "It was quiet. It was hot. It was hard. It was over before she had finished."
+    },
+    {
+     "prefix": "The band plays.",
+     "positive": "Drums start too fast. The singer forgets a verse. Nobody in the hall seems to mind.",
+     "negative": "They were loud. They were early. They were out of time. They were happy anyway."
+    },
+    {
+     "prefix": "He waits outside.",
+     "positive": "Rain drips off the porch. A cat watches from the wall. The door stays shut for an hour.",
+     "negative": "He was wet. He was cold. He was early. He was not going to knock again."
+    },
+    {
+     "prefix": "The ferry is late.",
+     "positive": "Gulls work the car park. Somebody sells tea from a van. The sea is flat and grey.",
+     "negative": "There was no ferry. There was a van. There was tea. There was nothing else to do."
+    },
+    {
+     "prefix": "They clear the attic.",
+     "positive": "Dust rises in the torchlight. Boxes give way at the corners. A bird has been in here.",
+     "negative": "It was dark. It was dusty. It was full. It was going to take all weekend."
+    },
+    {
+     "prefix": "The fence breaks.",
+     "positive": "Sheep are through it by morning. Ahmed counts them twice. The field beyond is not theirs.",
+     "negative": "She saw sheep. She saw a gap. She saw the field. She saw the problem straight away."
+    },
+    {
+     "prefix": "The pool opens.",
+     "positive": "Chlorine hits first. Feet slap wet tiles. Somebody has already been told off for running.",
+     "negative": "It was cold. It was loud. It was busy. It was better than being at home."
+    },
+    {
+     "prefix": "Exams finish.",
+     "positive": "Papers go face down. The hall empties in stages. Outside, nobody wants to talk about it.",
+     "negative": "They were done. They were free. They were quiet. They were not going to discuss it."
+    },
+    {
+     "prefix": "The van breaks down.",
+     "positive": "Steam lifts from the bonnet. Dad has no signal. A lorry passes close enough to rock them.",
+     "negative": "There was steam. There was no signal. There was a lorry. There was a long wait ahead."
+    },
+    {
+     "prefix": "Winter sets in.",
+     "positive": "Pipes freeze on the north wall. The bus stops running past four. Everyone stays indoors.",
+     "negative": "It was dark early. It was cold inside. It was quiet outside. It was going to last."
+    }
+   ]
   }
  }
 }
