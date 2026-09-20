@@ -42,6 +42,11 @@ class Args:
     offset_basis_tokens = 120
     steer_vectors = ["present_tense", "sensory", "named_character"]
     allocate_floor = 0.0
+    max_new_tokens = 600
+    temperature = 1.0
+    baseline_top_p = None
+    baseline_top_k = None
+    max_words = 200
 
 
 class Axes:
@@ -61,7 +66,7 @@ class Checker:
 
 def run(words_per_story, n=32):
     story = " ".join(["word"] * words_per_story)
-    return _allocate_by_shortfall(Args(), Axes([story] * n), Checker())
+    return _allocate_by_shortfall(Args(), Axes([]), Checker(), texts=[story] * n)
 
 
 def refuses(fn):
@@ -97,6 +102,38 @@ class Empty:
 
 check("an empty calibration sample leaves the budget equal instead of stopping",
       _allocate_by_shortfall(Args(), Empty(), Checker()) is None)
+
+
+# --- the calibration must come from the run's own decoding ------------------
+# The basis sample draws each token straight from the softmax with no
+# truncation, while the run generates through the model's own decoding. Not
+# leaning on one word passed 44% of the time on the basis sample against 99% on
+# 200 stories generated the run's way, which handed more than half a
+# direction's worth of budget to a requirement that never fails.
+from run_english_experiment import _sample_calibration_stories  # noqa: E402
+
+
+class SpyModel:
+    def __init__(self):
+        self.calls = []
+
+    def generate(self, messages, **kw):
+        self.calls.append(kw)
+        return "a story " * 80
+
+
+_spy = SpyModel()
+_out = _sample_calibration_stories(_spy, [{"role": "user", "content": "go"}], Args(), 4)
+check("it asks the model for as many stories as it was told to", len(_out) == 4)
+check("and generates them at the run's own temperature and length",
+      all(c["temperature"] == Args.temperature
+          and c["max_new_tokens"] == Args.max_new_tokens
+          and c["max_words"] == Args.max_words for c in _spy.calls),
+      str(_spy.calls[0]))
+check("with the run's own truncation, not untruncated sampling",
+      all("top_p" in c and "top_k" in c for c in _spy.calls))
+check("each story gets its own seed, so they are not 32 copies",
+      len({c["seed"] for c in _spy.calls}) == 4)
 
 print()
 if FAIL:

@@ -179,7 +179,37 @@ _DIRECTION_RULE = {
 }
 
 
-def _allocate_by_shortfall(args, axes, checker) -> None:
+def _sample_calibration_stories(model, messages, args, n):
+    """Stories drawn exactly the way the run draws them, for the allocation.
+
+    Not taken from the basis sample. That sample draws each token straight from
+    the softmax with no truncation at all, while the run generates through the
+    model's own decoding -- which for this checkpoint ships top-p 0.95 and top-k
+    20. Untruncated sampling produces odd vocabulary and repeats words the real
+    decoding never would, and the difference is not small: not leaning on one
+    word passed 44% of the time on the basis sample against 99% on 200 stories
+    generated the run's way, which would hand more than half a direction's worth
+    of budget to a requirement that never fails.
+
+    A calibration sample has to come from the same distribution as the thing it
+    calibrates.
+    """
+    out = []
+    for i in range(int(n)):
+        out.append(model.generate(
+            messages,
+            max_new_tokens=args.max_new_tokens,
+            do_sample=True,
+            temperature=args.temperature,
+            top_p=args.baseline_top_p,
+            top_k=args.baseline_top_k,
+            max_words=args.max_words,
+            seed=100000 + 128 * i,
+        ))
+    return out
+
+
+def _allocate_by_shortfall(args, axes, checker, texts=None) -> None:
     """Divide the steering budget by what the model actually gets wrong.
 
     The calibration stories sampled for the perturbation basis are scored
@@ -196,7 +226,9 @@ def _allocate_by_shortfall(args, axes, checker) -> None:
     import run_orthosteer_experiment as _ro
     from noiseegra.allocation import shortfall_weights
 
-    texts = [t for t in (getattr(axes, "texts", None) or []) if t and t.strip()]
+    if texts is None:
+        texts = getattr(axes, "texts", None) or []
+    texts = [t for t in texts if t and t.strip()]
     if not texts:
         print("budget allocation: the calibration sample kept no stories, so the "
               "budget stays equal across directions", flush=True)
@@ -1286,27 +1318,18 @@ def main() -> None:
         # After the basis either way: the calibration stories it sampled are
         # what the allocation reads, and only the story-level basis has any.
         if args.steer_allocate == "shortfall":
-            calib = cached
-            if push_plan is not None:
-                # The basis is sampled with the push already applied, and those
-                # stories are the wrong ones to divide the budget by. Under a
-                # flat push the present tense already passes 78% of the time
-                # against 0% untouched, so allocating from them would take the
-                # budget away from the requirement the push is holding up and
-                # let it fall back. What the allocation needs is what the model
-                # gets wrong when nothing is pushing it.
-                print("budget allocation: sampling unsteered stories to measure "
-                      "what the model breaks on its own (the basis sample is "
-                      "taken under the push, which would hide it) ...",
-                      flush=True)
-                calib = collect_story_pcs(
-                    get_model(), messages[0], layers,
-                    n_stories=args.offset_basis_stories,
-                    rank=args.offset_rank,
-                    max_new_tokens=args.offset_basis_tokens,
-                    push_plan=None, verbose=False,
-                )
-            _allocate_by_shortfall(args, calib, checker)
+            # Drawn the way the run draws, and with nothing pushing. Two
+            # things the basis sample cannot give: it is taken under the push,
+            # which hides the requirements the push is holding up, and it draws
+            # each token straight from the softmax with no truncation, which
+            # breaks requirements the real decoding never would.
+            print(f"budget allocation: sampling "
+                  f"{args.offset_basis_stories} unsteered stories the way this "
+                  f"run generates them, to measure what the model breaks on "
+                  f"its own ...", flush=True)
+            calib_texts = _sample_calibration_stories(
+                get_model(), messages[0], args, args.offset_basis_stories)
+            _allocate_by_shortfall(args, cached, checker, texts=calib_texts)
 
         if args.fisher_whiten:
             from noiseegra.activation_basis import whiten_axes_by_fisher
