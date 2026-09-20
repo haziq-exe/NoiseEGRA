@@ -4861,3 +4861,68 @@ and the four negative results that explain why it is a frontier:
 * a coherence filter built to catch degenerate text cannot see a fluent
   non-story, and a fluent non-story *raises* a diversity score. That is a hazard
   for anyone measuring generative diversity this way, not a bug in one function.
+
+## Rounds 84 to 86 - where in the prompt the perturbation sits, and the end of it
+
+The perturbation is applied across the prompt with the last few positions
+spared. Those were set to eight in round 37, in the old size units, and never
+revisited. Sparing more of them, and then fading rather than cutting.
+
+| at two stories out | coherent | not a story | broken /12 | happens | wording | opener |
+|---|---|---|---|---|---|---|
+| 8 spared, flat | 170/200 | 10% | 3.35 | **+4.8** [+2.4, +7.3] | **+5.2** [+3.3, +7.2] | 35% |
+| 16 spared, flat | 177/200 | 3% | 3.42 | +1.9 [-1.0, +4.4] | +0.3 [-1.6, +2.0] | 44% |
+| 32 spared, flat | 183/200 | **0%** | 3.24 | +1.5 [-1.3, +4.4] | -0.3 [-2.1, +1.5] | 45% |
+| **faded to 0.15** | **193/200** | **0%** | **2.75** | -1.6 [-4.4, +1.5] | -2.2 [-3.8, -0.5] | 38% |
+| 2.5 out, faded to 0.15 | 186/200 | **0%** | 3.00 | +2.6 [-0.1, +5.1] | -0.7 [-2.6, +1.1] | 43% |
+| 2.5 out, 48 spared | 183/200 | **0%** | | **+3.2** [+0.5, +5.9] | -2.0 [-3.6, -0.2] | |
+| 3.0 out, 48 spared | 178/200 | **0%** | 3.36 | **+3.6** [+1.0, +6.4] | -3.1 [-4.8, -1.5] | |
+
+**The non-story failure is entirely a property of where the perturbation sits,
+not how large it is.** Fading it to 0.15 at the last prompt position takes it
+from 10% to zero at the same displacement, and recovers 23 stories. At three and
+four stories out with a long spared tail it stays at 0-1%, where a flat
+perturbation at two stories gives 10%. The stories were read: Maya losing her
+backpack in the forest, a boy chasing free ice cream, Liam dodging a football in
+the rain. Real stories.
+
+**And the variety goes with it.** Every way of reducing the perturbation near
+the generation boundary -- sparing more positions, fading, both -- buys
+coherence and compliance and loses variety. The perturbation near the end of the
+prompt is at once the source of the variety and the source of the failure. They
+are not two effects that happen to be coupled; they are one effect.
+
+The commonest-opener share says it plainly: 35% when the perturbation reaches
+the end of the prompt, 43-45% when it does not. The stories start the same way
+because nothing is varying where they start.
+
+## The result, after fifteen mechanisms
+
+| | coherent | broken /12 | happens vs top-p | wording vs top-p |
+|---|---|---|---|---|
+| temperature 1.8, nucleus (top-p) | 200/200 | 3.92 | reference | reference |
+| temperature 1.8, top-k | 199/200 | 3.95 | +4.3 [+1.8, +6.7] | +1.7 [-0.2, +3.6] |
+| the untouched model | 194/200 | 4.30 | -21.4 | -6.3 |
+| **faded, 2.0 out** | **193/200** | **2.75** | tie | loss |
+| 1.5 out, flat | 190/200 | 2.83 | tie | tie |
+| **1.75 out, flat** | 178/200 | 3.25 | **+3.2** [+0.5, +5.8] | **+2.7** [+1.0, +4.6] |
+| 2.0 out, flat | 170/200 | 3.35 | **+4.8** [+2.4, +7.3] | **+5.2** [+3.3, +7.2] |
+
+**Requirement compliance is won at every setting**, by up to 1.2 of twelve, on
+intervals well clear of zero. It has survived four measurement corrections
+including the one that removed every variety claim.
+
+**Both variety measures are won from 1.75 stories out**, against top-p.
+
+**No setting has both.** Fifteen mechanisms were tried against that: shield
+width, shield aim, a shield for assistant helpfulness, the spread of
+displacement sizes, the total push, the frame the displacement is measured
+against, drawn versus anchored draws, removing the risky sampled stories,
+shortening them, grading that by measured risk, a direction that asks for an
+event, pushing it harder, varying it per story, how much of the prompt tail is
+spared, and fading rather than cutting. Every one either slides along the same
+curve or fails.
+
+The curve has now been probed along three independent axes -- how far the state
+is displaced, where in the prompt it is displaced, and how sharply that falls
+off -- and it is the same curve each time. That is the result.
