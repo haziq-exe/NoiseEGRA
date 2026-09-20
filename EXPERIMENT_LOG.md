@@ -4976,3 +4976,57 @@ Both variety measures are won from 1.75 stories out. No setting has both, and
 the reason is now understood rather than assumed: **the perturbation near the
 generation boundary is at once the source of the variety and the source of the
 failure, and every intervention that touches one touches the other.**
+
+## Round 91 - the method plus a published decoder: inert, and the reason matters
+
+The push and a truncation scheme are different interventions -- one reshapes the
+representation, the other the distribution over the next token -- so they should
+compose, and the diversity a decoder buys should not be subject to the frontier
+the perturbation is stuck on. Locally typical at 0.2, min-p at 0.05 and
+eta-sampling, each in place of the checkpoint's own cut-offs, at 1.5 stories out,
+200 stories.
+
+| | coherent | broken /12 | happens | wording |
+|---|---|---|---|---|
+| the method, default cut-offs | 190/200 | 2.83 | +0.4 [-2.4, +3.0] | -0.1 |
+| + locally typical 0.2 | 190/200 | 2.83 | +0.4 [-2.3, +3.3] | -0.1 |
+| + min-p 0.05 | 190/200 | 2.83 | +0.7 [-2.0, +3.7] | +0.2 |
+| + eta-sampling | 190/200 | | +0.7 [-2.0, +3.5] | +0.2 |
+
+Identical to every digit, which is the signature this project has been caught by
+before, so it was checked rather than reported: **200 of 200 stories are
+byte-identical between the default cut-offs and locally typical at 0.2**, and
+199 of 200 for the other two.
+
+**It is not a plumbing fault.** Instrumenting the call shows `typical_p=0.2`
+reaching `model.generate`, and the generation stack builds a
+`TypicalLogitsWarper` for it. The parameter is applied and changes nothing.
+
+**The explanation is that the push makes the model too confident for a
+truncation scheme to have anything to cut.** Locally typical at 0.2 keeps tokens
+until the typical set reaches a fifth of the mass, and never fewer than one; if
+the top token already holds more than that, it keeps exactly one token and the
+step is greedy. Under five directions summed to a budget of 2.5 the next-token
+distribution is evidently peaked enough that this is the usual case, and the
+default cut-offs -- top-k 20 and top-p 0.95 from Qwen3's own generation config --
+were already selecting the same token.
+
+**Which explains several earlier results at once.** It is the mechanism behind
+the published finding that strong steering homogenises output: steering lowers
+the entropy of the next-token distribution, so *sampling* stops contributing
+variety. Everything the method's diversity comes from must then come from the
+representation -- which is exactly what the per-story perturbation supplies, and
+why per-token noise bought none of it.
+
+And it sharpens what the method is for. At temperature 1.0 the method reaches
+variety of what happens of 122.6 against nucleus sampling's 121.8 **at
+temperature 1.8**, while breaking 2.83 requirements against its 3.92. The
+untouched model at temperature 1.0 manages about 80. So the perturbation
+recovers, at the temperature a teacher would actually deploy, the diversity that
+nucleus sampling needs a raised temperature to reach -- and keeps the compliance
+that raising the temperature costs.
+
+**To confirm rather than infer**: the next-token entropy under the push against
+the untouched model, which the codebase can already record with its entropy
+probe. That measurement would turn this paragraph from an explanation into a
+result, and it is cheap.
