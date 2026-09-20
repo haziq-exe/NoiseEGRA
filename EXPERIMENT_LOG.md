@@ -4739,3 +4739,64 @@ So round 80 gives the event direction twice and three times the share of the
 others, with the total raised to 3, at the displacements where coherence is
 good. If the content it supplies is really independent of the displacement, a
 harder event push at 1.5 stories out should win what happens at 190 of 200.
+
+## Rounds 80 and 81 - two ways to use the event direction, both dead
+
+**Pushing it harder is worse on every axis.** Twice and three times the share of
+the other directions, at the displacement where coherence is good:
+
+| event direction's share | coherent | broken /12 | happens |
+|---|---|---|---|
+| the same as the others | **190/200** | **2.83** | +0.5 [-2.3, +3.2] |
+| twice | 182/200 | 3.53 | **-4.4** [-7.7, -1.4] |
+| three times | 173/200 | 4.52 | **-6.7** [-9.8, -3.8] |
+
+Variety of what happens becomes a real loss and compliance collapses. The
+reasoning for the round was that the direction was pushed too weakly to act on
+its own; it was not.
+
+**Varying its strength between stories is inert.** A per-story lognormal gain on
+that one direction, mean one so the expected push is unchanged:
+
+| spread of the per-story push | coherent | not a story | broken /12 | happens | wording |
+|---|---|---|---|---|---|
+| 0.5 | 183/200 | 4% | 2.82 | -1.7 [-4.6, +1.1] | -0.7 [-2.5, +0.9] |
+| 1.0 | 183/200 | 4% | | -0.5 [-3.2, +2.2] | -0.0 [-1.7, +1.4] |
+
+**Doubling the spread changes nothing** -- not coherence, not compliance, not
+either variety measure. The knob is not stiff, it is disconnected.
+
+That kills the explanation given for why this mechanism measured flat the first
+time. The claim was that every steered direction was about how a sentence is
+formed, so varying their strength varied the style and not the story. The event
+direction demonstrably controls content -- steering it moves the commonest words
+from `scent` and `air` to `grab` and `hit` -- and varying *its* strength still
+does nothing. **Varying a steered direction's strength between stories does not
+move variety, whatever the direction is about.**
+
+## Where this leaves the method
+
+The only thing that moves variety of what happens is how far the state is
+displaced, and that costs coherence. Everything tried against that: shield
+width, shield aim, a second shield, the spread of displacement sizes, the total
+push, the frame the displacement is measured in, drawn against anchored, removing
+the risky sampled stories, shortening them, grading the shortening, adding a
+content direction, pushing it harder, and varying it per story. Each either
+slides along the same curve or fails.
+
+**The curve, honestly scored, with everything the goal asks for:**
+
+| configuration | coherent | broken /12 | happens vs top-p | wording vs top-p |
+|---|---|---|---|---|
+| temperature 1.8, nucleus (top-p) | 200/200 | 3.92 | reference | reference |
+| temperature 1.8, top-k | 199/200 | 3.95 | +4.6 [+1.8, +7.0] | +1.7 [-0.2, +3.7] |
+| four directions, 1.5 out | **100/100** | **2.75** | tie | tie |
+| five directions, 1.5 out | 190/200 | **2.83** | tie | tie |
+| five directions, 1.75 out | 177/200 | 3.25 | **+3.0** [+0.1, +5.6] | **+2.7** [+0.8, +4.7] |
+| five directions, 2.0 out | 170/200 | 3.35 | **+4.8** [+2.3, +7.3] | **+5.2** [+3.2, +6.9] |
+
+Requirement compliance is won everywhere by about a requirement of twelve, on
+intervals well clear of zero, and that has survived every correction. Coherence
+reaches every story at the short end. Both variety measures are won at the long
+end. No setting has all three, and the gap between the setting that wins variety
+and the one that keeps the stories is thirteen stories in two hundred.
