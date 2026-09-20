@@ -39,7 +39,39 @@ roughly 150 words instead of 60 -- it did not, and this branch exists to make it
 compliance, all at once, and beat raised-temperature decoding. The novelty bar
 in `astar-novelty-bar` still applies.
 
-### Where the middle-school branch actually ended up (round 83)
+### Where the middle-school branch ended up (round 87, final)
+
+**The finding is the frontier, not a configuration.** The per-story
+perturbation near the end of the prompt is at once what varies the writing and
+what makes the model answer the reader instead of telling a story. Every
+intervention that touches one touches the other. Sixteen were tried:
+displacement magnitude; where in the prompt it is applied; how sharply it falls
+off; the cloud it is measured against; drawn against aimed at one of the
+model's own stories; which of those stories; how far towards each; a direction
+that asks for an event; that direction's strength; its per-story variation; the
+total push; three shields; and defending the story register by pushing a
+direction rather than forbidding one. Each lands on the same curve or worse.
+
+**Two configurations, by which axis must not be given up:**
+
+| | coherent | broken /12 | happens vs top-p | wording vs top-p |
+|---|---|---|---|---|
+| temperature 1.8, nucleus (top-p) | 200/200 | 3.92 | reference | reference |
+| temperature 1.8, top-k | 199/200 | 3.95 | +4.3 [+1.8, +6.7] | +1.7 [-0.2, +3.6] |
+| the untouched model | 194/200 | 4.30 | -21.4 | -6.3 |
+| **faded perturbation, 2.0 stories out** | **193/200** | **2.75** | tie | loss |
+| flat, 1.5 stories out | 190/200 | 2.83 | tie | tie |
+| **flat, 1.75 stories out** | 178/200 | 3.25 | **+3.2** [+0.5, +5.8] | **+2.7** [+1.0, +4.6] |
+| flat, 2.0 stories out | 170/200 | 3.35 | **+4.8** [+2.4, +7.3] | **+5.2** [+3.3, +7.2] |
+
+Requirement compliance is won at every setting, by up to 1.2 of twelve, on
+intervals well clear of zero. It survived four measurement corrections,
+including the one that removed every variety claim, because the failures it
+counts were being scored against the requirements too.
+
+`method_review.xlsx` holds all 31 conditions with their stories side by side.
+
+### The earlier summary (round 83), kept for the sweep it records
 
 Qwen3-1.7B, one instruction, temperature 1.0, 200 stories a condition, both
 baselines also at 200. Scored with a non-story counted as a broken story.
