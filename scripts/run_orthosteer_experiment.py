@@ -2281,6 +2281,19 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         return arms, (f"steering + per-token noise at {mags}, applied only over the "
                       f"first {h} generated tokens")
 
+    if name == "vstopp":
+        # The two raised-temperature baselines and nothing else.
+        #
+        # `sampling` sweeps a grid and `compare` gives the untouched model plus a
+        # noise arm; neither is what a head-to-head against the decoding
+        # baselines needs, and on an 8B model a condition costs about four
+        # minutes a story, so generating arms that will not be used is the
+        # difference between a run that finishes and one that does not.
+        t = float(getattr(args, "baseline_temperature", 1.8) or 1.8)
+        return ([{"temperature": t, "top_p": float(getattr(args, "baseline_top_p", 0.95) or 0.95)},
+                 {"temperature": t, "top_k": int(getattr(args, "baseline_top_k", 40) or 40)}],
+                f"raised temperature ({t:g}) with nucleus and with top-k, and nothing else")
+
     if name == "compare":
         # The minimal head-to-head: unmodified generation vs. the proposed method.
         return ([ "baseline", noise_arms[1] ],
