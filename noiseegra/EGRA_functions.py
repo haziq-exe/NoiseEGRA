@@ -247,12 +247,40 @@ class EGRA:
             probe_kwargs["logits_processor"] = LogitsProcessorList(
                 [EntropyProbe(probe_state, keep_history=True)])
             entropy_out.append(probe_state)
+        _kw = self._sampling_kwargs(
+            do_sample=do_sample, temperature=temperature, top_p=top_p, top_k=top_k,
+            typical_p=typical_p, min_p=min_p, eta_cutoff=eta_cutoff,
+            penalty_alpha=penalty_alpha,
+        )
+        # Say once, in the log, exactly which decoding settings were asked for and
+        # which of them the installed generation stack actually turns into a
+        # logits warper. Six conditions differing only in `typical_p`, `min_p` and
+        # `eta_cutoff` once came back byte-identical to plain nucleus sampling
+        # across 200 stories each; the settings were built and passed correctly,
+        # so the loss was inside `generate`, and nothing in the log said so.
+        if not getattr(type(self), "_said_decoding", False):
+            type(self)._said_decoding = True
+            try:
+                import transformers
+                from transformers import GenerationConfig
+                gc = GenerationConfig.from_model_config(self.model.config)
+                for k, v in _kw.items():
+                    setattr(gc, k, v)
+                try:
+                    warpers = self.model._get_logits_warper(gc, device="cpu")
+                except TypeError:
+                    warpers = self.model._get_logits_warper(gc)
+                print(f"decoding: transformers {transformers.__version__}; "
+                      f"asked for {_kw}; warpers "
+                      f"{[type(w).__name__ for w in warpers]}", flush=True)
+            except Exception as exc:                      # diagnostics only
+                print(f"decoding: could not inspect warpers ({exc})", flush=True)
         outputs = self.model.generate(
             **inputs,
             max_new_tokens=max_new_tokens,
             **probe_kwargs,
             **({"stopping_criteria": stopper} if stopper is not None else {}),
-            **self._sampling_kwargs(
+            **(_kw if False else self._sampling_kwargs(
                 do_sample=do_sample,
                 temperature=temperature,
                 top_p=top_p,
@@ -261,7 +289,7 @@ class EGRA:
                 min_p=min_p,
                 eta_cutoff=eta_cutoff,
                 penalty_alpha=penalty_alpha,
-            ),
+            )),
         )
         generated_ids = outputs[0][inputs["input_ids"].shape[-1]:]
         text = strip_reasoning(self.tokenizer.decode(generated_ids, skip_special_tokens=True))
