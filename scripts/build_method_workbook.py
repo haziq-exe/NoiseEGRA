@@ -731,6 +731,42 @@ METHODS = [
         ),
         command="(as M25 with --gamma-sweep 2.0)",
     ),
+    dict(
+        id="M28", label="Perturbation faded along the prompt, 2.0 out",
+        run="r86-taper", frag="g2orth", family="Faded along the prompt",
+        stories=200,
+        summary=(
+            "The best coherence and the best compliance of any arm that displaces "
+            "the state at all. 193 of 200, and not one failure of any kind."
+        ),
+        works=(
+            "Every earlier arm applied the perturbation at full strength across "
+            "the prompt and stopped it dead a few positions before the end. This "
+            "one fades it: full strength where the instruction begins, 15% of it "
+            "at the last position it touches. Sparing positions outright showed "
+            "why it matters -- the perturbation near the end of the prompt is what "
+            "varies the wording AND what makes the model answer the reader instead "
+            "of telling a story."
+        ),
+        different=(
+            "Takes the not-a-story rate from 10% to zero at the same displacement "
+            "and recovers 23 stories. No refusal, no leaked plan, no preamble, no "
+            "heading, no non-story in 200 -- and the stories were read. 2.75 "
+            "requirements broken against the baselines' 3.92 and 3.95. What it "
+            "does not do is keep the variety: both measures fall back to a tie or "
+            "a loss, because the same positions carry both."
+        ),
+        command=(
+            "scripts/kaggle_run.sh r86-taper --profile <account> --shards 2 -- \\\n"
+            "  " + COMMON.format(stories=200) + " --basis-under-push \\\n"
+            "  --peek-stories 6 --abort-broken-arms --suite boundary --tail-sweep 8 \\\n"
+            "  --gamma-sweep 2.0 --offset-norm story --offset-gamma-spread 0.5 \\\n"
+            "  --offset-draw-shape manifold --offset-taper 0.15 \\\n"
+            "  --steer-vectors present_tense sensory named_character no_heading \\\n"
+            "                  something_happens \\\n"
+            "  --shield-vectors in_story --steer-budget 2.5"
+        ),
+    ),
 ]
 
 ALL = BASELINES + METHODS
@@ -1012,6 +1048,17 @@ def main():
             "and the distance carries the risk, and they separate. Shortening each "
             "by its own measured risk gives 198 of 200 coherent at the best "
             "requirement compliance in the project.")),
+        ("THE TWO CONFIGURATIONS TO QUOTE", (
+            "There is no single setting that wins everything, and the reason is "
+            "understood: the perturbation near the end of the prompt is at once "
+            "what varies the writing and what makes the model answer the reader "
+            "instead of telling a story. Sixteen mechanisms were tried against "
+            "that and every one lands on the same curve. So pick by which axis "
+            "must not be given up. M28, the faded perturbation at two stories "
+            "out: 193 of 200 coherent with no failure of any kind and 2.75 "
+            "requirements broken against 3.92 and 3.95, with variety level. M26, "
+            "the flat perturbation at 1.75 stories out: both variety measures "
+            "beaten against top-p on intervals clear of zero, at 178 of 200.")),
         ("A lead worth following", (
             "The coherence loss is not spread evenly. The displacement aims at one "
             "of 32 sampled stories, chosen by story number, and across six "
