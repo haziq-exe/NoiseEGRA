@@ -708,6 +708,7 @@ class EGRA:
         story_index=None,
         max_words=None,
         entropy_out=None,
+        typical_p=None, min_p=None, eta_cutoff=None,
     ):
         """
         Constraint steering with direction-constrained noise, injected at the same
@@ -985,8 +986,14 @@ class EGRA:
             for layer_idx in normalized_layers:
                 handles.append(blocks[layer_idx].register_forward_hook(make_hook(layer_idx)))
 
+            # The push and a truncation scheme are different interventions --
+            # one reshapes the representation, the other the distribution over
+            # the next token -- so they compose. Every method arm until now used
+            # the checkpoint's own cut-offs, which meant the comparison was
+            # against decoders the method was never combined with.
             gen_kwargs = self._sampling_kwargs(
-                do_sample=do_sample, temperature=temperature, top_p=top_p, top_k=top_k
+                do_sample=do_sample, temperature=temperature, top_p=top_p, top_k=top_k,
+                typical_p=typical_p, min_p=min_p, eta_cutoff=eta_cutoff,
             )
             # `entropy_out` records the model's own next-token uncertainty, read
             # off the raw scores before temperature or any cut-off is applied.

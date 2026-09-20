@@ -225,6 +225,41 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         # baseline run has neither: it is the model under the prompt alone.
         return (["baseline"], "unmodified generation, no steering and no perturbation")
 
+    if name == "withdecoder":
+        # The push and the perturbation combined with a published truncation
+        # scheme, at temperature 1.0.
+        #
+        # Every method arm until now used the checkpoint's own cut-offs, so the
+        # method was compared against decoders it had never been combined with.
+        # They are different interventions -- one reshapes the representation,
+        # the other the distribution over the next token -- and the one thing
+        # the perturbation could never buy without breaking stories is variety
+        # in what happens, which is exactly what a truncation scheme that keeps
+        # more of the tail supplies.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        kind = getattr(args, "offset_basis_kind", "story")
+        b = float(getattr(args, "steer_budget", None) or 2.0)
+        g = float(getattr(args, "main_gamma", 1.5))
+        keep = int(getattr(args, "prompt_tail", 8) or 8)
+        flat = {n: 1.0 for n in names}
+        plan = make_plan(
+            beta=flat, steer_budget=b, offset_gamma=g, offset_mode="orth",
+            offset_basis=offset_basis, offset_basis_kind=kind,
+            offset_scale=getattr(args, "offset_scale", None),
+            offset_draw_shape=getattr(args, "offset_draw_shape", "sphere"),
+            steer_prefill=True, prompt_tail_clear=keep,
+            offset_prefill=True, offset_decode=False, **quiet, **base)
+        items = [
+            {"plan": plan, "temperature": 1.0},
+            {"plan": plan, "temperature": 1.0, "typical_p": 0.2},
+            {"plan": plan, "temperature": 1.0, "min_p": 0.05},
+            {"plan": plan, "temperature": 1.0, "eta_cutoff": 2e-3},
+        ]
+        return items, (
+            "the method at temperature 1.0 with the checkpoint's own cut-offs, "
+            "and with locally typical, min-p and eta-sampling in their place")
+
     if name == "literature":
         # The published decoding methods a reviewer will expect to see, beside
         # the two already used. All are run through the generation stack's own

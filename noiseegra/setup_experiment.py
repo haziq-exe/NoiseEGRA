@@ -696,6 +696,9 @@ def run_story_experiments(
                     temperature=spec.temperature,
                     top_p=spec.top_p,
                     top_k=spec.top_k,
+                    typical_p=spec.typical_p,
+                    min_p=spec.min_p,
+                    eta_cutoff=spec.eta_cutoff,
                     seed=seed,
                 )
             elif mode == "attention_entropy_noise":
