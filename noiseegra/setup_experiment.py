@@ -253,6 +253,8 @@ def _ortho_tag(model_name: str, spec: ExperimentSpec) -> str:
             parts.append(f"r{rank}")
     if getattr(plan, "guard_direction", ""):
         parts.append(f"__guard{plan.guard_direction[:4]}")
+    if float(getattr(plan, "offset_taper", 1.0) or 1.0) != 1.0:
+        parts.append(f"__tap{_float_tag(plan.offset_taper)}")
     if getattr(plan, "offset_gamma_spread", 0.0):
         parts.append(f"__gs{_float_tag(plan.offset_gamma_spread)}")
     if getattr(plan, "offset_draw_shape", "sphere") != "sphere":

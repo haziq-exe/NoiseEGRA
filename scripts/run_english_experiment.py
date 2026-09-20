@@ -270,6 +270,18 @@ def main() -> None:
                          "steered stories; and an anchored displacement aims at one "
                          "of the sampled stories, which taken from the untouched "
                          "model break 4.3 requirements of twelve.")
+    ap.add_argument("--offset-taper", type=float, default=1.0,
+                    help="how much of the per-story perturbation survives at the "
+                         "last prompt position it touches, as a fraction of its "
+                         "strength at the first. 1.0 is flat, which every run "
+                         "before this used. Sparing the last positions outright "
+                         "separates two effects that were measured together: the "
+                         "perturbation near the end of the prompt varies the "
+                         "wording and is what makes the model answer the reader "
+                         "instead of telling a story, while the perturbation early "
+                         "in the prompt varies what happens and is safe. Cutting "
+                         "loses the wording along with the failure; fading keeps "
+                         "some of both.")
     ap.add_argument("--offset-norm", default="energy",
                     choices=("energy", "raw", "story"),
                     help="what the displacement's size is measured against. "
@@ -675,6 +687,7 @@ def main() -> None:
     import run_orthosteer_experiment as _ro
     _ro.RUN_DEFAULTS["offset_gamma_spread"] = float(args.offset_gamma_spread)
     _ro.RUN_DEFAULTS["offset_norm"] = str(args.offset_norm)
+    _ro.RUN_DEFAULTS["offset_taper"] = float(args.offset_taper)
 
     if args.dry_run:
         # Parsing the flags is the easy half. Two runs have now reached Kaggle,

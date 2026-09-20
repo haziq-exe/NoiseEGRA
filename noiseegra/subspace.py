@@ -768,6 +768,10 @@ class SteeringPlan:
     # been swept, and how far it goes has been swept in the mean -- never in the
     # spread.
     offset_gamma_spread: float = 0.0
+    # How much of the perturbation survives at the last prompt position it
+    # touches, as a fraction of its strength at the first. 1.0 is flat, which is
+    # what every run before this used.
+    offset_taper: float = 1.0
     # The name of a direction whose share of the push is scaled, per story, by
     # how far that story was displaced.
     #
@@ -845,6 +849,7 @@ class SteeringPlan:
         offset_anchors: Optional[Mapping[int, torch.Tensor]] = None,
         anchor_scale: Optional[torch.Tensor] = None,
         offset_gamma_spread: float = 0.0,
+        offset_taper: float = 1.0,
         guard_direction: str = "",
         protect_extra: Optional[Mapping[int, torch.Tensor]] = None,
         device: Optional[torch.device] = None,
@@ -1045,6 +1050,7 @@ class SteeringPlan:
             offset_decode_steps=int(offset_decode_steps),
             offset_draw_shape=str(offset_draw_shape),
             offset_gamma_spread=float(offset_gamma_spread),
+            offset_taper=float(offset_taper),
             guard_direction=str(guard_direction),
             protect_rank=protect_rank,
         )

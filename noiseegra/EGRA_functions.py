@@ -833,11 +833,15 @@ class EGRA:
                             # decoding alone, a band sweep produced three
                             # byte-identical arms and read as a clean null.
                             bands = getattr(plan, "offset_layers", None) or ()
+                            taper = float(getattr(plan, "offset_taper", 1.0) or 1.0)
+                            off = None
                             if offset_here and (not bands or layer_idx in bands):
                                 off = plan.layer_plans[layer_idx].offset
                                 if off is not None:
                                     off = off.to(target.device)
-                                    delta = off if delta is None else delta + off
+                                    if taper >= 1.0:
+                                        delta = off if delta is None else delta + off
+                                        off = None      # folded in; applied flat
                             if delta is not None:
                                 # Leave the final prompt positions alone when
                                 # asked: they are the chat template's own
@@ -854,6 +858,35 @@ class EGRA:
                                     target[:, lo:hi, :].add_(d)
                                 else:
                                     target.add_(d)
+                            if off is not None:
+                                # The perturbation faded along the prompt: full
+                                # strength where the instruction begins, `taper`
+                                # of it at the last position it touches.
+                                #
+                                # Sparing the last positions outright separates
+                                # two things that were measured together. The
+                                # perturbation near the end of the prompt is what
+                                # varies the wording -- and what makes the model
+                                # answer the reader instead of telling a story.
+                                # The perturbation early in the prompt is what
+                                # varies what happens, and is safe: at two and a
+                                # half stories out with 48 positions spared there
+                                # is not one non-story in 200, and variety of what
+                                # happens is still won. Cutting it at a position
+                                # loses the wording with the failure; fading it
+                                # keeps some of both.
+                                keep = int(getattr(plan, "prompt_tail_clear", 0) or 0)
+                                head = int(getattr(plan, "prompt_head_clear", 0) or 0)
+                                n = target.shape[1]
+                                lo = head if 0 < head < n else 0
+                                hi = n - keep if 0 < keep < n - lo else n
+                                if hi > lo:
+                                    ramp = torch.linspace(
+                                        1.0, taper, hi - lo,
+                                        device=target.device, dtype=target.dtype,
+                                    ).view(1, -1, 1)
+                                    target[:, lo:hi, :].add_(
+                                        off.to(target.dtype).view(1, 1, -1) * ramp)
                             if plan.steer_prefill and getattr(plan, "steer_mode", "constant") == "feedback":
                                 for pos in range(target.shape[1]):
                                     fb = plan.feedback_delta(
