@@ -201,6 +201,30 @@ def _allocate_by_shortfall(args, axes, checker) -> None:
         print("budget allocation: the calibration sample kept no stories, so the "
               "budget stays equal across directions", flush=True)
         return
+
+    # The calibration stories have to be stories, not the first part of one.
+    # Half the requirements ask for at least so many of something -- six sensory
+    # words, three lines of speech, a name used three times -- and half forbid
+    # repeating something. On a story cut off early the first half all fail and
+    # the second half all pass, whatever the model is actually like, so the
+    # budget goes entirely to the wrong requirements.
+    #
+    # This is not hypothetical: the first run of this measured 0% on the senses
+    # and 100% on every no-repeat rule, purely because the basis samples 120
+    # tokens by default against a 150-word target.
+    target = int(getattr(args, "story_target", 150) or 150)
+    lengths = [len(t.split()) for t in texts]
+    typical = sorted(lengths)[len(lengths) // 2]
+    if typical < 0.75 * target:
+        raise SystemExit(
+            "--steer-allocate shortfall divides the budget by how often each "
+            f"requirement is broken, but the calibration stories run {typical} "
+            f"words against a target of {target}. On stories cut off early the "
+            "requirements asking for at least so many of something all fail and "
+            "the ones forbidding repetition all pass, so the measurement would "
+            "be of the truncation and not of the model. Raise "
+            f"--offset-basis-tokens (now {getattr(args, 'offset_basis_tokens', '?')}) "
+            "until the calibration stories reach the length the task asks for.")
     scored = checker.evaluate_all(texts)["stories"]
     rates = {}
     for rule in checker.constraints:
@@ -209,8 +233,9 @@ def _allocate_by_shortfall(args, axes, checker) -> None:
                                 floor=float(args.allocate_floor),
                                 aliases=_DIRECTION_RULE)
     _ro.RUN_DEFAULTS["beta_weights"] = weights
-    print(f"budget allocation: from {len(texts)} calibration stories, by how "
-          f"often each requirement is broken", flush=True)
+    print(f"budget allocation: from {len(texts)} calibration stories of "
+          f"{typical} words (target {target}), by how often each requirement "
+          f"is broken", flush=True)
     for n in sorted(weights, key=lambda k: -weights[k]):
         rule = _DIRECTION_RULE.get(n, n)
         seen = rates.get(rule)
@@ -1261,7 +1286,27 @@ def main() -> None:
         # After the basis either way: the calibration stories it sampled are
         # what the allocation reads, and only the story-level basis has any.
         if args.steer_allocate == "shortfall":
-            _allocate_by_shortfall(args, cached, checker)
+            calib = cached
+            if push_plan is not None:
+                # The basis is sampled with the push already applied, and those
+                # stories are the wrong ones to divide the budget by. Under a
+                # flat push the present tense already passes 78% of the time
+                # against 0% untouched, so allocating from them would take the
+                # budget away from the requirement the push is holding up and
+                # let it fall back. What the allocation needs is what the model
+                # gets wrong when nothing is pushing it.
+                print("budget allocation: sampling unsteered stories to measure "
+                      "what the model breaks on its own (the basis sample is "
+                      "taken under the push, which would hide it) ...",
+                      flush=True)
+                calib = collect_story_pcs(
+                    get_model(), messages[0], layers,
+                    n_stories=args.offset_basis_stories,
+                    rank=args.offset_rank,
+                    max_new_tokens=args.offset_basis_tokens,
+                    push_plan=None, verbose=False,
+                )
+            _allocate_by_shortfall(args, calib, checker)
 
         if args.fisher_whiten:
             from noiseegra.activation_basis import whiten_axes_by_fisher
