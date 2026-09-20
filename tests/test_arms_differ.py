@@ -72,6 +72,14 @@ def test_no_shipped_run_has_silently_identical_arms() -> None:
         "r89-literature",
         # The same three settings, combined with the method.
         "r91-withdecoder",
+        # The six-story diagnostic that found the cause: the installed
+        # generation stack no longer reads `typical_p`, `min_p` or
+        # `eta_cutoff` from the keyword arguments, and a generation config
+        # accepts any attribute you set on it, so they were stored and never
+        # applied. All three are now applied as an explicit processor
+        # (`noiseegra/decoders.py`, `tests/test_decoders.py`). This run
+        # predates the fix and is kept as the evidence for it.
+        "r94-decodercheck",
         # Historical, each found by hand at the time and since fixed. They are
         # named rather than deleted because they are what this check is for.
         "r31-bands",      # the layer band never reached the prompt hook

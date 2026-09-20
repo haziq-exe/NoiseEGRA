@@ -6,6 +6,7 @@ from pathlib import Path
 from transformers import LogitsProcessor, LogitsProcessorList
 from typing import Callable, Dict, List, Optional, Sequence
 from . import prompts
+from .decoders import truncation_warper
 import math
 
 
@@ -114,10 +115,16 @@ class EGRA:
         2020), the comparisons a reviewer will expect are locally typical
         sampling (Meister et al., TACL 2023), eta-sampling (Hewitt et al., EMNLP
         Findings 2022), min-p (Nguyen et al., ICLR 2025) and contrastive search
-        (Su et al., NeurIPS 2022). All four are supported by the generation
-        stack directly, so they cost nothing to run and are not reimplemented
-        here -- which also means the comparison is against the reference
-        implementation rather than ours.
+        (Su et al., NeurIPS 2022).
+
+        Top-k, nucleus and contrastive search are keyword arguments the
+        generation stack still reads. The other three are not: a generation
+        config accepts any attribute set on it, so a key the installed version
+        has stopped looking at is stored, ignored, and never reported. Those
+        three are therefore applied as an explicit processor
+        (`noiseegra.decoders`), and this function leaves them out of the keyword
+        arguments entirely. The caller then asks for temperature 1.0, because
+        the processor applies the temperature itself -- see that module.
 
         Contrastive search is not sampling: `penalty_alpha` with `top_k` selects
         deterministically, penalising candidates similar to what has already been
@@ -135,17 +142,15 @@ class EGRA:
             kwargs["top_k"] = int(top_k or 4)
             return kwargs
         if do_sample:
-            kwargs["temperature"] = temperature
+            # The processor scales by the temperature, so asking for it again
+            # here would apply it twice.
+            handled_here = (typical_p is None and min_p is None
+                            and eta_cutoff is None)
+            kwargs["temperature"] = temperature if handled_here else 1.0
             if top_p is not None:
                 kwargs["top_p"] = top_p
             if top_k is not None:
                 kwargs["top_k"] = top_k
-            if typical_p is not None:
-                kwargs["typical_p"] = typical_p
-            if min_p is not None:
-                kwargs["min_p"] = min_p
-            if eta_cutoff is not None:
-                kwargs["eta_cutoff"] = eta_cutoff
         return kwargs
 
     # Reasoning models emit a <think> block before the answer. Qwen3's chat
@@ -252,44 +257,36 @@ class EGRA:
             typical_p=typical_p, min_p=min_p, eta_cutoff=eta_cutoff,
             penalty_alpha=penalty_alpha,
         )
-        # Say once, in the log, exactly which decoding settings were asked for and
-        # which of them the installed generation stack actually turns into a
-        # logits warper. Six conditions differing only in `typical_p`, `min_p` and
-        # `eta_cutoff` once came back byte-identical to plain nucleus sampling
-        # across 200 stories each; the settings were built and passed correctly,
-        # so the loss was inside `generate`, and nothing in the log said so.
+        # Locally typical, eta and min-p are applied here rather than asked for
+        # by name; `_sampling_kwargs` explains why, and leaves them out of the
+        # keyword arguments so nothing is applied twice.
+        truncator = truncation_warper(
+            temperature=temperature, typical_p=typical_p, min_p=min_p,
+            eta_cutoff=eta_cutoff) if do_sample and penalty_alpha is None else None
+        if truncator is not None:
+            existing = probe_kwargs.get("logits_processor") or LogitsProcessorList()
+            probe_kwargs["logits_processor"] = LogitsProcessorList(
+                list(existing) + [truncator])
+        # Say once, in the log, what decoding this condition is actually doing.
+        # Six conditions differing only in these three settings once came back
+        # byte-identical to plain nucleus sampling across 200 stories each, and
+        # nothing in the log said so.
         if not getattr(type(self), "_said_decoding", False):
             type(self)._said_decoding = True
-            try:
-                import transformers
-                from transformers import GenerationConfig
-                gc = GenerationConfig.from_model_config(self.model.config)
-                for k, v in _kw.items():
-                    setattr(gc, k, v)
-                try:
-                    warpers = self.model._get_logits_warper(gc, device="cpu")
-                except TypeError:
-                    warpers = self.model._get_logits_warper(gc)
-                print(f"decoding: transformers {transformers.__version__}; "
-                      f"asked for {_kw}; warpers "
-                      f"{[type(w).__name__ for w in warpers]}", flush=True)
-            except Exception as exc:                      # diagnostics only
-                print(f"decoding: could not inspect warpers ({exc})", flush=True)
+            import transformers
+            applied = "none"
+            if truncator is not None:
+                applied = ("typical_p=%s min_p=%s eta_cutoff=%s at temperature %s"
+                           % (typical_p, min_p, eta_cutoff, temperature))
+            print(f"decoding: transformers {transformers.__version__}; "
+                  f"passed to generate {_kw}; processor applied here: {applied}",
+                  flush=True)
         outputs = self.model.generate(
             **inputs,
             max_new_tokens=max_new_tokens,
             **probe_kwargs,
             **({"stopping_criteria": stopper} if stopper is not None else {}),
-            **(_kw if False else self._sampling_kwargs(
-                do_sample=do_sample,
-                temperature=temperature,
-                top_p=top_p,
-                top_k=top_k,
-                typical_p=typical_p,
-                min_p=min_p,
-                eta_cutoff=eta_cutoff,
-                penalty_alpha=penalty_alpha,
-            )),
+            **_kw,
         )
         generated_ids = outputs[0][inputs["input_ids"].shape[-1]:]
         text = strip_reasoning(self.tokenizer.decode(generated_ids, skip_special_tokens=True))
@@ -1023,6 +1020,13 @@ class EGRA:
                 do_sample=do_sample, temperature=temperature, top_p=top_p, top_k=top_k,
                 typical_p=typical_p, min_p=min_p, eta_cutoff=eta_cutoff,
             )
+            # Locally typical, eta and min-p are not read from the keyword
+            # arguments by the installed stack; they are applied as a processor.
+            truncator = truncation_warper(
+                temperature=temperature, typical_p=typical_p, min_p=min_p,
+                eta_cutoff=eta_cutoff) if do_sample else None
+            if truncator is not None:
+                processors = LogitsProcessorList([*(processors or []), truncator])
             # `entropy_out` records the model's own next-token uncertainty, read
             # off the raw scores before temperature or any cut-off is applied.
             # That is the point: raising the temperature does not change this
