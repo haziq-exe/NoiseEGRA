@@ -4800,3 +4800,25 @@ intervals well clear of zero, and that has survived every correction. Coherence
 reaches every story at the short end. Both variety measures are won at the long
 end. No setting has all three, and the gap between the setting that wins variety
 and the one that keeps the stories is thirteen stories in two hundred.
+
+## Round 82 - the crossing is sharp, and there is nothing hiding in it
+
+The gap between the setting that keeps the stories and the setting that wins the
+variety had never been sampled. At one and six tenths of a story out, 200
+stories, 400 subsamples of 123:
+
+| five directions, displacement | coherent | not a story | broken /12 | happens | wording |
+|---|---|---|---|---|---|
+| 1.5 | 190/200 | 2% | **2.83** | +0.5 [-2.4, +3.1] | -0.1 [-1.9, +1.6] |
+| **1.6** | 185/200 | 5% | 2.97 | +0.9 [-1.9, +3.4] | +1.4 [-0.3, +3.3] |
+| 1.75 | 178/200 | 7% | 3.25 | **+3.2** [+0.5, +5.8] | **+2.7** [+1.0, +4.6] |
+| 2.0 | 170/200 | 10% | 3.35 | **+4.8** [+2.3, +7.3] | **+5.2** [+3.2, +6.9] |
+
+**Coherence falls smoothly and the non-stories rise smoothly with it** -- 190,
+185, 178, 170 against 2%, 5%, 7%, 10%. No plateau, no discontinuity, nothing to
+exploit. At 1.6 both variety measures are still ties, so the crossing is between
+1.6 and 1.75 and it is sharp: seven stories of two hundred separate a tie on
+both axes from a win on both.
+
+That is the thirteenth mechanism or setting tried against this trade and the
+first fine-grained sweep through it. Every one lands on the same curve.

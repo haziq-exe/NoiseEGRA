@@ -663,6 +663,74 @@ METHODS = [
             "  --shield-vectors in_story --steer-budget 2"
         ),
     ),
+    dict(
+        id="M25", label="Five directions: an event is steered too, 1.5 out",
+        run="r79-happens15", frag="g1p5orth", family="An event is steered",
+        stories=200,
+        summary=(
+            "The best requirement compliance measured honestly anywhere, with "
+            "190 of 200 stories coherent."
+        ),
+        works=(
+            "Reading which words the stories use showed the method producing "
+            "weather: scent 29%, air 32%, sun 30%, where the baseline's "
+            "commonest words include a backpack, a window, someone standing. The "
+            "push asks for present tense, sensory detail, a named character and "
+            "format -- and nothing in it asks for anything to HAPPEN. So a fifth "
+            "direction was extracted from twelve pairs contrasting a character "
+            "doing something ('Mara drops the letter into the postbox and walks "
+            "away') with the same scene described ('The postbox stands red "
+            "against the grey wall'). The total push rises from 2 to 2.5 so the "
+            "original four keep their strength."
+        ),
+        different=(
+            "The first change aimed at what the stories are ABOUT rather than at "
+            "how far the hidden state moves. It moves the commonest words from "
+            "scent and air to run, grab and hit. At this displacement it gives "
+            "2.83 requirements broken of twelve against the baselines' 3.92 and "
+            "3.95, at 190 of 200 coherent -- but both variety measures are ties."
+        ),
+        command=(
+            "scripts/kaggle_run.sh r79-happens15 --profile <account> --shards 2 -- \\\n"
+            "  " + COMMON.format(stories=200) + " --basis-under-push \\\n"
+            "  --peek-stories 6 --abort-broken-arms --suite boundary --tail-sweep 8 \\\n"
+            "  --gamma-sweep 1.5 --offset-norm story --offset-gamma-spread 0.5 \\\n"
+            "  --offset-draw-shape manifold \\\n"
+            "  --steer-vectors present_tense sensory named_character no_heading \\\n"
+            "                  something_happens \\\n"
+            "  --shield-vectors in_story --steer-budget 2.5"
+        ),
+    ),
+    dict(
+        id="M26", label="The same five directions, 1.75 out",
+        run="r79-happens175", frag="g1p75orth", family="An event is steered",
+        stories=200,
+        summary=(
+            "Wins BOTH variety measures against top-p on intervals clear of "
+            "zero, and beats both baselines on compliance. Coherence 178 of 200."
+        ),
+        works="As M25 at one and three quarter stories rather than one and a half.",
+        different=(
+            "The only configuration that wins requirement compliance and both "
+            "variety measures at once. What it does not do is keep every story: "
+            "178 of 200, against 199 and 200 for the baselines. Seven per cent of "
+            "its output is the model being helpful rather than telling a story."
+        ),
+        command="(as M25 with --gamma-sweep 1.75)",
+    ),
+    dict(
+        id="M27", label="The same five directions, 2.0 out",
+        run="r78-happens", frag="g2orth", family="An event is steered",
+        stories=200,
+        summary="The largest variety margins measured, at the worst coherence of the three.",
+        works="As M25 at two stories out.",
+        different=(
+            "Variety of what happens +4.8 and wording +5.2 against top-p, both "
+            "clear of zero, at 170 of 200 coherent. This and M25 are the two ends "
+            "of the trade the method has not escaped."
+        ),
+        command="(as M25 with --gamma-sweep 2.0)",
+    ),
 ]
 
 ALL = BASELINES + METHODS
