@@ -4926,3 +4926,53 @@ curve or fails.
 The curve has now been probed along three independent axes -- how far the state
 is displaced, where in the prompt it is displaced, and how sharply that falls
 off -- and it is the same curve each time. That is the result.
+
+## Round 87 - pushing the story register, the last untried side
+
+`in_story` had only ever been used to forbid the perturbation a direction. It
+had never been pushed. If the failure is the state drifting out of story-mode at
+the generation boundary, a force holding it there should work where removing the
+disturbance does -- and without costing the variety, because the perturbation
+stays at full strength.
+
+At two stories out with the flat perturbation, 200 stories:
+
+| | coherent | not a story | happens | wording |
+|---|---|---|---|---|
+| shielded only | 170/200 | 10% | **+4.9** [+2.4, +7.3] | **+5.1** [+3.2, +6.9] |
+| pushed at equal share | 174/200 | 6% | **-3.2** [-6.2, -0.5] | +1.4 [-0.3, +3.3] |
+| pushed at 2.5 times | **109/200** | 7% | | |
+
+**The worst trade measured.** Four stories of coherence for a variety of what
+happens that falls from a clear win to a clear loss, and at two and a half times
+the share, coherence collapses to 109 of 200 -- the worst number on the branch.
+A force holding the register does not substitute for not disturbing it. Past a
+point it is simply another thing distorting the text.
+
+## The branch's conclusion
+
+Sixteen mechanisms, probed from every side the method has: how far the state is
+displaced, where in the prompt, how sharply that falls off, which cloud it is
+measured against, which of the model's own stories it aims at, how far it
+travels toward each of them, what is steered alongside it, how hard, whether a
+direction's strength varies between stories, and whether the story register is
+defended by forbidding a direction or by pushing one.
+
+Every one lands on the same curve or worse. That is the finding.
+
+| | coherent | broken /12 | happens vs top-p | wording vs top-p |
+|---|---|---|---|---|
+| temperature 1.8, nucleus (top-p) | 200/200 | 3.92 | reference | reference |
+| temperature 1.8, top-k | 199/200 | 3.95 | +4.3 [+1.8, +6.7] | +1.7 [-0.2, +3.6] |
+| the untouched model | 194/200 | 4.30 | -21.4 | -6.3 |
+| **faded perturbation, 2.0 out** | **193/200** | **2.75** | tie | loss |
+| 1.5 out, flat | 190/200 | 2.83 | tie | tie |
+| **1.75 out, flat** | 178/200 | 3.25 | **+3.2** [+0.5, +5.8] | **+2.7** [+1.0, +4.6] |
+| 2.0 out, flat | 170/200 | 3.35 | **+4.8** [+2.4, +7.3] | **+5.2** [+3.3, +7.2] |
+
+Requirement compliance is won at every setting, by up to 1.2 of twelve, on
+intervals well clear of zero, and has survived four measurement corrections.
+Both variety measures are won from 1.75 stories out. No setting has both, and
+the reason is now understood rather than assumed: **the perturbation near the
+generation boundary is at once the source of the variety and the source of the
+failure, and every intervention that touches one touches the other.**
