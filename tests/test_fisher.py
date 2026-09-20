@@ -26,7 +26,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import torch  # noqa: E402
 
 from noiseegra.fisher import (  # noqa: E402
-    anisotropy, fisher_rao_distance, subspace_metric, whiten_basis,
+    anisotropy, fisher_rao_distance, resolved_directions, subspace_metric,
+    whiten_basis,
 )
 
 FAIL = []
@@ -108,10 +109,36 @@ check("the metric is positive definite",
 before = anisotropy(est)
 check("the raw subspace is strongly anisotropic", before > 5.0, f"{before:.1f}x")
 
-W = whiten_basis(basis, est)
+# With the cap out of the way, whitening is exact.
+W = whiten_basis(basis, est, max_gain=1e6)
 after = anisotropy(subspace_metric(predict, W, step=1e-4))
 check("whitening makes every direction move the predictions equally",
       after < 1.05, f"{before:.1f}x -> {after:.3f}x")
+
+# The cap is there because a direction the model barely responds to would
+# otherwise be stretched without limit. It trades some of the correction for
+# that guarantee, and the amount it gives up is exactly the cap.
+CAP = 4.0
+Wc = whiten_basis(basis, est, max_gain=CAP)
+capped = anisotropy(subspace_metric(predict, Wc, step=1e-4))
+check("a capped whitening corrects only as far as the cap allows",
+      before / CAP * 0.8 < capped < before / CAP * 1.25,
+      f"{before:.1f}x -> {capped:.2f}x at a cap of {CAP:g}")
+check("and it still corrects most of the way",
+      capped < before / 2, f"{capped:.2f}x vs {before:.1f}x")
+
+# A subspace with a direction the probe cannot resolve at all must not blow up.
+deg = est.clone()
+evals, evecs = torch.linalg.eigh(deg)
+evals[0] = 0.0
+deg = evecs @ torch.diag(evals) @ evecs.T
+Wd = whiten_basis(basis, deg, max_gain=8.0)
+check("a direction with no measurable response is not stretched without limit",
+      bool(torch.isfinite(Wd).all()) and float(Wd.norm()) < 40 * float(basis.norm()),
+      f"norm grew {float(Wd.norm()) / float(basis.norm()):.1f}x")
+check("and the resolvable directions are counted",
+      resolved_directions(deg) == K - 1 and resolved_directions(est) == K,
+      f"{resolved_directions(deg)} of {K} resolvable when one is zeroed")
 
 
 def spread(B, n=400, scale=1.0):
@@ -126,7 +153,7 @@ def spread(B, n=400, scale=1.0):
 
 
 raw = spread(basis, scale=0.05)
-whit = spread(W, scale=0.05 * float(torch.linalg.eigvalsh(est).max()) ** 0.5)
+whit = spread(W, scale=0.05)
 check("before whitening, how far a draw moves the model depends on its direction",
       float(raw.std() / raw.mean()) > 0.3, f"spread {float(raw.std()/raw.mean()):.3f}")
 check("after whitening, every draw moves the model about equally",
@@ -148,6 +175,8 @@ check("a non-positive probe step is refused",
       refuses(lambda: subspace_metric(predict, basis, step=0.0)))
 check("a metric of the wrong size is refused",
       refuses(lambda: whiten_basis(basis, torch.eye(K + 1, dtype=torch.float64))))
+check("a cap below one is refused: it would mean shrinking the stiffest direction",
+      refuses(lambda: whiten_basis(basis, est, max_gain=0.5)))
 
 # --- the cost claim ---------------------------------------------------------
 calls = {"n": 0}

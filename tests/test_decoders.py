@@ -163,6 +163,33 @@ check("min-p changes what a real generate() draws, on a distribution it can bite
 check("two different schemes do not draw the same tokens",
       _generate(0.3, min_p=0.5) != _generate(0.3, typical_p=0.2))
 
+# --- the log must name every condition, not just the first ------------------
+# One process runs every arm of a suite in turn. A diagnostic that reports once
+# per process names the arm nobody is worried about and stays silent for the
+# seven that are.
+import io, contextlib  # noqa: E402
+
+_m2 = Tiny()
+_out = io.StringIO()
+with contextlib.redirect_stdout(_out):
+    for kw in ({}, {"min_p": 0.05}, {"typical_p": 0.2}, {"min_p": 0.05}):
+        _generate.__globals__["_m"] = _m2
+        torch.manual_seed(1)
+        chat = _m2.apply_chat_template(_prompt, tokenize=False, add_generation_prompt=True)
+        inp = _m2.tokenizer(chat, return_tensors="pt")
+        gen = _m2._sampling_kwargs(do_sample=True, temperature=1.8, **kw)
+        w = truncation_warper(temperature=1.8, **kw)
+        extra = {"logits_processor": LogitsProcessorList([w])} if w else {}
+        _m2.generate(_prompt, 5, True, temperature=1.8, **kw)
+lines = [ln for ln in _out.getvalue().splitlines() if ln.startswith("decoding:")]
+check("each distinct decoding setting is reported once",
+      len(lines) == 3, f"{len(lines)} lines for 3 distinct settings of 4 calls")
+check("and the reports say which scheme was applied",
+      sum("min_p=0.05" in ln for ln in lines) == 1
+      and sum("typical_p=0.2" in ln for ln in lines) == 1
+      and sum("applied here: none" in ln for ln in lines) == 1,
+      " | ".join(ln.split("applied here: ")[-1] for ln in lines))
+
 print()
 if FAIL:
     print("FAILED: " + ", ".join(FAIL))

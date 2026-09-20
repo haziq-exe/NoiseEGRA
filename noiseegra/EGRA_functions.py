@@ -267,17 +267,26 @@ class EGRA:
             existing = probe_kwargs.get("logits_processor") or LogitsProcessorList()
             probe_kwargs["logits_processor"] = LogitsProcessorList(
                 list(existing) + [truncator])
-        # Say once, in the log, what decoding this condition is actually doing.
-        # Six conditions differing only in these three settings once came back
-        # byte-identical to plain nucleus sampling across 200 stories each, and
-        # nothing in the log said so.
-        if not getattr(type(self), "_said_decoding", False):
-            type(self)._said_decoding = True
+        # Say in the log what decoding each condition is actually doing, once
+        # per distinct setting. Six conditions differing only in these three
+        # settings once came back byte-identical to plain nucleus sampling
+        # across 200 stories each, and nothing in the log said so.
+        #
+        # Once per PROCESS is not enough: one process runs every condition of a
+        # suite in turn, so the first arm would report and the seven arms whose
+        # decoding is in question would not -- which is exactly the case this
+        # line exists to cover.
+        said = getattr(type(self), "_said_decoding", None)
+        if not isinstance(said, set):
+            said = set()
+            type(self)._said_decoding = said
+        applied = ("none" if truncator is None else
+                   "typical_p=%s min_p=%s eta_cutoff=%s at temperature %s"
+                   % (typical_p, min_p, eta_cutoff, temperature))
+        key = (tuple(sorted(_kw.items())), applied)
+        if key not in said:
+            said.add(key)
             import transformers
-            applied = "none"
-            if truncator is not None:
-                applied = ("typical_p=%s min_p=%s eta_cutoff=%s at temperature %s"
-                           % (typical_p, min_p, eta_cutoff, temperature))
             print(f"decoding: transformers {transformers.__version__}; "
                   f"passed to generate {_kw}; processor applied here: {applied}",
                   flush=True)

@@ -67,6 +67,12 @@ class StoryAxes:
     # measured failure needs exactly this, and generating a separate calibration
     # batch for it would be paying twice for one thing.
     texts: List[str] = field(default_factory=list)
+    # Whether the basis has already been rescaled by the pulled-back Fisher-Rao
+    # metric. The basis is cached to disk and a resumed run loads it, so without
+    # this a resume would whiten an already whitened basis and the displacement
+    # would be shaped twice -- a silent change of mechanism between the first
+    # half of a run and the second.
+    fisher_whitened: bool = False
 
 
 @torch.no_grad()
@@ -453,3 +459,143 @@ def collect_prompt_pcs(
                 print(f"  [prompt basis] rank {k} from {n_pos} prompt positions; those "
                       f"directions carry {explained:.0%} of the variation across them")
     return StoryAxes(basis=basis, mean=centre, explained=explained, n_stories=n_pos)
+
+
+@torch.no_grad()
+def whiten_axes_by_fisher(
+    egra,
+    prompt: Union[str, List[Dict[str, str]]],
+    axes: "StoryAxes",
+    layers: Sequence[int],
+    *,
+    push_plan=None,
+    prompt_tail_clear: int = 8,
+    prompt_head_clear: int = 0,
+    gamma: float = 1.0,
+    max_gain: float = 8.0,
+    verbose: bool = True,
+) -> Dict[int, float]:
+    """Rescale each layer's perturbation basis by how far it moves predictions.
+
+    Round 16 laid the whole set of per-story perturbations out so that it
+    covered the perturbation subspace evenly, and every matched pair came back
+    slightly worse than drawing each one independently. The reason recorded was
+    that distance in the subspace does not predict distance between the stories
+    that come out.
+
+    That is a statement about which metric the subspace carries. This puts the
+    right one on it: the Fisher-Rao metric of the model's own next-token
+    distribution, pulled back onto the subspace (Arvanitidis et al., AISTATS
+    2022). For a categorical distribution that distance is the angle between the
+    square roots of the two probability vectors, so the whole pullback is
+    measured with forward passes and an arccos -- no Jacobians, no gradients.
+
+    After whitening, a displacement of a given length moves the model's own
+    predictions by the same amount whichever way it points. Two things follow.
+    Covering the subspace evenly now means covering the model's predictions
+    evenly. And the size of a displacement stops being measured in units of one
+    model's activations, so the same setting means the same thing on a different
+    model -- which is where carrying the 1.7B configuration to the 8B went
+    wrong.
+
+    Returns the anisotropy per layer, as a length ratio, measured before
+    whitening: 1.0 would mean the subspace already moved predictions equally in
+    every direction and this changes nothing. The basis is rewritten in place.
+
+    The probe is one forward pass over the prompt, and the distribution read is
+    the next token at the last position -- the immediate effect of displacing
+    the prompt, not the whole story's. That is the honest description of what is
+    being measured, and it is the quantity the displacement acts on first.
+    """
+    from .fisher import (anisotropy, resolved_directions, subspace_metric,
+                         whiten_basis)
+
+    blocks = egra._get_transformer_blocks()
+    norm_layers = sorted({egra._normalize_layer_index(int(i), len(blocks))
+                          for i in layers})
+    missing = [li for li in norm_layers if li not in axes.basis]
+    if missing:
+        raise KeyError(f"no perturbation basis at layers {missing}")
+
+    device = egra._input_device()
+    egra.model.eval()
+    text = (egra.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
+            if isinstance(prompt, (list, tuple)) else prompt)
+    enc = egra.tokenizer(text, return_tensors="pt").to(device)
+    enc.pop("token_type_ids", None)
+
+    if getattr(axes, "fisher_whitened", False):
+        if verbose:
+            print("  [fisher] this basis was already whitened; leaving it alone",
+                  flush=True)
+        return {}
+
+    out: Dict[int, float] = {}
+    for li in norm_layers:
+        basis = axes.basis[li].to(torch.float32)
+        active = {"delta": None}
+
+        def hook(module, inp, o, _li=li):
+            t = o[0] if isinstance(o, (tuple, list)) else o
+            if not isinstance(t, torch.Tensor) or t.dim() != 3 or t.shape[1] == 1:
+                return None
+            n = t.shape[1]
+            lo = prompt_head_clear if 0 < prompt_head_clear < n else 0
+            hi = n - prompt_tail_clear if 0 < prompt_tail_clear < n - lo else n
+            # The push, exactly as the generation hook applies it, so the
+            # geometry is measured where the perturbation is actually used --
+            # on top of the push, not instead of it.
+            if push_plan is not None and getattr(push_plan, "steer_prefill", False):
+                d = push_plan.steering_only(_li, 0, device=t.device)
+                if d is not None:
+                    d = d.to(t.dtype).view(1, 1, -1)
+                    if hi > lo:
+                        t[:, lo:hi, :].add_(d)
+                    else:
+                        t.add_(d)
+            if active["delta"] is not None:
+                d = active["delta"].to(device=t.device, dtype=t.dtype).view(1, 1, -1)
+                if hi > lo:
+                    t[:, lo:hi, :].add_(d)
+                else:
+                    t.add_(d)
+            return None
+
+        handle = blocks[li].register_forward_hook(hook)
+        try:
+            def predict(delta):
+                active["delta"] = delta
+                res = egra.model(**enc, use_cache=False, return_dict=True)
+                active["delta"] = None
+                return torch.softmax(res.logits[0, -1, :].float(), dim=-1)
+
+            # Probe at the size the displacement is actually used at. A metric
+            # is only constant infinitesimally, so measuring it at the working
+            # size describes the geometry where the perturbation lands rather
+            # than at the point it starts from.
+            radius = float(axes.scale.get(li, torch.ones(1)).mean()) if axes.scale else 1.0
+            step = max(1e-3, gamma * radius / max(1.0, basis.shape[1] ** 0.5))
+            metric = subspace_metric(predict, basis.cpu(), step=step)
+            out[li] = anisotropy(metric)
+            usable = resolved_directions(metric)
+            axes.basis[li] = whiten_basis(
+                basis.cpu(), metric, max_gain=max_gain).to(axes.basis[li].dtype)
+            # Whitening rewrites the columns, so the spread measured along the
+            # old ones no longer describes the new ones. Dropping it is not a
+            # loss: weighting directions by how far stories spread along them
+            # was a stand-in for how much each direction matters, and this
+            # measures that directly.
+            if axes.scale and li in axes.scale:
+                axes.scale[li] = torch.ones_like(axes.scale[li])
+            if verbose:
+                shown = ("beyond measurement" if out[li] == float("inf")
+                         else f"{out[li]:.1f}x")
+                print(f"  [fisher] layer {li}: the subspace was {shown} "
+                      f"anisotropic in how far it moves the next-token "
+                      f"distribution, with {usable} of {basis.shape[1]} "
+                      f"directions the probe could resolve; whitened, capped "
+                      f"at {max_gain:g}x", flush=True)
+        finally:
+            handle.remove()
+    axes.fisher_whitened = True
+    return out

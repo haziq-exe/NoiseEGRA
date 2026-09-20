@@ -111,7 +111,8 @@ def subspace_metric(
     return (evecs @ torch.diag(evals) @ evecs.T)
 
 
-def whiten_basis(basis: torch.Tensor, metric: torch.Tensor) -> torch.Tensor:
+def whiten_basis(basis: torch.Tensor, metric: torch.Tensor,
+                 *, max_gain: float = 8.0) -> torch.Tensor:
     """Rescale `basis` so a unit coefficient vector is a unit Fisher-Rao step.
 
     With U the basis and G the pulled-back metric, the whitened basis is
@@ -119,11 +120,33 @@ def whiten_basis(basis: torch.Tensor, metric: torch.Tensor) -> torch.Tensor:
     whose Fisher-Rao length is one, whichever direction c points in. Drawing c
     uniformly on the sphere afterwards therefore spreads the perturbations
     evenly over the model's predictions rather than evenly over its activations.
+
+    `max_gain` caps how far any direction is stretched relative to the one the
+    model responds to most strongly, and it is not optional in practice. Exact
+    whitening divides by the square root of each eigenvalue, so a direction the
+    model barely responds to is stretched without limit -- and on a real
+    subspace some directions sit below what the probe can resolve at all. The
+    displacement would then spend almost its whole length pushing somewhere the
+    model does not notice, which is both useless and far outside anything the
+    model's own stories do. Capping the gain keeps the correction where there is
+    signal and leaves the rest alone.
     """
     if basis.shape[1] != metric.shape[0] or metric.shape[0] != metric.shape[1]:
         raise ValueError("metric must be k x k for a dim x k basis")
+    if max_gain < 1.0:
+        raise ValueError("max_gain is a stretch relative to the stiffest "
+                         "direction and cannot be below 1")
     evals, evecs = torch.linalg.eigh(metric.double())
-    inv_sqrt = evecs @ torch.diag(evals.clamp_min(1e-30).rsqrt()) @ evecs.T
+    top = float(evals.max())
+    if top <= 0:
+        return basis
+    floor = top / (float(max_gain) ** 2)
+    evals = evals.clamp_min(floor)
+    inv_sqrt = evecs @ torch.diag(evals.rsqrt()) @ evecs.T
+    # Scaled so the stiffest direction keeps the length it had. Without this the
+    # whole basis is divided by the metric's units, and `gamma` would stop
+    # meaning a number of story-distances.
+    inv_sqrt = inv_sqrt * (top ** 0.5)
     return (basis.double() @ inv_sqrt).to(basis.dtype)
 
 
@@ -140,6 +163,27 @@ def anisotropy(metric: torch.Tensor) -> float:
     evals = torch.linalg.eigvalsh(metric.double()).clamp_min(0)
     lo = float(evals.min())
     hi = float(evals.max())
+    if hi <= 0:
+        return 1.0
     if lo <= 0:
+        # Some direction moves the predictions by nothing the probe can
+        # resolve. Reporting infinity is true and useless; what the caller
+        # needs to know is that the subspace is degenerate, which
+        # `resolved_directions` answers.
         return float("inf")
     return (hi / lo) ** 0.5
+
+
+def resolved_directions(metric: torch.Tensor, *, floor_ratio: float = 1e-4) -> int:
+    """How many directions the probe could actually measure a response along.
+
+    A direction below this is one the model does not visibly react to at the
+    probe size. Whitening would stretch it hardest of all, which is why the
+    gain is capped, and a subspace with few resolved directions is one where
+    this correction has little to work with.
+    """
+    evals = torch.linalg.eigvalsh(metric.double())
+    top = float(evals.max())
+    if top <= 0:
+        return 0
+    return int((evals > top * floor_ratio).sum())

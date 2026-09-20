@@ -321,6 +321,22 @@ def main() -> None:
                          "steered stories; and an anchored displacement aims at one "
                          "of the sampled stories, which taken from the untouched "
                          "model break 4.3 requirements of twelve.")
+    ap.add_argument("--fisher-whiten", action="store_true",
+                    help="rescale the perturbation basis so a displacement of a "
+                         "given length moves the model's own next-token "
+                         "distribution by the same amount whichever direction "
+                         "it points in. Round 16 found that covering the "
+                         "perturbation subspace evenly does not cover the "
+                         "output evenly; this puts the metric that does on it, "
+                         "the Fisher-Rao metric of the output distribution "
+                         "pulled back to the subspace. Costs k(k+1)/2 + 1 "
+                         "forward passes over the prompt, once.")
+    ap.add_argument("--fisher-max-gain", type=float, default=8.0,
+                    help="how far --fisher-whiten may stretch a direction "
+                         "relative to the one the model responds to most. "
+                         "Without a cap, a direction the model barely notices "
+                         "is stretched without limit and the displacement "
+                         "spends its whole length going nowhere.")
     ap.add_argument("--noise-beta", type=float, default=None,
                     help="colour of the per-story displacement's wandering along "
                          "the token axis: the power in its trajectory falls as "
@@ -1246,6 +1262,28 @@ def main() -> None:
         # what the allocation reads, and only the story-level basis has any.
         if args.steer_allocate == "shortfall":
             _allocate_by_shortfall(args, cached, checker)
+
+        if args.fisher_whiten:
+            from noiseegra.activation_basis import whiten_axes_by_fisher
+            print("fisher: measuring how far each direction of the perturbation "
+                  "subspace moves the model's own next-token distribution, and "
+                  "rescaling so they move it equally ...", flush=True)
+            # Measured with the calibration push applied, so the geometry is
+            # read where the perturbation is actually used rather than on the
+            # untouched model. The push here carries flat weights even when the
+            # budget is allocated, because the allocation is measured from the
+            # same sample: the geometry is therefore read under a slightly
+            # different push from the one the run ends up using.
+            whiten_axes_by_fisher(
+                get_model(), messages[0], cached, layers,
+                push_plan=push_plan,
+                prompt_tail_clear=int(getattr(args, "prompt_tail", 8) or 8),
+                gamma=float(getattr(args, "main_gamma", 1.0) or 1.0),
+                max_gain=float(args.fisher_max_gain),
+            )
+            torch.save(cached, pc_path)
+            if "fisher" not in args.offset_basis_kind:
+                args.offset_basis_kind = args.offset_basis_kind + "fisher"
 
         if args.shrink_anchors:
             import torch as _t
