@@ -5030,3 +5030,55 @@ that raising the temperature costs.
 the untouched model, which the codebase can already record with its entropy
 probe. That measurement would turn this paragraph from an explanation into a
 result, and it is cheap.
+
+## Round 92 - the ablation the paper rests on
+
+The constraint push with no perturbation at all, which had never been run on
+this task. 200 stories, differences from the untouched model, 400 subsamples.
+
+| | coherent | broken /12 | what happens | wording |
+|---|---|---|---|---|
+| the untouched model | 194/200 | 4.30 | reference | reference |
+| **the push alone** | **200/200** | **1.66** | **-13.1** [-16.6, -9.0] | **-1.5** [-2.2, -0.6] |
+| push + perturbation, 1.5 out | 190/200 | 2.83 | **+23.1** [+20.1, +26.4] | **+6.3** [+4.8, +7.7] |
+| push + perturbation, 1.75 out | 177/200 | 3.25 | **+25.7** [+22.9, +28.7] | **+9.1** [+7.7, +10.5] |
+| temperature 1.8, nucleus | 200/200 | 3.92 | +22.6 [+19.9, +25.2] | +6.3 [+5.0, +7.8] |
+| temperature 1.8, top-k | 199/200 | 3.95 | +27.0 [+24.3, +29.7] | +8.1 [+6.5, +9.6] |
+
+**Three results, and together they are the paper.**
+
+**The push alone is extraordinary on compliance and coherence.** 200 stories of
+200 coherent -- every one -- at **1.66 requirements broken of twelve**, against
+the untouched model's 4.30 and the two raised-temperature baselines' 3.92 and
+3.95. That is two and a half requirements better than the model as it ships, at
+no cost in coherence whatever. Nothing else in this project comes close.
+
+**And it homogenises the output, measurably.** Variety of what happens falls
+13.1 below the untouched model and variety of wording 1.5, both on intervals
+clear of zero. This is the published finding that strong steering produces
+homogeneous generations, measured directly on this task with an explicit
+ablation rather than inferred. It is visible in the stories:
+
+    Mara runs down the hallway, her sneakers slipping on the wet floor.
+    Anna runs down the hallway, her sneakers echoing off the tiles.
+
+Two of the two hundred, opening the same way with the same object.
+
+**The perturbation is what puts the variety back, and then some.** From 13.1
+below the untouched model to 23.1 above it -- a swing of 36 points -- while
+keeping 190 of 200 coherent and still breaking a whole requirement fewer than
+nucleus sampling. At temperature 1.0 it lands level with nucleus sampling at
+temperature **1.8** on variety of what happens (+23.1 against +22.6), which is
+the comparison that matters for deployment: the teacher gets the diversity of a
+hot decoder without paying the compliance that raising the temperature costs.
+
+**What this reframes.** The frontier mapped over rounds 70 to 87 is not the
+method trading its own diversity away. It is the perturbation *buying back*
+diversity the push destroyed, and the further it has to reach the more coherence
+it spends doing so. The two halves of the method are doing opposite jobs, and
+the ablation is what shows it.
+
+It also explains round 91. Under a push strong enough to cost 13 points of
+diversity, the next-token distribution is peaked enough that a truncation scheme
+has nothing left to cut -- which is why locally typical, min-p and eta-sampling
+all produced byte-identical stories.
