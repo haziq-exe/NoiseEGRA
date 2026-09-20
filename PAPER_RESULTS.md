@@ -15,10 +15,17 @@ temperature they need.
 | Untouched model (T=1.0) | 194/200 | 4.30 | −22.5 [−25.4, −19.9] | −6.4 [−7.8, −5.1] |
 | Top-k 40, T=1.8 (Fan et al., 2018) | 199/200 | 3.95 | +4.7 [+2.3, +6.9] | +1.7 [−0.3, +3.5] |
 | Nucleus 0.95, T=1.8 (Holtzman et al., 2020) | 200/200 | 3.92 | *reference* | *reference* |
-| Contrastive search (Su et al., 2022) | 197/200 | 4.50 | −33.9 [−37.1, −31.1] | −8.3 [−9.7, −6.9] |
+| Top-k 4, T=1.0 (mislabelled below) | 197/200 | 4.50 | −33.9 [−37.1, −31.1] | −8.3 [−9.7, −6.9] |
 | **Ours, steering only** | **200/200** | **1.66** | −35.5 | −7.9 |
 | **Ours, steering + variation (γ=1.5)** | 190/200 | **2.83** | +0.5 [−2.3, +3.5] | −0.2 [−1.7, +1.5] |
 | **Ours, steering + variation (γ=1.75)** | 177/200 | **3.25** | **+3.1 [+0.5, +5.9]** | **+2.7 [+1.0, +4.3]** |
+
+**The fourth row is not contrastive search.** The condition set
+`penalty_alpha`, but the function the English runner uses to generate never
+forwarded it; only its `top_k` of 4 arrived. So that row measures plain top-k 4
+sampling at temperature 1.0, and contrastive search has not been run on this
+task. The same fault means locally typical sampling, eta-sampling and min-p have
+never been applied either, which is why they are absent rather than reported.
 
 Three claims, each with an interval clear of zero:
 
@@ -143,7 +150,8 @@ rather than against each other.
 ## Still to add
 
 - Qwen3-8B at its proportional layer band, with a push-only arm.
-- Locally typical, η-sampling and min-p as decoding baselines. These were
-  requested by name from the generation stack and silently not applied; they are
-  now applied as an explicit logits processor and need re-running.
+- Locally typical, η-sampling, min-p and contrastive search as decoding
+  baselines. None of the four has ever run: the settings reached the run id and
+  the suite but not the generation call, so every one of them produced plain
+  nucleus sampling. Fixed and re-running.
 - A human or LLM-judge rating of story quality, which no automatic metric covers.

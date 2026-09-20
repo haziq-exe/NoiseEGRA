@@ -172,14 +172,47 @@ _SCHEDULE_CODE = {"constant": "c", "cosine_decay": "d", "ramp": "r", "linear_dec
                   "prefix": "p"}
 
 
+# A file name cannot exceed 255 bytes on any filesystem this runs on, and the
+# stories go in `<run_id>.csv`. Well under it, to leave room for the suffixes a
+# future mechanism adds.
+_MAX_RUN_ID = 200
+
+
 def _ortho_tag(model_name: str, spec: ExperimentSpec) -> str:
-    """Encode a SteeringPlan into a filesystem-safe, ablation-distinguishing run id."""
+    """Encode a SteeringPlan into a filesystem-safe, ablation-distinguishing run id.
+
+    Spelling out every direction and every weight is readable at five
+    directions and impossible at thirteen. Measured weights are fractions like
+    0.28125, not ones and zeros, so thirteen of them run to eighty characters
+    and the name reaches 282 -- past the limit, and only for the arms whose
+    weights are fractions. The first arm generated fine and the second could not
+    open its file, so an eight-arm run spent an hour to return one arm.
+
+    So the id is built, measured, and rebuilt compressed if it does not fit. The
+    compressed form digests the full (name, weight) pairs, so two arms differing
+    in any weight still differ here, and nothing is lost: the run's state.json
+    records every direction and every beta by name.
+    """
+    for compress in (False, True):
+        tag = _ortho_tag_once(model_name, spec, compress=compress)
+        if len(tag) <= _MAX_RUN_ID:
+            return tag
+    return tag
+
+
+def _ortho_tag_once(model_name: str, spec: ExperimentSpec, *, compress: bool) -> str:
     plan = spec.steering_plan
     if plan is None:
         raise ValueError("orthogonal_steering specs require a `steering_plan`.")
 
-    names = "-".join(s.name[:3] for s in plan.specs)
-    betas = "-".join(_float_tag(s.beta) for s in plan.specs)
+    if compress:
+        import hashlib
+        full = ";".join(f"{sp.name}={sp.beta!r}" for sp in plan.specs)
+        names = f"{len(plan.specs)}dir"
+        betas = "w" + hashlib.sha1(full.encode()).hexdigest()[:10]
+    else:
+        names = "-".join(s.name[:3] for s in plan.specs)
+        betas = "-".join(_float_tag(s.beta) for s in plan.specs)
     parts = [
         f"{model_name}__ORTHO",
         f"__{_layers_tag(plan.layers)}",

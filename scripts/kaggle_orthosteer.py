@@ -86,6 +86,21 @@ def write_csvs(out: Path, state: dict) -> None:
                 writer.writerow([text])
 
 
+# Decoding settings a condition can carry. Every one of them has to reach the
+# model, and `tests/test_spec_forwarding.py` checks that it does.
+#
+# This is the path the English runner uses; `setup_experiment` has a loop of its
+# own for the Arabic study. Locally typical sampling, eta-sampling, min-p and
+# contrastive search were added to the spec, to the suite, to the run id and to
+# `setup_experiment`, and never to this function -- so five conditions generated
+# plain nucleus sampling under run ids naming a decoder, and the contrastive
+# search baseline was really top-k 4, because `top_k` was the one part of it
+# that was forwarded. Three runs were spent before the cause was this and not
+# the two real but secondary faults found on the way.
+_DECODING_FIELDS = ("temperature", "top_p", "top_k", "typical_p", "min_p",
+                    "eta_cutoff", "penalty_alpha")
+
+
 def generate_one(model, spec, mode, story_prompt, seed, max_new_tokens, max_words=None,
                  story_index=None, entropy_out=None):
     """``max_words`` stops a generation that has run far past what the task allows.
@@ -101,6 +116,7 @@ def generate_one(model, spec, mode, story_prompt, seed, max_new_tokens, max_word
             temperature=spec.temperature, top_p=spec.top_p, top_k=spec.top_k, seed=seed,
             max_words=max_words, story_index=story_index,
             entropy_out=entropy_out,
+            typical_p=spec.typical_p, min_p=spec.min_p, eta_cutoff=spec.eta_cutoff,
         )
     if mode == "residual_stream_noise":
         return model.generate_with_residual_stream_noise(
@@ -118,6 +134,8 @@ def generate_one(model, spec, mode, story_prompt, seed, max_new_tokens, max_word
             story_prompt, max_new_tokens=max_new_tokens, do_sample=spec.do_sample,
             temperature=spec.temperature, top_p=spec.top_p, top_k=spec.top_k, seed=seed,
             max_words=max_words, entropy_out=entropy_out,
+            typical_p=spec.typical_p, min_p=spec.min_p, eta_cutoff=spec.eta_cutoff,
+            penalty_alpha=spec.penalty_alpha,
         )
     raise ValueError(f"kaggle_orthosteer does not handle mode '{mode}'")
 
