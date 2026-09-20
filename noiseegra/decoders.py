@@ -24,14 +24,24 @@ different at every temperature.
 from __future__ import annotations
 
 import torch
+from transformers import LogitsProcessor
 
 
-class TruncationWarper:
+class TruncationWarper(LogitsProcessor):
     """One published truncation scheme, plus the temperature it is measured at.
 
     Exactly one of ``typical_p``, ``min_p`` or ``eta_cutoff`` is honoured; the
     caller is expected to pass one. Whatever the scheme would remove, the single
     most likely token is always kept, so the distribution can never be empty.
+
+    It subclasses ``LogitsProcessor`` because the generation stack checks: a
+    plain object with the right ``__call__`` is accepted by transformers 4 and
+    quietly dropped by transformers 5, which is how five decoding conditions
+    came back byte-identical to plain nucleus sampling for a second time after
+    the first cause had been fixed.
+
+    ``calls`` counts how many times the stack actually invoked it, so a run can
+    show in its log that the setting arrived rather than assert that it did.
     """
 
     def __init__(self, *, temperature=1.0, typical_p=None, min_p=None,
@@ -46,9 +56,14 @@ class TruncationWarper:
         self.min_p = None if min_p is None else float(min_p)
         self.eta_cutoff = None if eta_cutoff is None else float(eta_cutoff)
         self.filter_value = filter_value
+        self.calls = 0
 
-    # ``LogitsProcessor`` is a protocol in practice: generate() calls it.
+    # The signature must match the base class exactly. The generation stack
+    # inspects it and refuses anything it cannot supply every parameter for, so
+    # adding **kwargs here -- which looks like defensive coding -- makes it
+    # demand a `kwargs` argument and raise.
     def __call__(self, input_ids, scores):
+        self.calls += 1
         if self.temperature != 1.0:
             scores = scores / self.temperature
         if self.min_p is not None:

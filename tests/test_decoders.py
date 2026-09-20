@@ -21,6 +21,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import torch  # noqa: E402
 
+from transformers import LogitsProcessor  # noqa: E402
+
 from noiseegra.decoders import TruncationWarper, truncation_warper  # noqa: E402
 
 FAIL = []
@@ -106,6 +108,17 @@ check("temperature is applied by the processor and changes what survives",
       len(hot) > len(cold), f"T=2.0 keeps {len(hot)}, T=0.5 keeps {len(cold)}")
 
 # --- the wiring, which is what actually broke -------------------------------
+# The generation stack checks the type. A plain object with the right __call__
+# is accepted by transformers 4 and dropped by transformers 5, which is how the
+# same five conditions came back identical to plain nucleus sampling twice.
+check("the processor is a real LogitsProcessor, which the stack requires",
+      isinstance(TruncationWarper(min_p=0.1), LogitsProcessor))
+check("it counts how often it was actually called, so a run can prove it ran",
+      TruncationWarper(min_p=0.1).calls == 0)
+_w = TruncationWarper(min_p=0.1)
+_w(None, torch.tensor([[0.5, 0.2, 0.3]]).log())
+check("and the count goes up when it is called", _w.calls == 1)
+
 check("no scheme asked for means no processor",
       truncation_warper(temperature=1.8) is None)
 check("one scheme asked for means a processor",
@@ -184,11 +197,18 @@ with contextlib.redirect_stdout(_out):
 lines = [ln for ln in _out.getvalue().splitlines() if ln.startswith("decoding:")]
 check("each distinct decoding setting is reported once",
       len(lines) == 3, f"{len(lines)} lines for 3 distinct settings of 4 calls")
+check("the report says how many times the processor actually ran, not that it should",
+      all("it ran" in ln for ln in lines)
+      and any(" it ran 5 times" in ln or " it ran 4 times" in ln for ln in lines),
+      " | ".join(ln.split("; ")[-1] for ln in lines))
 check("and the reports say which scheme was applied",
       sum("min_p=0.05" in ln for ln in lines) == 1
       and sum("typical_p=0.2" in ln for ln in lines) == 1
-      and sum("applied here: none" in ln for ln in lines) == 1,
-      " | ".join(ln.split("applied here: ")[-1] for ln in lines))
+      and sum("processor: none" in ln for ln in lines) == 1,
+      " | ".join(ln.split("processor: ")[-1][:40] for ln in lines))
+check("a scheme that is asked for but never invoked stops the run",
+      any("it ran 5 times" in ln for ln in lines),
+      "the count is what makes a silent drop visible")
 
 print()
 if FAIL:

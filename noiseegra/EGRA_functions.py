@@ -284,12 +284,10 @@ class EGRA:
                    "typical_p=%s min_p=%s eta_cutoff=%s at temperature %s"
                    % (typical_p, min_p, eta_cutoff, temperature))
         key = (tuple(sorted(_kw.items())), applied)
-        if key not in said:
+        say = key not in said
+        if say:
             said.add(key)
-            import transformers
-            print(f"decoding: transformers {transformers.__version__}; "
-                  f"passed to generate {_kw}; processor applied here: {applied}",
-                  flush=True)
+
         outputs = self.model.generate(
             **inputs,
             max_new_tokens=max_new_tokens,
@@ -297,6 +295,27 @@ class EGRA:
             **({"stopping_criteria": stopper} if stopper is not None else {}),
             **_kw,
         )
+
+        # Reported AFTER generating, with the number of times the stack actually
+        # invoked the processor. Saying which settings were passed is not
+        # evidence that any of them were used: a plain object with the right
+        # __call__ is accepted by one version of the generation stack and
+        # dropped by the next, which is how five decoding conditions came back
+        # byte-identical to plain nucleus sampling twice over. A count of zero
+        # here is the fault, visible in the log, at the first story.
+        if say:
+            import transformers
+            ran = "n/a" if truncator is None else str(truncator.calls)
+            print(f"decoding: transformers {transformers.__version__}; "
+                  f"passed to generate {_kw}; processor: {applied}; "
+                  f"it ran {ran} times over {max_new_tokens} tokens",
+                  flush=True)
+            if truncator is not None and truncator.calls == 0:
+                raise RuntimeError(
+                    "the decoding setting was built and handed to generate, and "
+                    "the generation stack never called it. Every story in this "
+                    "condition would be plain sampling under a run id claiming "
+                    f"otherwise. Settings: {applied}")
         generated_ids = outputs[0][inputs["input_ids"].shape[-1]:]
         text = strip_reasoning(self.tokenizer.decode(generated_ids, skip_special_tokens=True))
 
