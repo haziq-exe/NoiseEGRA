@@ -57,6 +57,11 @@ class ExperimentSpec:
     temperature: float = 1.0
     top_p: Optional[float] = None
     top_k: Optional[int] = None
+    # The published truncation schemes, for comparison arms.
+    typical_p: Optional[float] = None      # Meister et al., TACL 2023
+    min_p: Optional[float] = None          # Nguyen et al., ICLR 2025
+    eta_cutoff: Optional[float] = None     # Hewitt et al., EMNLP Findings 2022
+    penalty_alpha: Optional[float] = None  # Su et al., NeurIPS 2022
 
 
 def _seed_for_story(x: int) -> int:
@@ -149,6 +154,14 @@ def _sampling_tag(spec: ExperimentSpec) -> str:
             parts.append(f"topp{_float_tag(spec.top_p)}")
         if spec.top_k is not None:
             parts.append(f"topk{spec.top_k}")
+        if spec.typical_p is not None:
+            parts.append(f"typ{_float_tag(spec.typical_p)}")
+        if spec.min_p is not None:
+            parts.append(f"minp{_float_tag(spec.min_p)}")
+        if spec.eta_cutoff is not None:
+            parts.append(f"eta{_float_tag(spec.eta_cutoff)}")
+    if spec.penalty_alpha is not None:
+        parts.append(f"cs{_float_tag(spec.penalty_alpha)}k{spec.top_k}")
 
     if not parts:
         return ""
@@ -707,6 +720,10 @@ def run_story_experiments(
                     temperature=spec.temperature,
                     top_p=spec.top_p,
                     top_k=spec.top_k,
+                    typical_p=spec.typical_p,
+                    min_p=spec.min_p,
+                    eta_cutoff=spec.eta_cutoff,
+                    penalty_alpha=spec.penalty_alpha,
                     seed=seed,
                 )
 
@@ -1025,6 +1042,10 @@ def make_specs(*items: Any) -> list[ExperimentSpec]:
                     temperature=float(it.get("temperature", 1.0)),
                     top_p=_optional_float(it.get("top_p")),
                     top_k=_optional_int(it.get("top_k")),
+                    typical_p=_optional_float(it.get("typical_p")),
+                    min_p=_optional_float(it.get("min_p")),
+                    eta_cutoff=_optional_float(it.get("eta_cutoff")),
+                    penalty_alpha=_optional_float(it.get("penalty_alpha")),
                 )
             )
             continue

@@ -105,16 +105,47 @@ class EGRA:
             return next(iter(device_map.values()))
         return next(self.model.parameters()).device
 
-    def _sampling_kwargs(self, do_sample=True, temperature=1.0, top_p=None, top_k=None):
+    def _sampling_kwargs(self, do_sample=True, temperature=1.0, top_p=None, top_k=None,
+                         typical_p=None, min_p=None, eta_cutoff=None,
+                         penalty_alpha=None):
+        """Decoding settings, including the published truncation schemes.
+
+        Beyond top-k (Fan et al., ACL 2018) and nucleus (Holtzman et al., ICLR
+        2020), the comparisons a reviewer will expect are locally typical
+        sampling (Meister et al., TACL 2023), eta-sampling (Hewitt et al., EMNLP
+        Findings 2022), min-p (Nguyen et al., ICLR 2025) and contrastive search
+        (Su et al., NeurIPS 2022). All four are supported by the generation
+        stack directly, so they cost nothing to run and are not reimplemented
+        here -- which also means the comparison is against the reference
+        implementation rather than ours.
+
+        Contrastive search is not sampling: `penalty_alpha` with `top_k` selects
+        deterministically, penalising candidates similar to what has already been
+        written. It still produces different stories here because each story is
+        seeded differently and the prompt is perturbed, but it is the one arm
+        whose diversity does not come from the sampling distribution.
+        """
         kwargs = {
             "do_sample": do_sample,
         }
+        if penalty_alpha is not None:
+            # Contrastive search: deterministic, so `do_sample` must be off.
+            kwargs["do_sample"] = False
+            kwargs["penalty_alpha"] = penalty_alpha
+            kwargs["top_k"] = int(top_k or 4)
+            return kwargs
         if do_sample:
             kwargs["temperature"] = temperature
             if top_p is not None:
                 kwargs["top_p"] = top_p
             if top_k is not None:
                 kwargs["top_k"] = top_k
+            if typical_p is not None:
+                kwargs["typical_p"] = typical_p
+            if min_p is not None:
+                kwargs["min_p"] = min_p
+            if eta_cutoff is not None:
+                kwargs["eta_cutoff"] = eta_cutoff
         return kwargs
 
     # Reasoning models emit a <think> block before the answer. Qwen3's chat
@@ -190,7 +221,9 @@ class EGRA:
 
         return StoppingCriteriaList([_WordBudget()])
 
-    def generate(self, prompt, max_new_tokens=100, do_sample=True, temperature=1.0, top_p=None, top_k=None, seed=None, max_words=None, entropy_out=None):
+    def generate(self, prompt, max_new_tokens=100, do_sample=True, temperature=1.0,
+                 top_p=None, top_k=None, seed=None, max_words=None, entropy_out=None,
+                 typical_p=None, min_p=None, eta_cutoff=None, penalty_alpha=None):
         """
         prompt should always be a list of dicts of the form [ {"role" : "system", "content" : system_prompt},
                                               {"role" : "user", "content" : user_prompt}  ]
@@ -224,6 +257,10 @@ class EGRA:
                 temperature=temperature,
                 top_p=top_p,
                 top_k=top_k,
+                typical_p=typical_p,
+                min_p=min_p,
+                eta_cutoff=eta_cutoff,
+                penalty_alpha=penalty_alpha,
             ),
         )
         generated_ids = outputs[0][inputs["input_ids"].shape[-1]:]

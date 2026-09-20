@@ -225,6 +225,40 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         # baseline run has neither: it is the model under the prompt alone.
         return (["baseline"], "unmodified generation, no steering and no perturbation")
 
+    if name == "literature":
+        # The published decoding methods a reviewer will expect to see, beside
+        # the two already used. All are run through the generation stack's own
+        # implementations rather than reimplemented here, so the comparison is
+        # against the reference behaviour.
+        #
+        #   top-k               Fan et al., ACL 2018
+        #   nucleus (top-p)     Holtzman et al., ICLR 2020
+        #   locally typical     Meister et al., TACL 2023
+        #   eta-sampling        Hewitt et al., EMNLP Findings 2022
+        #   min-p               Nguyen et al., ICLR 2025
+        #   contrastive search  Su et al., NeurIPS 2022
+        #
+        # Each is run at the temperature its own paper uses for open-ended
+        # generation where that is stated, and at the raised temperature our
+        # other baselines use where it is not, so none is handicapped by a
+        # setting it was not designed for. Contrastive search is deterministic
+        # and takes no temperature at all.
+        t = float(getattr(args, "baseline_temperature", 1.8) or 1.8)
+        items = [
+            {"temperature": t, "top_p": 0.95},
+            {"temperature": t, "top_k": 40},
+            {"temperature": t, "typical_p": 0.95},
+            {"temperature": t, "typical_p": 0.2},
+            {"temperature": t, "eta_cutoff": 2e-3},
+            {"temperature": t, "min_p": 0.05},
+            {"temperature": t, "min_p": 0.1},
+            {"penalty_alpha": 0.6, "top_k": 4},
+        ]
+        return items, (
+            "the published decoding methods: nucleus, top-k, locally typical at "
+            "two settings, eta-sampling, min-p at two settings, and contrastive "
+            "search")
+
     if name == "sampling":
         # The decoding-parameter comparison. Turning the temperature up and
         # truncating the tail is the obvious way to buy diversity without
