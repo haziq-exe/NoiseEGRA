@@ -73,7 +73,20 @@ DEFAULT_SCHEDULES = {}   # flat for every direction unless a caller says otherwi
 # all. Anything a command-line flag sets for a whole run belongs here.
 RUN_DEFAULTS = {"offset_gamma_spread": 0.0, "offset_anchors": None,
                 "anchor_scale": None, "offset_norm": "energy",
-                "offset_taper": 1.0}
+                "offset_taper": 1.0,
+                # The colour of the displacement's wandering, the slowest wobble
+                # it is allowed, and how its size runs over the story. These
+                # belong to the run, not to a suite, for the same reason the
+                # spread does: a suite that does not sweep one must still get
+                # the run's value, or it silently runs the old mechanism.
+                "noise_beta": None, "noise_fmin_cycles": 0.25,
+                "offset_envelope": "flat",
+                # Per-direction shares of the steering budget, measured from how
+                # often each requirement is actually broken. Applied here rather
+                # than at each suite for the same reason as everything else in
+                # this table: there are twenty-odd places a plan is built, and a
+                # setting threaded through by hand reached two of them once.
+                "beta_weights": None}
 
 
 def make_plan(
@@ -105,6 +118,10 @@ def make_plan(
     offset_gamma=0.0,
     offset_mode="none",
     offset_norm=None,
+    noise_beta=None,
+    noise_fmin_cycles=None,
+    offset_envelope=None,
+    beta_weights=None,
     offset_basis_kind="step",
     offset_draw="iid",
     offset_prefill=False,
@@ -133,6 +150,17 @@ def make_plan(
 ) -> SteeringPlan:
     schedules = schedules or DEFAULT_SCHEDULES
     betas = beta if isinstance(beta, dict) else {n: float(beta) for n in names}
+    # False opts this arm out of the run's measured allocation, so a suite can
+    # hold the old hand-picked split as a control in the same run as the new
+    # one. None takes the run's value, which is what every other arm does.
+    weights = (RUN_DEFAULTS.get("beta_weights") if beta_weights is None
+               else beta_weights)
+    if weights:
+        # The plan renormalises the sum to the fixed budget afterwards, so
+        # scaling here divides that fixed total rather than changing it: a
+        # direction whose requirement never fails gives its share to the ones
+        # that do.
+        betas = {n: betas.get(n, 0.0) * float(weights.get(n, 1.0)) for n in names}
     specs = [
         ConstraintSpec(n, beta=betas.get(n, 0.0), schedule=schedules.get(n, "constant"))
         for n in names
@@ -142,6 +170,12 @@ def make_plan(
         offset_gamma_spread = RUN_DEFAULTS["offset_gamma_spread"]
     if offset_norm is None:
         offset_norm = RUN_DEFAULTS["offset_norm"]
+    if noise_beta is None:
+        noise_beta = RUN_DEFAULTS["noise_beta"]
+    if noise_fmin_cycles is None:
+        noise_fmin_cycles = RUN_DEFAULTS["noise_fmin_cycles"]
+    if offset_envelope is None:
+        offset_envelope = RUN_DEFAULTS["offset_envelope"]
     plan = SteeringPlan.build(
         vectors.vectors,
         layers,
@@ -171,6 +205,9 @@ def make_plan(
         offset_gamma=offset_gamma,
         offset_mode=offset_mode,
         offset_norm=offset_norm,
+        noise_beta=noise_beta,
+        noise_fmin_cycles=noise_fmin_cycles,
+        offset_envelope=offset_envelope,
         offset_basis_kind=offset_basis_kind,
         offset_draw=offset_draw,
         offset_prefill=offset_prefill,
@@ -1915,6 +1952,77 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             f"the constraint push at {b:g} held at layers {push_band[0]}-{push_band[-1]} "
             f"with the per-story perturbation at {g:g} moved to layers "
             + ", ".join(f"{x[0]}-{x[-1]}" for x in offset_bands))
+
+    if name == "colour":
+        # Two changes to the method, separated, against the method as it stands.
+        #
+        # One: which requirements are steered. Five directions were carrying
+        # twelve requirements and the five were picked by judgement. Measured on
+        # this model's own stories, that pick spent budget on the one
+        # requirement that never fails and skipped the second worst. The
+        # allocated arms weight every direction by how often its requirement is
+        # actually broken.
+        #
+        # Two: whether the displacement stands still. It has always been one
+        # fixed vector, applied over the prompt and then left alone. Here its
+        # direction follows a 1/f^beta trajectory along the token axis while its
+        # length is held at gamma story-distances, so beta alone decides how
+        # much of the variation is between stories and how much is within one.
+        # beta=0 is the published per-token mechanism and is included precisely
+        # because it should lose: it is the end of the axis where nothing
+        # differs between stories, and this project has measured three times
+        # that such a mechanism cannot move variety.
+        #
+        # Wandering only means anything if the displacement is applied while the
+        # model writes, which the current method does not do. That is a change
+        # of its own, so it gets an arm of its own (fixed, prompt and writing)
+        # rather than being confounded with the colour.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        kind = getattr(args, "offset_basis_kind", "story")
+        b = float(getattr(args, "steer_budget", None) or 2.5)
+        g = float((getattr(args, "gamma_sweep", None) or [1.5])[0])
+        keep = int((getattr(args, "tail_sweep", None) or [8])[0])
+        # The five that were picked by hand, as a control. Named rather than
+        # taken from a flag so the control cannot drift with the flag.
+        PICKED = ("present_tense", "sensory", "named_character", "no_heading",
+                  "something_happens")
+        picked = {n: (1.0 if n in PICKED else 0.0) for n in names}
+        if not any(picked.values()):
+            raise SystemExit(
+                "suite 'colour' holds the hand-picked five as its control, and "
+                "none of " + str(sorted(PICKED)) + " is in the steered set "
+                + str(sorted(names)) + ". Every arm would differ from the "
+                "control by the direction set as well as by what is being "
+                "tested. Add them to --steer-vectors.")
+        flat = {n: 1.0 for n in names}
+
+        def arm(beta, weights, cn=None, decode=False, env="flat"):
+            return {"plan": make_plan(
+                beta=beta, beta_weights=weights, steer_budget=b, offset_gamma=g,
+                offset_mode="orth", offset_basis=offset_basis,
+                offset_basis_kind=kind, steer_prefill=True,
+                prompt_tail_clear=keep,
+                offset_scale=getattr(args, "offset_scale", None),
+                offset_draw_shape=getattr(args, "offset_draw_shape", "manifold"),
+                offset_prefill=True, offset_decode=decode,
+                noise_beta=cn, offset_envelope=env, **quiet, **base)}
+
+        items = [
+            arm(picked, False),                          # the method as it stands
+            arm(flat, None),                             # allocation alone
+            arm(flat, None, decode=True),                # applied while writing too
+            arm(flat, None, cn=2.0, decode=True),        # a slow wander
+            arm(flat, None, cn=1.0, decode=True),        # a faster wander
+            arm(flat, None, cn=0.0, decode=True),        # the per-token end
+            arm(flat, None, cn=2.0, decode=True, env="rise"),   # held back at the start
+            arm(picked, False, cn=2.0, decode=True),     # wandering, old direction set
+        ]
+        return items, (
+            "the hand-picked five against a budget divided by measured failure, "
+            "and a displacement that stands still against one whose direction "
+            f"wanders at exponents 2, 1 and 0, all at {g:g} story-distances "
+            f"and a total push of {b:g}")
 
     if name == "boundary":
         # The best-scoring arm with the final prompt positions left unperturbed.

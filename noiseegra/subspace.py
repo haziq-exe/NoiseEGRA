@@ -43,6 +43,8 @@ from typing import Dict, List, Mapping, Optional, Sequence, Tuple, FrozenSet
 
 import torch
 
+from .colored_noise import colored_sequence
+
 # Reuse the paper's decay curve verbatim so schedules stay comparable.
 from .EGRA_functions import _cosine_noise_decay
 
@@ -328,6 +330,17 @@ class LayerPlan:
     # when the draw is shaped to the manifold rather than to the sphere.
     offset_scale: Optional[torch.Tensor] = None
     offset: Optional[torch.Tensor] = None         # (dim,) this generation's offset
+    # (T, M) coefficients, one row per decode step, when the displacement is a
+    # trajectory rather than a fixed vector. Set only when a noise colour is
+    # asked for. `offset` stays the value at step 0, so every code path that
+    # reads it -- the prompt in particular -- behaves exactly as before.
+    offset_traj: Optional[torch.Tensor] = None
+    # The length `offset` was given, kept so the trajectory can be held at that
+    # same length at every step. Only the direction is allowed to wander: the
+    # size of the displacement is the one quantity in this project that has a
+    # meaning ("gamma story-distances from the average story"), and letting it
+    # drift with the noise colour would make an exponent sweep a size sweep too.
+    offset_length: Optional[float] = None
     amp_basis: Optional[torch.Tensor] = None      # (dim, r) directions stories differ along
     amp_mean: Optional[torch.Tensor] = None       # (dim,) what they differ *from*
     jitter_basis: Optional[torch.Tensor] = None   # (dim, M) directions f(S_c) may use
@@ -345,12 +358,33 @@ class LayerPlan:
         from assuming it did.
         """
         for name in ("basis", "protect", "offset_basis", "offset_anchors",
-                     "anchor_scale", "offset", "jitter",
+                     "anchor_scale", "offset", "offset_traj", "jitter",
                      "amp_basis", "amp_mean", "jitter_basis", "raw_basis",
                      "target", "offset_scale"):
             t = getattr(self, name, None)
             if t is not None and hasattr(t, "device") and t.device != device:
                 setattr(self, name, t.to(device))
+
+    def offset_at(self, t: int, envelope: float = 1.0) -> Optional[torch.Tensor]:
+        """This story's displacement at decode step ``t``.
+
+        Without a trajectory this is the fixed per-story displacement and ``t``
+        is ignored, which is the mechanism this project already had. With one,
+        the direction follows the coloured-noise trajectory while the length is
+        held at what the draw gave it, so ``gamma`` still means the same number
+        of story-distances at every step and at every noise colour.
+        """
+        if self.offset is None:
+            return None
+        if self.offset_traj is None or self.offset_basis is None:
+            return self.offset if envelope == 1.0 else self.offset * envelope
+        tr = self.offset_traj
+        row = tr[min(int(t), tr.shape[0] - 1)]
+        vec = self.offset_basis @ row
+        length = self.offset_length
+        if length is None:
+            length = float(self.offset.norm())
+        return vec * (length * envelope / float(vec.norm().clamp_min(1e-12)))
 
     def steering_delta(
         self,
@@ -456,6 +490,26 @@ class SteeringPlan:
     # behaviour, where the drawn vector was used at its natural length and gamma
     # therefore meant something different for every subspace rank.
     offset_norm: str = "energy"
+    # The colour of the displacement's wandering along the token axis. None
+    # leaves the displacement fixed for the whole story, which is what this
+    # project has always done. 0.0 redraws its direction independently at every
+    # step, which is the published per-token mechanism. In between, the
+    # direction drifts: the power in the trajectory falls as 1/f^beta, so a
+    # larger exponent means a slower drift. See `noiseegra.colored_noise`.
+    noise_beta: Optional[float] = None
+    # The slowest wobble allowed, in cycles across one story. Below one, the
+    # slowest component does not complete a cycle inside the story and so
+    # survives as a displacement that differs between stories -- which is the
+    # only kind that can make a set of stories more varied.
+    noise_fmin_cycles: float = 0.25
+    # How many decode steps the trajectory is generated for.
+    noise_traj_steps: int = 640
+    # How the displacement's size runs over the story: "flat", "decay" (large
+    # at the start, fading), or "rise" (small at the start, growing). The
+    # register failures this project measures come from displacement early on,
+    # where the model decides whether it is answering the reader or telling a
+    # story, so a rising envelope is the one with a reason behind it.
+    offset_envelope: str = "flat"
     # Which set of directions the offset was drawn from, kept so two conditions
     # that differ only in that cannot collide on disk. "step" is the principal
     # components of individual decode-step activations, "story" the components of
@@ -811,6 +865,10 @@ class SteeringPlan:
         offset_gamma: float = 0.0,
         offset_mode: str = "none",
         offset_norm: str = "energy",
+        noise_beta: Optional[float] = None,
+        noise_fmin_cycles: float = 0.25,
+        noise_traj_steps: int = 640,
+        offset_envelope: str = "flat",
         offset_basis_kind: str = "step",
         offset_draw: str = "iid",
         offset_prefill: bool = False,
@@ -1019,6 +1077,10 @@ class SteeringPlan:
             offset_gamma=float(offset_gamma),
             offset_mode=offset_mode,
             offset_norm=offset_norm,
+            noise_beta=None if noise_beta is None else float(noise_beta),
+            noise_fmin_cycles=float(noise_fmin_cycles),
+            noise_traj_steps=int(noise_traj_steps),
+            offset_envelope=str(offset_envelope),
             offset_decode=bool(offset_decode),
             amplify_lambda=float(amplify_lambda),
             amplify_prefill=bool(amplify_prefill),
@@ -1289,6 +1351,29 @@ class SteeringPlan:
             plan[lyr] = pts
         self._offset_plan = plan
 
+    def envelope_at(self, t: int) -> float:
+        """How large the displacement is at decode step ``t``, as a multiplier.
+
+        "decay" is the usual shape, strongest where generation begins. "rise" is
+        the opposite, and it is the one with an argument behind it here: the
+        failures this project counts as broken stories are register failures,
+        the model answering the reader instead of narrating, and they are
+        decided in the first few tokens. Holding the displacement back until the
+        story is under way leaves that decision alone and spends the variation
+        where the story is already running.
+        """
+        mode = (self.offset_envelope or "flat").lower()
+        if mode == "flat":
+            return 1.0
+        span = max(1, int(self.noise_traj_steps))
+        frac = min(max(float(t) / span, 0.0), 1.0)
+        if mode == "decay":
+            return float(0.5 * (1.0 + math.cos(math.pi * frac)))
+        if mode == "rise":
+            return float(0.5 * (1.0 - math.cos(math.pi * frac)))
+        raise ValueError("offset_envelope must be flat, decay or rise; "
+                         f"got {self.offset_envelope!r}")
+
     def resample_offset(self, story_index: Optional[int] = None) -> None:
         """Draw a fresh constant offset for the next generation.
 
@@ -1307,6 +1392,8 @@ class SteeringPlan:
         if self.offset_mode == "none" or self.offset_gamma <= 0:
             for lp in self.layer_plans.values():
                 lp.offset = None
+                lp.offset_traj = None
+                lp.offset_length = None
             return
 
         laid_out = getattr(self, "_offset_plan", None)
@@ -1350,19 +1437,39 @@ class SteeringPlan:
                 if self.offset_mode == "orth" and lp.protect is not None:
                     vec = vec - lp.protect @ (lp.protect.t() @ vec)
             elif lp.offset_basis is not None:
-                if coeff is None:
-                    coeff = torch.randn(lp.offset_basis.shape[1], dtype=dt, device=dev)
+                rank = lp.offset_basis.shape[1]
+
+                def _shape(c):
                     # Shape the draw like a real difference between two of the
                     # model's own stories, rather than treating every direction
                     # alike. The basis is ordered by how much between-story
                     # variation each direction carries and the last ones carry
                     # almost none, so an even draw spends as much on them as on
                     # the first and lands outside anything the model does.
-                    if self.offset_draw_shape == "manifold":
-                        sc = lp.offset_scale
-                        if sc is not None and sc.numel() >= coeff.numel():
-                            coeff = coeff * sc[:coeff.numel()].to(
-                                device=dev, dtype=dt).clamp_min(1e-12)
+                    if self.offset_draw_shape != "manifold":
+                        return c
+                    sc = lp.offset_scale
+                    if sc is None or sc.numel() < rank:
+                        return c
+                    return c * sc[:rank].to(device=dev, dtype=dt).clamp_min(1e-12)
+
+                if self.noise_beta is not None and coeff is None:
+                    # The displacement wanders instead of standing still. One
+                    # trajectory per story, drawn from the ambient RNG like
+                    # every other draw here, so it is reproducible per story.
+                    steps = max(1, int(self.noise_traj_steps))
+                    traj = colored_sequence(
+                        steps, rank, beta=float(self.noise_beta),
+                        fmin_cycles=float(self.noise_fmin_cycles),
+                        dtype=torch.float32,
+                    ).to(device=dev, dtype=dt)
+                    lp.offset_traj = _shape(traj)
+                    coeff = lp.offset_traj[0]
+                else:
+                    lp.offset_traj = None
+                    if coeff is None:
+                        coeff = _shape(
+                            torch.randn(rank, dtype=dt, device=dev))
                 vec = lp.offset_basis @ coeff
             else:
                 vec = coeff if coeff is not None else torch.randn(self.dim, dtype=dt,
@@ -1397,6 +1504,7 @@ class SteeringPlan:
                 # above 1.0 is extrapolation past every one of them.
                 vec = vec / vec.norm().clamp_min(1e-12)
                 lp.offset = vec * (gamma * lp.story_radius)
+                lp.offset_length = float(lp.offset.norm())
             elif self.offset_norm == "energy":
                 # Fixed length, so gamma means the same thing whatever the rank of
                 # the subspace the offset was drawn from. A draw from a rank-r
@@ -1406,8 +1514,10 @@ class SteeringPlan:
                 # 4096-dimensional stream.
                 vec = vec / vec.norm().clamp_min(1e-12)
                 lp.offset = vec * (gamma * self.rms_scale * math.sqrt(self.dim))
+                lp.offset_length = float(lp.offset.norm())
             else:
                 lp.offset = vec * (gamma * self.rms_scale)
+                lp.offset_length = float(lp.offset.norm())
 
     def delta_for(
         self,
@@ -1465,7 +1575,9 @@ class SteeringPlan:
         if (with_offset and self.offset_decode and lp.offset is not None
                 and (not self.offset_layers or layer in self.offset_layers)
                 and (self.offset_decode_steps <= 0 or t < self.offset_decode_steps)):
-            delta = lp.offset if delta is None else delta + lp.offset
+            off = lp.offset_at(t, self.envelope_at(t))
+            if off is not None:
+                delta = off if delta is None else delta + off
 
         if with_noise and self.noise_mode != "none" and self.noise_alpha > 0:
             nh = h if self.noise_horizon is None else self.noise_horizon
@@ -1710,6 +1822,9 @@ class SteeringPlan:
             "offset_gamma": self.offset_gamma,
             "offset_mode": self.offset_mode,
             "offset_norm": self.offset_norm,
+            "noise_beta": self.noise_beta,
+            "noise_fmin_cycles": self.noise_fmin_cycles,
+            "offset_envelope": self.offset_envelope,
             "offset_decode": self.offset_decode,
             "amplify_lambda": self.amplify_lambda,
             "amplify_prefill": self.amplify_prefill,

@@ -61,6 +61,12 @@ class StoryAxes:
     anchors: Dict[int, torch.Tensor] = field(default_factory=dict)
     explained: float = 0.0
     n_stories: int = 0
+    # The sampled stories as text. The same sample that shows which directions
+    # stories differ along also shows which requirements this model actually
+    # breaks, and the second use costs nothing: dividing the steering budget by
+    # measured failure needs exactly this, and generating a separate calibration
+    # batch for it would be paying twice for one thing.
+    texts: List[str] = field(default_factory=list)
 
 
 @torch.no_grad()
@@ -280,6 +286,7 @@ def collect_story_pcs(
         enc = egra.tokenizer(text, return_tensors="pt").to(device)
         enc.pop("token_type_ids", None)
 
+        texts: List[str] = []
         for s in range(n_stories):
             if seed is not None:
                 torch.manual_seed(seed + s)
@@ -292,6 +299,10 @@ def collect_story_pcs(
             out = egra.model(**enc, use_cache=True, return_dict=True)
             past, logits = out.past_key_values, out.logits[:, -1, :]
             eos = egra.tokenizer.eos_token_id
+            # Keep the text as well as the activations. The same sample answers
+            # a second question for free -- which requirements this model
+            # actually breaks -- and that is what divides the steering budget.
+            drawn: List[int] = []
 
             for _ in range(max_new_tokens):
                 probs = torch.softmax(
@@ -303,11 +314,13 @@ def collect_story_pcs(
                     nxt = torch.multinomial(probs / probs.sum(dim=-1, keepdim=True), 1)
                 if eos is not None and int(nxt.item()) == int(eos):
                     break
+                drawn.append(int(nxt.item()))
                 out = egra.model(input_ids=nxt, past_key_values=past, use_cache=True,
                                  return_dict=True)
                 past, logits = out.past_key_values, out.logits[:, -1, :]
                 step["t"] += 1
 
+            texts.append(egra.tokenizer.decode(drawn, skip_special_tokens=True))
             for li in norm_layers:
                 if cur[li]:
                     story_means[li].append(torch.stack(cur[li], dim=0).mean(dim=0))
@@ -346,7 +359,7 @@ def collect_story_pcs(
                 print(f"  [story basis] rank {k} from {n_used} stories; those "
                       f"directions carry {explained:.0%} of the between-story variation")
     return StoryAxes(basis=basis, mean=centre, scale=spread, anchors=anchors,
-                     explained=explained, n_stories=n_used)
+                     explained=explained, n_stories=n_used, texts=texts)
 
 
 @torch.no_grad()

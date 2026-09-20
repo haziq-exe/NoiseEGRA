@@ -115,7 +115,7 @@ GATE_SUITES = {"gate", "gatedwrite"}
 BASIS_SUITES = {"offset", "story", "prompt", "main", "pareto", "select", "feedback",
                 "assemble", "headtohead", "closure", "control", "ablate",
                 "controls", "tame", "core4", "combine", "amplify", "spread", "frontier", "siting", "prefill", "asymmetric", "boundary", "bands", "whilewriting", "gatedwrite", "promptbudget", "opening", "framing", "final", "weighted", "quieten", "eventvary", "literature", "withdecoder", "vstopp", "pertoken", "wander", "varysize",
-                "constdose"}
+                "constdose", "colour"}
 
 
 def weights_are_cached(model_id: str) -> bool:
@@ -167,6 +167,57 @@ def write_csvs(out: Path, state: dict) -> None:
             w.writerows(rows)
 
 
+# Directions are named for what they push towards; requirements are named for
+# what they demand. Where the two differ, the direction has to say which
+# requirement it serves or the allocation cannot find its failure rate.
+_DIRECTION_RULE = {
+    "dialogue": "dialogue_min",
+    "no_heading": "story_format",
+    "simple_register": "mature_register",
+    "terse": "mature_register",
+    "simple_syntax": "mature_register",
+}
+
+
+def _allocate_by_shortfall(args, axes, checker) -> None:
+    """Divide the steering budget by what the model actually gets wrong.
+
+    The calibration stories sampled for the perturbation basis are scored
+    against the same requirements the run scores, and each direction is
+    weighted by how often its requirement is broken. A requirement the model
+    already satisfies takes none of the budget; the plan's renormalisation
+    hands its share to the ones that are failing.
+
+    This replaces picking the steered directions by hand, which on this task
+    picked one requirement that never fails and missed one that fails seven
+    times in ten -- and which is also why a set chosen on one model does not
+    carry to another, since the two fail in different patterns.
+    """
+    import run_orthosteer_experiment as _ro
+    from noiseegra.allocation import shortfall_weights
+
+    texts = [t for t in (getattr(axes, "texts", None) or []) if t and t.strip()]
+    if not texts:
+        print("budget allocation: the calibration sample kept no stories, so the "
+              "budget stays equal across directions", flush=True)
+        return
+    scored = checker.evaluate_all(texts)["stories"]
+    rates = {}
+    for rule in checker.constraints:
+        rates[rule] = sum(bool(st.checks.get(rule)) for st in scored) / len(scored)
+    weights = shortfall_weights(rates, list(args.steer_vectors),
+                                floor=float(args.allocate_floor),
+                                aliases=_DIRECTION_RULE)
+    _ro.RUN_DEFAULTS["beta_weights"] = weights
+    print(f"budget allocation: from {len(texts)} calibration stories, by how "
+          f"often each requirement is broken", flush=True)
+    for n in sorted(weights, key=lambda k: -weights[k]):
+        rule = _DIRECTION_RULE.get(n, n)
+        seen = rates.get(rule)
+        got = f"{seen:.0%} pass" if seen is not None else "not scored"
+        print(f"  {n:<20} share {weights[n]:.2f}   ({got})", flush=True)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--model", default="Qwen3-8B", choices=sorted(EN_MODEL_HF_IDS))
@@ -179,7 +230,7 @@ def main() -> None:
                              "ablate", "controls", "tame", "fsc", "core4", "combine", "dose", "siting", "dropone", "prefill", "asymmetric", "boundary", "bands", "whilewriting", "gatedwrite", "promptbudget", "opening", "framing", "final", "weighted", "quieten", "eventvary", "literature", "withdecoder", "vstopp", "pertoken", "wander", "varysize",
                              "amplify", "constdose", "spread", "frontier",
                              "window", "decay", "core", "ortho", "alpha", "gate",
-                             "beta", "loo", "all"])
+                             "beta", "loo", "colour", "all"])
     ap.add_argument("--task", default="generic", choices=["generic", "scenario"],
                     help="'generic' is the published design: one instruction with no "
                          "scenario, many requirements, and every story in one group, so "
@@ -270,6 +321,46 @@ def main() -> None:
                          "steered stories; and an anchored displacement aims at one "
                          "of the sampled stories, which taken from the untouched "
                          "model break 4.3 requirements of twelve.")
+    ap.add_argument("--noise-beta", type=float, default=None,
+                    help="colour of the per-story displacement's wandering along "
+                         "the token axis: the power in its trajectory falls as "
+                         "1/f^BETA. Left unset the displacement is fixed for the "
+                         "whole story, which is what every run before this did. "
+                         "0 redraws its direction at every step, which is the "
+                         "published per-token mechanism and a measured null for "
+                         "variety here. Between the two the direction drifts, "
+                         "slowly for a large exponent. Its length never changes, "
+                         "so --offset-gamma keeps meaning the same number of "
+                         "story-distances whatever this is set to.")
+    ap.add_argument("--noise-fmin-cycles", type=float, default=0.25,
+                    help="the slowest wobble the displacement is allowed, in "
+                         "cycles across one story. At 1.0 the slowest component "
+                         "completes a cycle inside the story and averages to "
+                         "nothing, so no exponent produces a displacement that "
+                         "differs between stories -- and only that kind can make "
+                         "a set of stories more varied. Below 1.0 it can.")
+    ap.add_argument("--offset-envelope", choices=["flat", "decay", "rise"],
+                    default="flat",
+                    help="how the displacement's size runs over the story. "
+                         "'rise' holds it back at the start, where the model "
+                         "decides whether it is answering the reader or telling "
+                         "a story -- which is the failure counted as a broken "
+                         "story here -- and spends it once the story is running.")
+    ap.add_argument("--steer-allocate", choices=["equal", "shortfall"],
+                    default="equal",
+                    help="how the fixed steering budget is divided between the "
+                         "directions. 'equal' gives every direction the same "
+                         "share, which is what picking five directions by hand "
+                         "amounted to. 'shortfall' weights each direction by how "
+                         "often its requirement is actually broken on the "
+                         "calibration stories, so a requirement the model "
+                         "already satisfies takes none of the budget. Measured "
+                         "on this model rather than carried from another.")
+    ap.add_argument("--allocate-floor", type=float, default=0.0,
+                    help="smallest share any direction keeps under "
+                         "--steer-allocate shortfall, so a requirement that "
+                         "happens to pass on a small calibration sample is not "
+                         "switched off outright.")
     ap.add_argument("--offset-taper", type=float, default=1.0,
                     help="how much of the per-story perturbation survives at the "
                          "last prompt position it touches, as a fraction of its "
@@ -688,6 +779,10 @@ def main() -> None:
     _ro.RUN_DEFAULTS["offset_gamma_spread"] = float(args.offset_gamma_spread)
     _ro.RUN_DEFAULTS["offset_norm"] = str(args.offset_norm)
     _ro.RUN_DEFAULTS["offset_taper"] = float(args.offset_taper)
+    _ro.RUN_DEFAULTS["noise_beta"] = (None if args.noise_beta is None
+                                      else float(args.noise_beta))
+    _ro.RUN_DEFAULTS["noise_fmin_cycles"] = float(args.noise_fmin_cycles)
+    _ro.RUN_DEFAULTS["offset_envelope"] = str(args.offset_envelope)
 
     if args.dry_run:
         # Parsing the flags is the easy half. Two runs have now reached Kaggle,
@@ -1146,6 +1241,11 @@ def main() -> None:
             )
             torch.save(cached, pc_path)
             print(f"activation basis (step): saved to {pc_path.name}")
+
+        # After the basis either way: the calibration stories it sampled are
+        # what the allocation reads, and only the story-level basis has any.
+        if args.steer_allocate == "shortfall":
+            _allocate_by_shortfall(args, cached, checker)
 
         if args.shrink_anchors:
             import torch as _t

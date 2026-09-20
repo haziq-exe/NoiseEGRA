@@ -67,9 +67,14 @@ class Tiny(EGRA):
 
 print("== task setup ==")
 pairs = load_pairs(ROOT / "noiseegra" / "data" / "steering_pairs_en.json")
-check("English pair file holds the seventeen extractable directions",
-      sorted(pairs) == ["closure", "dialogue", "in_story", "named_character",
-                        "no_heading", "not_advising", "not_planning",
+# One direction per requirement, plus the shields and the extras. Five were
+# added when the steered set went from a hand-picked five to all twelve
+# requirements, so this list is the twelve plus what was already here.
+check("English pair file holds a direction for every requirement, and the extras",
+      sorted(pairs) == ["closure", "dialogue", "distinct_sentences",
+                        "fresh_openings", "fresh_words", "in_story",
+                        "mature_register", "named_character", "no_heading",
+                        "no_repetition", "not_advising", "not_planning",
                         "not_refusing", "plain_words", "present_tense", "sensory",
                         "simple_register", "simple_syntax", "something_happens",
                         "story_format", "terse", "varied_openers"],
@@ -763,9 +768,21 @@ _msgs = _wp.build_middle_messages(_mid.requirements(), list(MIDDLE_CONSTRAINTS),
 check("the prompt asks for a middle-school reader",
       "middle-school reader" in _msgs[1]["content"])
 check("the prompt asks for a longer story", "150 words" in _msgs[1]["content"])
-check("the prompt lists every scored rule and nothing else",
-      _msgs[1]["content"].count("\n- ") == len(MIDDLE_CONSTRAINTS),
-      f'{_msgs[1]["content"].count(chr(10) + "- ")} bullets for {len(MIDDLE_CONSTRAINTS)} rules')
+# One requirement is stated in the instruction's closing line -- "Write only the
+# story itself: no title, heading, preamble or commentary" -- rather than given a
+# bullet of its own, so the bullet count is one short of the rule count by
+# design. Giving it a bullet as well would change the prompt, and every story
+# generated before that change would stop being comparable with every story
+# after it.
+from noiseegra.writingprompts import STATED_IN_THE_INSTRUCTION  # noqa: E402
+_bulleted = [c for c in MIDDLE_CONSTRAINTS if c not in STATED_IN_THE_INSTRUCTION]
+check("the prompt bullets every scored rule except the one stated in prose",
+      _msgs[1]["content"].count("\n- ") == len(_bulleted),
+      f'{_msgs[1]["content"].count(chr(10) + "- ")} bullets for {len(_bulleted)} '
+      f'bulleted rules of {len(MIDDLE_CONSTRAINTS)} scored')
+check("and the one left out is stated in the closing line instead",
+      all("no title, heading, preamble or commentary" in _msgs[1]["content"]
+          for _ in STATED_IN_THE_INSTRUCTION))
 
 
 def test_opening_tense_switch_is_detected():

@@ -272,6 +272,17 @@ def _ortho_tag(model_name: str, spec: ExperimentSpec) -> str:
         parts.append(f"__gs{_float_tag(plan.offset_gamma_spread)}")
     if getattr(plan, "offset_draw_shape", "sphere") != "sphere":
         parts.append(f"__od{plan.offset_draw_shape}")
+    # The colour of the displacement's wandering, and the slowest wobble it is
+    # allowed. Both change what is generated, so both have to be in the id: two
+    # arms differing only in a setting the id does not carry write to the same
+    # file, and the second silently replaces the first.
+    if getattr(plan, "noise_beta", None) is not None:
+        parts.append(f"__cn{_float_tag(plan.noise_beta)}")
+        cyc = float(getattr(plan, "noise_fmin_cycles", 0.25) or 0.25)
+        if cyc != 0.25:
+            parts.append(f"__cyc{_float_tag(cyc)}")
+    if str(getattr(plan, "offset_envelope", "flat") or "flat") != "flat":
+        parts.append(f"__env{plan.offset_envelope}")
     if getattr(plan, "offset_decode_steps", 0):
         parts.append(f"__ods{int(plan.offset_decode_steps)}")
     if getattr(plan, "prompt_head_clear", 0):
