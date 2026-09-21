@@ -37,6 +37,7 @@ combined <model>_RESULTS.txt.
 
 from __future__ import annotations
 
+import math
 import argparse
 import json
 import sys
@@ -2141,6 +2142,62 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         ], ("the noise alone at 1.0; the method at 1.4; at 2.0 while writing "
             "only, with and without a rise over the first "
             f"{fade} tokens; and at 1.0 with a noise colour of 1")
+
+    if name == "randombase":
+        # The three references, with no perturbation and so nothing sampled
+        # first: the model as it ships, nucleus sampling at the baseline
+        # temperature, and the rule steering alone.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        b = float(getattr(args, "steer_budget", None) or 2.5)
+        keep = int((getattr(args, "tail_sweep", None) or [8])[0])
+        t = float(getattr(args, "baseline_temperature", 1.8) or 1.8)
+        flat = {n: 1.0 for n in names}
+        return [
+            "baseline",
+            {"mode": "baseline", "temperature": t, "top_p": 0.95},
+            {"plan": make_plan(beta=flat, steer_budget=b, offset_gamma=0.0,
+                               offset_mode="none", steer_prefill=True,
+                               prompt_tail_clear=keep, **quiet, **base)},
+        ], (f"the model as it ships, nucleus sampling at temperature {t:g}, "
+            "and the rule steering alone")
+
+    if name == "randomfixed":
+        # The per-story noise at one fixed length for every story, with and
+        # without a cosine fade: the length the output-based sizing reached at
+        # most, over every story it sized at 0.5 and 1.0 nucleus-units. Against
+        # the sized arms this asks whether sizing each story separately matters,
+        # given the same ceiling.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        b = float(getattr(args, "steer_budget", None) or 2.5)
+        keep = int((getattr(args, "tail_sweep", None) or [8])[0])
+        cn = float((getattr(args, "noise_beta_sweep", None) or [2.0])[0])
+        rank = int(getattr(args, "offset_random_rank", 64) or 64)
+        fade = int(getattr(args, "decay_tokens", 260) or 260)
+        length = float(getattr(args, "fixed_length", 14.83) or 14.83)
+        vecs = getattr(vectors, "vectors", vectors)
+        dim = int(next(iter(next(iter(vecs.values())).values())).numel())
+        gamma = length / (float(rms_scale) * math.sqrt(dim))
+        flat = {n: 1.0 for n in names}
+
+        def arm(envelope):
+            return {"plan": make_plan(
+                beta=flat, steer_budget=b,
+                offset_gamma=gamma, offset_mode="orth", offset_norm="energy",
+                offset_basis=None, offset_basis_kind="random",
+                offset_random_rank=rank,
+                steer_prefill=True, prompt_tail_clear=keep,
+                offset_draw_shape="sphere",
+                offset_prefill=True, offset_decode=True, noise_beta=cn,
+                offset_envelope=envelope,
+                offset_envelope_steps=(fade if envelope != "flat" else 0),
+                **quiet, **base)}
+
+        return [arm("flat"), arm("decay")], (
+            f"per-story noise at a fixed length of {length:g} ({gamma:.4f} times "
+            f"the RMS per coordinate), with and without a cosine fade over {fade} "
+            "tokens")
 
     if name == "wholeloop":
         # Steering strength set by the story being written, not by a calibration
