@@ -896,3 +896,30 @@ lengths and ties on wording at a hundred words; it still trails on wording over
 the opening forty and breaks slightly more rules than nucleus. Every arm that
 beats nucleus on wording over the opening does it with register failures.
 
+## Noise at other places in the transformer
+
+Genuinely random noise at five other sites (noiseegra/arch_noise.py), each
+sized per story to move the next-token distribution the same Fisher-Rao
+distance as the residual offset, with the same constant rule steering. 20
+stories an arm, pooled at 18, differences from nucleus. The rotary jitter could
+not reach the size even at +-50% frequencies and ran at about 0.6.
+
+| | Coherent | Rules broken | Plot 40 | Wording 40 | Plot 100 | Wording 100 |
+|---|---|---|---|---|---|---|
+| Residual offset | 20/20 | 2.20 | +0.2 [-0.2, +0.7] | -1.0 [-2.1, +0.2] | +0.6 [+0.2, +1.1] | -0.6 [-1.6, +0.4] |
+| Rotation on the sphere | 19/20 | 1.79 | +0.4 [+0.0, +0.9] | -1.7 [-2.8, -0.6] | +0.4 [-0.1, +0.8] | -0.9 [-2.0, -0.0] |
+| MLP feature dropout | 20/20 | 1.95 | +0.4 [+0.0, +0.8] | -1.7 [-2.7, -0.7] | +0.3 [-0.2, +0.8] | -0.9 [-1.9, +0.1] |
+| Prompt value noise | 19/20 | 1.79 | +0.2 [-0.2, +0.7] | -1.6 [-2.8, -0.3] | +0.2 [-0.2, +0.8] | -1.3 [-2.3, -0.4] |
+| Per-head attention temperature | 18/20 | 2.44 | -0.0 [-0.5, +0.5] | -1.5 [-2.5, -0.4] | +0.0 [-0.4, +0.6] | -0.8 [-1.8, +0.1] |
+| Rotary frequency jitter (~0.6) | 18/20 | 1.78 | -0.1 [-0.6, +0.5] | -2.6 [-3.6, -1.4] | -0.3 [-0.8, +0.2] | -1.8 [-2.8, -0.9] |
+
+At the same change in the predictions, rotating the stream, dropping MLP units
+and perturbing the prompt's values break far fewer rules than adding a vector --
+1.79-1.95 against 2.20 -- and nearly all of the difference is in the content
+rules the offset breaks: a comparison 95/90/89% against 55%, a he and a she
+84/65/68% against 65%. Plot variety is level with the offset. Noise that keeps
+the hidden state's length, or lives in the model's own feature coordinates,
+spends less of its effect on derailing the story. Several of these arms open
+some stories in lower case (rotary 9 of 20, head temperature 5, rotation 4),
+which the scorer counts as a broken format rule, not a broken story.
+
