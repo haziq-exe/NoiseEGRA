@@ -2413,44 +2413,6 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             f"the prompt's noise at {g:g}x fading to {fade:g} of that by its end; "
             f"at {g:g}x with the shadow; and at {1.0 + (g - 1.0) / 2:g}x plain")
 
-    if name == "randomstory":
-        # The prompt's share of the noise is where the variety in wording comes
-        # from, and raising it tips the model from telling a story into answering
-        # the request -- "Certainly! Here's a short story" -- or refusing. Holding
-        # the rule directions level against it did not help, because that switch
-        # is not carried by them. The direction that separates telling the story
-        # from talking about the task is: here it is pushed like any rule, with
-        # an equal share of the same budget, instead of only being shielded.
-        # Run with 'in_story' among --steer-vectors.
-        if "in_story" not in names:
-            raise ValueError("suite 'randomstory' pushes the in_story direction, "
-                             "which is not in the steered set; add it to "
-                             "--steer-vectors")
-        base = {k: v for k, v in common.items() if k != "steer_prefill"}
-        quiet = dict(noise_mode="none", noise_alpha=0.0)
-        b = float(getattr(args, "steer_budget", None) or 2.5)
-        keep = int((getattr(args, "tail_sweep", None) or [8])[0])
-        cn = float((getattr(args, "noise_beta_sweep", None) or [2.0])[0])
-        rank = int(getattr(args, "offset_random_rank", 64) or 64)
-        gains = [float(x) for x in (getattr(args, "prompt_gains", None) or [1.0, 1.5, 2.0])]
-        flat = {n: 1.0 for n in names}
-
-        def arm(gain):
-            return {"plan": make_plan(
-                beta=flat, steer_budget=b,
-                offset_gamma=1.0, offset_mode="orth", offset_norm="fisher",
-                offset_basis=None, offset_basis_kind="random",
-                offset_random_rank=rank,
-                steer_prefill=True, prompt_tail_clear=keep,
-                offset_draw_shape="sphere",
-                offset_prefill=True, offset_decode=True, noise_beta=cn,
-                offset_prefill_gain=gain,
-                **quiet, **base)}
-
-        return [arm(g) for g in gains], (
-            "the story direction pushed with the rules, and the prompt's noise at "
-            + ", ".join(f"{g:g}x" for g in gains))
-
     if name == "wholeloop":
         # Steering strength set by the story being written, not by a calibration
         # run. Every rule in this set is satisfied or not, so each direction
