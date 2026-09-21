@@ -83,10 +83,17 @@ case "${1:-}" in
     # never been run on this task, and it is not in the steered set.
     #
     # The horizon is where a legal story ends: roughly 150 words, about 200
-    # tokens. Two arms, with and without, so the brake is read against itself.
+    # tokens.
+    #
+    # Two displacements rather than one, because the suite refuses a single
+    # point -- and because r102 already has both without the brake, at the same
+    # push, colour and allocation, so the pair reads against that. The one
+    # difference beyond the brake is that adding the direction gives it a share
+    # of the fixed budget and leaves slightly less for the rest; that is part of
+    # the intervention and not separable from it.
     exec scripts/kaggle_run.sh r109-closure --profile "${2:-coauth1}" --shards 2 -- \
       "${COMMON[@]}" --steer-allocate shortfall --steer-budget 2.5 \
-      --gamma-sweep 1.5 --noise-beta-sweep 2.0 \
+      --gamma-sweep 1.5 1.75 --noise-beta-sweep 2.0 \
       --steer-vectors present_tense mature_register dialogue varied_openers \
                       plain_words sensory fresh_words named_character \
                       no_repetition distinct_sentences fresh_openings \
