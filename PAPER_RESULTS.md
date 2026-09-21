@@ -10,6 +10,20 @@ temperature they need.
 
 ## What is established, and what is not
 
+**Read this first: every perturbed result below used the rejected method.** The
+perturbation in every "steering + variation" row, in the noise-colour result, in
+the 8B transfer and in the frontier was drawn in a basis estimated from 16 or 32
+stories sampled before the run. That makes it a second steering vector, aimed at
+wherever the model's stories happen to differ, and it is not the method this
+paper is about: steering for the rules plus noise that is genuinely random. It
+is withdrawn. What carries over unchanged is everything that adds no
+perturbation -- the baselines, the decoder comparison, steering alone -- and the
+measurement pipeline. The replacement draws a random subspace for every story
+and sizes the noise by how far it moves the model's predictions; see "Random
+noise, sized by the output" at the end. Until that is measured, nothing here
+says the method beats nucleus sampling.
+
+
 **Established, on Qwen3-1.7B at temperature 1.0, 200 stories a condition.**
 Against nucleus sampling at temperature 1.8 the method wins both variety
 measures and requirements broken at once, every interval clear of zero. Against
@@ -652,3 +666,42 @@ Neither of these has been run.
   displacement, which the session limit cut off.
 - A human or LLM-judge rating of story quality, which no automatic metric here
   covers.
+
+## Random noise, sized by the output
+
+Nothing learned from the model's outputs. For every story, a random subspace of
+rank 64 is drawn at each steered layer, projected clear of the rule directions,
+and the offset wanders inside it as coloured noise. Its length is set per story
+by bisection so that it moves the model's next-token distribution a set
+Fisher-Rao distance along a fixed reference passage -- the model's greedy
+continuation under the rule steering alone, computed once per prompt. The
+distance is stated in units of how far nucleus sampling at temperature 1.8 and
+top-p 0.95 moves the same distribution, so 1.0 changes the predictions as much
+as the baseline does, spent on one direction per story instead of independently
+at every token.
+
+The pullback of the output's Fisher metric onto the residual stream is highly
+uneven -- FishBack (arXiv 2605.17231) measures a spectrum spanning seven orders
+of magnitude on GPT-2 with 2-17% of directions mattering -- which is why a fixed
+activation length is the wrong unit for a random draw: two draws of the same
+length can do very different things. FishBack uses the same metric to shape a
+deterministic steering vector and reports no diversity; no work found sizes a
+random activation perturbation this way.
+
+On Qwen3-1.7B half a nucleus-unit takes an offset of length about 6, roughly 6%
+of the residual stream's typical length. A fixed 0.4 times the stream's RMS per
+coordinate is a length of about 40.
+
+Baselines on the eight whole-story rules, 25 stories each (wide intervals):
+
+| | Coherent | Rules broken (of 8) | Plot variety | Wording variety |
+|---|---|---|---|---|
+| Untouched, T=1.0 | 22/25 | 3.09 | 15.6 | 7.1 |
+| Nucleus, T=1.8 | 25/25 | 2.44 | 19.3 | 10.3 |
+| Steering only | 25/25 | 1.92 | 17.9 | 6.2 |
+
+Running: the method at 0.5, 1.0 and 2.0 nucleus-units, and five variants that
+change one thing each -- noise redrawn at every token instead of once per story,
+and a fixed 0.4 x RMS size in place of the output-based one, with and without a
+cosine fade over the story's first 260 tokens.
+
