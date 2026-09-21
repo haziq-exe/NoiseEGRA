@@ -421,6 +421,18 @@ def main() -> None:
                          "beats both 0 (per-token) and holding the displacement "
                          "fixed -- so a sweep either side of it is where the "
                          "peak is, not at an end.")
+    ap.add_argument("--steer-weights", nargs="*", default=None,
+                    metavar="NAME=SHARE",
+                    help="explicit per-direction shares of the fixed budget, "
+                         "overriding --steer-allocate. The use this exists for "
+                         "is a second round: the first allocation is measured "
+                         "on the untouched model, and the displacement then "
+                         "breaks requirements the untouched model did not -- "
+                         "naming a character falls from 66%% to 42%% under it, "
+                         "and the unnamed first-person register that results is "
+                         "what loops and fails to end. Re-measuring on the "
+                         "method's own output and feeding the shares back is "
+                         "one step of a fixed point, not a sweep.")
     ap.add_argument("--allocate-power", type=float, default=1.0,
                     help="sharpens or flattens --steer-allocate shortfall. "
                          "Above one concentrates the budget on the worst "
@@ -879,6 +891,33 @@ def main() -> None:
                                       else float(args.noise_beta))
     _ro.RUN_DEFAULTS["noise_fmin_cycles"] = float(args.noise_fmin_cycles)
     _ro.RUN_DEFAULTS["offset_envelope"] = str(args.offset_envelope)
+    # Validated here, with the other run-wide settings, rather than beside the
+    # basis: this runs before a model is loaded and so --dry-run reaches it. A
+    # mistyped share caught after an hour of generation is a mistyped share
+    # that cost an hour.
+    if args.steer_weights:
+        explicit = {}
+        for entry in args.steer_weights:
+            name, sep, value = str(entry).partition("=")
+            if not sep or not name:
+                raise SystemExit(f"--steer-weights takes NAME=SHARE; got {entry!r}")
+            if name not in args.steer_vectors:
+                raise SystemExit(
+                    f"--steer-weights names {name!r}, which is not in "
+                    f"--steer-vectors {sorted(args.steer_vectors)}. A weight on a "
+                    "direction that is not steered does nothing, and silently "
+                    "doing nothing is how an arm becomes its own control.")
+            explicit[name] = float(value)
+        missing = [n for n in args.steer_vectors if n not in explicit]
+        if missing:
+            raise SystemExit(
+                "--steer-weights must give a share for every steered direction; "
+                f"missing {missing}. Defaulting the rest would mean the run used "
+                "weights nobody wrote down.")
+        _ro.RUN_DEFAULTS["beta_weights"] = explicit
+        print("budget allocation: explicit shares, not measured here", flush=True)
+        for n in sorted(explicit, key=lambda k: -explicit[k]):
+            print(f"  {n:<20} share {explicit[n]:.2f}", flush=True)
 
     if args.dry_run:
         # Parsing the flags is the easy half. Two runs have now reached Kaggle,

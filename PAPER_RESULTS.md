@@ -122,6 +122,57 @@ moved.
 variety of what happens is +2.9 against top-k sampling's +5.0, so top-k is still
 ahead on that one measure.
 
+## Why the coherence is 194 and not 200
+
+Read the stories that fail rather than counting them. At gamma=1.5 six of 200
+are rejected, and five of the six have a clean first sixty words: the median
+rejected story is fine until word 220 of the 291 it writes, and then loops --
+"I'm trapped in the dark" over and over, or "I don't." sixty-eight times. At
+gamma=2.0, fourteen of the sixteen rejected stories have clean openings.
+
+Two things follow.
+
+**The failures are endings, not stories.** Variety is scored over the first
+forty words, which these stories get right. Coherence and variety are reading
+different parts of the same story, and the trade between them is not the
+straight exchange the frontier makes it look.
+
+**The failures share a register.** A story that loops is far more likely to have
+opened in the first person, and much less likely to have named anybody:
+
+| At gamma=1.5 | Opens in first person | Names a character | Words written |
+|---|---|---|---|
+| Kept | 14% | 98% | 206 |
+| Looped | 67% | 67% | 292 |
+
+The displacement sometimes pushes the opening into an unnamed first-person
+present-tense register -- breathless, short sentences -- and the model cannot
+resolve it into a story that ends, so it runs forty per cent long and repeats
+until the token cap.
+
+### The allocation the method's own output asks for
+
+The budget is divided by what the *untouched* model gets wrong. The displacement
+then breaks requirements the untouched model does not. Re-measuring on the
+method's own 200 stories:
+
+| Direction | Round 1, untouched | Round 2, own output | Passes: untouched -> under method |
+|---|---|---|---|
+| present tense | 1.00 | 1.00 | 0% -> 10% |
+| varied openings | 0.81 | 0.73 | 19% -> 35% |
+| **named character** | 0.34 | **0.65** | 66% -> **42%** |
+| **sensory** | 0.38 | **0.61** | 62% -> 46% |
+| **plain words** | 0.56 | **0.00** | 44% -> **100%** |
+
+Naming is the requirement the displacement breaks, and the unnamed register is
+what loops. Round two moves budget onto it, and takes it off plain words, which
+the method already satisfies in every story. The two rounds agree to a cosine of
+0.913, so this is a correction and not a different method.
+
+This is one step of a fixed point -- allocate from the untouched model, run,
+re-measure, allocate again -- and it is the next thing to run. It is not a
+sweep: the direction and the size of every change are read off the measurement.
+
 ## The frontier, measured against top-k directly
 
 Top-k sampling is the strongest decoder on this task, so it is the reference
