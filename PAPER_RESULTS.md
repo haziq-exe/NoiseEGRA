@@ -823,7 +823,38 @@ the arms do show is where the wording variety goes: every controller arm ties
 nucleus on wording and every constant arm loses, so the constant push is what
 narrows the wording.
 
-Running: the constant push kept at its full size but split across the rules at
-random for each story (Dirichlet concentrations 1 and 4), and the budget taken
-off the two rules the model already meets unprompted.
+### A random split of the push, and a push on fewer rules
+
+Neither helps (50 stories an arm, pooled at 45, noise 1.0 throughout). Drawing
+each story's split of the budget from a Dirichlet keeps the total push but not
+the wording: -3.5 against nucleus at both concentrations, against -2.7 for the
+even split, with more rules broken (2.58 and 2.67 against 2.28). Taking the
+budget off the two rules already met unprompted costs coherence -- 45 of 50 --
+and wording (-4.5): the no-repeated-sentence direction holds off repetition
+loops once noise is added, although the model meets that rule unaided without
+noise. Whatever narrows the wording, it is not that every story is pushed in the
+same direction.
+
+### Over the first hundred words
+
+The same stories, variety over the first 100 words instead of 40, pooled at 46.
+Differences are from nucleus (plot 24.8, wording 7.3); these are not comparable
+with the 40-word numbers, only with each other.
+
+| | Plot variety | Wording variety |
+|---|---|---|
+| Untouched | -3.8 [-4.8, -2.8] | -1.3 [-2.2, -0.6] |
+| Steering only | -1.0 [-1.8, -0.1] | -3.1 [-3.8, -2.4] |
+| Noise 0.5 | +0.0 [-0.7, +0.9] | -2.6 [-3.4, -2.0] |
+| Noise 1.0 | +1.7 [+0.9, +2.5] | -1.2 [-2.2, -0.3] |
+| Noise 1.4 | +2.5 [+1.6, +3.4] | -0.8 [-1.8, +0.0] |
+| Fixed length 14.83 | +2.7 [+1.8, +3.6] | -0.6 [-1.4, +0.3] |
+| Colour 1 at 1.0 | +1.8 [+1.0, +2.6] | -1.6 [-2.4, -0.9] |
+| Shadow 1.0 | +1.2 [+0.3, +2.0] | -1.5 [-2.4, -0.7] |
+
+Past the opening the method is clearly ahead of nucleus sampling on what
+happens, from 1.0 up, and the wording gap shrinks to about a point -- a tie at
+1.4 and at the fixed length. The gap is concentrated in the opening: under the
+push most stories begin the same way ("The sun spills ..."), and the first 40
+words are mostly that opening.
 
