@@ -877,6 +877,22 @@ answering the reader ("Certainly! The story must satisfy every one of these
 requirements"), to loops and to repeated titles. So the prompt is where the
 wording variety comes from, and where the register failure comes from.
 
-Running: the prompt's share at 2x with a fade toward the prompt's end, at 2x with
-the shadow, and at 1.5x plain.
+Keeping the larger prompt noise while guarding against that failure (50 stories
+an arm, pooled at 37; noise while writing at 1.0 throughout):
+
+| | Coherent | Rules broken | Plot, 40 | Wording, 40 | Plot, 100 | Wording, 100 |
+|---|---|---|---|---|---|---|
+| Prompt 2x, fading to a quarter | 40/50 | 2.65 | +1.3 [+0.7, +2.0] | -2.9 [-4.3, -1.5] | +1.8 [+1.0, +2.4] | -1.0 [-2.0, +0.0] |
+| Prompt 2x, with the shadow | 37/50 | 3.43 | +0.3 [-0.5, +1.2] | +1.3 [+0.0, +2.8] | +1.7 [+1.0, +2.4] | +1.0 [-0.0, +2.0] |
+| Prompt 1.5x | 49/50 | 2.63 | +0.9 [+0.1, +1.8] | -1.7 [-3.5, -0.1] | +2.2 [+1.4, +3.0] | -0.3 [-1.2, +0.8] |
+
+The fade removes the answering-the-reader openings entirely but loses ten stories
+another way -- endings cut off mid-sentence, run-ons -- and takes the wording gain
+with it. The shadow does the opposite of what it was for: the protected
+directions stay level and 13 of 50 stories still open with a refusal, a preamble
+or a title, so the register is not carried by them. At 1.5x the prompt noise
+keeps 49 of 50 coherent, level with nucleus, wins on what happens at both
+lengths and ties on wording at a hundred words; it still trails on wording over
+the opening forty and breaks slightly more rules than nucleus. Every arm that
+beats nucleus on wording over the opening does it with register failures.
 
