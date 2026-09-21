@@ -774,3 +774,56 @@ It counts "like" only before a/an/the/some/two/three, to keep the verb "like"
 out, so "shines like glass" is not a simile to it. It is the same for every arm,
 so comparisons stand, but every simile pass rate here is a lower bound.
 
+### Every arm at fifty stories
+
+Pooled at 46 coherent stories; differences are from nucleus sampling at
+temperature 1.8 and top-p 0.95 (plot 26.8, wording 13.1, 2.51 rules broken of 8,
+49 of 50 coherent). Noise sizes are in nucleus-units unless marked fixed.
+
+| | Coherent | Rules broken | Plot variety | Wording variety |
+|---|---|---|---|---|
+| Untouched, T=1.0 | 46/50 | 2.93 | -5.4 [-6.4, -4.4] | -3.8 [-5.1, -2.6] |
+| Steering only | 50/50 | 1.52 | -1.4 [-2.6, -0.2] | -6.0 [-7.1, -4.7] |
+| Noise 0.5 | 49/50 | 1.67 | -0.6 [-1.7, +0.4] | -3.9 [-5.3, -2.6] |
+| Noise 1.0 | 50/50 | 2.28 | +0.9 [-0.1, +1.9] | -2.8 [-4.3, -1.1] |
+| Noise 1.4 | 49/50 | 2.84 | +1.3 [+0.4, +2.3] | -2.9 [-4.4, -1.6] |
+| Fixed length 14.83 | 49/50 | 3.20 | +1.0 [-0.3, +2.0] | -1.4 [-2.9, +0.0] |
+| Fixed 14.83, fade | 49/50 | 3.08 | +0.8 [-0.4, +1.8] | -1.2 [-2.6, +0.4] |
+| Colour 1 at 1.0 | 47/50 | 2.30 | +1.5 [+0.7, +2.4] | -4.2 [-5.3, -2.8] |
+| 2.0 brought in gradually | 48/50 | 1.85 | -1.5 [-2.5, -0.4] | -5.0 [-6.5, -3.5] |
+| Noise 1.0, no steering | 46/50 | 2.87 | -2.6 [-3.7, -1.5] | -0.8 [-2.3, +1.0] |
+| Shadow 1.0 | 50/50 | 2.04 | +0.3 [-0.9, +1.4] | -3.3 [-4.9, -1.9] |
+
+No arm clears all four at once. Noise 1.0 is the best balance: every story
+coherent, fewer rules broken than nucleus, level or ahead on what happens.
+Wording variety is the axis nothing beats, and it follows how hard and how
+uniformly the rules are pushed: steering alone is the worst arm on it, the
+largest noise is the best of the steered arms, and it costs rules.
+
+### Steering set by the story, not by a constant
+
+The controller that pushes each rule only once the story is seen breaking it,
+with the same noise at 1.0 (50 stories an arm, pooled at 43):
+
+| | Rules broken | Plot variety | Wording variety |
+|---|---|---|---|
+| Constant push + noise 1.0 | 2.45 | +1.0 [+0.2, +1.9] | -2.7 [-4.2, -1.1] |
+| Controller, gain 1 | 3.27 | tie | -1.0 [-2.4, +0.6] |
+| Controller, gain 2 | 3.31 | tie | -0.9 [-2.4, +0.5] |
+| Controller, gain 2, noise 1.4 | 3.33 | tie | +0.3 [-1.2, +1.8] |
+| Controller, noise rising as rules are secured | 3.37 | tie | -0.7 [-2.1, +0.8] |
+| Controller, gain 2, no noise | 2.86 | -5.0 | -4.1 |
+
+It keeps the rules far worse than the constant push -- speech falls to 22-31% --
+because these rules are decided early and the controller acts after the fact:
+once a past-tense verb is written the tense rule is already broken, and a push
+for speech from halfway in rarely produces any. The noise that rises as rules
+are secured was never really tested, since the rules were seldom secured. What
+the arms do show is where the wording variety goes: every controller arm ties
+nucleus on wording and every constant arm loses, so the constant push is what
+narrows the wording.
+
+Running: the constant push kept at its full size but split across the rules at
+random for each story (Dirichlet concentrations 1 and 4), and the budget taken
+off the two rules the model already meets unprompted.
+
