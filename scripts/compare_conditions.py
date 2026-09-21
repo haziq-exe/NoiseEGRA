@@ -117,7 +117,8 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--condition", action="append", default=[], metavar="NAME=RUN:FRAG",
-                    help="repeatable; FRAG is any substring picking out one run id")
+                    help="repeatable; FRAG is any substring picking out one run id. "
+                         "RUN:FRAG+RUN:FRAG pools the same arm from several runs")
     ap.add_argument("--constraint-set", choices=("monotone", "middle", "whole"),
                     default="middle",
                     help="which rules the compliance column counts. 'whole' is the "
@@ -161,8 +162,15 @@ def main() -> None:
     order = []
     for spec in args.condition:
         name, rest = spec.split("=", 1)
-        run, fragment = rest.split(":", 1)
-        rid, texts = stories_from_run(run, fragment)
+        # Several sources joined with '+' pool into one condition: the same
+        # arm run twice under different story seeds, read as one set.
+        rids, texts = [], []
+        for part in rest.split("+"):
+            run, fragment = part.split(":", 1)
+            r, t = stories_from_run(run, fragment)
+            rids.append(r)
+            texts.extend(t)
+        rid = " + ".join(rids)
         order.append(name)
 
         # The instruction forbids a title, and a title is also distinctive
