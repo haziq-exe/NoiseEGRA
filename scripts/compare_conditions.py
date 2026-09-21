@@ -63,6 +63,19 @@ SENTENCE = re.compile(r"[^.!?]+[.!?]")
 WORD = re.compile(r"[A-Za-z]+(?:'[A-Za-z]+)?")
 
 
+
+def _checkpoints(run: str) -> list:
+    """The checkpoint files for one run, wherever the download put them.
+
+    A Kaggle pull leaves them under ``state/``. A Lightning pull leaves each shard's
+    under ``shard<i>/`` instead, and has no ``state/``. The two are never mixed: a
+    Kaggle run also carries a second copy under ``output/``, and reading both would
+    count every story twice.
+    """
+    found = glob.glob(f"experiments/{run}/state/**/state.json", recursive=True)
+    return found or sorted(glob.glob(f"experiments/{run}/shard*/**/state.json",
+                                     recursive=True))
+
 def stories_from_run(run: str, fragment: str):
     """Every story for one run id, read from the checkpoint.
 
@@ -70,7 +83,7 @@ def stories_from_run(run: str, fragment: str):
     CSV repeats its history once per shard.
     """
     found: dict = {}
-    for path in glob.glob(f"experiments/{run}/state/**/state.json", recursive=True):
+    for path in _checkpoints(run):
         for rid, cells in json.load(open(path)).get("runs", {}).items():
             if fragment in rid:
                 found.setdefault(rid, {}).update(cells)

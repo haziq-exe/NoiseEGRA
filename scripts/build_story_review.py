@@ -63,10 +63,22 @@ RULE_TEXT = {
 }
 
 
+
+def _checkpoints(run: str) -> list:
+    """The checkpoint files for one run, wherever the download put them.
+
+    A Kaggle pull leaves them under ``state/``; a Lightning pull leaves each shard's
+    under ``shard<i>/``. Never both: a Kaggle run's second copy under ``output/``
+    would count every story twice.
+    """
+    found = glob.glob(f"experiments/{run}/state/**/state.json", recursive=True)
+    return found or sorted(glob.glob(f"experiments/{run}/shard*/**/state.json",
+                                     recursive=True))
+
 def from_state(run: str, fragment: str):
     """Stories for one run id, read from the checkpoint rather than the CSVs."""
     runs: dict = {}
-    for f in glob.glob(f"experiments/{run}/state/**/state.json", recursive=True):
+    for f in _checkpoints(run):
         for rid, cells in json.load(open(f)).get("runs", {}).items():
             if fragment in rid:
                 runs.setdefault(rid, {}).update(cells)
