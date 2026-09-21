@@ -41,7 +41,16 @@ def strip_reasoning(text: str) -> str:
 class EGRA:
     def __init__(self, model, use_AENI=False, dtype=None):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        model_dtype = dtype if dtype is not None else torch.float16
+        # float16 on a CPU-only machine is slow and some operators are not
+        # implemented for it at all, so the default follows the device rather
+        # than being a constant. A GPU-quota outage is a reason to run on CPU,
+        # not a reason to run wrong.
+        if dtype is not None:
+            model_dtype = dtype
+        elif torch.cuda.is_available():
+            model_dtype = torch.float16
+        else:
+            model_dtype = torch.float32
         if use_AENI:
             self.model = AutoModelForCausalLM.from_pretrained(
                 model, dtype=model_dtype, device_map="auto", attn_implementation="eager"

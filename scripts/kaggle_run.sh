@@ -28,6 +28,7 @@ SHARDS=2
 while :; do
   case "${1:-}" in
     --profile) PROFILE="$2"; shift 2 ;;
+    --no-gpu) NOGPU="--no-gpu"; shift ;;
     --shards)  SHARDS="$2";  shift 2 ;;
     --) shift; break ;;
     *) break ;;
@@ -66,7 +67,7 @@ fi
 # If the harness refuses -- an uncommitted working tree, a bad flag, no quota --
 # stop here. Carrying on polls a kernel that was never created, which looks
 # exactly like a run in progress and wasted forty minutes once.
-if ! kh run --name "$NAME" --max-minutes 420 --no-wait -- $RUNCMD 2>&1 | tee -a "$LOG"; then
+if ! kh run --name "$NAME" --max-minutes 420 ${NOGPU:-} --no-wait -- $RUNCMD 2>&1 | tee -a "$LOG"; then
   echo "launch refused; not watching" | tee -a "$LOG"; exit 1
 fi
 if ! grep -q "pushed\. Watch it with" "$LOG"; then

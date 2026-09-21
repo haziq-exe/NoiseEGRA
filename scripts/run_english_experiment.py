@@ -281,7 +281,9 @@ def main() -> None:
     ap.add_argument("--model", default="Qwen3-8B", choices=sorted(EN_MODEL_HF_IDS))
     ap.add_argument("--model-id", help="HF id or local snapshot dir; overrides --model's id")
     ap.add_argument("--layers", nargs=2, type=int, metavar=("LO", "HI"))
-    ap.add_argument("--dtype", default="auto", choices=["auto", "float16", "bfloat16"])
+    ap.add_argument("--dtype", default="auto",
+                    choices=["auto", "float16", "bfloat16", "float32"],
+                    help="'auto' is float16 on a GPU and float32 without one")
     ap.add_argument("--suite", nargs="+", default=["compare"],
                     choices=["baseline", "sampling", "compare", "method", "noise",
                              "offset", "story", "prompt", "main", "pareto", "directions", "select", "budget", "feedback", "assemble", "headtohead", "closure", "control",
