@@ -700,8 +700,77 @@ Baselines on the eight whole-story rules, 25 stories each (wide intervals):
 | Nucleus, T=1.8 | 25/25 | 2.44 | 19.3 | 10.3 |
 | Steering only | 25/25 | 1.92 | 17.9 | 6.2 |
 
-Running: the method at 0.5, 1.0 and 2.0 nucleus-units, and five variants that
-change one thing each -- noise redrawn at every token instead of once per story,
-and a fixed 0.4 x RMS size in place of the output-based one, with and without a
-cosine fade over the story's first 260 tokens.
+### What the screens found (25 stories an arm unless stated)
+
+- **A fixed 0.4 x RMS size breaks almost every story**, per story or per token,
+  with or without a fade: 0-5 of 25 coherent. It is about seven times the length
+  the output-based sizing picks. The fade cannot help because the damage is done
+  in the opening words, where a fade is still at full strength.
+- **Per-token noise is worse than per-story noise at the same output-based size**
+  on wording variety (-2.9 against -1.3 from nucleus).
+- **Within one size the chosen length varies about twofold between stories**
+  (7.5-14.8 at 1.0 nucleus-units): some random directions move the predictions
+  far more than others.
+- **Size 2.0 applied only while writing breaks the prose** (7 of 25 coherent,
+  looping lists), so the prompt is not the only place a large offset does harm.
+  Bringing 2.0 in gradually over the first 260 tokens keeps the rules (1.62
+  broken) but loses the variety: the opening and the premise are decided early.
+- **The noise alone, with no rule steering, loses 4 of 25 stories to loops**
+  where the same noise with the steering loses none.
+
+### The protection only held where the noise was added
+
+The noise is projected clear of the rule directions at each layer it is added
+to. Measured downstream along the reference passage, its effect along the rule
+directions by layer 13, as a share of the steering push along them, is 1.04 at
+0.5 nucleus-units, 2.20 at 1.0 and 3.72 at a fixed length of 14.83. At layer 6
+it is 0.00. From layer 9 on, 27-31% of the noise's effect lies along the rule
+directions against 19% for a random vector: the network routes it there.
+
+A shadow copy of each story removes this. The same words, the same steering and
+no noise run as a second row of the batch; at every steered layer the story is
+held level with the shadow along the protected directions. Measured the same
+way, the leak falls to 0.015 of the push at every size. It needs no reference
+passage and no linear approximation, and the shadow never left the story's words
+in 150 stories.
+
+It barely changed how many rules broke: 1.76 to 1.73 at 0.5, 2.16 to 2.04 at
+1.0, and 2.36 to 2.82 at 1.4, where it also cost the variety. So the rules break
+because the noise changes what the story is about, not because it leaks into
+their directions. The rules that fall are the ones about content -- speech, a he
+and a she, a comparison -- and a story about one child alone has no second
+character however well a direction is protected. Only steering that reacts to
+the story can supply one.
+
+### At 50 stories an arm
+
+Every condition pooled at 46 coherent stories; differences are from nucleus.
+
+| | Coherent | Rules broken (of 8) | Plot variety | Wording variety |
+|---|---|---|---|---|
+| Nucleus, T=1.8 | 49/50 | 2.51 | 26.8 [26.1, 27.5] | 13.1 [12.0, 14.2] |
+| Untouched, T=1.0 | 46/50 | 2.93 | -5.4 [-6.4, -4.4] | -3.8 [-5.1, -2.6] |
+| Steering only | 50/50 | 1.52 | -1.4 [-2.6, -0.2] | -6.0 [-7.1, -4.7] |
+| Shadow 0.5 | 48/50 | 1.73 | -1.0 [-2.1, +0.0] | -5.3 [-6.5, -4.1] |
+| Shadow 1.0 | 50/50 | 2.04 | +0.2 [-0.8, +1.4] | -3.3 [-4.9, -1.5] |
+| Shadow 1.4 | 50/50 | 2.82 | -0.0 [-0.9, +1.1] | -2.9 [-4.3, -1.6] |
+
+Every story coherent and fewer rules broken than nucleus, at 1.0: yes. Variety:
+level with nucleus on what happens, about three points behind on wording. The
+noise does not flatten the model's choices word by word, which is where nucleus
+gets its wording variety, so the gap is in kind rather than in size.
+
+### A seed offset that did nothing
+
+The run meant to add a second 25 stories to every arm reproduced the first 25
+word for word: the offset had been added to a seed function this runner does
+not call, and was checked on that function. Fixed, with a test on the call the
+generation loop actually makes; the duplicate run is kept under
+`experiments/r119-DUPLICATE-of-first-25` and must not be pooled.
+
+### The simile rule undercounts
+
+It counts "like" only before a/an/the/some/two/three, to keep the verb "like"
+out, so "shines like glass" is not a simile to it. It is the same for every arm,
+so comparisons stand, but every simile pass rate here is a lower bound.
 
