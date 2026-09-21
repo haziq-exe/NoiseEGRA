@@ -290,7 +290,7 @@ def main() -> None:
                              "ablate", "controls", "tame", "fsc", "core4", "combine", "dose", "siting", "dropone", "prefill", "asymmetric", "boundary", "bands", "whilewriting", "gatedwrite", "promptbudget", "opening", "framing", "final", "weighted", "quieten", "eventvary", "literature", "withdecoder", "vstopp", "pertoken", "wander", "varysize",
                              "amplify", "constdose", "spread", "frontier",
                              "window", "decay", "core", "ortho", "alpha", "gate",
-                             "beta", "loo", "colour", "colourfront", "wholefive", "wholeloop", "randomfisher", "all"])
+                             "beta", "loo", "colour", "colourfront", "wholefive", "wholeloop", "randomfisher", "randomvariants", "all"])
     ap.add_argument("--task", default="generic", choices=["generic", "scenario"],
                     help="'generic' is the published design: one instruction with no "
                          "scenario, many requirements, and every story in one group, so "
@@ -631,6 +631,15 @@ def main() -> None:
                     help="per-story offset magnitudes used by --suite offset")
     ap.add_argument("--offset-rank", type=int, default=64,
                     help="how many activation principal components offsets may use")
+    ap.add_argument("--variant-size", type=float, default=1.0,
+                    help="suite 'randomvariants': the size, in nucleus-units, of "
+                         "the per-token noise sized by the output")
+    ap.add_argument("--fixed-rms-multiple", type=float, default=0.4,
+                    help="suite 'randomvariants': the fixed noise size, as a "
+                         "multiple of the residual stream's RMS")
+    ap.add_argument("--decay-tokens", type=int, default=260,
+                    help="suite 'randomvariants': decode steps a cosine fade takes "
+                         "to reach zero -- about the 200-word limit")
     ap.add_argument("--offset-random-rank", type=int, default=64,
                     help="rank of the random subspace suite 'randomfisher' draws "
                          "afresh for every story; nothing about it is learned")

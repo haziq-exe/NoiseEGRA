@@ -119,6 +119,7 @@ def make_plan(
     offset_scale=None,
     offset_draw_shape="sphere",
     offset_random_rank=None,
+    offset_envelope_steps=0,
     offset_gamma_spread=None,
     guard_direction="",
     noise_norm_match="energy",
@@ -208,6 +209,7 @@ def make_plan(
         offset_draw_shape=offset_draw_shape,
         offset_random_rank=(RUN_DEFAULTS.get("offset_random_rank", 0)
                             if offset_random_rank is None else offset_random_rank),
+        offset_envelope_steps=offset_envelope_steps,
         offset_anchors=RUN_DEFAULTS["offset_anchors"],
         anchor_scale=RUN_DEFAULTS["anchor_scale"],
         offset_gamma_spread=offset_gamma_spread,
@@ -2044,6 +2046,57 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             f"{rank} subspace per story, coloured at {cn:g}, sized to move the "
             "predictions " + ", ".join(f"{x:g}" for x in sizes)
             + " times as far as nucleus sampling does")
+
+    if name == "randomvariants":
+        # The same method with its two design choices varied one at a time.
+        #
+        # When the noise changes: once per story, wandering slowly as coloured
+        # noise (the method), or a fresh direction at every token, the way the
+        # published method adds noise. Per-token noise leaves the prompt alone,
+        # as that method does; the per-story offset also shifts how the prompt
+        # is read.
+        #
+        # How big it is: sized per story by how far it moves the predictions
+        # (the method), or a fixed multiple of the residual stream's RMS at the
+        # layers it is added to, with and without a cosine fade over the story.
+        #
+        # Everything else -- the rule steering, the random subspace redrawn per
+        # story, the projection clear of the rule directions -- is identical.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        b = float(getattr(args, "steer_budget", None) or 2.5)
+        keep = int((getattr(args, "tail_sweep", None) or [8])[0])
+        cn = float((getattr(args, "noise_beta_sweep", None) or [2.0])[0])
+        rank = int(getattr(args, "offset_random_rank", 64) or 64)
+        size = float(getattr(args, "variant_size", 1.0) or 1.0)
+        rms_k = float(getattr(args, "fixed_rms_multiple", 0.4) or 0.4)
+        fade = int(getattr(args, "decay_tokens", 260) or 260)
+        flat = {n: 1.0 for n in names}
+
+        def arm(per_token, norm, gamma, envelope):
+            return {"plan": make_plan(
+                beta=flat, steer_budget=b,
+                offset_gamma=gamma, offset_mode="orth", offset_norm=norm,
+                offset_basis=None, offset_basis_kind="random",
+                offset_random_rank=rank,
+                steer_prefill=True, prompt_tail_clear=keep,
+                offset_draw_shape="sphere",
+                offset_prefill=not per_token, offset_decode=True,
+                noise_beta=(0.0 if per_token else cn),
+                offset_envelope=envelope,
+                offset_envelope_steps=(fade if envelope != "flat" else 0),
+                **quiet, **base)}
+
+        return [
+            arm(True, "fisher", size, "flat"),      # per token, sized by the output
+            arm(False, "energy", rms_k, "flat"),    # per story, fixed RMS multiple
+            arm(False, "energy", rms_k, "decay"),   # the same, fading over the story
+            arm(True, "energy", rms_k, "flat"),     # per token, fixed RMS multiple
+            arm(True, "energy", rms_k, "decay"),    # the same, fading over the story
+        ], (
+            f"per-token noise sized to {size:g} nucleus-units; per-story and "
+            f"per-token noise at {rms_k:g} times the residual stream's RMS, each "
+            f"with and without a cosine fade over {fade} tokens")
 
     if name == "wholeloop":
         # Steering strength set by the story being written, not by a calibration

@@ -318,6 +318,8 @@ def _ortho_tag_once(model_name: str, spec: ExperimentSpec, *, compress: bool) ->
             parts.append(f"__cyc{_float_tag(cyc)}")
     if str(getattr(plan, "offset_envelope", "flat") or "flat") != "flat":
         parts.append(f"__env{plan.offset_envelope}")
+        if int(getattr(plan, "offset_envelope_steps", 0) or 0) > 0:
+            parts.append(f"{int(plan.offset_envelope_steps)}")
     if getattr(plan, "offset_decode_steps", 0):
         parts.append(f"__ods{int(plan.offset_decode_steps)}")
     if getattr(plan, "prompt_head_clear", 0):

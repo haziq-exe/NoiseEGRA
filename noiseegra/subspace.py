@@ -504,6 +504,10 @@ class SteeringPlan:
     noise_fmin_cycles: float = 0.25
     # How many decode steps the trajectory is generated for.
     noise_traj_steps: int = 640
+    # The span a "decay" or "rise" envelope takes, in decode steps. 0 uses the
+    # trajectory's length, which at 640 is more than twice a story here: the
+    # fade was still at half strength when the story ended.
+    offset_envelope_steps: int = 0
     # How the displacement's size runs over the story: "flat", "decay" (large
     # at the start, fading), or "rise" (small at the start, growing). The
     # register failures this project measures come from displacement early on,
@@ -874,6 +878,7 @@ class SteeringPlan:
         noise_beta: Optional[float] = None,
         noise_fmin_cycles: float = 0.25,
         noise_traj_steps: int = 640,
+        offset_envelope_steps: int = 0,
         offset_envelope: str = "flat",
         offset_basis_kind: str = "step",
         offset_draw: str = "iid",
@@ -1087,6 +1092,7 @@ class SteeringPlan:
             noise_beta=None if noise_beta is None else float(noise_beta),
             noise_fmin_cycles=float(noise_fmin_cycles),
             noise_traj_steps=int(noise_traj_steps),
+            offset_envelope_steps=int(offset_envelope_steps or 0),
             offset_envelope=str(offset_envelope),
             offset_decode=bool(offset_decode),
             amplify_lambda=float(amplify_lambda),
@@ -1373,7 +1379,7 @@ class SteeringPlan:
         mode = (self.offset_envelope or "flat").lower()
         if mode == "flat":
             return 1.0
-        span = max(1, int(self.noise_traj_steps))
+        span = max(1, int(self.offset_envelope_steps or self.noise_traj_steps))
         frac = min(max(float(t) / span, 0.0), 1.0)
         if mode == "decay":
             return float(0.5 * (1.0 + math.cos(math.pi * frac)))

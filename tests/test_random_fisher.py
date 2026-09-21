@@ -124,6 +124,41 @@ outs = {egra.generate_with_orthogonal_steering(PROMPT, p, max_new_tokens=8, seed
 check("it generates", all(isinstance(o, str) and o for o in outs))
 check("every story is calibrated", len(getattr(p, "fisher_log", []) or []) == 3)
 
+print("\n== the variants ==")
+pt = plan(size=1.0)
+pt.noise_beta = 0.0
+torch.manual_seed(5); pt.resample_offset()
+lpt = pt.layer_plans[LAYERS[0]]
+d0, d1, d2 = (lpt.offset_at(t) for t in (0, 1, 2))
+cos = lambda a, b: float(a @ b / (a.norm() * b.norm()))
+check("per-token noise points somewhere new at every step",
+      abs(cos(d0, d1)) < 0.9 and abs(cos(d1, d2)) < 0.9,
+      f"cosines {cos(d0, d1):.2f}, {cos(d1, d2):.2f}")
+check("and keeps its length", abs(float(d0.norm()) - float(d2.norm())) < 1e-4)
+dr = plan(size=1.0)
+torch.manual_seed(5); dr.resample_offset()
+ldr = dr.layer_plans[LAYERS[0]]
+check("per-story noise barely moves from one step to the next",
+      cos(ldr.offset_at(0), ldr.offset_at(1)) > 0.95,
+      f"cosine {cos(ldr.offset_at(0), ldr.offset_at(1)):.3f}")
+
+fx = SteeringPlan.build(
+    VECS, LAYERS, [ConstraintSpec(n, beta=1.0) for n in NAMES], rms_scale=2.0,
+    offset_gamma=0.4, offset_mode="orth", offset_norm="energy",
+    offset_basis_kind="random", offset_random_rank=RANK, noise_beta=2.0,
+    offset_envelope="decay", offset_envelope_steps=260,
+    noise_mode="none", noise_alpha=0.0, steer_budget=1.0)
+torch.manual_seed(5); fx.resample_offset()
+got = float(fx.layer_plans[LAYERS[0]].offset.norm())
+check("a fixed size is the RMS multiple per coordinate",
+      abs(got - 0.4 * 2.0 * math.sqrt(DIM)) < 1e-3, f"{got:.3f}")
+check("the fade starts at full strength", abs(fx.envelope_at(0) - 1.0) < 1e-9)
+check("is at half by the middle", abs(fx.envelope_at(130) - 0.5) < 1e-6)
+check("and is gone at the length limit", fx.envelope_at(260) < 1e-9 and fx.envelope_at(400) < 1e-9)
+tags = {_ortho_tag("M", ExperimentSpec(use_orthogonal_steering=True, steering_plan=x))
+        for x in (fx,)}
+check("the fade's length is in the run name", any("__envdecay260" in t for t in tags))
+
 print()
 if FAILURES:
     print(f"{len(FAILURES)} FAILED: {FAILURES}")

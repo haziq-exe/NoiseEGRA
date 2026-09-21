@@ -422,19 +422,28 @@ def main() -> None:
 
         script = driver_script(commit, args.name, args.runner_args,
                                args.shards, gpus, args.prewarm)
-        with tempfile.NamedTemporaryFile("w", suffix=".sh") as fh:
-            fh.write(script)
-            fh.flush()
-            studio.upload_file(fh.name, remote_path=f"runs/{args.name}/driver.sh",
-                               progress_bar=False)
+        # Written through the same command channel that starts it, and checked
+        # before starting. A separate file upload failed once without raising --
+        # the Lightning API was answering 500 at the time -- and the launch then
+        # ran a script that was not there, left a one-line error in the log, and
+        # never wrote the exit marker, so the follow loop waited on nothing
+        # while the GPU sat rented.
+        import base64
+        rdir = f"{HOME}/runs/{args.name}"
+        b64 = base64.b64encode(script.encode()).decode()
+        out, code = studio.run_with_exit_code(
+            f"mkdir -p {rdir} && rm -f {rdir}/exit {rdir}/log.txt",
+            f"echo {b64} | base64 -d > {rdir}/driver.sh",
+            f"test -s {rdir}/driver.sh && echo DRIVER_OK")
+        if "DRIVER_OK" not in (out or ""):
+            raise SystemExit(f"the driver script did not reach the Studio "
+                             f"(exit {code}): {out!r}. Nothing was started.")
 
         # Detached, so the run outlives this terminal and the connection that
         # follows it. Nothing on this path holds output back until the end.
         studio.run_with_exit_code(
-            f"mkdir -p {HOME}/runs/{args.name}",
-            f"rm -f {HOME}/runs/{args.name}/exit",
-            f"cd {HOME} && setsid nohup bash {HOME}/runs/{args.name}/driver.sh "
-            f"> {HOME}/runs/{args.name}/log.txt 2>&1 < /dev/null &")
+            f"cd {HOME} && setsid nohup bash {rdir}/driver.sh "
+            f"> {rdir}/log.txt 2>&1 < /dev/null &")
         print(f"launched; following runs/{args.name}/log.txt")
 
     try:
