@@ -49,7 +49,8 @@ from noiseegra.coherence import (  # noqa: E402
     CoherenceFilter, opens_with_a_title, trim_lead, trim_title,
 )
 from noiseegra.constraint_metrics_en import (  # noqa: E402
-    MIDDLE_CONSTRAINTS, MONOTONE_CONSTRAINTS, EnglishConstraintChecker,
+    MIDDLE_CONSTRAINTS, MONOTONE_CONSTRAINTS, WHOLE_STORY_CONSTRAINTS,
+    EnglishConstraintChecker,
     opens_in_the_wrong_tense,
 )
 from noiseegra.readability import uncommon_word_share  # noqa: E402
@@ -104,7 +105,12 @@ def main() -> None:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--condition", action="append", default=[], metavar="NAME=RUN:FRAG",
                     help="repeatable; FRAG is any substring picking out one run id")
-    ap.add_argument("--constraint-set", choices=("monotone", "middle"), default="middle")
+    ap.add_argument("--constraint-set", choices=("monotone", "middle", "whole"),
+                    default="middle",
+                    help="which rules the compliance column counts. 'whole' is the "
+                         "eight rules about the story as a whole; scoring those "
+                         "stories under 'middle' would count the old thresholds "
+                         "they were never asked for")
     ap.add_argument("--truncate-words", type=int, default=40)
     ap.add_argument("--min-grade", type=float, default=3.0)
     ap.add_argument("--max-word-uses", type=int, default=5)
@@ -128,8 +134,8 @@ def main() -> None:
                     help="add a pass-rate table, one row per requirement")
     args = ap.parse_args()
 
-    rules = (MIDDLE_CONSTRAINTS if args.constraint_set == "middle"
-             else MONOTONE_CONSTRAINTS)
+    rules = {"middle": MIDDLE_CONSTRAINTS, "monotone": MONOTONE_CONSTRAINTS,
+             "whole": WHOLE_STORY_CONSTRAINTS}[args.constraint_set]
     checker = EnglishConstraintChecker(
         backend="spacy", constraints=rules, max_opener_uses=args.max_opener_uses,
         max_word_uses=args.max_word_uses, min_grade_level=args.min_grade,

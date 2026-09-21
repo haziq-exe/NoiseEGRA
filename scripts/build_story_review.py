@@ -39,7 +39,8 @@ import numpy as np  # noqa: E402
 
 from noiseegra.coherence import CoherenceFilter  # noqa: E402
 from noiseegra.constraint_metrics_en import (  # noqa: E402
-    MIDDLE_CONSTRAINTS, MONOTONE_CONSTRAINTS, EnglishConstraintChecker,
+    MIDDLE_CONSTRAINTS, MONOTONE_CONSTRAINTS, WHOLE_STORY_CONSTRAINTS,
+    EnglishConstraintChecker,
 )
 from noiseegra.diversity import read_run_csv  # noqa: E402
 from noiseegra.readability import uncommon_word_share  # noqa: E402
@@ -86,7 +87,8 @@ def main() -> None:
     ap.add_argument("--condition", action="append", default=[], metavar="NAME=RUN:FRAG")
     ap.add_argument("--csv", action="append", default=[], metavar="NAME=PATH")
     ap.add_argument("--embedding-vendi", action="append", default=[], metavar="NAME=VALUE")
-    ap.add_argument("--constraint-set", choices=("monotone", "middle"), default="monotone")
+    ap.add_argument("--constraint-set", choices=("monotone", "middle", "whole"),
+                    default="monotone")
     ap.add_argument("--truncate-words", type=int, default=40)
     ap.add_argument("--min-grade", type=float, default=3.0)
     ap.add_argument("--max-word-uses", type=int, default=5)
@@ -101,8 +103,8 @@ def main() -> None:
     from openpyxl.styles import Alignment, Font, PatternFill
     from openpyxl.utils import get_column_letter
 
-    rules = (MIDDLE_CONSTRAINTS if args.constraint_set == "middle"
-             else MONOTONE_CONSTRAINTS)
+    rules = {"middle": MIDDLE_CONSTRAINTS, "monotone": MONOTONE_CONSTRAINTS,
+             "whole": WHOLE_STORY_CONSTRAINTS}[args.constraint_set]
     ck = EnglishConstraintChecker(backend="spacy", constraints=rules,
                                   max_opener_uses=args.max_opener_uses,
                                   max_word_uses=args.max_word_uses,
