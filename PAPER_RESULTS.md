@@ -858,3 +858,25 @@ happens, from 1.0 up, and the wording gap shrinks to about a point -- a tie at
 push most stories begin the same way ("The sun spills ..."), and the first 40
 words are mostly that opening.
 
+### Larger noise over the opening, and on the prompt
+
+Noise at 1.0 that starts at 1.5x or 2x and falls back over the first 40 tokens,
+while writing (50 stories an arm, pooled at 36 because of the last row):
+
+| | Coherent | Rules broken | Plot, 40 words | Wording, 40 words | Plot, 100 words | Wording, 100 words |
+|---|---|---|---|---|---|---|
+| Noise 1.0 | 50/50 | 2.28 | +0.6 [-0.3, +1.5] | -2.2 [-3.9, -0.3] | +1.2 [+0.4, +1.9] | -1.0 [-2.0, +0.1] |
+| Starting at 1.5x | 50/50 | 2.54 | +1.0 [+0.3, +1.7] | -2.8 [-4.2, -1.3] | +1.1 [+0.3, +1.9] | -1.4 [-2.3, -0.4] |
+| Starting at 2x | 48/50 | 2.90 | +0.8 [-0.1, +1.7] | -3.1 [-4.8, -1.4] | +1.7 [+0.8, +2.6] | -1.4 [-2.3, -0.4] |
+| 2x, prompt's share 2x too | 36/50 | 3.50 | +0.8 [-0.0, +1.6] | +0.4 [-1.2, +2.3] | +2.1 [+1.3, +2.9] | +1.7 [+0.4, +2.8] |
+
+Larger noise while writing does nothing for the wording and costs rules. The
+wording moves only when the prompt's share rises -- the one arm to beat nucleus
+on wording at a hundred words -- and that arm loses 14 of 50 stories to the model
+answering the reader ("Certainly! The story must satisfy every one of these
+requirements"), to loops and to repeated titles. So the prompt is where the
+wording variety comes from, and where the register failure comes from.
+
+Running: the prompt's share at 2x with a fade toward the prompt's end, at 2x with
+the shadow, and at 1.5x plain.
+
