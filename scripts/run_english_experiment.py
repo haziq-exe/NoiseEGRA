@@ -433,6 +433,16 @@ def main() -> None:
                          "what loops and fails to end. Re-measuring on the "
                          "method's own output and feeding the shares back is "
                          "one step of a fixed point, not a sweep.")
+    ap.add_argument("--closure-ramp", type=int, default=None, metavar="TOKENS",
+                    help="give the 'closure' direction a schedule that is quiet "
+                         "early and presses harder the longer a story runs, "
+                         "reaching full strength at TOKENS. The failures this "
+                         "method has left are stories that do not end: they run "
+                         "292 words against 206 for the ones that are kept, and "
+                         "then loop. Measured on the children's task, this took "
+                         "looping from 48% of stories to 15% and improved "
+                         "compliance at the same time. Needs 'closure' in "
+                         "--steer-vectors.")
     ap.add_argument("--allocate-power", type=float, default=1.0,
                     help="sharpens or flattens --steer-allocate shortfall. "
                          "Above one concentrates the budget on the worst "
@@ -891,6 +901,17 @@ def main() -> None:
                                       else float(args.noise_beta))
     _ro.RUN_DEFAULTS["noise_fmin_cycles"] = float(args.noise_fmin_cycles)
     _ro.RUN_DEFAULTS["offset_envelope"] = str(args.offset_envelope)
+    if args.closure_ramp is not None:
+        if "closure" not in args.steer_vectors:
+            raise SystemExit(
+                "--closure-ramp schedules the 'closure' direction, which is not "
+                f"in --steer-vectors {sorted(args.steer_vectors)}. Without it "
+                "the flag would do nothing at all, and an arm that quietly does "
+                "nothing is its own control.")
+        _ro.RUN_DEFAULTS["schedules"] = {"closure": "ramp"}
+        _ro.RUN_DEFAULTS["horizon"] = int(args.closure_ramp)
+        print(f"closure: quiet early, full strength by token {args.closure_ramp}",
+              flush=True)
     # Validated here, with the other run-wide settings, rather than beside the
     # basis: this runs before a model is loaded and so --dry-run reaches it. A
     # mistyped share caught after an hour of generation is a mistyped share

@@ -72,10 +72,31 @@ case "${1:-}" in
                       distinct_sentences=0.07 no_repetition=0.03 no_heading=0.02 \
                       plain_words=0.0
     ;;
+  closure)
+    # The one intervention aimed at the coherence gap that is inside the method
+    # rather than a decoding guard. The failures are stories that do not end --
+    # 292 words against 206 for the ones kept, repetition starting at word 220
+    # of 291 -- and "closure" is a direction meaning bring it to an end, on a
+    # schedule quiet while a story is inside its budget and pressing harder the
+    # longer it runs over. Measured on the children's task it took looping from
+    # 48% of stories to 15% and improved compliance at the same time. It has
+    # never been run on this task, and it is not in the steered set.
+    #
+    # The horizon is where a legal story ends: roughly 150 words, about 200
+    # tokens. Two arms, with and without, so the brake is read against itself.
+    exec scripts/kaggle_run.sh r109-closure --profile "${2:-coauth1}" --shards 2 -- \
+      "${COMMON[@]}" --steer-allocate shortfall --steer-budget 2.5 \
+      --gamma-sweep 1.5 --noise-beta-sweep 2.0 \
+      --steer-vectors present_tense mature_register dialogue varied_openers \
+                      plain_words sensory fresh_words named_character \
+                      no_repetition distinct_sentences fresh_openings \
+                      no_heading something_happens closure \
+      --closure-ramp 200
+    ;;
   *)
-    echo "usage: $0 {push|round2} [kaggle-profile]" >&2
+    echo "usage: $0 {round2|closure} [kaggle-profile]" >&2
     echo >&2
-    echo "  push    REMOVED - a larger total push is measured to be worse" >&2
+    echo "  closure a brake on stories that do not end - the coherence lever" >&2
     echo "  round2  the budget re-measured on the method's own output" >&2
     exit 2
     ;;
