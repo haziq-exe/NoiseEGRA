@@ -17,7 +17,17 @@
 #     all six failures loops again.
 #
 # So the push suppresses the base model's loops and the displacement re-admits
-# them. Every arm ever run here uses a push of 2.5. That is run one.
+# them. The obvious inference -- push harder -- is WRONG, and the runs already
+# on disk say so. At a matched displacement, coherence against total push:
+#
+#     gamma 1.50:  2.0 -> 145/200   2.5 -> 183-199   3.0 -> 173/200
+#     gamma 1.75:  2.0 -> 162,177   2.5 -> 178-191   3.0 -> 164/200
+#     gamma 2.00:  2.0 -> 165/200   2.5 -> 170-193   3.0 -> 176   3.5 -> 109/200
+#
+# 2.5 is already near the top and 3.5 collapses. PAPER_RESULTS said as much
+# before this script was written -- "raising the total from 2 to 4 is far worse
+# than leaving it at 2" -- and a budget-raising run was queued here anyway. It
+# has been removed rather than left to be discovered by burning a run.
 #
 # And the budget split is measured on the UNTOUCHED model, while the
 # displacement breaks requirements the untouched model does not: re-measured on
@@ -42,12 +52,11 @@ COMMON=(--model Qwen3-1.7B --task generic --constraint-set middle --stories 200
 
 case "${1:-}" in
   push)
-    # Run one: a stronger push at the same displacement. If the push is what
-    # holds the loops off, this is where coherence comes back without giving up
-    # the displacement that carries the variety.
-    exec scripts/kaggle_run.sh r107-push --profile "${2:-coauth1}" --shards 2 -- \
-      "${COMMON[@]}" --steer-allocate shortfall \
-      --steer-budget 3.5 --gamma-sweep 1.5 1.75
+    echo "Removed. Raising the total push is measured to make coherence worse:" >&2
+    echo "  gamma 1.5:  2.5 -> 183-199 coherent, 3.0 -> 173/200" >&2
+    echo "  gamma 2.0:  2.5 -> 170-193 coherent, 3.5 -> 109/200" >&2
+    echo "Use 'round2', which moves budget between directions at the same total." >&2
+    exit 2
     ;;
   round2)
     # Run two: the budget re-measured on the method's own output. The shares
@@ -66,7 +75,7 @@ case "${1:-}" in
   *)
     echo "usage: $0 {push|round2} [kaggle-profile]" >&2
     echo >&2
-    echo "  push    a stronger total push at the same displacement" >&2
+    echo "  push    REMOVED - a larger total push is measured to be worse" >&2
     echo "  round2  the budget re-measured on the method's own output" >&2
     exit 2
     ;;

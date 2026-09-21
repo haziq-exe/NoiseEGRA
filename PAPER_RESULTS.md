@@ -233,6 +233,30 @@ This is one step of a fixed point -- allocate from the untouched model, run,
 re-measure, allocate again -- and it is the next thing to run. It is not a
 sweep: the direction and the size of every change are read off the measurement.
 
+## Pushing harder does not restore coherence
+
+The push alone is 200 of 200 and the displacement re-admits the base model's
+loops, which makes "push harder at the same displacement" the obvious
+inference. It is wrong, and the runs already on disk say so. Coherence against
+total push, at matched displacement, across every middle-school arm:
+
+| Displacement | Push 2.0 | Push 2.5 | Push 3.0 | Push 3.5 |
+|---|---|---|---|---|
+| 1.50 | 145/200 | 183–199 | **173/200** | — |
+| 1.75 | 162, 177 | 178–191 | **164/200** | — |
+| 2.00 | 165/200 | 170–193 | 176/200 | **109/200** |
+
+2.5 is already at or near the best, and 3.5 collapses. The arms differ in other
+settings, so this is not a controlled sweep, but the direction is consistent at
+three displacements and it agrees with what this project measured long before:
+raising the total from 2 to 4 was far worse than leaving it at 2.
+
+So the lever for the coherence gap is not the size of the push but **where it is
+spent**. The budget re-measured on the method's own output moves it onto naming
+a character -- the requirement the displacement breaks, and the one whose
+failure produces the unnamed first-person register that runs long and loops --
+at the same total. That remains untested.
+
 ## Would a repetition gate close the coherence gap?
 
 The residual failures are repetition loops, and a generation-stopping gate is
