@@ -2098,6 +2098,50 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             f"per-token noise at {rms_k:g} times the residual stream's RMS, each "
             f"with and without a cosine fade over {fade} tokens")
 
+    if name == "randomnext":
+        # Where the variety that is still missing might come from. At 2.0
+        # nucleus-units the per-story noise nearly matched nucleus sampling on
+        # wording but a third of the stories opened by answering the reader, the
+        # failure this project has traced to perturbing the end of the prompt.
+        # So the larger sizes are tried with the noise applied only while the
+        # story is written, and once more held back at the start and brought in
+        # over the first 260 tokens, where the register is already settled.
+        #
+        # The noise alone, with no rule steering, is the ablation the five-way
+        # comparison asks for.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        b = float(getattr(args, "steer_budget", None) or 2.5)
+        keep = int((getattr(args, "tail_sweep", None) or [8])[0])
+        cn = float((getattr(args, "noise_beta_sweep", None) or [2.0])[0])
+        rank = int(getattr(args, "offset_random_rank", 64) or 64)
+        fade = int(getattr(args, "decay_tokens", 260) or 260)
+        flat = {n: 1.0 for n in names}
+        none = {n: 0.0 for n in names}
+
+        def arm(size, *, steer=True, prompt=True, envelope="flat", beta=cn):
+            return {"plan": make_plan(
+                beta=(flat if steer else none), steer_budget=(b if steer else None),
+                offset_gamma=size, offset_mode="orth", offset_norm="fisher",
+                offset_basis=None, offset_basis_kind="random",
+                offset_random_rank=rank,
+                steer_prefill=steer, prompt_tail_clear=keep,
+                offset_draw_shape="sphere",
+                offset_prefill=prompt, offset_decode=True, noise_beta=beta,
+                offset_envelope=envelope,
+                offset_envelope_steps=(fade if envelope != "flat" else 0),
+                **quiet, **base)}
+
+        return [
+            arm(1.0, steer=False),                       # the noise alone
+            arm(1.4),                                    # between the two that worked and failed
+            arm(2.0, prompt=False),                      # large, while writing only
+            arm(2.0, prompt=False, envelope="rise"),     # and brought in after the opening
+            arm(1.0, beta=1.0),                          # wanders more within the story
+        ], ("the noise alone at 1.0; the method at 1.4; at 2.0 while writing "
+            "only, with and without a rise over the first "
+            f"{fade} tokens; and at 1.0 with a noise colour of 1")
+
     if name == "wholeloop":
         # Steering strength set by the story being written, not by a calibration
         # run. Every rule in this set is satisfied or not, so each direction

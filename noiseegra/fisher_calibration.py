@@ -109,13 +109,21 @@ def _logits(egra, plan, ids: torch.Tensor, n_prompt: int, *,
             return None
         return hook
 
+    # Measured at full strength. A fade or a rise scales the offset over the
+    # story, and the size asked for is the size at full strength: measured
+    # through a rise, the reference passage sits where the offset is still near
+    # zero, and the bisection would choose a length that lands at many times
+    # the intended size once the rise completes.
     saved_step = getattr(plan, "_jitter_step", None)
+    saved_env = getattr(plan, "offset_envelope", "flat")
+    plan.offset_envelope = "flat"
     handles = [blocks[li].register_forward_hook(make_hook(li)) for li in layers]
     try:
         res = egra.model(input_ids=ids, use_cache=False, return_dict=True)
     finally:
         for h in handles:
             h.remove()
+        plan.offset_envelope = saved_env
         if saved_step is not None:
             plan._jitter_step = saved_step
     return res.logits[0].float()

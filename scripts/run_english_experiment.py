@@ -290,7 +290,7 @@ def main() -> None:
                              "ablate", "controls", "tame", "fsc", "core4", "combine", "dose", "siting", "dropone", "prefill", "asymmetric", "boundary", "bands", "whilewriting", "gatedwrite", "promptbudget", "opening", "framing", "final", "weighted", "quieten", "eventvary", "literature", "withdecoder", "vstopp", "pertoken", "wander", "varysize",
                              "amplify", "constdose", "spread", "frontier",
                              "window", "decay", "core", "ortho", "alpha", "gate",
-                             "beta", "loo", "colour", "colourfront", "wholefive", "wholeloop", "randomfisher", "randomvariants", "all"])
+                             "beta", "loo", "colour", "colourfront", "wholefive", "wholeloop", "randomfisher", "randomvariants", "randomnext", "all"])
     ap.add_argument("--task", default="generic", choices=["generic", "scenario"],
                     help="'generic' is the published design: one instruction with no "
                          "scenario, many requirements, and every story in one group, so "

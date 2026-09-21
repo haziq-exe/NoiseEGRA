@@ -159,6 +159,21 @@ tags = {_ortho_tag("M", ExperimentSpec(use_orthogonal_steering=True, steering_pl
         for x in (fx,)}
 check("the fade's length is in the run name", any("__envdecay260" in t for t in tags))
 
+print("\n== a rise does not inflate the size ==")
+def calibrated(envelope):
+    q = plan(size=0.5)
+    q.offset_envelope, q.offset_envelope_steps = envelope, 260
+    torch.manual_seed(3); q.resample_offset()
+    out = calibrate_offset(egra, q, ids, 0.15, max_length=maxlen, n_tokens=6)
+    check(f"the envelope is restored after measuring ({envelope})",
+          q.offset_envelope == envelope)
+    check(f"the size is reachable here ({envelope})", out["reached"] == 1.0,
+          f"length {out['length']:.3f}")
+    return out["length"]
+flat_len, rise_len = calibrated("flat"), calibrated("rise")
+check("a rise is sized as if at full strength", abs(flat_len - rise_len) < 1e-6,
+      f"{flat_len:.3f} vs {rise_len:.3f}")
+
 print()
 if FAILURES:
     print(f"{len(FAILURES)} FAILED: {FAILURES}")
