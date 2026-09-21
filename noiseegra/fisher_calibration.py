@@ -77,6 +77,13 @@ def _logits(egra, plan, ids: torch.Tensor, n_prompt: int, *,
     """
     blocks = egra._get_transformer_blocks()
     layers = _layers(egra, plan)
+    # With a shadow copy the offset goes on the first row only, the second row
+    # gets the steering alone, and at every steered layer the first is held level
+    # with the second along the protected directions -- as generation does it.
+    shadow = bool(getattr(plan, "shadow_protect", False)) and with_offset
+    if shadow:
+        ids = ids.repeat(2, 1)
+    off_rows = slice(0, 1) if shadow else slice(None)
     n = int(ids.shape[-1])
     lo, hi = _prompt_range(plan, n_prompt)
     bands = getattr(plan, "offset_layers", None) or ()
@@ -97,16 +104,27 @@ def _logits(egra, plan, ids: torch.Tensor, n_prompt: int, *,
                 if off is not None:
                     off = off.to(device=t.device, dtype=t.dtype).view(1, 1, -1)
                     if taper >= 1.0:
-                        t[:, lo:hi, :].add_(off)
+                        t[off_rows, lo:hi, :].add_(off)
                     else:
                         ramp = torch.linspace(1.0, taper, hi - lo, device=t.device,
                                               dtype=t.dtype).view(1, -1, 1)
-                        t[:, lo:hi, :].add_(off * ramp)
+                        t[off_rows, lo:hi, :].add_(off * ramp)
             for j in range(n - n_prompt):
                 d = plan.delta_for(li, j, with_noise=False, with_offset=with_offset,
                                    device=t.device)
                 if d is not None:
-                    t[:, n_prompt + j, :].add_(d.to(t.dtype))
+                    t[off_rows, n_prompt + j, :].add_(d.to(t.dtype))
+                if shadow:
+                    d = plan.delta_for(li, j, with_noise=False, with_offset=False,
+                                       device=t.device)
+                    if d is not None:
+                        t[1:, n_prompt + j, :].add_(d.to(t.dtype))
+            if shadow:
+                prot = plan.layer_plans[li].protect
+                if prot is not None:
+                    prot = prot.to(device=t.device, dtype=torch.float32)
+                    diff = (t[0] - t[1]).float()
+                    t[0].sub_(((diff @ prot) @ prot.t()).to(t.dtype))
             if capture is not None:
                 capture[li] = t[0].detach().float().clone()
             return None

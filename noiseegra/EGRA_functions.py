@@ -847,6 +847,23 @@ class EGRA:
                   + ("" if got["reached"] else "  -- NOT REACHED at the largest length"),
                   flush=True)
 
+        # A shadow copy of the story: a second row with the same words and the
+        # same steering but no perturbation, against which the story is held
+        # level along the protected directions at every steered layer. Set up
+        # after the sizing above, which measures on one row.
+        shadow = bool(getattr(plan, "shadow_protect", False)) and (
+            float(getattr(plan, "offset_gamma", 0.0) or 0.0) > 0
+            or float(getattr(plan, "noise_alpha", 0.0) or 0.0) > 0)
+        if shadow:
+            if (getattr(plan, "steer_mode", "constant") == "feedback"
+                    or float(getattr(plan, "amplify_lambda", 1.0) or 1.0) != 1.0):
+                raise NotImplementedError(
+                    "the shadow copy supports constant and error-driven steering; "
+                    "feedback steering and amplification read each row's own "
+                    "state and would give the shadow a push of its own")
+            inputs = {k: v.repeat(2, 1) for k, v in inputs.items()}
+            input_ids = inputs["input_ids"]
+
         blocks = self._get_transformer_blocks()
         normalized_layers = sorted({
             self._normalize_layer_index(idx, len(blocks)) for idx in plan.layers
@@ -1066,7 +1083,65 @@ class EGRA:
                                 target[:, -1:, :].add_(amp.to(target.dtype).view(1, 1, -1))
 
                     return None
-                return hook
+
+                if not shadow:
+                    return hook
+
+                def shadowed(module, input, output):
+                    if isinstance(output, torch.Tensor):
+                        target = output
+                    elif (isinstance(output, (tuple, list)) and len(output) > 0
+                          and isinstance(output[0], torch.Tensor)):
+                        target = output[0]
+                    else:
+                        return hook(module, input, output)
+                    if target.dim() != 3 or target.shape[0] != 2:
+                        return hook(module, input, output)
+                    prefill = bool(shared["is_prefill"])
+                    t_now = shared["cur_t"]
+                    with torch.no_grad():
+                        before = target[1].clone()
+                        hook(module, input, output)
+                        # The shadow gets the steering and nothing else.
+                        target[1].copy_(before)
+                        if prefill:
+                            if plan.steer_prefill:
+                                d = plan.steering_only(layer_idx, 0, device=target.device)
+                                if d is not None:
+                                    keep = int(getattr(plan, "prompt_tail_clear", 0) or 0)
+                                    head = int(getattr(plan, "prompt_head_clear", 0) or 0)
+                                    n = target.shape[1]
+                                    lo = head if 0 < head < n else 0
+                                    hi = n - keep if 0 < keep < n - lo else n
+                                    dd = d.to(target.dtype).view(1, -1)
+                                    if hi > lo:
+                                        target[1, lo:hi, :].add_(dd)
+                                    else:
+                                        target[1].add_(dd)
+                            rows = slice(None)
+                        else:
+                            d = plan.delta_for(layer_idx, t_now, with_noise=False,
+                                               with_offset=False, device=target.device)
+                            if getattr(plan, "steer_mode", "constant") == "error":
+                                ed = plan.error_delta(layer_idx, t_now, device=target.device)
+                                if ed is not None:
+                                    d = ed if d is None else d + ed
+                            if d is not None:
+                                target[1, -1:, :].add_(d.to(target.dtype).view(1, -1))
+                            rows = slice(-1, None)
+                        # Hold the story level with the shadow along the
+                        # protected directions. The difference between the two
+                        # rows is everything the perturbation has done so far,
+                        # including what earlier layers carried back into these
+                        # directions; only that part is removed.
+                        prot = plan.layer_plans[layer_idx].protect
+                        if prot is not None:
+                            prot = prot.to(device=target.device, dtype=torch.float32)
+                            diff = (target[0, rows, :] - target[1, rows, :]).float()
+                            target[0, rows, :].sub_(((diff @ prot) @ prot.t()).to(target.dtype))
+                    return None
+
+                return shadowed
 
             for layer_idx in normalized_layers:
                 handles.append(blocks[layer_idx].register_forward_hook(make_hook(layer_idx)))
@@ -1106,6 +1181,27 @@ class EGRA:
             stopper = self._word_budget_stopper(inputs["input_ids"].shape[-1], max_words)
             if stopper is not None:
                 gen_kwargs["stopping_criteria"] = stopper
+            if shadow:
+                # The shadow must write the story's words, not its own. Each row
+                # samples independently, so after every step the shadow's new
+                # token is overwritten with the story's before the next forward
+                # reads it. Done here, after sampling, so the story's own sampling
+                # is exactly what it would be without a shadow. The shadow is
+                # finished when the story is.
+                from transformers import StoppingCriteria, StoppingCriteriaList
+                eos = self.model.generation_config.eos_token_id
+                eos = set(eos if isinstance(eos, (list, tuple))
+                          else ([] if eos is None else [eos]))
+
+                class _ShadowCopy(StoppingCriteria):
+                    def __call__(self_, ids, scores, **kwargs):
+                        ids[1:, -1] = ids[0, -1]
+                        done = torch.zeros(ids.shape[0], dtype=torch.bool, device=ids.device)
+                        done[1:] = int(ids[0, -1]) in eos
+                        return done
+
+                gen_kwargs["stopping_criteria"] = StoppingCriteriaList(
+                    [*(gen_kwargs.get("stopping_criteria") or []), _ShadowCopy()])
             outputs = self.model.generate(
                 **inputs, max_new_tokens=max_new_tokens, **gen_kwargs
             )
@@ -1124,6 +1220,14 @@ class EGRA:
 
         generated_ids = outputs[0][input_ids.shape[-1]:]
         text = strip_reasoning(self.tokenizer.decode(generated_ids, skip_special_tokens=True))
+        if shadow:
+            other = outputs[1][input_ids.shape[-1]:]
+            drift = int((generated_ids != other).sum())
+            plan.shadow_drift = int(getattr(plan, "shadow_drift", 0) or 0) + drift
+            if drift:
+                print(f"  [shadow] the shadow copy left the story at {drift} of "
+                      f"{generated_ids.numel()} positions -- its protection was "
+                      "measured against the wrong text", flush=True)
         if gate_threshold > 0 and entropy_state["steps"]:
             self.last_gate_rate = entropy_state["open"] / entropy_state["steps"]
         else:

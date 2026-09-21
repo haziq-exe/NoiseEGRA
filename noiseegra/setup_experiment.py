@@ -307,6 +307,8 @@ def _ortho_tag_once(model_name: str, spec: ExperimentSpec, *, compress: bool) ->
         parts.append(f"__od{plan.offset_draw_shape}")
     if int(getattr(plan, "offset_random_rank", 0) or 0) > 0:
         parts.append(f"__rr{int(plan.offset_random_rank)}")
+    if getattr(plan, "shadow_protect", False):
+        parts.append("__shadow")
     # The colour of the displacement's wandering, and the slowest wobble it is
     # allowed. Both change what is generated, so both have to be in the id: two
     # arms differing only in a setting the id does not carry write to the same

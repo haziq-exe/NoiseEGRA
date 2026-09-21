@@ -817,6 +817,13 @@ class SteeringPlan:
     # isotropic; within one story it gives the coloured-noise trajectory a
     # fixed set of directions to wander among. Nothing about it is learned.
     offset_random_rank: int = 0
+    # Run a shadow copy of the story alongside it: the same words, the same
+    # steering, no perturbation. At every steered layer the story's state is
+    # made to agree with the shadow's along the protected directions, which
+    # removes whatever part of the perturbation the earlier layers carried back
+    # into them. Projecting the perturbation clear of those directions where it
+    # is added protects them only at that layer.
+    shadow_protect: bool = False
     # How much the size of the per-story displacement varies between stories,
     # as a fraction of its nominal size. 0 gives every story the same
     # displacement, which is what every run so far has done.
@@ -916,6 +923,7 @@ class SteeringPlan:
         offset_scale: Optional[Mapping[int, torch.Tensor]] = None,
         offset_draw_shape: str = "sphere",
         offset_random_rank: int = 0,
+        shadow_protect: bool = False,
         offset_anchors: Optional[Mapping[int, torch.Tensor]] = None,
         anchor_scale: Optional[torch.Tensor] = None,
         offset_gamma_spread: float = 0.0,
@@ -1125,6 +1133,7 @@ class SteeringPlan:
             offset_decode_steps=int(offset_decode_steps),
             offset_draw_shape=str(offset_draw_shape),
             offset_random_rank=int(offset_random_rank or 0),
+            shadow_protect=bool(shadow_protect),
             offset_gamma_spread=float(offset_gamma_spread),
             offset_taper=float(offset_taper),
             guard_direction=str(guard_direction),

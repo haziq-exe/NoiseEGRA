@@ -193,6 +193,45 @@ set_offset_length(q, 0.0)
 z = rule_leakage(egra, q, pas, ids.shape[-1], NAMES)
 check("no noise, no leak", all(v["share"] == 0.0 or v["vs_push"] < 1e-6 for v in z.values()))
 
+print("\n== the shadow copy ==")
+def shadow_plan(on, size=0.5):
+    q = plan(size=size)
+    q.shadow_protect = on
+    return q
+for on in (False, True):
+    q = shadow_plan(on)
+    torch.manual_seed(3); q.resample_offset()
+    pas = reference_passage(egra, q, ids, n_tokens=6)
+    set_offset_length(q, 2.0)
+    lk = rule_leakage(egra, q, pas, ids.shape[-1], NAMES)
+    worst = max(v["share"] for v in lk.values())
+    if on:
+        check("with the shadow nothing reaches the protected directions at any steered layer",
+              worst < 1e-3, f"largest share {worst:.2e}")
+        moved = offset_distance(egra, q, pas, ids.shape[-1])
+        check("and the noise still changes the predictions", moved > 1e-3, f"{moved:.3f}")
+    else:
+        check("without it some does (the leak being fixed)", worst > 1e-3, f"{worst:.3f}")
+q = shadow_plan(True)
+from noiseegra.setup_experiment import ExperimentSpec as _ES  # noqa: E402
+check("the run name records the shadow",
+      "__shadow" in _ortho_tag("M", _ES(use_orthogonal_steering=True, steering_plan=q)))
+outs = [egra.generate_with_orthogonal_steering(PROMPT, q, max_new_tokens=10, seed=s)
+        for s in range(3)]
+check("a story generates with the shadow", all(isinstance(o, str) and o for o in outs))
+check("the shadow never leaves the story's words",
+      getattr(q, "shadow_drift", None) == 0, f"drift {getattr(q, 'shadow_drift', None)}")
+check("each story is still sized", len(q.fisher_log) == 3)
+plain = shadow_plan(False)
+a = egra.generate_with_orthogonal_steering(PROMPT, plain, max_new_tokens=10, seed=4)
+b = egra.generate_with_orthogonal_steering(PROMPT, shadow_plan(True), max_new_tokens=10, seed=4)
+check("a plan without the shadow is untouched by it", getattr(plain, "shadow_drift", None) is None)
+steer_only = plan(size=0.0)
+steer_only.shadow_protect = True
+c = egra.generate_with_orthogonal_steering(PROMPT, steer_only, max_new_tokens=10, seed=4)
+check("with nothing to protect against, no shadow runs",
+      getattr(steer_only, "shadow_drift", None) is None)
+
 print()
 if FAILURES:
     print(f"{len(FAILURES)} FAILED: {FAILURES}")

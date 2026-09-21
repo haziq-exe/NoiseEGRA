@@ -57,7 +57,9 @@ class EntropyProbe(LogitsProcessor):
         state.setdefault("history", [])
 
     def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor):
-        logp = torch.log_softmax(scores.float(), dim=-1)
+        # The first row only: a shadow copy of the story, when one runs, is the
+        # second row, and its uncertainty is not the story's.
+        logp = torch.log_softmax(scores[:1].float(), dim=-1)
         h = float(-(logp.exp() * logp).sum(-1).mean())
         if math.isfinite(h):
             self.state["entropy"] = h

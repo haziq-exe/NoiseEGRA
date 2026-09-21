@@ -121,6 +121,7 @@ def make_plan(
     offset_draw_shape="sphere",
     offset_random_rank=None,
     offset_envelope_steps=0,
+    shadow_protect=False,
     offset_gamma_spread=None,
     guard_direction="",
     noise_norm_match="energy",
@@ -211,6 +212,7 @@ def make_plan(
         offset_random_rank=(RUN_DEFAULTS.get("offset_random_rank", 0)
                             if offset_random_rank is None else offset_random_rank),
         offset_envelope_steps=offset_envelope_steps,
+        shadow_protect=shadow_protect,
         offset_anchors=RUN_DEFAULTS["offset_anchors"],
         anchor_scale=RUN_DEFAULTS["anchor_scale"],
         offset_gamma_spread=offset_gamma_spread,
@@ -2198,6 +2200,36 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             f"per-story noise at a fixed length of {length:g} ({gamma:.4f} times "
             f"the RMS per coordinate), with and without a cosine fade over {fade} "
             "tokens")
+
+    if name == "randomshadow":
+        # The method with a shadow copy of each story, held level with it along
+        # the protected directions at every steered layer. Everything else is
+        # suite 'randomfisher': the size still means how far the noise moves
+        # the predictions, now measured with the shadow's correction applied.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        b = float(getattr(args, "steer_budget", None) or 2.5)
+        keep = int((getattr(args, "tail_sweep", None) or [8])[0])
+        cn = float((getattr(args, "noise_beta_sweep", None) or [2.0])[0])
+        rank = int(getattr(args, "offset_random_rank", 64) or 64)
+        sizes = [float(x) for x in (getattr(args, "gamma_sweep", None) or [0.5, 1.0, 1.4])]
+        flat = {n: 1.0 for n in names}
+
+        def arm(size):
+            return {"plan": make_plan(
+                beta=flat, steer_budget=b,
+                offset_gamma=size, offset_mode="orth", offset_norm="fisher",
+                offset_basis=None, offset_basis_kind="random",
+                offset_random_rank=rank, shadow_protect=True,
+                steer_prefill=True, prompt_tail_clear=keep,
+                offset_draw_shape="sphere",
+                offset_prefill=True, offset_decode=True, noise_beta=cn,
+                **quiet, **base)}
+
+        return [arm(x) for x in sizes], (
+            "the method with a shadow copy protecting the rule directions at every "
+            "steered layer, sized to move the predictions "
+            + ", ".join(f"{x:g}" for x in sizes) + " times as far as nucleus sampling")
 
     if name == "wholeloop":
         # Steering strength set by the story being written, not by a calibration
