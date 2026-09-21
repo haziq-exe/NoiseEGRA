@@ -169,6 +169,9 @@ class ConstraintProbe:
         # not push constantly) from one it has no probe for, from the very first
         # step rather than from the probe's first firing.
         state["errors"] = {name: 0.0 for name in controller.watched()}
+        # A new story has secured nothing yet; left alone, the last story's
+        # value would size this one's noise until the probe first reads it.
+        state["secured"] = 0.0
         state.setdefault("text", "")
 
     def __call__(self, input_ids, scores):
@@ -179,6 +182,8 @@ class ConstraintProbe:
                 text = self.tokenizer.decode(new, skip_special_tokens=True)
                 self.state["text"] = text
                 self.state["errors"] = self.controller.errors(text)
+                if hasattr(self.controller, "secured"):
+                    self.state["secured"] = self.controller.secured(text)
         return scores
 
 
@@ -259,6 +264,20 @@ class WholeStoryController(ConstraintController):
 
     def watched(self) -> Sequence[str]:
         return self.WATCHED
+
+    # The rules that, once met, stay met: a comparison, somebody speaking, a
+    # he and a she, a name. After the story has them the push for them goes
+    # silent, and nothing further the noise does can undo them -- which makes the
+    # share of them already met a measure of how much the story still needs
+    # steering on content.
+    SECURABLE = ("simile", "dialogue", "both_genders", "named_character")
+
+    def secured(self, text: str) -> float:
+        """Share of the rules that stay met once met that this story has met."""
+        st = read_partial(text)
+        got = [has_simile(text), st.quotes >= 1, genders_present(text) >= 2,
+               _names_so_far(text) == 1]
+        return sum(got) / len(got)
 
     def errors(self, text: str) -> Dict[str, float]:
         st = read_partial(text)

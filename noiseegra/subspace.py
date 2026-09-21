@@ -508,6 +508,10 @@ class SteeringPlan:
     # trajectory's length, which at 640 is more than twice a story here: the
     # fade was still at half strength when the story ended.
     offset_envelope_steps: int = 0
+    # For the "secured" envelope: how much the noise grows once every rule that
+    # stays met is met. The envelope is 1 + boost * (share met), read each step
+    # from what the constraint controller last saw of the story.
+    offset_secured_boost: float = 0.0
     # How the displacement's size runs over the story: "flat", "decay" (large
     # at the start, fading), or "rise" (small at the start, growing). The
     # register failures this project measures come from displacement early on,
@@ -886,6 +890,7 @@ class SteeringPlan:
         noise_fmin_cycles: float = 0.25,
         noise_traj_steps: int = 640,
         offset_envelope_steps: int = 0,
+        offset_secured_boost: float = 0.0,
         offset_envelope: str = "flat",
         offset_basis_kind: str = "step",
         offset_draw: str = "iid",
@@ -1101,6 +1106,7 @@ class SteeringPlan:
             noise_fmin_cycles=float(noise_fmin_cycles),
             noise_traj_steps=int(noise_traj_steps),
             offset_envelope_steps=int(offset_envelope_steps or 0),
+            offset_secured_boost=float(offset_secured_boost or 0.0),
             offset_envelope=str(offset_envelope),
             offset_decode=bool(offset_decode),
             amplify_lambda=float(amplify_lambda),
@@ -1388,13 +1394,19 @@ class SteeringPlan:
         mode = (self.offset_envelope or "flat").lower()
         if mode == "flat":
             return 1.0
+        if mode == "secured":
+            # More noise once the story has the things that, once written, stay
+            # written. Read from the controller's last look at the story, so it
+            # needs error-driven steering to be running.
+            got = float(((self.control_state or {}).get("secured", 0.0)) or 0.0)
+            return 1.0 + float(self.offset_secured_boost) * got
         span = max(1, int(self.offset_envelope_steps or self.noise_traj_steps))
         frac = min(max(float(t) / span, 0.0), 1.0)
         if mode == "decay":
             return float(0.5 * (1.0 + math.cos(math.pi * frac)))
         if mode == "rise":
             return float(0.5 * (1.0 - math.cos(math.pi * frac)))
-        raise ValueError("offset_envelope must be flat, decay or rise; "
+        raise ValueError("offset_envelope must be flat, decay, rise or secured; "
                          f"got {self.offset_envelope!r}")
 
     def resample_offset(self, story_index: Optional[int] = None) -> None:

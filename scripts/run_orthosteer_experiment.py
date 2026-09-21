@@ -122,6 +122,7 @@ def make_plan(
     offset_random_rank=None,
     offset_envelope_steps=0,
     shadow_protect=False,
+    offset_secured_boost=0.0,
     offset_gamma_spread=None,
     guard_direction="",
     noise_norm_match="energy",
@@ -213,6 +214,7 @@ def make_plan(
                             if offset_random_rank is None else offset_random_rank),
         offset_envelope_steps=offset_envelope_steps,
         shadow_protect=shadow_protect,
+        offset_secured_boost=offset_secured_boost,
         offset_anchors=RUN_DEFAULTS["offset_anchors"],
         anchor_scale=RUN_DEFAULTS["anchor_scale"],
         offset_gamma_spread=offset_gamma_spread,
@@ -2230,6 +2232,67 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             "the method with a shadow copy protecting the rule directions at every "
             "steered layer, sized to move the predictions "
             + ", ".join(f"{x:g}" for x in sizes) + " times as far as nucleus sampling")
+
+    if name == "randomloop":
+        # Steering that reacts to the story, with the random per-story noise.
+        # The shadow copy removed the noise's leak into the rule directions and
+        # barely changed how many rules broke: they break because the noise
+        # changes what the story is about -- one child alone has no girl and
+        # nobody to talk to -- and protecting a direction cannot put a second
+        # character in. The controller can: it asks for a comparison, speech or
+        # a he and a she once the story is far enough in to be missing them,
+        # and goes silent once they are there.
+        #
+        # Once those rules are met they stay met, which is the moment the story
+        # needs least from the steering. One arm raises the noise then.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        b = float(getattr(args, "steer_budget", None) or 2.5)
+        keep = int((getattr(args, "tail_sweep", None) or [8])[0])
+        cn = float((getattr(args, "noise_beta_sweep", None) or [2.0])[0])
+        rank = int(getattr(args, "offset_random_rank", 64) or 64)
+        boost = float(getattr(args, "secured_boost", 1.0) or 1.0)
+        ctl = getattr(args, "controller", None)
+        if ctl is None:
+            raise SystemExit(
+                "suite 'randomloop' steers by the error the controller measures, "
+                "and no controller was built. It comes from --constraint-set, "
+                "which has to be 'whole' for this suite.")
+        gains = [float(x) for x in (getattr(args, "feedback_betas", None) or [1.0, 2.0])]
+        g_top = max(gains)
+        # A constant push on closure would ask every story to end from its first
+        # word, so the constant reference leaves it out.
+        const = {n: (0.0 if n == "closure" else 1.0) for n in names}
+
+        def arm(size, *, gain=None, envelope="flat"):
+            steer = ({} if gain is None else
+                     dict(steer_mode="error", control_state={}, controller=ctl))
+            beta = const if gain is None else {n: gain for n in names}
+            noisy = size > 0
+            return {"plan": make_plan(
+                beta=beta, steer_budget=b, **steer,
+                offset_gamma=size, offset_mode=("orth" if noisy else "none"),
+                offset_norm="fisher", offset_basis=None,
+                offset_basis_kind=("random" if noisy else "step"),
+                offset_random_rank=(rank if noisy else 0),
+                steer_prefill=True, prompt_tail_clear=keep,
+                offset_draw_shape="sphere",
+                offset_prefill=noisy, offset_decode=noisy,
+                noise_beta=(cn if noisy else None),
+                offset_envelope=envelope,
+                offset_secured_boost=(boost if envelope == "secured" else 0.0),
+                **quiet, **base)}
+
+        items = [arm(1.0)]
+        items += [arm(1.0, gain=g) for g in gains]
+        items += [arm(1.4, gain=g_top),
+                  arm(1.0, gain=g_top, envelope="secured"),
+                  arm(0.0, gain=g_top)]
+        return items, (
+            "constant steering with the noise at 1.0; steering set by the story at "
+            "gains " + ", ".join(f"{x:g}" for x in gains) + " with the noise at 1.0; "
+            f"at gain {g_top:g} with the noise at 1.4, with the noise at 1.0 rising "
+            f"to {1 + boost:g}x as the rules that stay met are met, and with no noise")
 
     if name == "wholeloop":
         # Steering strength set by the story being written, not by a calibration
