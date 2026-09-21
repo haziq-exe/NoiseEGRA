@@ -174,6 +174,25 @@ flat_len, rise_len = calibrated("flat"), calibrated("rise")
 check("a rise is sized as if at full strength", abs(flat_len - rise_len) < 1e-6,
       f"{flat_len:.3f} vs {rise_len:.3f}")
 
+print("\n== where the noise lands ==")
+from noiseegra.leakage import rule_leakage  # noqa: E402
+q = plan(size=0.5)
+torch.manual_seed(3); q.resample_offset()
+pas = reference_passage(egra, q, ids, n_tokens=6)
+set_offset_length(q, 2.0)
+lk = rule_leakage(egra, q, pas, ids.shape[-1], NAMES)
+check("every steered layer is measured", sorted(lk) == LAYERS, str(sorted(lk)))
+first = lk[LAYERS[0]]
+check("at the first layer the noise has no part along the rules",
+      first["share"] < 1e-4, f"{first['share']:.2e}")
+later = lk[LAYERS[-1]]
+check("downstream some of it can", 0.0 <= later["share"] <= 1.0 and later["share"] > 1e-4,
+      f"{later['share']:.3f} against {later['chance']:.3f} by chance")
+check("each rule is reported", set(later["per_rule"]) == set(NAMES))
+set_offset_length(q, 0.0)
+z = rule_leakage(egra, q, pas, ids.shape[-1], NAMES)
+check("no noise, no leak", all(v["share"] == 0.0 or v["vs_push"] < 1e-6 for v in z.values()))
+
 print()
 if FAILURES:
     print(f"{len(FAILURES)} FAILED: {FAILURES}")

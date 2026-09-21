@@ -65,7 +65,8 @@ def _layers(egra, plan) -> List[int]:
 
 @torch.no_grad()
 def _logits(egra, plan, ids: torch.Tensor, n_prompt: int, *,
-            with_offset: bool) -> torch.Tensor:
+            with_offset: bool, capture: Optional[Dict[int, torch.Tensor]] = None
+            ) -> torch.Tensor:
     """Logits at every position of ``ids`` with the plan applied as generation
     applies it: the push (and, if asked, the offset) across the prompt, and the
     decode-step delta at each continuation position.
@@ -106,6 +107,8 @@ def _logits(egra, plan, ids: torch.Tensor, n_prompt: int, *,
                                    device=t.device)
                 if d is not None:
                     t[:, n_prompt + j, :].add_(d.to(t.dtype))
+            if capture is not None:
+                capture[li] = t[0].detach().float().clone()
             return None
         return hook
 

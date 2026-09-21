@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import sys
 import time
 from pathlib import Path
@@ -631,6 +632,10 @@ def main() -> None:
                     help="per-story offset magnitudes used by --suite offset")
     ap.add_argument("--offset-rank", type=int, default=64,
                     help="how many activation principal components offsets may use")
+    ap.add_argument("--diagnose-leakage", type=int, default=0, metavar="N",
+                    help="measure how much of each perturbed arm's noise ends up "
+                         "along the rule directions downstream, on the first N "
+                         "stories' offsets, and exit without generating")
     ap.add_argument("--fixed-length", type=float, default=14.83,
                     help="suite 'randomfixed': the one offset length every story "
                          "gets -- by default the largest the output-based sizing "
@@ -1686,6 +1691,62 @@ def main() -> None:
         built, desc = build_suite(suite, vectors, layers, args.steer_vectors, rms_scale, args)
         items.extend(built)
         print(f"  suite {suite}: {desc} ({len(built)} runs)")
+
+    if args.diagnose_leakage:
+        # Measure where each perturbed arm's noise ends up, on the offsets the
+        # first stories would actually get (same seeds), and stop before
+        # generating anything. See noiseegra.leakage.
+        from noiseegra.leakage import rule_leakage
+        from noiseegra.fisher_calibration import calibrate_offset, reference_passage
+        from kaggle_orthosteer import seed_for_story
+        from noiseegra.setup_experiment import ExperimentSpec, _ortho_tag
+        egra = get_model()
+        chat = egra.apply_chat_template(messages[0], tokenize=False,
+                                        add_generation_prompt=True)
+        pids = egra.tokenizer(chat, return_tensors="pt").to(egra._input_device())["input_ids"]
+        n_prompt = int(pids.shape[-1])
+        print("\nwhere the noise lands, averaged over the continuation of the "
+              "reference passage")
+        for it in items:
+            plan = it.get("plan") if isinstance(it, dict) else None
+            if plan is None or not plan.offset_gamma:
+                continue
+            passage, acc = None, {}
+            for x in range(int(args.diagnose_leakage)):
+                seed = seed_for_story(x, getattr(args, "story_seed_offset", 0))
+                torch.manual_seed(seed)
+                if torch.cuda.is_available():
+                    torch.cuda.manual_seed_all(seed)
+                plan.resample_offset(story_index=x)
+                if plan.offset_norm == "fisher":
+                    if getattr(plan, "_fisher_cache", None) is None:
+                        plan._fisher_cache = {}
+                    calibrate_offset(egra, plan, pids, float(plan.offset_gamma),
+                                     max_length=float(plan.rms_scale * math.sqrt(plan.dim)),
+                                     cache=plan._fisher_cache)
+                    passage = next(iter(plan._fisher_cache.values()))[0]
+                elif passage is None:
+                    passage = reference_passage(egra, plan, pids)
+                for li, r in rule_leakage(egra, plan, passage, n_prompt,
+                                          [sp.name for sp in plan.specs]).items():
+                    a = acc.setdefault(li, {"share": [], "vs_push": [], "chance": r["chance"],
+                                            "per_rule": {}})
+                    a["share"].append(r["share"]); a["vs_push"].append(r["vs_push"])
+                    for k, v in r["per_rule"].items():
+                        a["per_rule"].setdefault(k, []).append(v)
+            rid = _ortho_tag(args.model, ExperimentSpec(use_orthogonal_steering=True,
+                                                        steering_plan=plan))
+            print(f"\n  {rid[-90:]}")
+            print(f"  {'layer':>5}  {'share in rules':>14}  {'by chance':>9}  {'vs the push':>11}")
+            for li in sorted(acc):
+                a = acc[li]
+                print(f"  {li:>5}  {sum(a['share'])/len(a['share']):>14.3f}  "
+                      f"{a['chance']:>9.3f}  {sum(a['vs_push'])/len(a['vs_push']):>11.3f}")
+            last = max(acc)
+            print(f"  per rule at layer {last}, change along it over the push along it:")
+            print("   " + ", ".join(f"{k} {sum(v)/len(v):.2f}"
+                                    for k, v in acc[last]["per_rule"].items()))
+        raise SystemExit(0)
 
     # A gate asked for on the command line applies to every condition that
     # actually perturbs. --suite gate sets its own per-arm gates and is left alone.
