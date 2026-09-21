@@ -585,6 +585,27 @@ A ninth was written and dropped: reaching past sight passes 98-100% of the time
 even narrowed to sound, smell and taste, so it describes how the model already
 writes rather than asking anything of it.
 
+Those rates were re-measured on 1400 stories from the decoder comparison, a
+larger sample of the same kind -- written for the older instruction, so again a
+lower bound. The ordering holds and no rule changes character: present tense
+0.1%, a comparison 42%, one name 51%, both genders 47%, reading level 65%,
+speech 86%, no repeated sentence 90%, the story alone 100%. Every check fires,
+which is the thing that had not been confirmed: these eight are new code, and a
+rule that silently never fires would make the compliance column meaningless.
+
+The two at the top of that list are a problem for a fixed budget. The story
+format is met 100% of the time and no sentence is repeated 90% of the time, yet
+the steered set spends one of its eight directions on each. A quarter of the
+push goes to rules the model already follows, and is taken from present tense,
+which it follows essentially never. This is the same objection as picking five
+directions for twelve rules, in a smaller form.
+
+The closed-loop coefficients below remove it without a calibration run. A
+direction that is silent while its rule is met costs nothing on a story that
+never breaks the rule, so the format direction spends almost none of the budget
+and present tense takes what it needs. The fix falls out of the design rather
+than being fitted to this model.
+
 ## Steering strength without a calibration run
 
 The budget split above is measured on a calibration sample, which means knowing
