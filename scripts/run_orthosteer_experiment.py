@@ -123,6 +123,7 @@ def make_plan(
     offset_envelope_steps=0,
     shadow_protect=False,
     offset_secured_boost=0.0,
+    steer_split_concentration=0.0,
     offset_gamma_spread=None,
     guard_direction="",
     noise_norm_match="energy",
@@ -215,6 +216,7 @@ def make_plan(
         offset_envelope_steps=offset_envelope_steps,
         shadow_protect=shadow_protect,
         offset_secured_boost=offset_secured_boost,
+        steer_split_concentration=steer_split_concentration,
         offset_anchors=RUN_DEFAULTS["offset_anchors"],
         anchor_scale=RUN_DEFAULTS["anchor_scale"],
         offset_gamma_spread=offset_gamma_spread,
@@ -2293,6 +2295,46 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             "gains " + ", ".join(f"{x:g}" for x in gains) + " with the noise at 1.0; "
             f"at gain {g_top:g} with the noise at 1.4, with the noise at 1.0 rising "
             f"to {1 + boost:g}x as the rules that stay met are met, and with no noise")
+
+    if name == "randomsplit":
+        # The constant push flattens the wording: every story gets the same
+        # stylistic shove from its first word, and the arms that pushed less
+        # tied nucleus sampling on wording while the constant ones lost. Here the
+        # total push is kept and only its split varies, drawn at random per story.
+        # Separately, the two rules the model already meets unprompted -- no
+        # title, no repeated sentence -- are given no share, so theirs goes to the
+        # rules it breaks. All arms carry the per-story noise at 1.0.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        b = float(getattr(args, "steer_budget", None) or 2.5)
+        keep = int((getattr(args, "tail_sweep", None) or [8])[0])
+        cn = float((getattr(args, "noise_beta_sweep", None) or [2.0])[0])
+        rank = int(getattr(args, "offset_random_rank", 64) or 64)
+        concs = [float(x) for x in (getattr(args, "split_concentrations", None) or [1.0, 4.0])]
+        met = {"no_heading", "distinct_sentences"}
+        flat = {n: 1.0 for n in names}
+        focused = {n: (0.0 if n in met else 1.0) for n in names}
+
+        def arm(beta, conc):
+            return {"plan": make_plan(
+                beta=beta, steer_budget=b, steer_split_concentration=conc,
+                offset_gamma=1.0, offset_mode="orth", offset_norm="fisher",
+                offset_basis=None, offset_basis_kind="random",
+                offset_random_rank=rank,
+                steer_prefill=True, prompt_tail_clear=keep,
+                offset_draw_shape="sphere",
+                offset_prefill=True, offset_decode=True, noise_beta=cn,
+                **quiet, **base)}
+
+        items = [arm(flat, c) for c in concs]
+        # Only when there is a rule to take the share from: without either in
+        # the steered set the focused arms are the flat ones under another name.
+        if met & set(names):
+            items += [arm(focused, 0.0), arm(focused, min(concs))]
+        return items, (
+            "the noise at 1.0 with the steering split drawn per story at "
+            "concentrations " + ", ".join(f"{c:g}" for c in concs)
+            + "; with no share for the two rules already met; and both together")
 
     if name == "wholeloop":
         # Steering strength set by the story being written, not by a calibration

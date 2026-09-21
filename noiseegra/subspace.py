@@ -828,6 +828,13 @@ class SteeringPlan:
     # into them. Projecting the perturbation clear of those directions where it
     # is added protects them only at that layer.
     shadow_protect: bool = False
+    # A random split of the steering budget, drawn afresh for every story from a
+    # symmetric Dirichlet of this concentration and applied as per-rule gains.
+    # The total push is unchanged -- the budget renormalises it -- but no two
+    # stories are pushed in quite the same stylistic direction. 0 keeps every
+    # story on the same split. Smaller is more varied: 1 is uniform over all
+    # splits.
+    steer_split_concentration: float = 0.0
     # How much the size of the per-story displacement varies between stories,
     # as a fraction of its nominal size. 0 gives every story the same
     # displacement, which is what every run so far has done.
@@ -929,6 +936,7 @@ class SteeringPlan:
         offset_draw_shape: str = "sphere",
         offset_random_rank: int = 0,
         shadow_protect: bool = False,
+        steer_split_concentration: float = 0.0,
         offset_anchors: Optional[Mapping[int, torch.Tensor]] = None,
         anchor_scale: Optional[torch.Tensor] = None,
         offset_gamma_spread: float = 0.0,
@@ -1140,6 +1148,7 @@ class SteeringPlan:
             offset_draw_shape=str(offset_draw_shape),
             offset_random_rank=int(offset_random_rank or 0),
             shadow_protect=bool(shadow_protect),
+            steer_split_concentration=float(steer_split_concentration or 0.0),
             offset_gamma_spread=float(offset_gamma_spread),
             offset_taper=float(offset_taper),
             guard_direction=str(guard_direction),
@@ -1419,6 +1428,13 @@ class SteeringPlan:
         constraint direction biases that constraint for the entire story.
         """
         self.resample_jitter()
+        if float(getattr(self, "steer_split_concentration", 0.0) or 0.0) > 0:
+            # This story's share of the push for each rule. Drawn before any
+            # early return, so a plan with no offset still gets one.
+            k = len(self.specs)
+            conc = torch.full((k,), float(self.steer_split_concentration))
+            split = torch.distributions.Dirichlet(conc).sample()
+            self.gains = [float(x) * k for x in split]
         self._gamma_this_story = None
         self._anchor_gain = 1.0
         # A fresh story restarts the walk, so one story's wandering aim is not
