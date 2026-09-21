@@ -224,14 +224,56 @@ method's own 200 stories:
 | **sensory** | 0.38 | **0.61** | 62% -> 46% |
 | **plain words** | 0.56 | **0.00** | 44% -> **100%** |
 
-Naming is the requirement the displacement breaks, and the unnamed register is
-what loops. Round two moves budget onto it, and takes it off plain words, which
-the method already satisfies in every story. The two rounds agree to a cosine of
-0.913, so this is a correction and not a different method.
+Naming is the requirement the displacement breaks, and round two moves budget
+onto it while taking it off plain words, which the method already satisfies in
+every story. The two rounds agree to a cosine of 0.913, so this is a correction
+and not a different method.
+
+**It will not fix the coherence, though.** Pooled over 3,000 stories a story
+with no named character fails 4.7% of the time against 3.6% for one that names
+somebody, and raising the naming rate to 100% predicts about one story of the
+six. The 67%-against-14% figure above is six failures in one arm and does not
+hold at scale; it is left in place because it is what the failures in that arm
+look like, not because it supports the intervention.
 
 This is one step of a fixed point -- allocate from the untouched model, run,
 re-measure, allocate again -- and it is the next thing to run. It is not a
 sweep: the direction and the size of every change are read off the measurement.
+
+## The coherence floor, and why neither lever moves it
+
+Four things are measured, and together they say the remaining gap is not a
+tuning problem.
+
+| | Coherent |
+|---|---|
+| Untouched Qwen3-1.7B, T=1.0 | 194/200, every failure a loop |
+| The push alone | **200/200** |
+| Push + any displacement that improves variety | 184–195/200 |
+| Nucleus 0.95 / top-k 40 at T=1.8 | 200/200, 199/200 |
+
+**The base model loops at temperature 1.0 and the push cures it.** Every
+displacement large enough to beat nucleus sampling on variety re-admits the
+loops, and lands back at or below the model's own rate. The decoding baselines
+avoid loops by running at 1.8, which is the thing this method exists not to do.
+
+**A larger push makes it worse, not better** (table below), so the obvious lever
+is the wrong way round.
+
+**Spending the same push differently gains about one story.** Pooled over 15
+perturbed arms and 3,000 stories, a story with no named character fails 4.7% of
+the time against 3.6% for one that names somebody -- 1.3 times, not the five
+times a six-story sample suggested. Raising the naming rate from 38% to 100%
+predicts 7.3 failures per 200 against the present 8.6.
+
+So within the constraints -- temperature fixed at 1.0, no filtering of outputs,
+no decoding guard -- the base model's loop rate at temperature 1.0 is a floor,
+and any perturbation strong enough to carry variety sits on it. That is a
+statement about the constraint set, not a missing experiment.
+
+A generation-stopping gate removes it: the same gate that takes the untouched
+model from 194 to 200 takes this method from 194 to 196, and the residue is not
+n-gram looping. The gate is not part of the method.
 
 ## Pushing harder does not restore coherence
 
