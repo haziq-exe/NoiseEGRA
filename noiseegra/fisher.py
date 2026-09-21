@@ -48,10 +48,20 @@ def fisher_rao_distance(p: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
     square-root map, so the distance is an angle and is bounded by pi. Both
     arguments must be probability vectors over the same support.
     """
-    p = p.double()
-    q = q.double()
-    bc = (p.clamp_min(0).sqrt() * q.clamp_min(0).sqrt()).sum(dim=-1)
-    return 2.0 * torch.acos(bc.clamp(-1.0, 1.0))
+    # Renormalised in double precision, and measured by the chord rather than
+    # the arccos of the inner product. The two are the same angle, but arccos
+    # is ill-conditioned near 1: a rounding error of 1e-16 in the inner product
+    # already reads as a distance of 3e-8, and a softmax taken in single
+    # precision is off by 1e-7, which reads as 1e-3 -- two identical
+    # distributions would measure as a small but real change. The chord between
+    # the square-root vectors is exact at zero and gives the same pi for
+    # disjoint supports.
+    p = p.double().clamp_min(0)
+    q = q.double().clamp_min(0)
+    a = (p / p.sum(dim=-1, keepdim=True).clamp_min(1e-300)).sqrt()
+    b = (q / q.sum(dim=-1, keepdim=True).clamp_min(1e-300)).sqrt()
+    chord = (a - b).norm(dim=-1)
+    return 4.0 * torch.asin((chord / 2.0).clamp(0.0, 1.0))
 
 
 def subspace_metric(

@@ -824,6 +824,29 @@ class EGRA:
         inputs.pop("token_type_ids", None)
         input_ids = inputs["input_ids"]
 
+        # Size this story's perturbation by how far it moves the model's own
+        # predictions, now that the prompt it will be measured on is known. The
+        # direction was drawn at random above; only its length is set here.
+        if (getattr(plan, "offset_norm", "") == "fisher"
+                and any(lp.offset is not None for lp in plan.layer_plans.values())):
+            from .fisher_calibration import calibrate_offset
+
+            if getattr(plan, "_fisher_cache", None) is None:
+                plan._fisher_cache = {}
+            target = getattr(plan, "_gamma_this_story", None) or plan.offset_gamma
+            got = calibrate_offset(
+                self, plan, input_ids, float(target),
+                max_length=float(plan.rms_scale * math.sqrt(plan.dim)),
+                cache=plan._fisher_cache,
+            )
+            if getattr(plan, "fisher_log", None) is None:
+                plan.fisher_log = []
+            plan.fisher_log.append(got)
+            print(f"  [fisher] length {got['length']:.2f} moves the predictions "
+                  f"{got['distance']:.2f} nucleus-units (asked {float(target):.2f})"
+                  + ("" if got["reached"] else "  -- NOT REACHED at the largest length"),
+                  flush=True)
+
         blocks = self._get_transformer_blocks()
         normalized_layers = sorted({
             self._normalize_layer_index(idx, len(blocks)) for idx in plan.layers

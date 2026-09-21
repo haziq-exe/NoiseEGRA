@@ -807,6 +807,12 @@ class SteeringPlan:
     # given length lands far outside anything the model does. Shaping the draw
     # by the observed spread keeps it inside.
     offset_draw_shape: str = "sphere"
+    # A fresh random subspace for every story, of this rank, in place of any
+    # basis estimated from the model. 0 keeps the previous behaviour. The
+    # subspace is drawn uniformly, so over many stories the displacement is
+    # isotropic; within one story it gives the coloured-noise trajectory a
+    # fixed set of directions to wander among. Nothing about it is learned.
+    offset_random_rank: int = 0
     # How much the size of the per-story displacement varies between stories,
     # as a fraction of its nominal size. 0 gives every story the same
     # displacement, which is what every run so far has done.
@@ -904,6 +910,7 @@ class SteeringPlan:
         offset_decode_steps: int = 0,
         offset_scale: Optional[Mapping[int, torch.Tensor]] = None,
         offset_draw_shape: str = "sphere",
+        offset_random_rank: int = 0,
         offset_anchors: Optional[Mapping[int, torch.Tensor]] = None,
         anchor_scale: Optional[torch.Tensor] = None,
         offset_gamma_spread: float = 0.0,
@@ -1111,6 +1118,7 @@ class SteeringPlan:
             offset_layers=frozenset(int(x) for x in (offset_layers or ())),
             offset_decode_steps=int(offset_decode_steps),
             offset_draw_shape=str(offset_draw_shape),
+            offset_random_rank=int(offset_random_rank or 0),
             offset_gamma_spread=float(offset_gamma_spread),
             offset_taper=float(offset_taper),
             guard_direction=str(guard_direction),
@@ -1410,6 +1418,17 @@ class SteeringPlan:
                 lp.offset_basis = lp.offset_basis.to(dev)
             if lp.protect is not None and lp.protect.device != dev:
                 lp.protect = lp.protect.to(dev)
+            if self.offset_random_rank > 0:
+                # This story's own random subspace, drawn from the ambient RNG
+                # after seeding like every other draw here. Taken out of the
+                # rule directions before use, so the noise cannot move the
+                # story along the directions the push holds.
+                k = min(int(self.offset_random_rank), self.dim - 1)
+                q = torch.linalg.qr(torch.randn(self.dim, k, dtype=torch.float32,
+                                                device=dev))[0]
+                if self.offset_mode == "orth" and lp.protect is not None:
+                    q = complement_basis(q, lp.protect.to(torch.float32))
+                lp.offset_basis = q.to(dt)
             # A coefficient vector: taken from the spread-out layout when one has
             # been planned and this story's index is known, drawn independently
             # otherwise.
@@ -1504,6 +1523,14 @@ class SteeringPlan:
                 # above 1.0 is extrapolation past every one of them.
                 vec = vec / vec.norm().clamp_min(1e-12)
                 lp.offset = vec * (gamma * lp.story_radius)
+                lp.offset_length = float(lp.offset.norm())
+            elif self.offset_norm == "fisher":
+                lp._offset_unit = None
+                # A provisional length. The real one is set per story once the
+                # prompt is known, by measuring how far the draw moves the
+                # model's predictions -- see noiseegra.fisher_calibration.
+                vec = vec / vec.norm().clamp_min(1e-12)
+                lp.offset = vec * (0.1 * self.rms_scale * math.sqrt(self.dim))
                 lp.offset_length = float(lp.offset.norm())
             elif self.offset_norm == "energy":
                 # Fixed length, so gamma means the same thing whatever the rank of

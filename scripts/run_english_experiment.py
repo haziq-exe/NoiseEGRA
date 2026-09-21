@@ -290,7 +290,7 @@ def main() -> None:
                              "ablate", "controls", "tame", "fsc", "core4", "combine", "dose", "siting", "dropone", "prefill", "asymmetric", "boundary", "bands", "whilewriting", "gatedwrite", "promptbudget", "opening", "framing", "final", "weighted", "quieten", "eventvary", "literature", "withdecoder", "vstopp", "pertoken", "wander", "varysize",
                              "amplify", "constdose", "spread", "frontier",
                              "window", "decay", "core", "ortho", "alpha", "gate",
-                             "beta", "loo", "colour", "colourfront", "wholefive", "wholeloop", "all"])
+                             "beta", "loo", "colour", "colourfront", "wholefive", "wholeloop", "randomfisher", "all"])
     ap.add_argument("--task", default="generic", choices=["generic", "scenario"],
                     help="'generic' is the published design: one instruction with no "
                          "scenario, many requirements, and every story in one group, so "
@@ -494,7 +494,7 @@ def main() -> None:
                          "loses the wording along with the failure; fading keeps "
                          "some of both.")
     ap.add_argument("--offset-norm", default="energy",
-                    choices=("energy", "raw", "story"),
+                    choices=("energy", "raw", "story", "fisher"),
                     help="what the displacement's size is measured against. "
                          "'energy' is the hidden state's own length, which every "
                          "run so far used and which has no relation to how far "
@@ -631,6 +631,9 @@ def main() -> None:
                     help="per-story offset magnitudes used by --suite offset")
     ap.add_argument("--offset-rank", type=int, default=64,
                     help="how many activation principal components offsets may use")
+    ap.add_argument("--offset-random-rank", type=int, default=64,
+                    help="rank of the random subspace suite 'randomfisher' draws "
+                         "afresh for every story; nothing about it is learned")
     ap.add_argument("--offset-basis", dest="offset_basis_kind", default="prompt",
                     choices=["step", "story", "prompt"],
                     help="which directions a per-story offset is drawn from. 'prompt' "

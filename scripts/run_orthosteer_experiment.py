@@ -118,6 +118,7 @@ def make_plan(
     offset_decode_steps=0,
     offset_scale=None,
     offset_draw_shape="sphere",
+    offset_random_rank=None,
     offset_gamma_spread=None,
     guard_direction="",
     noise_norm_match="energy",
@@ -205,6 +206,8 @@ def make_plan(
         offset_decode_steps=offset_decode_steps,
         offset_scale=offset_scale,
         offset_draw_shape=offset_draw_shape,
+        offset_random_rank=(RUN_DEFAULTS.get("offset_random_rank", 0)
+                            if offset_random_rank is None else offset_random_rank),
         offset_anchors=RUN_DEFAULTS["offset_anchors"],
         anchor_scale=RUN_DEFAULTS["anchor_scale"],
         offset_gamma_spread=offset_gamma_spread,
@@ -2004,6 +2007,43 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             "the model as it ships, nucleus sampling at "
             f"temperature {t:g}, the method at {g:g} story-distances with a "
             f"noise colour of {cn:g}, the push alone, and the perturbation alone")
+
+    if name == "randomfisher":
+        # The method with nothing learned from the model's outputs. The rule
+        # steering is the push alone's, unchanged; the perturbation is drawn in
+        # a random subspace redrawn for every story, projected clear of the rule
+        # directions, wandering over the story as coloured noise, and sized by
+        # how far it moves the model's predictions rather than by its length in
+        # activation space. No stories are sampled before generation.
+        #
+        # The sizes are in units of the change nucleus sampling at the baseline
+        # temperature makes to what the model samples from, so 1.0 moves the
+        # predictions as far as the baseline this has to beat.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        b = float(getattr(args, "steer_budget", None) or 2.5)
+        keep = int((getattr(args, "tail_sweep", None) or [8])[0])
+        cn = float((getattr(args, "noise_beta_sweep", None) or [2.0])[0])
+        rank = int(getattr(args, "offset_random_rank", 64) or 64)
+        sizes = [float(x) for x in (getattr(args, "gamma_sweep", None) or [0.5, 1.0, 2.0])]
+        flat = {n: 1.0 for n in names}
+
+        def arm(size):
+            return {"plan": make_plan(
+                beta=flat, steer_budget=b,
+                offset_gamma=size, offset_mode="orth", offset_norm="fisher",
+                offset_basis=None, offset_basis_kind="random",
+                offset_random_rank=rank,
+                steer_prefill=True, prompt_tail_clear=keep,
+                offset_draw_shape="sphere",
+                offset_prefill=True, offset_decode=True, noise_beta=cn,
+                **quiet, **base)}
+
+        return [arm(x) for x in sizes], (
+            "the rule steering with random noise in a fresh rank-"
+            f"{rank} subspace per story, coloured at {cn:g}, sized to move the "
+            "predictions " + ", ".join(f"{x:g}" for x in sizes)
+            + " times as far as nucleus sampling does")
 
     if name == "wholeloop":
         # Steering strength set by the story being written, not by a calibration
