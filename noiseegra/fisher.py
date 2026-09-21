@@ -187,3 +187,47 @@ def resolved_directions(metric: torch.Tensor, *, floor_ratio: float = 1e-4) -> i
     if top <= 0:
         return 0
     return int((evals > top * floor_ratio).sum())
+
+
+def resolvable_basis(basis: torch.Tensor, metric: torch.Tensor,
+                     *, floor_ratio: float = 1e-4, min_keep: int = 4):
+    """Keep only the directions the model measurably responds along.
+
+    On Qwen3-1.7B, nine of the thirty-one directions of the perturbation
+    subspace move the next-token distribution by less than the probe can
+    resolve, at layer 6, and eleven at layer 7. A displacement drawn uniformly
+    over all thirty-one spends about a third of its length pushing where the
+    model does not react -- so the length that reaches the story is smaller than
+    the setting says, and it is smaller by an amount nobody measured.
+
+    Whitening stretches those directions instead, which is why its gain has to
+    be capped: a direction with no measurable response would be stretched
+    without limit into a region the model has never been. Dropping them has no
+    such failure mode, and it puts the whole displacement where the model
+    responds rather than sharing it out with directions that do nothing.
+
+    Returns the kept basis and the number of columns kept. `min_keep` stops a
+    degenerate probe from collapsing the subspace to nothing.
+    """
+    if basis.shape[1] != metric.shape[0]:
+        raise ValueError("metric must be k x k for a dim x k basis")
+    evals, evecs = torch.linalg.eigh(metric.double())
+    top = float(evals.max())
+    if top <= 0:
+        return basis, basis.shape[1]
+    keep = evals > top * floor_ratio
+    n = int(keep.sum())
+    if n < min_keep:
+        # Keep the strongest `min_keep` rather than refuse: a subspace this
+        # degenerate is worth saying so about, not worth crashing over.
+        order = torch.argsort(evals, descending=True)[:min_keep]
+        keep = torch.zeros_like(keep)
+        keep[order] = True
+        n = min_keep
+    # The eigenvectors are directions in coefficient space; the basis columns
+    # that survive are the basis mapped through them.
+    kept = basis.double() @ evecs[:, keep]
+    # Re-orthonormalise so a uniform draw over the kept coefficients is still
+    # uniform over the kept subspace.
+    q, _ = torch.linalg.qr(kept)
+    return q.to(basis.dtype), n

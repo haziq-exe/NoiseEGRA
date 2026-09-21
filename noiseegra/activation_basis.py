@@ -473,6 +473,7 @@ def whiten_axes_by_fisher(
     prompt_head_clear: int = 0,
     gamma: float = 1.0,
     max_gain: float = 8.0,
+    mode: str = "whiten",
     verbose: bool = True,
 ) -> Dict[int, float]:
     """Rescale each layer's perturbation basis by how far it moves predictions.
@@ -507,8 +508,8 @@ def whiten_axes_by_fisher(
     the prompt, not the whole story's. That is the honest description of what is
     being measured, and it is the quantity the displacement acts on first.
     """
-    from .fisher import (anisotropy, resolved_directions, subspace_metric,
-                         whiten_basis)
+    from .fisher import (anisotropy, resolvable_basis, resolved_directions,
+                         subspace_metric, whiten_basis)
 
     blocks = egra._get_transformer_blocks()
     norm_layers = sorted({egra._normalize_layer_index(int(i), len(blocks))
@@ -578,8 +579,15 @@ def whiten_axes_by_fisher(
             metric = subspace_metric(predict, basis.cpu(), step=step)
             out[li] = anisotropy(metric)
             usable = resolved_directions(metric)
-            axes.basis[li] = whiten_basis(
-                basis.cpu(), metric, max_gain=max_gain).to(axes.basis[li].dtype)
+            if mode == "keep":
+                kept, usable = resolvable_basis(basis.cpu(), metric)
+                axes.basis[li] = kept.to(axes.basis[li].dtype)
+            elif mode == "whiten":
+                axes.basis[li] = whiten_basis(
+                    basis.cpu(), metric, max_gain=max_gain).to(axes.basis[li].dtype)
+            else:
+                raise ValueError("mode must be 'whiten' or 'keep'; got "
+                                 + repr(mode))
             # Whitening rewrites the columns, so the spread measured along the
             # old ones no longer describes the new ones. Dropping it is not a
             # loss: weighting directions by how far stories spread along them
@@ -590,11 +598,13 @@ def whiten_axes_by_fisher(
             if verbose:
                 shown = ("beyond measurement" if out[li] == float("inf")
                          else f"{out[li]:.1f}x")
+                what = (f"whitened, capped at {max_gain:g}x" if mode == "whiten"
+                        else f"kept {usable} of {basis.shape[1]} directions and "
+                             "dropped the rest")
                 print(f"  [fisher] layer {li}: the subspace was {shown} "
                       f"anisotropic in how far it moves the next-token "
                       f"distribution, with {usable} of {basis.shape[1]} "
-                      f"directions the probe could resolve; whitened, capped "
-                      f"at {max_gain:g}x", flush=True)
+                      f"resolvable; {what}", flush=True)
         finally:
             handle.remove()
     axes.fisher_whitened = True

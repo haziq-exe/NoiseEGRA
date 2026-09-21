@@ -70,6 +70,36 @@ reinforcement learning (Eberhard et al. 2023; Hollenstein et al. 2024).
 **At beta=2 the method beats nucleus sampling on both variety measures and on
 compliance at once**, with both intervals clear of zero.
 
+## A third of the perturbation subspace does nothing
+
+Round 16 laid the whole set of per-story perturbations out so it covered the
+subspace evenly, and every matched pair came back worse. The reason recorded was
+that "distance in the subspace the perturbation is drawn from does not predict
+distance between the stories that come out". That is a statement about a metric,
+and it went unanswered for eighty rounds.
+
+Pulling the Fisher-Rao metric of the model's own next-token distribution back
+onto the subspace (Arvanitidis et al., AISTATS 2022) measures it directly. For a
+categorical distribution the distance is the angle between the square roots of
+the two probability vectors, so the whole construction is forward passes and an
+arccos: no Jacobians, no gradients, k(k+1)/2 + 1 passes once per run.
+
+On Qwen3-1.7B, of the 31 directions the displacement is drawn from:
+
+| Layer | Directions the probe can resolve |
+|---|---|
+| 6 | 22 of 31 |
+| 7 | 20 of 31 |
+| 8 | 22 of 31 |
+| 9 | 21 of 31 |
+
+**About a third of the subspace moves the model's predictions by less than the
+probe can measure, at every layer of the band.** A displacement drawn uniformly
+spends that share of its length pushing where the model does not react, so the
+length that reaches the story is smaller than the setting says, by an amount
+nothing measured. That is a concrete reason why covering the subspace evenly
+does not cover the output evenly.
+
 ## The three changes, separated
 
 Each line adds one change to the line above it, in one run, 200 stories each.

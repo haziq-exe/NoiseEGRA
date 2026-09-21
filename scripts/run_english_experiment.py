@@ -389,6 +389,15 @@ def main() -> None:
                          "the Fisher-Rao metric of the output distribution "
                          "pulled back to the subspace. Costs k(k+1)/2 + 1 "
                          "forward passes over the prompt, once.")
+    ap.add_argument("--fisher-mode", choices=["whiten", "keep"], default="whiten",
+                    help="what to do with the measurement. 'whiten' rescales "
+                         "every direction so each moves the model's predictions "
+                         "equally. 'keep' drops the directions the probe cannot "
+                         "resolve at all and draws only in the rest -- on "
+                         "Qwen3-1.7B that is nine of thirty-one at layer 6, so "
+                         "about a third of a uniform draw's length goes where "
+                         "the model does not react. Dropping has no "
+                         "amplification to cap.")
     ap.add_argument("--fisher-max-gain", type=float, default=8.0,
                     help="how far --fisher-whiten may stretch a direction "
                          "relative to the one the model responds to most. "
@@ -1362,10 +1371,12 @@ def main() -> None:
                 prompt_tail_clear=int(getattr(args, "prompt_tail", 8) or 8),
                 gamma=float(getattr(args, "main_gamma", 1.0) or 1.0),
                 max_gain=float(args.fisher_max_gain),
+                mode=str(args.fisher_mode),
             )
             torch.save(cached, pc_path)
-            if "fisher" not in args.offset_basis_kind:
-                args.offset_basis_kind = args.offset_basis_kind + "fisher"
+            tag = "fisher" if args.fisher_mode == "whiten" else "fishkeep"
+            if tag not in args.offset_basis_kind:
+                args.offset_basis_kind = args.offset_basis_kind + tag
 
         if args.shrink_anchors:
             import torch as _t

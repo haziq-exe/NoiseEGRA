@@ -24,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import torch  # noqa: E402
 
 from noiseegra.activation_basis import StoryAxes, whiten_axes_by_fisher  # noqa: E402
-from noiseegra.fisher import fisher_rao_distance  # noqa: E402
+from noiseegra.fisher import fisher_rao_distance, resolvable_basis  # noqa: E402
 from tiny_model import Tiny  # noqa: E402
 
 FAIL = []
@@ -190,6 +190,34 @@ try:
 except KeyError:
     refused2 = True
 check("a layer with no perturbation basis is refused rather than skipped", refused2)
+
+# --- dropping the inert directions rather than stretching them --------------
+# On Qwen3-1.7B nine of thirty-one directions move the next-token distribution
+# by less than the probe resolves, so about a third of a uniform draw's length
+# goes where the model does not react. Whitening stretches those, which is why
+# its gain is capped; dropping them has no amplification to cap.
+_kept = fresh_axes()
+_before_rank = _kept.basis[LAYERS[0]].shape[1]
+whiten_axes_by_fisher(m, PROMPT, _kept, LAYERS, prompt_tail_clear=2,
+                      mode="keep", verbose=False)
+_after = _kept.basis[LAYERS[0]]
+check("keeping drops columns rather than rescaling them",
+      _after.shape[1] <= _before_rank and _after.shape[0] == DIM,
+      f"{_before_rank} -> {_after.shape[1]} directions")
+check("and what it keeps is an orthonormal basis, so a uniform draw stays uniform",
+      bool(torch.allclose(_after.T @ _after,
+                          torch.eye(_after.shape[1], dtype=_after.dtype), atol=1e-4)))
+check("it does not blow the basis up the way an uncapped whitening would",
+      float(_after.norm()) < 4 * float(_after.shape[1]) ** 0.5,
+      f"norm {float(_after.norm()):.2f} for {_after.shape[1]} unit columns")
+
+try:
+    whiten_axes_by_fisher(m, PROMPT, fresh_axes(), LAYERS, mode="sideways",
+                          verbose=False)
+    _bad = False
+except ValueError:
+    _bad = True
+check("a mode nobody implemented is refused, not silently whitened", _bad)
 
 print()
 if FAIL:
