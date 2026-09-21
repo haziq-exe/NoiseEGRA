@@ -646,6 +646,10 @@ def main() -> None:
                     help="measure how much of each perturbed arm's noise ends up "
                          "along the rule directions downstream, on the first N "
                          "stories' offsets, and exit without generating")
+    ap.add_argument("--skip-arms", nargs="+", default=[], metavar="FRAGMENT",
+                    help="leave out every condition whose run id contains one of "
+                         "these, e.g. an arm already shown broken that a suite "
+                         "still builds")
     ap.add_argument("--secured-boost", type=float, default=1.0,
                     help="suite 'randomloop': how much the noise grows once every "
                          "rule that stays met is met -- 1.0 doubles it")
@@ -1801,9 +1805,13 @@ def main() -> None:
         normalised = kept
 
     specs, run_ids, seen = [], [], set()
+    skip = [f for f in (getattr(args, "skip_arms", None) or []) if f]
     for spec in make_specs(*normalised):
         rid = _spec_to_run_id(args.model, spec)
         if rid in seen:
+            continue
+        if any(f in rid for f in skip):
+            print(f"  skipping {rid[-80:]}")
             continue
         seen.add(rid)
         specs.append(spec)

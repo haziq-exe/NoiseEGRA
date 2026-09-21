@@ -207,7 +207,20 @@ def driver_script(commit: str, name: str, runner_args: str,
     ]
 
     if setup_only:
-        body += ["", 'echo "=== set up, nothing to generate ==="', "FAIL=0"]
+        # The weights too, not only the packages: fetched here on a processor,
+        # so a GPU rental spends none of its time downloading them.
+        body += [
+            'echo "=== fetching weights ==="',
+            "if ! python - <<'FETCH'",
+            "from huggingface_hub import snapshot_download",
+            'for m in ("Qwen/Qwen3-1.7B", "Qwen/Qwen3-Embedding-0.6B"):',
+            "    snapshot_download(m)",
+            '    print("on disk:", m, flush=True)',
+            "FETCH",
+            "then",
+            '  echo "fetching the weights failed"; FAIL=67; exit 1',
+            "fi",
+            "", 'echo "=== set up, nothing to generate ==="', "FAIL=0"]
         return "\n".join(body) + "\n"
 
     body += ["", 'echo "=== generating ==="', "FAIL=0"]
@@ -350,6 +363,9 @@ def main() -> None:
     ap.add_argument("--keep-running", action="store_true",
                     help="leave the machine rented when the run ends, for a "
                          "second run that should not pay the startup again")
+    ap.add_argument("--resume-from", default=None, metavar="EXPERIMENT_DIR",
+                    help="a pulled run to continue: its saved stories and steering "
+                         "directions are placed where this run looks for them")
     ap.add_argument("--attach", action="store_true",
                     help="follow a run already going under this name and pull it "
                          "when it ends, without starting anything")
@@ -430,6 +446,28 @@ def main() -> None:
         # while the GPU sat rented.
         import base64
         rdir = f"{HOME}/runs/{args.name}"
+        if args.resume_from:
+            # A run that stopped part-way -- a machine that ran out of credit --
+            # carries on from its checkpoint rather than generating its stories
+            # again: the saved stories and the extracted steering directions go
+            # where this run will look for them. Each file is checked by size,
+            # because an upload has failed silently here before.
+            src = Path(args.resume_from)
+            model_dir = next(src.glob("shard0/*/state.json")).parent
+            dest = f"runs/{args.name}/shard0/{model_dir.name}"
+            studio.run_with_exit_code(f"mkdir -p {HOME}/{dest}")
+            for f in sorted([model_dir / "state.json", *model_dir.glob("*.pt")]):
+                for attempt in range(3):
+                    studio.upload_file(str(f), remote_path=f"{dest}/{f.name}",
+                                       progress_bar=False)
+                    out, _ = studio.run_with_exit_code(
+                        f"stat -c %s {HOME}/{dest}/{f.name} 2>/dev/null || echo 0")
+                    if out.strip().splitlines()[-1] == str(f.stat().st_size):
+                        break
+                else:
+                    raise SystemExit(f"could not place {f.name} on the Studio; "
+                                     "nothing was started")
+            print(f"resuming from {src}: {len(list(model_dir.glob('*.pt'))) + 1} files placed")
         b64 = base64.b64encode(script.encode()).decode()
         out, code = studio.run_with_exit_code(
             f"mkdir -p {rdir} && rm -f {rdir}/exit {rdir}/log.txt",
