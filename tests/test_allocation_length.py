@@ -42,6 +42,7 @@ class Args:
     offset_basis_tokens = 120
     steer_vectors = ["present_tense", "sensory", "named_character"]
     allocate_floor = 0.0
+    allocate_power = 1.0
     max_new_tokens = 600
     temperature = 1.0
     baseline_top_p = None

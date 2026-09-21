@@ -115,7 +115,7 @@ GATE_SUITES = {"gate", "gatedwrite"}
 BASIS_SUITES = {"offset", "story", "prompt", "main", "pareto", "select", "feedback",
                 "assemble", "headtohead", "closure", "control", "ablate",
                 "controls", "tame", "core4", "combine", "amplify", "spread", "frontier", "siting", "prefill", "asymmetric", "boundary", "bands", "whilewriting", "gatedwrite", "promptbudget", "opening", "framing", "final", "weighted", "quieten", "eventvary", "literature", "withdecoder", "vstopp", "pertoken", "wander", "varysize",
-                "constdose", "colour"}
+                "constdose", "colour", "colourfront"}
 
 
 def weights_are_cached(model_id: str) -> bool:
@@ -263,6 +263,7 @@ def _allocate_by_shortfall(args, axes, checker, texts=None) -> None:
         rates[rule] = sum(bool(st.checks.get(rule)) for st in scored) / len(scored)
     weights = shortfall_weights(rates, list(args.steer_vectors),
                                 floor=float(args.allocate_floor),
+                                power=float(args.allocate_power),
                                 aliases=_DIRECTION_RULE)
     _ro.RUN_DEFAULTS["beta_weights"] = weights
     print(f"budget allocation: from {len(texts)} calibration stories of "
@@ -287,7 +288,7 @@ def main() -> None:
                              "ablate", "controls", "tame", "fsc", "core4", "combine", "dose", "siting", "dropone", "prefill", "asymmetric", "boundary", "bands", "whilewriting", "gatedwrite", "promptbudget", "opening", "framing", "final", "weighted", "quieten", "eventvary", "literature", "withdecoder", "vstopp", "pertoken", "wander", "varysize",
                              "amplify", "constdose", "spread", "frontier",
                              "window", "decay", "core", "ortho", "alpha", "gate",
-                             "beta", "loo", "colour", "all"])
+                             "beta", "loo", "colour", "colourfront", "all"])
     ap.add_argument("--task", default="generic", choices=["generic", "scenario"],
                     help="'generic' is the published design: one instruction with no "
                          "scenario, many requirements, and every story in one group, so "
@@ -405,6 +406,19 @@ def main() -> None:
                          "slowly for a large exponent. Its length never changes, "
                          "so --offset-gamma keeps meaning the same number of "
                          "story-distances whatever this is set to.")
+    ap.add_argument("--noise-beta-sweep", nargs="*", type=float, default=None,
+                    help="exponents for the suites that sweep the noise colour. "
+                         "The optimum measured on this task is interior -- 2 "
+                         "beats both 0 (per-token) and holding the displacement "
+                         "fixed -- so a sweep either side of it is where the "
+                         "peak is, not at an end.")
+    ap.add_argument("--allocate-power", type=float, default=1.0,
+                    help="sharpens or flattens --steer-allocate shortfall. "
+                         "Above one concentrates the budget on the worst "
+                         "requirements, below one spreads it. The measured "
+                         "allocation costs compliance against the hand-picked "
+                         "five, and concentrating it is the direct test of "
+                         "whether that is dilution.")
     ap.add_argument("--noise-fmin-cycles", type=float, default=0.25,
                     help="the slowest wobble the displacement is allowed, in "
                          "cycles across one story. At 1.0 the slowest component "

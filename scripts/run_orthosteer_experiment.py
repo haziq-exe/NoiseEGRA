@@ -1953,6 +1953,49 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             f"with the per-story perturbation at {g:g} moved to layers "
             + ", ".join(f"{x[0]}-{x[-1]}" for x in offset_bands))
 
+    if name == "colourfront":
+        # The frontier along the axis the colour suite found, not a fresh sweep
+        # of an old knob. At beta=2, gamma 1.5, the method beats nucleus
+        # sampling on both variety measures and on compliance at once, at 194
+        # of 200 coherent. Two things are not won: every story coherent, and
+        # variety of what happens against top-k rather than nucleus.
+        #
+        # Both are governed by how far the displacement goes, which is gamma,
+        # and how much of its variation sits between stories rather than within
+        # one, which is beta. The exponent's optimum is interior -- 2 beat both
+        # 0 and infinity -- so the peak is found either side of it, not at an
+        # end. Every arm is allocated and applied while writing, because those
+        # were separated already and both helped.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        kind = getattr(args, "offset_basis_kind", "story")
+        b = float(getattr(args, "steer_budget", None) or 2.5)
+        keep = int((getattr(args, "tail_sweep", None) or [8])[0])
+        gammas = [float(x) for x in (getattr(args, "gamma_sweep", None) or [1.5])]
+        betas = [float(x) for x in (getattr(args, "noise_beta_sweep", None) or [2.0])]
+        flat = {n: 1.0 for n in names}
+        items = []
+        for g in gammas:
+            for cn in betas:
+                items.append({"plan": make_plan(
+                    beta=flat, steer_budget=b, offset_gamma=g, offset_mode="orth",
+                    offset_basis=offset_basis, offset_basis_kind=kind,
+                    steer_prefill=True, prompt_tail_clear=keep,
+                    offset_scale=getattr(args, "offset_scale", None),
+                    offset_draw_shape=getattr(args, "offset_draw_shape", "manifold"),
+                    offset_prefill=True, offset_decode=True,
+                    noise_beta=cn, **quiet, **base)})
+        if len(items) < 2:
+            raise SystemExit(
+                "suite 'colourfront' maps a frontier and was given one point: "
+                f"gammas {gammas}, exponents {betas}. Pass more than one of "
+                "either with --gamma-sweep or --noise-beta-sweep.")
+        return items, (
+            "the displacement applied while writing, its direction wandering at "
+            "exponents " + ", ".join(f"{x:g}" for x in betas)
+            + " and its length at " + ", ".join(f"{x:g}" for x in gammas)
+            + f" story-distances, every arm allocated, total push {b:g}")
+
     if name == "colour":
         # Two changes to the method, separated, against the method as it stands.
         #
