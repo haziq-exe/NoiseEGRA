@@ -150,9 +150,19 @@ def condition_label(run_id: str) -> str:
     return label_run(run_id).text
 
 
-def seed_for(prompt_idx: int, story_idx: int) -> int:
-    """Stable per (prompt, story) seed, shared across conditions."""
-    return (42 + prompt_idx * 100003 + story_idx * 7919) % (2 ** 31)
+def seed_for(prompt_idx: int, story_idx: int, offset: int = 0) -> int:
+    """Stable per (prompt, story) seed, shared across conditions.
+
+    ``offset`` moves the whole run onto another stream of seeds, so the same arms
+    run again elsewhere give new stories that can be pooled with the first ones.
+    Zero leaves every seed as it was. An earlier offset was added to a seed
+    function this runner does not use, and a "second 25 stories" run reproduced
+    the first 25 word for word.
+    """
+    base = (42 + prompt_idx * 100003 + story_idx * 7919) % (2 ** 31)
+    if offset:
+        base = (base + int(offset) * 1000003) % (2 ** 31)
+    return base
 
 
 def write_csvs(out: Path, state: dict) -> None:
@@ -1698,7 +1708,6 @@ def main() -> None:
         # generating anything. See noiseegra.leakage.
         from noiseegra.leakage import rule_leakage
         from noiseegra.fisher_calibration import calibrate_offset, reference_passage
-        from kaggle_orthosteer import seed_for_story
         from noiseegra.setup_experiment import ExperimentSpec, _ortho_tag
         egra = get_model()
         chat = egra.apply_chat_template(messages[0], tokenize=False,
@@ -1713,7 +1722,7 @@ def main() -> None:
                 continue
             passage, acc = None, {}
             for x in range(int(args.diagnose_leakage)):
-                seed = seed_for_story(x, getattr(args, "story_seed_offset", 0))
+                seed = seed_for(0, x, args.story_seed_offset)
                 torch.manual_seed(seed)
                 if torch.cuda.is_available():
                     torch.cuda.manual_seed_all(seed)
@@ -1890,7 +1899,8 @@ def main() -> None:
             probes = [] if args.record_uncertainty else None
             for p_idx, k in missing:
                 text = generate_one(model, spec, mode, messages[p_idx],
-                                    seed_for(p_idx, k), args.max_new_tokens,
+                                    seed_for(p_idx, k, args.story_seed_offset),
+                                    args.max_new_tokens,
                                     max_words=word_budget, story_index=k,
                                     entropy_out=probes)
                 state["runs"][rid][f"{p_idx}:{k}"] = text
