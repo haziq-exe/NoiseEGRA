@@ -122,6 +122,37 @@ moved.
 variety of what happens is +2.9 against top-k sampling's +5.0, so top-k is still
 ahead on that one measure.
 
+## Is the variety result an artefact of the 40-word cut?
+
+Generation is causal, so a displacement applied after about decode step 55
+cannot change the first forty words at all. Any schedule that concentrates the
+perturbation in the opening would therefore appear to keep all the variety and
+shed the cost, while really having moved the cost outside what the variety
+measure reads. That makes the truncation worth testing rather than assuming.
+
+The same stories, scored at two truncations. Differences are read within each
+truncation; the raw scores are not comparable across them.
+
+| Variety of what happens, against nucleus | at 40 words | at 100 words |
+|---|---|---|
+| Top-k 40 | +7.7 | +6.8 |
+| **Ours, beta=2, gamma=1.5** | **+4.3** | **+6.1** |
+| Behind top-k by | 3.4 | **0.7** |
+
+**The advantage grows with the longer cut**, and the gap to top-k nearly closes.
+So the displacement is producing variety through the whole story and not only in
+its opening, and the headline is not the truncation's doing.
+
+It also rules out an intervention without running it. Withdrawing the
+displacement after the opening would have kept the 40-word score by
+construction while losing variety the longer cut can see -- optimising the
+measurement rather than the stories.
+
+**A limitation of the wording measure.** At 100 words every condition scores
+12.1, exactly: the sentence-shape measure saturates and stops discriminating. It
+is informative at 40 words and not beyond, and every wording number in this
+document should be read that way.
+
 ## Why the coherence is 194 and not 200
 
 Read the stories that fail rather than counting them. At gamma=1.5 six of 200
