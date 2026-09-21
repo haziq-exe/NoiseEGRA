@@ -515,6 +515,12 @@ def main() -> None:
     ap.add_argument("--num-prompts", type=int, default=10)
     ap.add_argument("--stories-per-prompt", type=int, default=5)
     ap.add_argument("--prompt-seed", type=int, default=0)
+    ap.add_argument("--story-seed-offset", type=int, default=0,
+                    help="draw a different stream of the same conditions. Zero "
+                         "is the seed sequence every run on disk used, to the "
+                         "digit. A non-zero value is for running the same arms "
+                         "again elsewhere and pooling the stories: same "
+                         "settings, different draws, twice the sample.")
     ap.add_argument("--prompt-split", default="test")
     ap.add_argument("--min-words", type=int, default=EN_MIN_WORDS)
     ap.add_argument("--max-words", type=int, default=EN_MAX_WORDS)

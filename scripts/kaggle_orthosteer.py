@@ -48,9 +48,22 @@ from build_steering_vectors import build_model  # noqa: E402
 from run_orthosteer_experiment import DEFAULT_CONSTRAINTS, build_suite  # noqa: E402
 
 
-def seed_for_story(x: int) -> int:
-    """Same per-story seed the published experiments use."""
-    return 42 * (x ** 7) * 217
+def seed_for_story(x: int, offset: int = 0) -> int:
+    """Per-story seed. ``offset`` draws a different stream of the same conditions.
+
+    At offset 0 this is exactly what it has always been, to the digit, because
+    every run on disk has to re-derive the seeds it was generated with.
+
+    A non-zero offset is for running the same conditions again on another
+    machine and pooling the stories: same arms, same settings, different draws.
+    It is mixed rather than added, because the base grows as x**7 and adding a
+    thousand to x overflows what a seed may be long before the story count runs
+    out.
+    """
+    base = 42 * (x ** 7) * 217
+    if offset:
+        base = (base ^ (int(offset) * 0x9E3779B97F4A7C15)) % (2 ** 63 - 1)
+    return base
 
 
 def load_state(path: Path) -> dict:
@@ -314,7 +327,7 @@ def run(model, args: argparse.Namespace) -> Path:
     print()
 
     for x in range(args.num_stories):
-        seed = seed_for_story(x)
+        seed = seed_for_story(x, getattr(args, "story_seed_offset", 0) or 0)
         for spec, rid in zip(specs, run_ids):
             if str(x) in state["runs"][rid]:
                 continue
