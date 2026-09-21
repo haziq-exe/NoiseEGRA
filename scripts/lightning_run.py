@@ -279,6 +279,27 @@ def probe(log: str, sentinel: str, seen: int) -> str:
     )
 
 
+
+def put_file(studio, local: Path, remote: str, chunk: int = 60000) -> None:
+    """Copy a small file onto the Studio through the command channel.
+
+    Base64 in chunks appended to a staging file, decoded in place, then checked
+    by size. Raises if the file that arrives is not the file that was sent.
+    """
+    import base64
+    data = base64.b64encode(Path(local).read_bytes()).decode()
+    stage = remote + ".b64"
+    studio.run_with_exit_code(f"mkdir -p $(dirname {remote}) && rm -f {stage}")
+    for i in range(0, len(data), chunk):
+        studio.run_with_exit_code(f"printf %s '{data[i:i + chunk]}' >> {stage}")
+    out, _ = studio.run_with_exit_code(
+        f"base64 -d {stage} > {remote} && rm -f {stage} && stat -c %s {remote}")
+    got = (out or "").strip().splitlines()[-1:] or [""]
+    if got[0] != str(Path(local).stat().st_size):
+        raise SystemExit(f"{Path(local).name} did not arrive intact on the Studio "
+                         f"(sent {Path(local).stat().st_size} bytes, found {got[0]!r})")
+
+
 def follow(studio, name: str, poll: float) -> int:
     """Print the run's output as it appears and return the exit code.
 
@@ -331,6 +352,69 @@ def require_credentials() -> None:
         f"    {VENV_PY.parent / 'lightning'} login\n"
         "  or export LIGHTNING_USER_ID and LIGHTNING_API_KEY from the account's\n"
         "  API-key page and run this again.")
+
+
+def launch(studio, args, commit: str) -> None:
+    """Put the machine in the state the run needs, place any checkpoint, and
+    start the driver detached."""
+    from lightning_sdk import Machine, Status
+    want = Machine.from_str(args.machine)
+    if studio.status == Status.Running and studio.machine != want:
+        print(f"switching from {studio.machine} to {want}")
+        studio.switch_machine(want, interruptible=args.interruptible)
+    elif studio.status != Status.Running:
+        print(f"starting on {want}")
+        studio.start(want, interruptible=args.interruptible,
+                     max_runtime=int(args.max_hours * 3600))
+    else:
+        print(f"already on {want}")
+
+    # accelerator_count on a processor machine counts cores, not cards.
+    gpus = 0 if studio.machine.is_cpu() else studio.machine.accelerator_count
+    print(f"running {args.name} at {commit[:8]} on {args.machine}, "
+          f"{gpus} GPU(s), {args.shards} shard(s)")
+    if args.shards > 1 and gpus < args.shards:
+        print("  one card, so the shards run one after another")
+
+    script = driver_script(commit, args.name, args.runner_args,
+                           args.shards, gpus, args.prewarm)
+    # Written through the same command channel that starts it, and checked
+    # before starting. A separate file upload failed once without raising --
+    # the Lightning API was answering 500 at the time -- and the launch then
+    # ran a script that was not there, left a one-line error in the log, and
+    # never wrote the exit marker, so the follow loop waited on nothing
+    # while the GPU sat rented.
+    import base64
+    rdir = f"{HOME}/runs/{args.name}"
+    if args.resume_from:
+        # A run that stopped part-way -- a machine that ran out of credit --
+        # carries on from its checkpoint rather than writing its stories
+        # again. Only the checkpoint is placed: the steering directions are
+        # cheaper to extract again than to push through the command channel
+        # a few kilobytes at a time while a GPU is held. The file travels
+        # through the same channel that runs commands, because the SDK's
+        # file upload has twice reported success while the file never
+        # arrived where the run looks for it.
+        src = Path(args.resume_from)
+        state_file = next(src.glob("shard0/*/state.json"))
+        dest = f"{rdir}/shard0/{state_file.parent.name}"
+        put_file(studio, state_file, f"{dest}/state.json")
+        print(f"resuming from {src}: checkpoint placed")
+    b64 = base64.b64encode(script.encode()).decode()
+    out, code = studio.run_with_exit_code(
+        f"mkdir -p {rdir} && rm -f {rdir}/exit {rdir}/log.txt",
+        f"echo {b64} | base64 -d > {rdir}/driver.sh",
+        f"test -s {rdir}/driver.sh && echo DRIVER_OK")
+    if "DRIVER_OK" not in (out or ""):
+        raise SystemExit(f"the driver script did not reach the Studio "
+                         f"(exit {code}): {out!r}. Nothing was started.")
+
+    # Detached, so the run outlives this terminal and the connection that
+    # follows it. Nothing on this path holds output back until the end.
+    studio.run_with_exit_code(
+        f"cd {HOME} && setsid nohup bash {rdir}/driver.sh "
+        f"> {rdir}/log.txt 2>&1 < /dev/null &")
+    print(f"launched; following runs/{args.name}/log.txt")
 
 
 def main() -> None:
@@ -418,71 +502,17 @@ def main() -> None:
     print(f"studio {args.studio} in {args.teamspace}: {studio.status}")
 
     if not args.attach:
-        want = Machine.from_str(args.machine)
-        if studio.status == Status.Running and studio.machine != want:
-            print(f"switching from {studio.machine} to {want}")
-            studio.switch_machine(want, interruptible=args.interruptible)
-        elif studio.status != Status.Running:
-            print(f"starting on {want}")
-            studio.start(want, interruptible=args.interruptible,
-                         max_runtime=int(args.max_hours * 3600))
-        else:
-            print(f"already on {want}")
-
-        # accelerator_count on a processor machine counts cores, not cards.
-        gpus = 0 if studio.machine.is_cpu() else studio.machine.accelerator_count
-        print(f"running {args.name} at {commit[:8]} on {args.machine}, "
-              f"{gpus} GPU(s), {args.shards} shard(s)")
-        if args.shards > 1 and gpus < args.shards:
-            print("  one card, so the shards run one after another")
-
-        script = driver_script(commit, args.name, args.runner_args,
-                               args.shards, gpus, args.prewarm)
-        # Written through the same command channel that starts it, and checked
-        # before starting. A separate file upload failed once without raising --
-        # the Lightning API was answering 500 at the time -- and the launch then
-        # ran a script that was not there, left a one-line error in the log, and
-        # never wrote the exit marker, so the follow loop waited on nothing
-        # while the GPU sat rented.
-        import base64
-        rdir = f"{HOME}/runs/{args.name}"
-        if args.resume_from:
-            # A run that stopped part-way -- a machine that ran out of credit --
-            # carries on from its checkpoint rather than generating its stories
-            # again: the saved stories and the extracted steering directions go
-            # where this run will look for them. Each file is checked by size,
-            # because an upload has failed silently here before.
-            src = Path(args.resume_from)
-            model_dir = next(src.glob("shard0/*/state.json")).parent
-            dest = f"runs/{args.name}/shard0/{model_dir.name}"
-            studio.run_with_exit_code(f"mkdir -p {HOME}/{dest}")
-            for f in sorted([model_dir / "state.json", *model_dir.glob("*.pt")]):
-                for attempt in range(3):
-                    studio.upload_file(str(f), remote_path=f"{dest}/{f.name}",
-                                       progress_bar=False)
-                    out, _ = studio.run_with_exit_code(
-                        f"stat -c %s {HOME}/{dest}/{f.name} 2>/dev/null || echo 0")
-                    if out.strip().splitlines()[-1] == str(f.stat().st_size):
-                        break
-                else:
-                    raise SystemExit(f"could not place {f.name} on the Studio; "
-                                     "nothing was started")
-            print(f"resuming from {src}: {len(list(model_dir.glob('*.pt'))) + 1} files placed")
-        b64 = base64.b64encode(script.encode()).decode()
-        out, code = studio.run_with_exit_code(
-            f"mkdir -p {rdir} && rm -f {rdir}/exit {rdir}/log.txt",
-            f"echo {b64} | base64 -d > {rdir}/driver.sh",
-            f"test -s {rdir}/driver.sh && echo DRIVER_OK")
-        if "DRIVER_OK" not in (out or ""):
-            raise SystemExit(f"the driver script did not reach the Studio "
-                             f"(exit {code}): {out!r}. Nothing was started.")
-
-        # Detached, so the run outlives this terminal and the connection that
-        # follows it. Nothing on this path holds output back until the end.
-        studio.run_with_exit_code(
-            f"cd {HOME} && setsid nohup bash {rdir}/driver.sh "
-            f"> {rdir}/log.txt 2>&1 < /dev/null &")
-        print(f"launched; following runs/{args.name}/log.txt")
+        try:
+            launch(studio, args, commit)
+        except BaseException:
+            # Started and then failed before anything ran: a held machine with
+            # nothing on it spends credit for as long as nobody notices.
+            print(f"launch failed; stopping {args.studio} so it does not sit idle")
+            try:
+                studio.stop()
+            except Exception as exc:
+                print(f"  could not stop it: {exc}")
+            raise
 
     try:
         code = follow(studio, args.name, args.poll)
