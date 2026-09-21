@@ -323,6 +323,37 @@ print()
 if failures:
     print(f"{len(failures)} FAILED: {failures}")
     raise SystemExit(1)
+
+from noiseegra.coherence import is_refusal  # noqa: E402
+
+# --- a character who cannot do something is not a model that will not --------
+# Found by reading the rejected stories: this fired on two of the perturbed
+# arms and on none of the baselines, because only a perturbed arm writes
+# first-person distress. "I can't breathe. My knees buckle." was being counted
+# as the model declining the task, so the coherence number was biased against
+# exactly the register the method produces.
+_NOT_REFUSALS = [
+    "I can't breathe. My knees buckle. I can't move. My hands are shaking.",
+    "I can't breathe. The sky is a bruised tomato. My legs are on fire.",
+    "I can't stop laughing. Mia grabs my arm and we run.",
+    "Mia can't find her shoes. She looks under the bed.",
+    "I'm sorry, Lena whispers, and the door closes behind her.",
+]
+_REFUSALS = [
+    "I'm sorry, but I can't write a story that meets all of those requirements.",
+    "I cannot create that story for you.",
+    "I'm sorry, I can't help with that.",
+    "I apologize, but that is not something I can do.",
+    "As an AI language model, I do not write fiction.",
+    "I'm not able to complete this request.",
+    "Unfortunately, I must decline.",
+]
+for _t in _NOT_REFUSALS:
+    check("a character saying they cannot is a story, not a refusal: "
+          + _t[:34], not is_refusal(_t))
+for _t in _REFUSALS:
+    check("declining the task is still a refusal: " + _t[:34], is_refusal(_t))
+
 print("all coherence tests passed")
 
 

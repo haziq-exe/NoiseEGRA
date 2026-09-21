@@ -259,14 +259,33 @@ def tiny_sentence_run(text: str) -> int:
 # Fluent English, so nothing above flags it; seen from a large per-story
 # perturbation knocking the model into assistant mode. Only the opening is
 # checked: a story in which a character says "I'm sorry" is a story.
-_REFUSAL = re.compile(
-    r"^\s*\W{0,8}(?:i['’]m sorry|i am sorry|i can(?:no|')t|i cannot|"
-    r"i apologi[sz]e|as an ai|i'm not able|unfortunately,? i)\b", re.I)
+# Forms that decline the task and cannot be anything else.
+_REFUSAL_PLAIN = re.compile(
+    r"^\s*\W{0,8}(?:i apologi[sz]e|as an ai|i'?m not able|unfortunately,? i)\b",
+    re.I)
+# Forms a character can also say. "I can't breathe. My knees buckle." is a
+# person in a story, not a model declining to write one, and reading the
+# rejected stories is what found it: this fired on two of our own arms and on
+# none of the baselines, because only the perturbed arms write first-person
+# distress. A story was being counted as a refusal for its opening line.
+#
+# So these count only when the task is what is being declined -- the sentence
+# has to reach for the request within a short span.
+_REFUSAL_HEDGE = re.compile(
+    r"^\s*\W{0,8}(?:i['’]m sorry|i am sorry|i can(?:no|'|’)?t|i cannot)\b"
+    r"[^.!?\n]{0,60}?\b(?:write|writing|create|creating|generate|produce|"
+    r"help|assist|provide|comply|fulfil|fulfill|complete|continue|"
+    r"do that|with that|this request|your request|that request)\b", re.I)
 
 
 def is_refusal(text: str) -> bool:
-    """True when the text opens by declining the task rather than telling a story."""
-    return bool(_REFUSAL.match(text))
+    """True when the text opens by declining the task rather than telling a story.
+
+    Declining the task is not the same as a character saying they cannot do
+    something. The second is a story; counting it as a refusal penalises exactly
+    the register a perturbation produces and never touches a baseline.
+    """
+    return bool(_REFUSAL_PLAIN.match(text) or _REFUSAL_HEDGE.match(text))
 
 
 # The model's planning monologue leaking into the output instead of the story:

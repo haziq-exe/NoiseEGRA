@@ -233,6 +233,42 @@ This is one step of a fixed point -- allocate from the untouched model, run,
 re-measure, allocate again -- and it is the next thing to run. It is not a
 sweep: the direction and the size of every change are read off the measurement.
 
+## Would a repetition gate close the coherence gap?
+
+The residual failures are repetition loops, and a generation-stopping gate is
+the obvious guard. Measured rather than assumed: a gate that stops when some
+five-word run has been produced three times, cutting back to the last sentence
+end.
+
+| | As written | With that gate |
+|---|---|---|
+| Untouched, T=1.0 | 194/200 | **200/200** |
+| Nucleus 0.95, T=1.8 | 200/200 | 200/200 |
+| Ours, gamma=1.5 | 194/200 | 196/200 |
+| Ours, gamma=1.75 | 191/200 | 192/200 |
+| Ours, gamma=2.0 | 184/200 | 188/200 |
+
+**It fixes the untouched model completely and ours only partly.** The base
+model's failures are plain n-gram loops; ours are not all of that kind. Of the
+four that survive at gamma=1.5, one degenerates from its first sentence and two
+are flagged for low window entropy on prose that repeats its sentence shape
+rather than its words. The gate is not in the method and this is not a result --
+it is what the number would be under a guard anyone would add.
+
+### A scorer fault found the same way, and fixed
+
+The fourth survivor was not a failure at all. The refusal check matched any
+opening of the form "I can't ...", so a character saying *"I can't breathe. My
+knees buckle."* was counted as the model declining the task. It fired on two of
+the perturbed arms and on none of the baselines, because only a perturbed arm
+writes first-person distress -- so the coherence number was biased against
+exactly the register the method produces.
+
+A refusal now has to decline the *task*: the opening must reach for the request
+within a short span. Re-scored across every arm, it moves one number by one
+story, gamma=1.75 from 190 to 191, and leaves every baseline untouched. Small,
+and in our favour, which is why it is stated rather than folded in quietly.
+
 ## The frontier, measured against top-k directly
 
 Top-k sampling is the strongest decoder on this task, so it is the reference
@@ -245,7 +281,7 @@ overstates the result.
 | Top-k 40, T=1.8 | 199/200 | 3.95 | *reference* | *reference* |
 | Nucleus 0.95, T=1.8 | 200/200 | 3.92 | −4.9 [−7.3, −2.5] | −1.7 *tie* |
 | **Ours, beta=2, gamma=1.5** | 194/200 | **3.74** | −2.2 *tie* | +1.0 *tie* |
-| Ours, beta=2, gamma=1.75 | 190/200 | 4.08 | +1.6 *tie* | **+2.6 [+0.9, +4.2]** |
+| Ours, beta=2, gamma=1.75 | 191/200 | 4.08 | +1.6 *tie* | **+2.6 [+0.9, +4.2]** |
 | Ours, beta=2, gamma=2.0 | 184/200 | 4.35 | **+2.6 [+0.5, +5.2]** | **+2.7 [+0.7, +4.6]** |
 
 **gamma=1.5 is the point to quote.** It ties the strongest decoder on both
