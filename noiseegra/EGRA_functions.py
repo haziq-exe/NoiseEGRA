@@ -847,6 +847,30 @@ class EGRA:
                   + ("" if got["reached"] else "  -- NOT REACHED at the largest length"),
                   flush=True)
 
+        # Random noise at another place in the architecture, drawn for this
+        # story from its seed and sized like the offset. Attached once the
+        # steering hooks are, removed with them.
+        arch = None
+        mech = str(getattr(plan, "arch_mechanism", "") or "")
+        if mech and float(getattr(plan, "arch_size", 0.0) or 0.0) > 0:
+            from .arch_noise import ArchNoise, calibrate as arch_calibrate
+
+            if getattr(plan, "_arch_cache", None) is None:
+                plan._arch_cache = {}
+            story_seed = (seed if seed is not None
+                          else int(torch.randint(0, 2 ** 31 - 1, (1,)).item()))
+            arch = ArchNoise(self, plan, mech, seed=story_seed,
+                             n_prompt=int(input_ids.shape[-1]))
+            got = arch_calibrate(arch, input_ids, float(plan.arch_size),
+                                 cache=plan._arch_cache)
+            if getattr(plan, "arch_log", None) is None:
+                plan.arch_log = []
+            plan.arch_log.append(got)
+            print(f"  [{mech}] knob {got['knob']:.4f} moves the predictions "
+                  f"{got['distance']:.2f} nucleus-units (asked {plan.arch_size:.2f})"
+                  + ("" if got["reached"] else "  -- NOT REACHED at the largest knob"),
+                  flush=True)
+
         # A shadow copy of the story: a second row with the same words and the
         # same steering but no perturbation, against which the story is held
         # level along the protected directions at every steered layer. Set up
@@ -1146,6 +1170,8 @@ class EGRA:
 
             for layer_idx in normalized_layers:
                 handles.append(blocks[layer_idx].register_forward_hook(make_hook(layer_idx)))
+            if arch is not None:
+                arch.attach()
 
             # The push and a truncation scheme are different interventions --
             # one reshapes the representation, the other the distribution over
@@ -1213,6 +1239,8 @@ class EGRA:
                     h.remove()
                 except Exception:
                     pass
+            if arch is not None:
+                arch.detach()
             if model_handle is not None:
                 try:
                     model_handle.remove()

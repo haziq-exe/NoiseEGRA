@@ -127,6 +127,8 @@ def make_plan(
     offset_front_gain=1.0,
     offset_prefill_gain=1.0,
     offset_taper=None,
+    arch_mechanism="",
+    arch_size=0.0,
     offset_gamma_spread=None,
     guard_direction="",
     noise_norm_match="energy",
@@ -222,6 +224,8 @@ def make_plan(
         steer_split_concentration=steer_split_concentration,
         offset_front_gain=offset_front_gain,
         offset_prefill_gain=offset_prefill_gain,
+        arch_mechanism=arch_mechanism,
+        arch_size=arch_size,
         offset_anchors=RUN_DEFAULTS["offset_anchors"],
         anchor_scale=RUN_DEFAULTS["anchor_scale"],
         offset_gamma_spread=offset_gamma_spread,
@@ -2412,6 +2416,43 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         return [arm(g, taper=fade), arm(g, shadow=True), arm(1.0 + (g - 1.0) / 2)], (
             f"the prompt's noise at {g:g}x fading to {fade:g} of that by its end; "
             f"at {g:g}x with the shadow; and at {1.0 + (g - 1.0) / 2:g}x plain")
+
+    if name == "archscreen":
+        # Random noise at different places in the transformer, each sized to move
+        # the model's predictions by the same Fisher-Rao distance, with the same
+        # constant rule steering and nothing else. The per-story offset in the
+        # residual stream is the reference, at the same size. See
+        # noiseegra.arch_noise for what each mechanism does.
+        from noiseegra.arch_noise import MECHANISMS
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        b = float(getattr(args, "steer_budget", None) or 2.5)
+        keep = int((getattr(args, "tail_sweep", None) or [8])[0])
+        cn = float((getattr(args, "noise_beta_sweep", None) or [2.0])[0])
+        rank = int(getattr(args, "offset_random_rank", 64) or 64)
+        mechs = list(getattr(args, "arch_mechanisms", None) or MECHANISMS)
+        sizes = [float(x) for x in (getattr(args, "arch_sizes", None) or [1.0])]
+        flat = {n: 1.0 for n in names}
+        items = []
+        for size in sizes:
+            items.append({"plan": make_plan(
+                beta=flat, steer_budget=b,
+                offset_gamma=size, offset_mode="orth", offset_norm="fisher",
+                offset_basis=None, offset_basis_kind="random",
+                offset_random_rank=rank,
+                steer_prefill=True, prompt_tail_clear=keep,
+                offset_draw_shape="sphere",
+                offset_prefill=True, offset_decode=True, noise_beta=cn,
+                **quiet, **base)})
+            for m in mechs:
+                items.append({"plan": make_plan(
+                    beta=flat, steer_budget=b, offset_gamma=0.0, offset_mode="none",
+                    steer_prefill=True, prompt_tail_clear=keep,
+                    arch_mechanism=m, arch_size=size, **quiet, **base)})
+        return items, (
+            "the rule steering with random noise at "
+            + ", ".join(["the residual offset"] + mechs)
+            + ", each sized to " + ", ".join(f"{x:g}" for x in sizes) + " nucleus-units")
 
     if name == "wholeloop":
         # Steering strength set by the story being written, not by a calibration
