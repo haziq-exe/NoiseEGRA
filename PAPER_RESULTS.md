@@ -122,6 +122,47 @@ moved.
 variety of what happens is +2.9 against top-k sampling's +5.0, so top-k is still
 ahead on that one measure.
 
+## The frontier, measured against top-k directly
+
+Top-k sampling is the strongest decoder on this task, so it is the reference
+here rather than nucleus. Comparing two differences-from-nucleus is not a
+comparison against top-k: their intervals overlap, and doing it that way
+overstates the result.
+
+| Against top-k 40, T=1.8 | Coherent | Broken (of 12) | Variety: what happens | Variety: wording |
+|---|---|---|---|---|
+| Top-k 40, T=1.8 | 199/200 | 3.95 | *reference* | *reference* |
+| Nucleus 0.95, T=1.8 | 200/200 | 3.92 | −4.9 [−7.3, −2.5] | −1.7 *tie* |
+| **Ours, beta=2, gamma=1.5** | 194/200 | **3.74** | −2.2 *tie* | +1.0 *tie* |
+| Ours, beta=2, gamma=1.75 | 190/200 | 4.08 | +1.6 *tie* | **+2.6 [+0.9, +4.2]** |
+| Ours, beta=2, gamma=2.0 | 184/200 | 4.35 | **+2.6 [+0.5, +5.2]** | **+2.7 [+0.7, +4.6]** |
+
+**gamma=1.5 is the point to quote.** It ties the strongest decoder on both
+variety measures and breaks fewer requirements than either decoder -- 3.74
+against 3.95 and 3.92 -- at 194 of 200 coherent and temperature 1.0.
+
+**Beating top-k on variety costs compliance.** At gamma=2.0 both variety
+measures are won on intervals clear of zero, and requirements broken rises to
+4.35 while coherence falls to 184 of 200. No single setting yet wins variety,
+compliance and coherence at once against top-k; the frontier contains each of
+them separately.
+
+**Raising the exponent past 2 does not help.** beta=2.5 at gamma=1.5 scores
++2.3 variety of what happens against beta=2's +2.7, and the same compliance.
+The optimum is at 2.
+
+### Fisher whitening: a null
+
+Rescaling the subspace so every direction moves the model's predictions equally
+does not reliably improve on drawing from it as it is. At gamma=1.75 the plain
+draw is better on all three numbers (+6.5 against +5.1 variety of what happens,
++4.2 against +2.9 wording, 4.08 against 4.34 broken); at gamma=1.5 the result is
+mixed; only at gamma=2.0 does whitening win on variety. Reported as a null.
+
+The measurement that motivated it stands on its own and is above: a third of the
+subspace moves the model's predictions by nothing measurable. Acting on that by
+stretching those directions is what does not pay.
+
 ## Every published decoder, on this task
 
 Seven decoding methods at the raised temperature they need, 200 stories each,
