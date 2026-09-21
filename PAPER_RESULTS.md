@@ -240,6 +240,25 @@ This is one step of a fixed point -- allocate from the untouched model, run,
 re-measure, allocate again -- and it is the next thing to run. It is not a
 sweep: the direction and the size of every change are read off the measurement.
 
+## The trade is structural: writing-time displacement is what carries variety
+
+The perturbation can be applied over the instruction alone, or over the
+instruction and while the model writes. The first keeps 199 stories of 200 --
+five more than the second -- so it is the obvious candidate for the coherence
+criterion. It does not have the variety, and not because of the 40-word cut:
+
+| Variety of what happens, against nucleus | at 40 words | at 100 words |
+|---|---|---|
+| Top-k 40 | +5.2 [+2.5, +7.3] | +4.7 [+2.8, +6.6] |
+| **Over the instruction only** (199/200 coherent) | **−5.9 [−8.9, −3.2]** | **−5.7 [−7.7, −3.5]** |
+| **Over the instruction and while writing** (194/200) | **+2.9 [+0.8, +5.4]** | **+4.4 [+2.3, +6.4]** |
+
+The deficit is the same size at both cuts and both intervals are clear of zero.
+So displacing the model while it writes is what produces variety of content, and
+it is the same component that re-admits the base model's loops. Coherence and
+variety are not trading through a knob that could be tuned -- they are trading
+through one mechanism that does both.
+
 ## The coherence floor, and why neither lever moves it
 
 Four things are measured, and together they say the remaining gap is not a
