@@ -180,3 +180,122 @@ class ConstraintProbe:
                 self.state["text"] = text
                 self.state["errors"] = self.controller.errors(text)
         return scores
+
+
+# Imported here rather than at the top: the scorer imports this module for its
+# own checks, and importing it back at module level closes the loop.
+from .constraint_metrics_en import genders_present, has_simile  # noqa: E402
+
+# --------------------------------------------------------------------------- #
+#  A controller for rules about the whole story                               #
+# --------------------------------------------------------------------------- #
+
+# Past-tense verbs, which are what the present-tense rule is broken by. Common
+# irregulars by name, and regular "-ed" forms that are not also adjectives.
+_PAST_IRREGULAR = frozenset("""
+was were had did said went saw took came got made knew felt ran gave told
+found thought left kept held stood heard let began brought sat
+""".split())
+_PAST_ED = re.compile(r"\b\w{3,}ed\b", re.I)
+_NOT_PAST_ED = frozenset("""
+red bed fed led wed shed sled bred fled bled need indeed speed breed
+tired scared worried excited surprised crowded pointed
+""".split())
+_CAPITAL = re.compile(r"(?<![.!?\"'“‘]\s)(?<!^)\b([A-Z][a-z]{2,})\b")
+_COMMON_CAP = frozenset("""
+The A An And But So Then When While Her His She He They It Mr Mrs Ms Dr
+Monday Tuesday Wednesday Thursday Friday Saturday Sunday
+January February March April May June July August September October November
+December I'm I'll I've
+""".split())
+
+
+def _has_past_tense(text: str) -> bool:
+    low = text.lower()
+    for w in _WORD.findall(low):
+        if w in _PAST_IRREGULAR:
+            return True
+    for m in _PAST_ED.findall(text):
+        if m.lower() not in _NOT_PAST_ED:
+            return True
+    return False
+
+
+def _names_so_far(text: str) -> int:
+    """Distinct capitalised words that look like names. A heuristic: the scorer
+    is what decides, this only has to be right often enough to steer on."""
+    return len({m for m in _CAPITAL.findall(text) if m not in _COMMON_CAP})
+
+
+@dataclass
+class WholeStoryController(ConstraintController):
+    """Error per direction for rules about the whole story, not counts in it.
+
+    Every rule here is satisfied or not, so the error is one-sided: a direction
+    pushes while its requirement is unmet and goes silent the moment it is met.
+    Nothing has to be known in advance about how often the model breaks it --
+    the story being written is the measurement, which is the point. The constant
+    coefficients this replaces had to be set from a calibration run, and a
+    calibration run measures one model on one prompt.
+
+    Two rules need a little of the story before they mean anything. "No simile
+    yet" is true of every story at its third word, so the comparison, the
+    speech and the second character are only asked for once the story is far
+    enough in that their absence says something. `closure` is the opposite: it
+    stays silent until the story runs past the length it was asked for, and
+    then rises with the overrun, which is the failure this method has left.
+    """
+
+    target_words: int = 150
+    hard_words: int = 200
+    # How far in before "it has not happened yet" is evidence rather than a
+    # statement about the story being short.
+    patience: float = 0.45
+
+    WATCHED = ("closure", "present_tense", "simile", "dialogue",
+               "both_genders", "named_character", "mature_register")
+
+    def watched(self) -> Sequence[str]:
+        return self.WATCHED
+
+    def errors(self, text: str) -> Dict[str, float]:
+        st = read_partial(text)
+        n = st.words
+        out: Dict[str, float] = {k: 0.0 for k in self.WATCHED}
+        late = n >= self.patience * self.target_words
+
+        # Bring it to an end, once it has run past what was asked for.
+        if n > self.target_words:
+            out["closure"] = _clamp(
+                (n - self.target_words) / max(self.hard_words - self.target_words, 1))
+
+        # A past-tense verb has been written: the rule is already broken, and
+        # pushing harder is the only thing that keeps the rest of it present.
+        if _has_past_tense(text):
+            out["present_tense"] = 1.0
+
+        # Asked for once the story is far enough in to have had the chance.
+        if late:
+            if not has_simile(text):
+                out["simile"] = 1.0
+            if st.quotes < 1:
+                out["dialogue"] = 1.0
+            if genders_present(text) < 2:
+                out["both_genders"] = 1.0
+
+        # Exactly one name: push for one while there are none, push against
+        # while there are too many.
+        names = _names_so_far(text)
+        if names == 0 and n >= 0.25 * self.target_words:
+            out["named_character"] = 1.0
+        elif names >= 2:
+            out["named_character"] = -_clamp((names - 1) / 2.0)
+
+        # The reading floor is about sentence length. Measured on what has been
+        # finished, once there is enough of it to average.
+        if st.sentences >= 3:
+            mean_len = (n - st.words_in_current_sentence) / st.sentences
+            if mean_len < 9.0:
+                out["mature_register"] = _clamp((9.0 - mean_len) / 4.0)
+
+        return out

@@ -71,13 +71,14 @@ pairs = load_pairs(ROOT / "noiseegra" / "data" / "steering_pairs_en.json")
 # added when the steered set went from a hand-picked five to all twelve
 # requirements, so this list is the twelve plus what was already here.
 check("English pair file holds a direction for every requirement, and the extras",
-      sorted(pairs) == ["closure", "dialogue", "distinct_sentences",
-                        "fresh_openings", "fresh_words", "in_story",
-                        "mature_register", "named_character", "no_heading",
-                        "no_repetition", "not_advising", "not_planning",
-                        "not_refusing", "plain_words", "present_tense", "sensory",
-                        "simple_register", "simple_syntax", "something_happens",
-                        "story_format", "terse", "varied_openers"],
+      sorted(pairs) == ["both_genders", "closure", "dialogue",
+                        "distinct_sentences", "fresh_openings", "fresh_words",
+                        "in_story", "mature_register", "named_character",
+                        "no_heading", "no_repetition", "not_advising",
+                        "not_planning", "not_refusing", "plain_words",
+                        "present_tense", "sensory", "simile", "simple_register",
+                        "simple_syntax", "something_happens", "story_format",
+                        "terse", "varied_openers"],
       f"{sorted(pairs)}")
 
 # The first pair set was length-confounded: three of its four directions had a
@@ -95,7 +96,12 @@ _W = _re.compile(r"[A-Za-z]+(?:'[A-Za-z]+)?")
 # negatives add a heading above a body shared word for word with the positive,
 # so the extra words are the property. Its other half lowercases the body and
 # matches exactly.
-_LENGTH_IS_THE_PROPERTY = {"no_heading", "story_format"}
+# A simile is longer than the flat statement it replaces, by the comparison
+# itself; holding both sides to one word of each other would mean writing a
+# padded negative, which is a worse confound than the gap. It is held to the
+# same standard as the other sets by `tests/test_pair_sets.py`, which allows a
+# worst pair of four and a mean of two.
+_LENGTH_IS_THE_PROPERTY = {"no_heading", "story_format", "simile"}
 gaps = {name: max(abs(len(_W.findall(p["positive"])) - len(_W.findall(p["negative"])))
                   for p in v["pairs"])
         for name, v in pairs.items() if name not in _LENGTH_IS_THE_PROPERTY}

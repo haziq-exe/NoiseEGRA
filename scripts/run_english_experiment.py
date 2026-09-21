@@ -115,7 +115,7 @@ GATE_SUITES = {"gate", "gatedwrite"}
 BASIS_SUITES = {"offset", "story", "prompt", "main", "pareto", "select", "feedback",
                 "assemble", "headtohead", "closure", "control", "ablate",
                 "controls", "tame", "core4", "combine", "amplify", "spread", "frontier", "siting", "prefill", "asymmetric", "boundary", "bands", "whilewriting", "gatedwrite", "promptbudget", "opening", "framing", "final", "weighted", "quieten", "eventvary", "literature", "withdecoder", "vstopp", "pertoken", "wander", "varysize",
-                "constdose", "colour", "colourfront"}
+                "constdose", "colour", "colourfront", "wholefive", "wholeloop"}
 
 
 def weights_are_cached(model_id: str) -> bool:
@@ -288,7 +288,7 @@ def main() -> None:
                              "ablate", "controls", "tame", "fsc", "core4", "combine", "dose", "siting", "dropone", "prefill", "asymmetric", "boundary", "bands", "whilewriting", "gatedwrite", "promptbudget", "opening", "framing", "final", "weighted", "quieten", "eventvary", "literature", "withdecoder", "vstopp", "pertoken", "wander", "varysize",
                              "amplify", "constdose", "spread", "frontier",
                              "window", "decay", "core", "ortho", "alpha", "gate",
-                             "beta", "loo", "colour", "colourfront", "all"])
+                             "beta", "loo", "colour", "colourfront", "wholefive", "wholeloop", "all"])
     ap.add_argument("--task", default="generic", choices=["generic", "scenario"],
                     help="'generic' is the published design: one instruction with no "
                          "scenario, many requirements, and every story in one group, so "
@@ -313,7 +313,7 @@ def main() -> None:
     ap.add_argument("--with-baseline", action="store_true",
                     help="prepend an unsteered baseline condition to whichever suite is run "
                          "(already included in `compare` and `noise`)")
-    ap.add_argument("--constraint-set", choices=("mixed", "monotone", "middle"), default="mixed",
+    ap.add_argument("--constraint-set", choices=("mixed", "monotone", "middle", "whole"), default="mixed",
                     help="'monotone': the thirteen one-sided requirements, steered along "
                          "nine directions. 'mixed': the earlier set, which includes the "
                          "banded requirements (word count, sentence count, exactly-N "
@@ -851,6 +851,36 @@ def main() -> None:
             args.steer_vectors = list(EN_MONOTONE_STEER_VECTORS)
         args.max_opener_uses = EN_MONOTONE_MAX_OPENER_USES
 
+    if args.constraint_set == "whole":
+        # Rules about the whole story rather than counts of things in it. The
+        # middle-school set is mostly thresholds -- six sensory words, three
+        # lines of speech, a name used three times -- and a threshold can be
+        # satisfied by accident and says nothing about whether the story is any
+        # good. These eight ask for properties a reader could check without
+        # counting, and unprompted the model meets them between 0% and 100% of
+        # the time, so the set discriminates.
+        from noiseegra.constraint_metrics_en import WHOLE_STORY_CONSTRAINTS
+        if list(args.constraints) == list(EN_TASK_CONSTRAINTS):
+            args.constraints = list(WHOLE_STORY_CONSTRAINTS)
+        if list(args.steer_vectors) == list(EN_STEER_VECTORS):
+            # One direction per rule that has one. `dialogue` serves speech,
+            # `named_character` serves naming, `no_heading` serves the format.
+            args.steer_vectors = ["present_tense", "mature_register", "dialogue",
+                                  "named_character", "both_genders", "simile",
+                                  "distinct_sentences", "no_heading"]
+        args.max_opener_uses = EN_MIDDLE_MAX_OPENER_USES
+        # The same settings the middle-school set has to move together with, for
+        # the same reason: the story length the model is allowed and the point an
+        # over-long generation is cut off both reach the prompt and the
+        # generation. A run that left these at the children's defaults asked for
+        # 150 words and stopped every story at 97.
+        if args.max_words == EN_MAX_WORDS:
+            args.max_words = EN_MIDDLE_MAX_WORDS
+        if args.max_new_tokens == ap.get_default("max_new_tokens"):
+            args.max_new_tokens = EN_MIDDLE_MAX_NEW_TOKENS
+        if args.present_ratio == DEFAULT_PRESENT_RATIO:
+            args.present_ratio = EN_MIDDLE_PRESENT_RATIO
+
     if args.constraint_set == "middle":
         # The middle-school task: the same architecture with the four rules that
         # force the prose to be as small as possible removed, and the reading
@@ -1312,12 +1342,25 @@ def main() -> None:
     # quantity being steered and the quantity being reported cannot drift apart.
     from noiseegra.constraint_control import ConstraintController  # noqa: E402
 
-    args.controller = ConstraintController(
-        word_range=checker.word_range,
-        sentence_range=checker.sentence_range,
-        sentence_word_range=checker.sentence_word_range,
-        n_quotes=checker.n_quotes,
-    )
+    if args.constraint_set == "whole":
+        # Every rule in that set is satisfied or not, so the error is one-sided
+        # and the direction goes silent the moment its rule is met. Nothing has
+        # to be known in advance about how often the model breaks it: the story
+        # being written is the measurement. The constant coefficients this
+        # replaces had to come from a calibration run, and a calibration run
+        # measures one model on one prompt.
+        from noiseegra.constraint_control import WholeStoryController
+        args.controller = WholeStoryController(
+            target_words=int(getattr(args, "story_target", 150) or 150),
+            hard_words=int(getattr(args, "max_words", 200) or 200),
+        )
+    else:
+        args.controller = ConstraintController(
+            word_range=checker.word_range,
+            sentence_range=checker.sentence_range,
+            sentence_word_range=checker.sentence_word_range,
+            n_quotes=checker.n_quotes,
+        )
 
     # ---- directions a per-story offset is allowed to use -------------------- #
     # Cached under the basis kind, because the two are different sets of

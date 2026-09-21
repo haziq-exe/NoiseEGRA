@@ -1962,6 +1962,98 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             f"with the per-story perturbation at {g:g} moved to layers "
             + ", ".join(f"{x[0]}-{x[-1]}" for x in offset_bands))
 
+    if name == "wholefive":
+        # The comparison for the whole-story rules, in one run and one seed
+        # sequence: the model as it ships, raised temperature with nucleus
+        # sampling, the method, the push with no perturbation, and the
+        # perturbation with no push.
+        #
+        # The last two are the ablation. Either half alone is a control for the
+        # other: the push is what wins compliance and flattens the output, the
+        # perturbation is what varies it, and neither on its own is the method.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        kind = getattr(args, "offset_basis_kind", "story")
+        b = float(getattr(args, "steer_budget", None) or 2.5)
+        g = float((getattr(args, "gamma_sweep", None) or [1.5])[0])
+        keep = int((getattr(args, "tail_sweep", None) or [8])[0])
+        cn = float((getattr(args, "noise_beta_sweep", None) or [2.0])[0])
+        flat = {n: 1.0 for n in names}
+        none = {n: 0.0 for n in names}
+        t = float(getattr(args, "baseline_temperature", 1.8) or 1.8)
+
+        def arm(beta, gamma, decode):
+            return {"plan": make_plan(
+                beta=beta, steer_budget=(b if any(beta.values()) else None),
+                offset_gamma=gamma, offset_mode="orth",
+                offset_basis=offset_basis, offset_basis_kind=kind,
+                steer_prefill=any(beta.values()), prompt_tail_clear=keep,
+                offset_scale=getattr(args, "offset_scale", None),
+                offset_draw_shape=getattr(args, "offset_draw_shape", "manifold"),
+                offset_prefill=gamma > 0, offset_decode=decode,
+                noise_beta=(cn if gamma > 0 and decode else None),
+                **quiet, **base)}
+
+        return [
+            "baseline",                                   # the model as it ships
+            {"mode": "baseline", "temperature": t, "top_p": 0.95},
+            arm(flat, g, True),                           # the method
+            arm(flat, 0.0, False),                        # the push alone
+            arm(none, g, True),                           # the perturbation alone
+        ], (
+            "the model as it ships, nucleus sampling at "
+            f"temperature {t:g}, the method at {g:g} story-distances with a "
+            f"noise colour of {cn:g}, the push alone, and the perturbation alone")
+
+    if name == "wholeloop":
+        # Steering strength set by the story being written, not by a calibration
+        # run. Every rule in this set is satisfied or not, so each direction
+        # pushes while its rule is unmet and goes silent once it is met -- the
+        # coefficient is a function of the text so far rather than a constant
+        # somebody measured on one model and one prompt beforehand.
+        #
+        # Closure is in the set for the same reason it is a brake elsewhere: the
+        # failures this method leaves are stories that do not end, and closure's
+        # error is zero until the story runs past the length it was asked for.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        kind = getattr(args, "offset_basis_kind", "story")
+        b = float(getattr(args, "steer_budget", None) or 2.5)
+        g = float((getattr(args, "gamma_sweep", None) or [1.5])[0])
+        keep = int((getattr(args, "tail_sweep", None) or [8])[0])
+        cn = float((getattr(args, "noise_beta_sweep", None) or [2.0])[0])
+        ctl = getattr(args, "controller", None)
+        if ctl is None:
+            raise SystemExit(
+                "suite 'wholeloop' steers by the error the controller measures, "
+                "and no controller was built. It comes from --constraint-set, "
+                "which has to be 'whole' for this suite.")
+        gains = [float(x) for x in (getattr(args, "feedback_betas", None) or [1.0, 2.0])]
+        flat = {n: 1.0 for n in names}
+
+        items = [{"plan": make_plan(
+            beta=flat, steer_budget=b, offset_gamma=g, offset_mode="orth",
+            offset_basis=offset_basis, offset_basis_kind=kind, steer_prefill=True,
+            prompt_tail_clear=keep, offset_prefill=True, offset_decode=True,
+            offset_draw_shape=getattr(args, "offset_draw_shape", "manifold"),
+            offset_scale=getattr(args, "offset_scale", None),
+            noise_beta=cn, **quiet, **base)}]
+        for gain in gains:
+            items.append({"plan": make_plan(
+                beta={n: gain for n in names}, steer_mode="error",
+                control_state={}, controller=ctl, steer_budget=b,
+                offset_gamma=g, offset_mode="orth", offset_basis=offset_basis,
+                offset_basis_kind=kind, steer_prefill=True,
+                prompt_tail_clear=keep, offset_prefill=True, offset_decode=True,
+                offset_draw_shape=getattr(args, "offset_draw_shape", "manifold"),
+                offset_scale=getattr(args, "offset_scale", None),
+                noise_beta=cn, **quiet, **base)})
+        return items, (
+            "a constant push against the same push set by the error the story "
+            "itself shows, at gains "
+            + ", ".join(f"{x:g}" for x in gains)
+            + f", both with the perturbation at {g:g} story-distances")
+
     if name == "colourfront":
         # The frontier along the axis the colour suite found, not a fresh sweep
         # of an old knob. At beta=2, gamma 1.5, the method beats nucleus

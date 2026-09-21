@@ -156,6 +156,10 @@ CONSTRAINT_NAMES = (
     # Monotone requirements: more of the property is never worse. They are
     # additions rather than replacements so that every earlier run re-scores to
     # the same numbers it did when it was produced.
+    # Rules about the whole story rather than counts of things in it. Added
+    # rather than replacing, so every earlier run re-scores to what it scored.
+    "has_dialogue", "one_named_character", "both_genders", "simile",
+    "non_visual_sense",
     "short_sentences", "dialogue_min", "plain_words", "sensory",
     "simple_syntax", "fresh_words", "named_character",
     "distinct_sentences", "fresh_openings",
@@ -196,6 +200,87 @@ MONOTONE_CONSTRAINTS = (
 # than adverbs, the senses, a named character, and the four rules against
 # repeating yourself. Written for a longer story than the children's task, so
 # the word budget has to be raised with it.
+# --------------------------------------------------------------------------- #
+#  Rules about the whole story, rather than counts of things in it            #
+# --------------------------------------------------------------------------- #
+#
+# The twelve middle-school requirements are mostly thresholds: six sensory
+# words, three lines of speech, a name used three times, no word of four letters
+# used more than five times. A threshold is easy to score and easy to satisfy by
+# accident, it says nothing about whether the story is any good, and a model can
+# pass it while writing badly -- "The Rabbit jumps. The Rabbit sleeps." passes
+# nine of the children's fifteen.
+#
+# These are properties a reader could check without counting: the tense the
+# whole story is in, that exactly one character is named, that two characters
+# are present and not the same gender, that somewhere a comparison is drawn,
+# that something is heard or smelled or felt rather than only seen.
+
+_HE = re.compile(r"\b(?:he|him|his|himself)\b", re.I)
+_SHE = re.compile(r"\b(?:she|her|hers|herself)\b", re.I)
+
+# A simile, not the verb "like". "looks like a bear" is one; "I like apples" and
+# "they would like the cake" are not, so the pronouns and modals that take
+# "like" as a verb are excluded before it.
+_SIMILE_LIKE = re.compile(
+    r"(?<!\bi )(?<!\bwe )(?<!\byou )(?<!\bthey )(?<!\bwould )(?<!\bdo )"
+    r"(?<!\bdid )(?<!\bdon't )(?<!\bdoesn't )"
+    r"\blike\s+(?:a|an|the|some|two|three)\s+\w+", re.I)
+# "as cold as a stone", "as bright as the sun".
+_SIMILE_AS = re.compile(r"\bas\s+\w+\s+as\s+(?:a|an|the)\s+\w+", re.I)
+
+# Senses other than sight. The point of the rule is that a story reaches past
+# what a camera would record, so seeing and looking are deliberately absent.
+_NON_VISUAL = frozenset("""
+hear hears hearing heard listen listens listening sound sounds sounded
+smell smells smelling smelled scent scents taste tastes tasting tasted
+touch touches touching feel feels feeling felt
+loud quiet silent noisy soft rough smooth sticky damp warm cold hot icy
+sweet sour salty bitter sharp
+buzz buzzes hum hums crunch crunches splash splashes whisper whispers
+rustle rustles thump thumps creak creaks squeak squeaks clatter clatters
+crackle crackles sizzle sizzles
+""".split())
+
+
+def has_simile(text: str) -> bool:
+    """A comparison drawn with 'like' or 'as ... as', not the verb 'like'."""
+    return bool(_SIMILE_LIKE.search(text) or _SIMILE_AS.search(text))
+
+
+def genders_present(text: str) -> int:
+    """How many of the two pronoun genders the story uses: 0, 1 or 2."""
+    return int(bool(_HE.search(text))) + int(bool(_SHE.search(text)))
+
+
+def has_non_visual_sense(words) -> bool:
+    """True when the story reaches past sight."""
+    return any(w.lower() in _NON_VISUAL for w in words)
+
+
+# Eight rules, none of them a count. Reaching past sight was written and then
+# dropped: on the model's own stories it passes 98-100% of the time even
+# narrowed to sound, smell and taste, so it describes how the model already
+# writes rather than asking anything of it.
+#
+# What is left spans the range. Unprompted, the model writes in the present
+# tense 0% of the time, draws a comparison 30%, names exactly one character 37%,
+# puts a he and a she in the same story 38%, reaches the reading floor 61%, has
+# somebody speak 76%, avoids repeating a sentence 86%, and formats the story
+# correctly 100%. `story_format` is stated in the
+# instruction's closing line rather than given a bullet, as before.
+WHOLE_STORY_CONSTRAINTS = (
+    "present_tense",        # every verb, throughout
+    "mature_register",      # the sentences carry some weight
+    "has_dialogue",         # somebody speaks
+    "one_named_character",  # exactly one character has a name
+    "both_genders",         # two characters, not the same gender
+    "simile",               # a comparison is drawn
+    "distinct_sentences",   # no sentence written twice
+    "story_format",
+)
+
+
 MIDDLE_CONSTRAINTS = (
     "present_tense", "mature_register", "dialogue_min", "varied_openers",
     "plain_words", "sensory", "fresh_words", "named_character",
@@ -771,6 +856,15 @@ class EnglishConstraintChecker:
             "plain_words": "it tells the story with verbs rather than adverbs: at most "
                            f"{self.max_adverbs} adverb{'s' if self.max_adverbs != 1 else ''} "
                            "in the whole story",
+            "has_dialogue": "somebody speaks out loud, inside quotation marks",
+            "one_named_character": "exactly one character is given a name; anyone "
+                                   "else is referred to without one",
+            "both_genders": "two characters appear, one referred to as he and one "
+                            "as she",
+            "simile": "something is compared to something else, with 'like' or "
+                      "'as ... as'",
+            "non_visual_sense": "the story tells you how something sounds, smells, "
+                                "feels or tastes, not only how it looks",
             "sensory": f"at least {self.min_sensory} words say how something looks, "
                        "sounds, feels, smells or tastes",
             "simple_syntax": "the sentences are simple: at most "
@@ -814,6 +908,11 @@ class EnglishConstraintChecker:
             "short_sentences": f"every sentence at most {self.max_sentence_words} words",
             "dialogue_min": f"{self.min_quotes}+ quoted lines",
             "plain_words": f"at most {self.max_adverbs} adverbs",
+            "has_dialogue": "someone speaks",
+            "one_named_character": "one name only",
+            "both_genders": "a he and a she",
+            "simile": "a comparison",
+            "non_visual_sense": "past sight",
             "sensory": f"{self.min_sensory}+ sensory words",
             "simple_syntax": f"at most {self.max_subordinate} subordinate clauses",
             "fresh_words": f"no word used over {self.max_word_uses} times",
@@ -924,6 +1023,12 @@ class EnglishConstraintChecker:
             # a conventionally formatted story while the prose underneath is
             # fine, so both cost one requirement rather than the whole story.
             "story_format": not _badly_formatted(text),
+            # Rules about the whole story rather than counts of things in it.
+            "has_dialogue": n_quotes >= 1,
+            "one_named_character": n_names == 1,
+            "both_genders": genders_present(text) == 2,
+            "simile": has_simile(text),
+            "non_visual_sense": has_non_visual_sense(words),
         }
         # A rule that could not be evaluated has not been satisfied. `is False`
         # let a story with no finite verb at all pass the present-tense rule for

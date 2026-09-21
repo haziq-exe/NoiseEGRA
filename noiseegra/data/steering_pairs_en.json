@@ -1415,6 +1415,134 @@
      "negative": "It was dark. It was cold inside. It was quiet outside. It was going to last."
     }
    ]
+  },
+  "simile": {
+   "pairs": [
+    {
+     "prefix": "The storm arrives.",
+     "positive": "The rain hits the window like a handful of gravel thrown hard against the glass.",
+     "negative": "The rain hits the window hard and the glass shakes under the weight of it."
+    },
+    {
+     "prefix": "She opens the door.",
+     "positive": "The hallway is as cold as a cellar, and her breath hangs where she stops.",
+     "negative": "The hallway is very cold indeed, and her breath hangs in front of her face."
+    },
+    {
+     "prefix": "He waits to bat.",
+     "positive": "His heart goes like a bird shut in a box, quick and hard against his ribs.",
+     "negative": "His heart goes very fast right now, beating hard underneath his own thin ribs."
+    },
+    {
+     "prefix": "The field is empty.",
+     "positive": "The grass lies flat as a pressed sheet where the tents stood all last week.",
+     "negative": "The grass lies flat and dead where the tents were standing all of last week."
+    },
+    {
+     "prefix": "Morning light comes in.",
+     "positive": "The sun spills over the table like syrup, slow and thick across the wood.",
+     "negative": "The sun spills over the table slowly, spreading thick and warm across the wood."
+    },
+    {
+     "prefix": "The dog runs off.",
+     "positive": "He goes like a stone from a sling, straight down the lane and out of sight.",
+     "negative": "He goes extremely quickly indeed, straight down the lane and then out of sight."
+    },
+    {
+     "prefix": "She reads the letter.",
+     "positive": "The paper feels as thin as an onion skin between her finger and her thumb.",
+     "negative": "The paper feels very thin and dry between her finger and her thumb as well."
+    },
+    {
+     "prefix": "The bus is full.",
+     "positive": "The windows fog up like a bathroom mirror and nobody can see the street.",
+     "negative": "The windows fog up completely now and nobody can see the street at all."
+    },
+    {
+     "prefix": "They reach the sea.",
+     "positive": "The water is as grey as the roof slates and it goes on past the pier.",
+     "negative": "The water is very grey today and it goes on and on well past the pier."
+    },
+    {
+     "prefix": "He drops the tray.",
+     "positive": "The plates go down like a shelf of books and the whole room turns round.",
+     "negative": "The plates go down all at once and the whole room turns round to look."
+    },
+    {
+     "prefix": "The fire catches.",
+     "positive": "The kindling snaps like small bones and the smoke leans away from the wind.",
+     "negative": "The kindling snaps and splits apart and the smoke leans away from the wind."
+    },
+    {
+     "prefix": "She climbs the stairs.",
+     "positive": "The banister is as smooth as a river stone under the flat of her hand.",
+     "negative": "The banister is very smooth and worn under the flat of her hand as well."
+    }
+   ]
+  },
+  "both_genders": {
+   "pairs": [
+    {
+     "prefix": "The kitchen is busy.",
+     "positive": "Nadia stirs the pot while he cuts bread, and he passes her the butter.",
+     "negative": "Nadia stirs the pot while she cuts bread, and she passes her the butter."
+    },
+    {
+     "prefix": "The bus pulls away.",
+     "positive": "She runs for the door and he holds it, and they fall into the seats.",
+     "negative": "She runs for the door and grabs it, and then she falls into the seats."
+    },
+    {
+     "prefix": "The match is over.",
+     "positive": "He picks up the ball and she carries the bag, and neither of them speaks.",
+     "negative": "She picks up the ball and she carries the bag, and neither girl speaks now."
+    },
+    {
+     "prefix": "Rain starts falling.",
+     "positive": "Her hood is up already, and he has nothing, so she gives him her coat.",
+     "negative": "Her hood is up already, and she has nothing, so she takes off her coat."
+    },
+    {
+     "prefix": "The shop is shut.",
+     "positive": "She rattles the handle and he reads the sign, and then they both laugh.",
+     "negative": "She rattles the handle and reads the sign, and then she laughs out loud."
+    },
+    {
+     "prefix": "Dinner is late.",
+     "positive": "He sets the table slowly and she counts out forks, and the plates go round.",
+     "negative": "She sets the table slowly and counts out the forks, and the plates go round."
+    },
+    {
+     "prefix": "The dog escapes.",
+     "positive": "She calls from the gate and he runs down the lane after the animal.",
+     "negative": "She calls from the gate and runs down the lane after the animal herself."
+    },
+    {
+     "prefix": "They find a wallet.",
+     "positive": "He opens it carefully and she looks for a name, and there is no name.",
+     "negative": "She opens it carefully and looks for a name inside, and there is no name."
+    },
+    {
+     "prefix": "The lights go out.",
+     "positive": "Her phone is dead and his has a torch, so he holds it up for her.",
+     "negative": "Her phone is dead and hers has a torch, so she holds it up for herself."
+    },
+    {
+     "prefix": "The bell rings.",
+     "positive": "She grabs her bag and he waits at the door, and the corridor fills up.",
+     "negative": "She grabs her bag and waits at the door herself, and the corridor fills up."
+    },
+    {
+     "prefix": "The boat leaves.",
+     "positive": "He unties the rope and she pushes off, and the water opens behind them.",
+     "negative": "She unties the rope and pushes off alone, and the water opens behind her."
+    },
+    {
+     "prefix": "Snow starts to fall.",
+     "positive": "She holds out her hand and he watches it land, and neither says anything.",
+     "negative": "She holds out her hand and watches it land, and she does not say anything."
+    }
+   ]
   }
  }
 }
