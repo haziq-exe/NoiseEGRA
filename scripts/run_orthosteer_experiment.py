@@ -124,6 +124,8 @@ def make_plan(
     shadow_protect=False,
     offset_secured_boost=0.0,
     steer_split_concentration=0.0,
+    offset_front_gain=1.0,
+    offset_prefill_gain=1.0,
     offset_gamma_spread=None,
     guard_direction="",
     noise_norm_match="energy",
@@ -217,6 +219,8 @@ def make_plan(
         shadow_protect=shadow_protect,
         offset_secured_boost=offset_secured_boost,
         steer_split_concentration=steer_split_concentration,
+        offset_front_gain=offset_front_gain,
+        offset_prefill_gain=offset_prefill_gain,
         offset_anchors=RUN_DEFAULTS["offset_anchors"],
         anchor_scale=RUN_DEFAULTS["anchor_scale"],
         offset_gamma_spread=offset_gamma_spread,
@@ -2335,6 +2339,42 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             "the noise at 1.0 with the steering split drawn per story at "
             "concentrations " + ", ".join(f"{c:g}" for c in concs)
             + "; with no share for the two rules already met; and both together")
+
+    if name == "randomfront":
+        # The wording gap sits in the opening: under the push most stories begin
+        # alike, and past the first forty words the method nearly matches nucleus
+        # sampling on wording. So the noise starts larger and falls back to its
+        # size over the opening tokens -- while writing only, and once with the
+        # prompt's share raised too, the part that has made the model answer the
+        # reader before. Judged at 40 words and at 100, where it cannot act.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        b = float(getattr(args, "steer_budget", None) or 2.5)
+        keep = int((getattr(args, "tail_sweep", None) or [8])[0])
+        cn = float((getattr(args, "noise_beta_sweep", None) or [2.0])[0])
+        rank = int(getattr(args, "offset_random_rank", 64) or 64)
+        span = int(getattr(args, "front_tokens", 40) or 40)
+        gains = [float(x) for x in (getattr(args, "front_gains", None) or [1.5, 2.0])]
+        flat = {n: 1.0 for n in names}
+
+        def arm(front, prompt_gain=1.0):
+            return {"plan": make_plan(
+                beta=flat, steer_budget=b,
+                offset_gamma=1.0, offset_mode="orth", offset_norm="fisher",
+                offset_basis=None, offset_basis_kind="random",
+                offset_random_rank=rank,
+                steer_prefill=True, prompt_tail_clear=keep,
+                offset_draw_shape="sphere",
+                offset_prefill=True, offset_decode=True, noise_beta=cn,
+                offset_envelope="front", offset_envelope_steps=span,
+                offset_front_gain=front, offset_prefill_gain=prompt_gain,
+                **quiet, **base)}
+
+        items = [arm(g) for g in gains] + [arm(max(gains), max(gains))]
+        return items, (
+            f"the noise at 1.0, starting at {', '.join(f'{g:g}' for g in gains)} times "
+            f"that and falling back over {span} tokens; and the largest with the "
+            "prompt's share raised to match")
 
     if name == "wholeloop":
         # Steering strength set by the story being written, not by a calibration

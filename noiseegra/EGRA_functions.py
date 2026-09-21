@@ -978,7 +978,8 @@ class EGRA:
                             if offset_here and (not bands or layer_idx in bands):
                                 off = plan.layer_plans[layer_idx].offset
                                 if off is not None:
-                                    off = off.to(target.device)
+                                    off = off.to(target.device) * float(
+                                        getattr(plan, "offset_prefill_gain", 1.0) or 1.0)
                                     if taper >= 1.0:
                                         delta = off if delta is None else delta + off
                                         off = None      # folded in; applied flat

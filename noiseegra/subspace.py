@@ -512,6 +512,13 @@ class SteeringPlan:
     # stays met is met. The envelope is 1 + boost * (share met), read each step
     # from what the constraint controller last saw of the story.
     offset_secured_boost: float = 0.0
+    # For the "front" envelope: the noise starts at this multiple of its size
+    # and falls back to it by offset_envelope_steps, on a cosine. The opening
+    # words are where the steered stories are most alike.
+    offset_front_gain: float = 1.0
+    # A multiple of the offset applied to the prompt alone. 1 leaves the prompt
+    # at the calibrated size.
+    offset_prefill_gain: float = 1.0
     # How the displacement's size runs over the story: "flat", "decay" (large
     # at the start, fading), or "rise" (small at the start, growing). The
     # register failures this project measures come from displacement early on,
@@ -898,6 +905,8 @@ class SteeringPlan:
         noise_traj_steps: int = 640,
         offset_envelope_steps: int = 0,
         offset_secured_boost: float = 0.0,
+        offset_front_gain: float = 1.0,
+        offset_prefill_gain: float = 1.0,
         offset_envelope: str = "flat",
         offset_basis_kind: str = "step",
         offset_draw: str = "iid",
@@ -1115,6 +1124,8 @@ class SteeringPlan:
             noise_traj_steps=int(noise_traj_steps),
             offset_envelope_steps=int(offset_envelope_steps or 0),
             offset_secured_boost=float(offset_secured_boost or 0.0),
+            offset_front_gain=float(offset_front_gain or 1.0),
+            offset_prefill_gain=float(offset_prefill_gain or 1.0),
             offset_envelope=str(offset_envelope),
             offset_decode=bool(offset_decode),
             amplify_lambda=float(amplify_lambda),
@@ -1413,9 +1424,12 @@ class SteeringPlan:
         frac = min(max(float(t) / span, 0.0), 1.0)
         if mode == "decay":
             return float(0.5 * (1.0 + math.cos(math.pi * frac)))
+        if mode == "front":
+            extra = float(self.offset_front_gain) - 1.0
+            return float(1.0 + extra * 0.5 * (1.0 + math.cos(math.pi * frac)))
         if mode == "rise":
             return float(0.5 * (1.0 - math.cos(math.pi * frac)))
-        raise ValueError("offset_envelope must be flat, decay, rise or secured; "
+        raise ValueError("offset_envelope must be flat, decay, rise, front or secured; "
                          f"got {self.offset_envelope!r}")
 
     def resample_offset(self, story_index: Optional[int] = None) -> None:

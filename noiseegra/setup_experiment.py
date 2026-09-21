@@ -309,6 +309,8 @@ def _ortho_tag_once(model_name: str, spec: ExperimentSpec, *, compress: bool) ->
         parts.append(f"__rr{int(plan.offset_random_rank)}")
     if getattr(plan, "shadow_protect", False):
         parts.append("__shadow")
+    if float(getattr(plan, "offset_prefill_gain", 1.0) or 1.0) != 1.0:
+        parts.append(f"__opg{_float_tag(plan.offset_prefill_gain)}")
     if float(getattr(plan, "steer_split_concentration", 0.0) or 0.0) > 0:
         parts.append(f"__split{_float_tag(plan.steer_split_concentration)}")
     # The colour of the displacement's wandering, and the slowest wobble it is
@@ -326,6 +328,8 @@ def _ortho_tag_once(model_name: str, spec: ExperimentSpec, *, compress: bool) ->
             parts.append(f"{int(plan.offset_envelope_steps)}")
         if float(getattr(plan, "offset_secured_boost", 0.0) or 0.0) > 0:
             parts.append(f"{_float_tag(plan.offset_secured_boost)}")
+        if float(getattr(plan, "offset_front_gain", 1.0) or 1.0) != 1.0:
+            parts.append(f"g{_float_tag(plan.offset_front_gain)}")
     if getattr(plan, "offset_decode_steps", 0):
         parts.append(f"__ods{int(plan.offset_decode_steps)}")
     if getattr(plan, "prompt_head_clear", 0):
