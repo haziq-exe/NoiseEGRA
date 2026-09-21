@@ -119,6 +119,32 @@ check("every direction it watches is one the whole-story set steers",
                            "both_genders", "named_character"},
       str(c.watched()))
 
+# --- the controller must read the story the way the scorer will -------------
+# Its first name counter was a capitalised-word heuristic of its own and agreed
+# with the scorer on 65% of the model's real stories, which would have pushed
+# the naming direction the wrong way on a third of them. Steering on a quantity
+# the scorer does not recognise is steering on nothing.
+import csv, random  # noqa: E402
+
+from noiseegra.constraint_control import _has_past_tense, _names_so_far  # noqa: E402
+
+_PATH = (Path(__file__).resolve().parents[1] / "experiments" / "r42-final" /
+         "output" / "r42-final" / "Qwen3-1.7B" / "Qwen3-1.7B__BASELINE.csv")
+if _PATH.exists():
+    _rows = [r["story"] for r in csv.DictReader(open(_PATH, encoding="utf-8"))]
+    _s = random.Random(1).sample(_rows, min(120, len(_rows)))
+    _res = ck.evaluate_all(_s)["stories"]
+    _name = sum(1 for t, sc in zip(_s, _res)
+                if (_names_so_far(t) == 1) == bool(sc.checks["one_named_character"]))
+    _tense = sum(1 for t, sc in zip(_s, _res)
+                 if (not _has_past_tense(t)) == bool(sc.checks["present_tense"]))
+    check("the controller counts names the way the scorer does",
+          _name == len(_s), f"{100*_name/len(_s):.0f}% agreement on real stories")
+    check("and reads the tense the way the scorer does",
+          _tense >= 0.95 * len(_s), f"{100*_tense/len(_s):.0f}% agreement")
+else:
+    print("skip  no stories on disk to check the controller against")
+
 print()
 if FAIL:
     print("FAILED: " + ", ".join(FAIL))

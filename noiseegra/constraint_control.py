@@ -184,7 +184,9 @@ class ConstraintProbe:
 
 # Imported here rather than at the top: the scorer imports this module for its
 # own checks, and importing it back at module level closes the loop.
-from .constraint_metrics_en import genders_present, has_simile  # noqa: E402
+from .constraint_metrics_en import (  # noqa: E402
+    _heuristic_name_counts, genders_present, has_simile,
+)
 
 # --------------------------------------------------------------------------- #
 #  A controller for rules about the whole story                               #
@@ -201,13 +203,6 @@ _NOT_PAST_ED = frozenset("""
 red bed fed led wed shed sled bred fled bled need indeed speed breed
 tired scared worried excited surprised crowded pointed
 """.split())
-_CAPITAL = re.compile(r"(?<![.!?\"'“‘]\s)(?<!^)\b([A-Z][a-z]{2,})\b")
-_COMMON_CAP = frozenset("""
-The A An And But So Then When While Her His She He They It Mr Mrs Ms Dr
-Monday Tuesday Wednesday Thursday Friday Saturday Sunday
-January February March April May June July August September October November
-December I'm I'll I've
-""".split())
 
 
 def _has_past_tense(text: str) -> bool:
@@ -222,9 +217,16 @@ def _has_past_tense(text: str) -> bool:
 
 
 def _names_so_far(text: str) -> int:
-    """Distinct capitalised words that look like names. A heuristic: the scorer
-    is what decides, this only has to be right often enough to steer on."""
-    return len({m for m in _CAPITAL.findall(text) if m not in _COMMON_CAP})
+    """Distinct proper names, counted the way the scorer counts them.
+
+    Written first as a capitalised-word heuristic of its own, which agreed with
+    the scorer on only 65% of the model's real stories -- so the naming
+    direction would have pushed the wrong way on a third of them, asking for a
+    name where there was one or against one where there was none. Using the
+    scorer's own counter makes the quantity being steered and the quantity being
+    reported the same quantity, which is the point of the whole controller.
+    """
+    return len(_heuristic_name_counts(text))
 
 
 @dataclass
