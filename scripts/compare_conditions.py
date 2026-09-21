@@ -176,6 +176,16 @@ def main() -> None:
         # how much of a condition's output is usable.
         usable = float(np.mean([r.ok for r in reports]))
         rejected = Counter(r.reason for r in reports if not r.ok)
+        if not texts:
+            # Distinct from every story being rejected, and it has a different
+            # cause: the condition generated nothing at all. Contrastive search
+            # returned an empty file when transformers 5 moved it out to a
+            # custom_generate repo, and the message about rejecting "all 0
+            # stories" sent the search after the coherence checks instead.
+            raise SystemExit(
+                f"{name}: this condition has no stories at all. Its arm did not "
+                "generate -- check the run's log for the condition's own error, "
+                "rather than the coherence checks.")
         if not kept:
             raise SystemExit(f"{name}: the coherence checks rejected all {len(texts)} stories")
 

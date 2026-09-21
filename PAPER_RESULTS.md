@@ -41,6 +41,37 @@ Three claims, each with an interval clear of zero:
    their diversity, and pay for it in compliance. The method reaches the same
    diversity without heating the model.
 
+## Every published decoder, on this task
+
+Seven decoding methods at the raised temperature they need, 200 stories each,
+one prompt and one seed sequence. Nucleus reproduces at 3.92 requirements broken
+and top-k at 3.95, matching every earlier run.
+
+| Decoder (T=1.8) | Coherent | Broken (of 12) | Variety: what happens | Variety: wording |
+|---|---|---|---|---|
+| Nucleus 0.95 (Holtzman et al., 2020) | 200/200 | **3.92** | *reference* | *reference* |
+| Top-k 40 (Fan et al., 2018) | 199/200 | 3.95 | **+5.4 [+3.2, +7.5]** | **+1.8 [+0.0, +3.4]** |
+| Locally typical 0.95 (Meister et al., 2023) | 200/200 | 3.93 | −0.4 *tie* | +0.1 *tie* |
+| Locally typical 0.2 | 195/200 | 4.14 | −3.6 [−6.2, −1.0] | −0.9 *tie* |
+| η-sampling 0.002 (Hewitt et al., 2022) | 200/200 | **3.92** | −0.3 *tie* | −0.0 *tie* |
+| min-p 0.05 (Nguyen et al., 2025) | 199/200 | 3.94 | −3.7 [−6.1, −1.3] | −0.9 *tie* |
+| min-p 0.1 | 198/200 | 4.21 | −11.7 [−14.5, −9.4] | −3.0 [−4.5, −1.6] |
+
+**No decoder breaks fewer than 3.92 of twelve.** The whole family lies between
+3.92 and 4.21. That is the number the compliance claim is measured against, and
+it is now the literature rather than two methods.
+
+**The three decoders published since nucleus sampling do not improve on it
+here.** Locally typical at 0.95 and η-sampling tie it on both measures; typical
+at 0.2 and min-p are worse, min-p at 0.1 sharply so. Top-k remains the only one
+that beats nucleus on variety, and it is the bar to clear.
+
+Contrastive search (Su et al., 2022) is **not** in the table and has never run
+on this task. Earlier results reporting it were measuring plain top-k 4: the
+setting reached the run id but not the generation call. Under transformers 5 it
+needs code fetched from a separate repository at run time, which has not been
+enabled.
+
 ## The mechanism, and the ablation that isolates it
 
 The method has two parts and they do opposite jobs.
@@ -150,8 +181,6 @@ rather than against each other.
 ## Still to add
 
 - Qwen3-8B at its proportional layer band, with a push-only arm.
-- Locally typical, η-sampling, min-p and contrastive search as decoding
-  baselines. None of the four has ever run: the settings reached the run id and
-  the suite but not the generation call, so every one of them produced plain
-  nucleus sampling. Fixed and re-running.
+- Contrastive search, the one decoder still unrun: transformers 5 moved it to a
+  repository fetched at run time.
 - A human or LLM-judge rating of story quality, which no automatic metric covers.
