@@ -153,6 +153,35 @@ measurement rather than the stories.
 is informative at 40 words and not beyond, and every wording number in this
 document should be read that way.
 
+## Where the coherence gap actually comes from
+
+| 200 stories each | Coherent | Failures |
+|---|---|---|
+| Untouched Qwen3-1.7B, T=1.0 | 194/200 | 6, every one a loop |
+| **The steering push alone** | **200/200** | none |
+| Push + displacement, gamma=1.5 | 194/200 | 6, every one a loop |
+| Nucleus 0.95, T=1.8 | 200/200 | none |
+| Top-k 40, T=1.8 | 199/200 | 1 |
+
+**The base model loops at temperature 1.0.** Six of its own 200 stories
+degenerate, and every failure is a repetition loop. The decoding baselines reach
+200 and 199 by running at temperature 1.8, which flattens the distribution out
+of the low-entropy attractors a peaked distribution falls into. Their perfect
+coherence is bought with the temperature this method exists to avoid.
+
+**The push cures them.** Steering alone is 200 of 200, better than the model it
+is applied to.
+
+**The displacement costs back exactly the base rate.** At gamma=1.5 coherence
+returns to 194 of 200 and all six failures are loops again -- the model's own
+failure mode re-admitted, not new damage. Against the model it runs on, the
+displacement costs nothing.
+
+So the gap is not mysterious and it is not a coherence problem in the ordinary
+sense: the push suppresses the base model's loops and the displacement
+re-admits them. **A stronger push at the same displacement is the specific
+intervention**, and every arm measured here runs at a total push of 2.5.
+
 ## Why the coherence is 194 and not 200
 
 Read the stories that fail rather than counting them. At gamma=1.5 six of 200
