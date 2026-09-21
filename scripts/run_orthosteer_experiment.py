@@ -126,6 +126,7 @@ def make_plan(
     steer_split_concentration=0.0,
     offset_front_gain=1.0,
     offset_prefill_gain=1.0,
+    offset_taper=None,
     offset_gamma_spread=None,
     guard_direction="",
     noise_norm_match="energy",
@@ -224,7 +225,8 @@ def make_plan(
         offset_anchors=RUN_DEFAULTS["offset_anchors"],
         anchor_scale=RUN_DEFAULTS["anchor_scale"],
         offset_gamma_spread=offset_gamma_spread,
-        offset_taper=RUN_DEFAULTS["offset_taper"],
+        offset_taper=(RUN_DEFAULTS["offset_taper"] if offset_taper is None
+                      else offset_taper),
         guard_direction=guard_direction,
         protect_extra=extra,
         offset_gamma=offset_gamma,
@@ -2375,6 +2377,41 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             f"the noise at 1.0, starting at {', '.join(f'{g:g}' for g in gains)} times "
             f"that and falling back over {span} tokens; and the largest with the "
             "prompt's share raised to match")
+
+    if name == "randomprompt":
+        # Raising the prompt's share of the noise was the one change that beat
+        # nucleus sampling on wording, and it cost a quarter of the stories to
+        # the model answering the reader instead of telling a story. Two ways to
+        # keep the first without the second: fade the prompt's noise toward its
+        # end, where that failure has been traced before, or hold the story level
+        # with a noiseless shadow along the protected directions, which include
+        # the one separating a story from anything else. Noise while writing
+        # stays at 1.0.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        b = float(getattr(args, "steer_budget", None) or 2.5)
+        keep = int((getattr(args, "tail_sweep", None) or [8])[0])
+        cn = float((getattr(args, "noise_beta_sweep", None) or [2.0])[0])
+        rank = int(getattr(args, "offset_random_rank", 64) or 64)
+        g = float(getattr(args, "prompt_gain", 2.0) or 2.0)
+        fade = float(getattr(args, "prompt_fade_to", 0.25) or 0.25)
+        flat = {n: 1.0 for n in names}
+
+        def arm(gain, *, taper=1.0, shadow=False):
+            return {"plan": make_plan(
+                beta=flat, steer_budget=b,
+                offset_gamma=1.0, offset_mode="orth", offset_norm="fisher",
+                offset_basis=None, offset_basis_kind="random",
+                offset_random_rank=rank, shadow_protect=shadow,
+                steer_prefill=True, prompt_tail_clear=keep,
+                offset_draw_shape="sphere",
+                offset_prefill=True, offset_decode=True, noise_beta=cn,
+                offset_prefill_gain=gain, offset_taper=taper,
+                **quiet, **base)}
+
+        return [arm(g, taper=fade), arm(g, shadow=True), arm(1.0 + (g - 1.0) / 2)], (
+            f"the prompt's noise at {g:g}x fading to {fade:g} of that by its end; "
+            f"at {g:g}x with the shadow; and at {1.0 + (g - 1.0) / 2:g}x plain")
 
     if name == "wholeloop":
         # Steering strength set by the story being written, not by a calibration

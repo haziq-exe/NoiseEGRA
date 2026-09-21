@@ -301,7 +301,7 @@ def main() -> None:
                              "ablate", "controls", "tame", "fsc", "core4", "combine", "dose", "siting", "dropone", "prefill", "asymmetric", "boundary", "bands", "whilewriting", "gatedwrite", "promptbudget", "opening", "framing", "final", "weighted", "quieten", "eventvary", "literature", "withdecoder", "vstopp", "pertoken", "wander", "varysize",
                              "amplify", "constdose", "spread", "frontier",
                              "window", "decay", "core", "ortho", "alpha", "gate",
-                             "beta", "loo", "colour", "colourfront", "wholefive", "wholeloop", "randomfisher", "randomvariants", "randomnext", "randombase", "randomfixed", "randomshadow", "randomloop", "randomsplit", "randomfront", "all"])
+                             "beta", "loo", "colour", "colourfront", "wholefive", "wholeloop", "randomfisher", "randomvariants", "randomnext", "randombase", "randomfixed", "randomshadow", "randomloop", "randomsplit", "randomfront", "randomprompt", "all"])
     ap.add_argument("--task", default="generic", choices=["generic", "scenario"],
                     help="'generic' is the published design: one instruction with no "
                          "scenario, many requirements, and every story in one group, so "
@@ -653,6 +653,10 @@ def main() -> None:
     ap.add_argument("--split-concentrations", type=float, nargs="+", default=[1.0, 4.0],
                     help="suite 'randomsplit': Dirichlet concentrations for the "
                          "per-story split of the steering budget")
+    ap.add_argument("--prompt-gain", type=float, default=2.0,
+                    help="suite 'randomprompt': the multiple of the noise on the prompt")
+    ap.add_argument("--prompt-fade-to", type=float, default=0.25,
+                    help="suite 'randomprompt': share of it left at the prompt's end")
     ap.add_argument("--front-gains", type=float, nargs="+", default=[1.5, 2.0],
                     help="suite 'randomfront': the multiples the noise starts at")
     ap.add_argument("--front-tokens", type=int, default=40,
