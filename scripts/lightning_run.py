@@ -134,7 +134,9 @@ def driver_script(commit: str, name: str, runner_args: str,
         f'OUT="{out}"',
         f'REPO="{CODE}"',
         f'export HF_HOME="{CACHE}"',
-        "export HF_HUB_ENABLE_HF_TRANSFER=1",
+        "# The Hub client on the Studio fetches through Xet and warns on every",
+        "# import if the older hf_transfer switch is set, so this is the one.",
+        "export HF_XET_HIGH_PERFORMANCE=1",
         "export PYTORCH_ALLOC_CONF=expandable_segments:True",
         "",
         'mkdir -p "$OUT"',
@@ -145,13 +147,21 @@ def driver_script(commit: str, name: str, runner_args: str,
         "trap 'echo \"$FAIL\" > \"$OUT/exit\"' EXIT",
         "",
         'echo "=== machine ==="',
-        'nvidia-smi -L || echo "no GPU visible"',
+        'nvidia-smi -L 2>/dev/null || echo "no GPU visible"',
         "",
         'echo "=== code ==="',
+        "# git writes its progress to the log even when told to be quiet, and a",
+        "# carriage-return progress bar is noise in a file, so it goes aside and",
+        "# is shown only if something failed.",
         'if [ ! -d "$REPO/.git" ]; then',
-        f'  git clone --quiet {REPO} "$REPO" || {{ FAIL=64; echo "clone failed"; exit 1; }}',
+        f'  if ! git clone --quiet {REPO} "$REPO" > "$OUT/git.txt" 2>&1; then',
+        '    cat "$OUT/git.txt"; echo "clone failed"; FAIL=64; exit 1',
+        "  fi",
         "fi",
-        'git -C "$REPO" fetch --quiet --all',
+        'if ! git -C "$REPO" fetch --quiet --all > "$OUT/git.txt" 2>&1; then',
+        '  cat "$OUT/git.txt"; echo "fetch failed"; FAIL=64; exit 1',
+        "fi",
+        'rm -f "$OUT/git.txt"',
         f'if ! git -C "$REPO" checkout --quiet --detach {commit}; then',
         f'  echo "commit {commit[:8]} is not on the remote; push it and run again"',
         "  FAIL=64; exit 1",
@@ -311,6 +321,10 @@ def require_credentials() -> None:
 
 
 def main() -> None:
+    # Line by line even when this is piped into tee or a file, where Python
+    # would otherwise hold its output back in a block until the buffer fills.
+    sys.stdout.reconfigure(line_buffering=True)
+
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--name", required=True,
                     help="what to call this run; results land in experiments/<name>/")
