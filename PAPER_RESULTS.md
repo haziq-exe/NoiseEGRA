@@ -287,7 +287,19 @@ rather than against each other.
 
 ## Still to add
 
-- Qwen3-8B at its proportional layer band, with a push-only arm.
+- **The steering budget at the larger displacements.** Every arm here runs at a
+  total push of 2.5. Beating top-k on variety of what happens needs gamma=2.0,
+  which costs 0.4 requirements and 15 stories of coherence; a stronger push is
+  the untried lever that should pay for exactly that, and it is one sweep.
+  Launched and refused: all three Kaggle accounts stopped starting sessions,
+  which is the weekly GPU quota.
+- **Dropping the inert directions rather than stretching them.** Built and
+  tested (`--fisher-mode keep`), never run, for the same reason. A third of the
+  subspace does nothing measurable; whitening stretches it and is a null, and
+  dropping it has no amplification to cap.
 - Contrastive search, the one decoder still unrun: transformers 5 moved it to a
   repository fetched at run time.
-- A human or LLM-judge rating of story quality, which no automatic metric covers.
+- The 8B at its corrected band with the noise colour, and its largest
+  displacement, which the session limit cut off.
+- A human or LLM-judge rating of story quality, which no automatic metric here
+  covers.
