@@ -194,55 +194,40 @@ of how far one of the model's own stories sits from their average (γ=1 is one
 story's distance), which makes the setting transferable across models without a
 blind sweep.
 
-## Generality: Qwen3-8B, which does not replicate
+## Generality: Qwen3-8B, once the layer band is proportional
 
-The same recipe, the same twelve requirements, 100 stories per condition. Every
-condition is 100/100 coherent, with no headings and no assistant preambles
-anywhere, so the coherence cost the 1.7B model pays at larger perturbations does
-not appear here at all. Compliance and diversity are a different matter.
+The first attempt ran the 8B at layers 14-22 of 36, the band the published
+Arabic paper used, and it did not replicate: the method broke more requirements
+than leaving the model alone. The band the method works at on the 1.7B is 6-13
+of 28, whose proportional equivalent on 36 layers is 8-17 -- materially earlier.
+Re-run there, 100 stories per condition:
 
-| Qwen3-8B | Coherent | Requirements broken (of 12) | Diversity: content | Diversity: form |
+| Qwen3-8B | Coherent | Broken (of 12) | Variety: what happens | Variety: wording |
 |---|---|---|---|---|
-| Untouched (T=1.0) | 100/100 | **2.00** | −8.3 [−10.2, −6.7] | −3.5 [−4.9, −2.1] |
-| Per-token noise, prior work | 100/100 | **1.73** | −5.9 [−7.3, −4.4] | −3.5 [−4.8, −2.2] |
-| Top-k 40 (T=1.8) | 100/100 | 2.28 | +2.4 [+1.1, +3.7] | +1.7 [−0.4, +2.8] |
-| Nucleus 0.95 (T=1.8) | 100/100 | 2.15 | *reference* | *reference* |
-| Ours, γ=1.5 | 100/100 | 2.38 | −2.3 [−3.9, −0.9] | −0.3 [−1.7, +1.1] |
-| Ours, γ=2.0 | 100/100 | 2.59 | +0.9 [−0.7, +2.4] | +0.5 [−1.0, +1.8] |
+| Untouched, T=1.0 | 100/100 | 2.00 | −8.3 [−10.2, −6.7] | −3.5 [−4.9, −2.1] |
+| Nucleus 0.95, T=1.8 | 100/100 | 2.15 | *reference* | *reference* |
+| Top-k 40, T=1.8 | 100/100 | 2.28 | +2.4 [+1.1, +3.7] | +1.1 *tie* |
+| Ours γ=1.5, **wrong band** 14-22 | 100/100 | 2.38 | −2.3 [−3.7, −0.8] | −0.3 *tie* |
+| **Ours, steering only, band 8-17** | 100/100 | **1.70** | −8.9 [−10.8, −7.2] | −2.1 [−3.6, −0.8] |
+| **Ours, γ=1.5, band 8-17** | 100/100 | 2.78 | −0.1 *tie* | **+2.4 [+0.9, +4.1]** |
 
-**The compliance result does not transfer.** The untouched 8B model already
-breaks only 2.00 requirements of twelve, against the 1.7B model's 4.30, so most
-of the gap the method closes on the small model is not there to close. At γ=1.5
-and γ=2.0 the method is *worse* than leaving the model alone. Diversity ties
-nucleus sampling at γ=2.0 and loses at γ=1.5.
+**The compliance result transfers.** Steering alone breaks 1.70 requirements of
+twelve against every 8B baseline's 2.00 to 2.28, at 100 of 100 coherent, and
+against 1.66 on the 1.7B. The cost of adding the displacement is the same on
+both models too: +1.08 here, +1.17 there.
 
-The per-requirement table says where it goes:
+**The band was the whole of the earlier failure.** At 14-22 the displacement arm
+lost both variety measures and broke more than the untouched model. At 8-17 it
+ties nucleus sampling on variety of what happens and beats it on wording, on an
+interval clear of zero.
 
-| Requirement | Untouched | Nucleus T=1.8 | Ours γ=1.5 |
-|---|---|---|---|
-| present tense | 33% | 34% | **62%** |
-| plain words | 54% | 48% | **86%** |
-| sensory words | 65% | 64% | **24%** |
-| named character | 64% | 54% | **47%** |
-| dialogue | 97% | 92% | 79% |
+**Every 8B condition is fully coherent**, including at a displacement where the
+1.7B degrades.
 
-The push wins the two rules it wins on the small model and loses the sensory
-rule outright. Reading the stories explains it: the untouched 8B writes long
-descriptive sentences ("the scent of chalk and old books wrapping around her
-like a familiar blanket") which clear the six-sensory-word floor easily, and the
-push trades exactly that prose for shorter action sentences. It also drifts into
-first person, which is why the named-character rule falls.
-
-**One likely cause is a configuration carried over without refitting.** These
-arms ran at layers 14–22 of 36, the band the published Arabic paper used. The
-band the method actually works at on the 1.7B model is 6–13 of 28, whose
-proportional equivalent on a 36-layer model is 8–17 — materially earlier. The
-steering budget was also never refitted. A corrected run at the proportional
-band, with a push-only arm so the same ablation can be made, is what decides
-whether this is a scope limit of the method or a setting that was never tuned.
-
-Until that returns, the honest scope statement is that the compliance result is
-demonstrated on a 1.7B model, which is also the size a school can actually run.
+What is not measured here: the run was cut off by the session limit after two of
+its three conditions, so γ=2.0 at the corrected band is missing, and the 8B has
+not been run with the noise colour or the whitening that the 1.7B results use.
+The stories were recovered from the checkpoint rather than the run's own output.
 
 ## Positioning
 
