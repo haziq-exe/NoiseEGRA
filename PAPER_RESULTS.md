@@ -8,7 +8,29 @@ over the first 40 words of coherent stories, rarefied to a common sample size;
 temperature 1.0 throughout; the decoding baselines are given the raised
 temperature they need.
 
+## What is established, and what is not
+
+**Established, on Qwen3-1.7B at temperature 1.0, 200 stories a condition.**
+Against nucleus sampling at temperature 1.8 the method wins both variety
+measures and requirements broken at once, every interval clear of zero. Against
+top-k, the strongest decoder here, it ties on variety and breaks fewer
+requirements. No published decoder breaks fewer than 3.92 of twelve. The result
+survives a longer truncation, and it transfers to the 8B once the layer band is
+set proportionally.
+
+**Not established.** Every story coherent: the method sits at 194 of 200, which
+is the untouched model's own rate at temperature 1.0. The section on the
+coherence limit says why that is a property of the constraints rather than a
+setting left untuned.
+
+**Pending.** The eight whole-story rules replacing the twelve counting ones, and
+steering whose strength is set by the story rather than by a calibration run.
+Both are built and tested; neither has been run.
+
+---
+
 ## Headline table
+
 
 | System | Coherent | Requirements broken (of 12) | Diversity: content | Diversity: form |
 |---|---|---|---|---|
@@ -43,6 +65,7 @@ Three claims, each with an interval clear of zero:
 
 ## The noise colour: one axis from per-token to per-story
 
+
 The displacement has always been one fixed vector per story. Its direction now
 follows a trajectory whose power falls as 1/f^beta along the token axis, while
 its length is held at gamma story-distances so the exponent is not secretly a
@@ -70,37 +93,8 @@ reinforcement learning (Eberhard et al. 2023; Hollenstein et al. 2024).
 **At beta=2 the method beats nucleus sampling on both variety measures and on
 compliance at once**, with both intervals clear of zero.
 
-## A third of the perturbation subspace does nothing
-
-Round 16 laid the whole set of per-story perturbations out so it covered the
-subspace evenly, and every matched pair came back worse. The reason recorded was
-that "distance in the subspace the perturbation is drawn from does not predict
-distance between the stories that come out". That is a statement about a metric,
-and it went unanswered for eighty rounds.
-
-Pulling the Fisher-Rao metric of the model's own next-token distribution back
-onto the subspace (Arvanitidis et al., AISTATS 2022) measures it directly. For a
-categorical distribution the distance is the angle between the square roots of
-the two probability vectors, so the whole construction is forward passes and an
-arccos: no Jacobians, no gradients, k(k+1)/2 + 1 passes once per run.
-
-On Qwen3-1.7B, of the 31 directions the displacement is drawn from:
-
-| Layer | Directions the probe can resolve |
-|---|---|
-| 6 | 22 of 31 |
-| 7 | 20 of 31 |
-| 8 | 22 of 31 |
-| 9 | 21 of 31 |
-
-**About a third of the subspace moves the model's predictions by less than the
-probe can measure, at every layer of the band.** A displacement drawn uniformly
-spends that share of its length pushing where the model does not react, so the
-length that reaches the story is smaller than the setting says, by an amount
-nothing measured. That is a concrete reason why covering the subspace evenly
-does not cover the output evenly.
-
 ## The three changes, separated
+
 
 Each line adds one change to the line above it, in one run, 200 stories each.
 
@@ -123,6 +117,7 @@ variety of what happens is +2.9 against top-k sampling's +5.0, so top-k is still
 ahead on that one measure.
 
 ## Is the variety result an artefact of the 40-word cut?
+
 
 Generation is causal, so a displacement applied after about decode step 55
 cannot change the first forty words at all. Any schedule that concentrates the
@@ -153,208 +148,39 @@ measurement rather than the stories.
 is informative at 40 words and not beyond, and every wording number in this
 document should be read that way.
 
-## Where the coherence gap actually comes from
+## A third of the perturbation subspace does nothing
 
-| 200 stories each | Coherent | Failures |
-|---|---|---|
-| Untouched Qwen3-1.7B, T=1.0 | 194/200 | 6, every one a loop |
-| **The steering push alone** | **200/200** | none |
-| Push + displacement, gamma=1.5 | 194/200 | 6, every one a loop |
-| Nucleus 0.95, T=1.8 | 200/200 | none |
-| Top-k 40, T=1.8 | 199/200 | 1 |
 
-**The base model loops at temperature 1.0.** Six of its own 200 stories
-degenerate, and every failure is a repetition loop. The decoding baselines reach
-200 and 199 by running at temperature 1.8, which flattens the distribution out
-of the low-entropy attractors a peaked distribution falls into. Their perfect
-coherence is bought with the temperature this method exists to avoid.
+Round 16 laid the whole set of per-story perturbations out so it covered the
+subspace evenly, and every matched pair came back worse. The reason recorded was
+that "distance in the subspace the perturbation is drawn from does not predict
+distance between the stories that come out". That is a statement about a metric,
+and it went unanswered for eighty rounds.
 
-**The push cures them.** Steering alone is 200 of 200, better than the model it
-is applied to.
+Pulling the Fisher-Rao metric of the model's own next-token distribution back
+onto the subspace (Arvanitidis et al., AISTATS 2022) measures it directly. For a
+categorical distribution the distance is the angle between the square roots of
+the two probability vectors, so the whole construction is forward passes and an
+arccos: no Jacobians, no gradients, k(k+1)/2 + 1 passes once per run.
 
-**The displacement costs back exactly the base rate.** At gamma=1.5 coherence
-returns to 194 of 200 and all six failures are loops again -- the model's own
-failure mode re-admitted, not new damage. Against the model it runs on, the
-displacement costs nothing.
+On Qwen3-1.7B, of the 31 directions the displacement is drawn from:
 
-So the gap is not mysterious and it is not a coherence problem in the ordinary
-sense: the push suppresses the base model's loops and the displacement
-re-admits them. **A stronger push at the same displacement is the specific
-intervention**, and every arm measured here runs at a total push of 2.5.
-
-## Why the coherence is 194 and not 200
-
-Read the stories that fail rather than counting them. At gamma=1.5 six of 200
-are rejected, and five of the six have a clean first sixty words: the median
-rejected story is fine until word 220 of the 291 it writes, and then loops --
-"I'm trapped in the dark" over and over, or "I don't." sixty-eight times. At
-gamma=2.0, fourteen of the sixteen rejected stories have clean openings.
-
-Two things follow.
-
-**The failures are endings, not stories.** Variety is scored over the first
-forty words, which these stories get right. Coherence and variety are reading
-different parts of the same story, and the trade between them is not the
-straight exchange the frontier makes it look.
-
-**The failures share a register.** A story that loops is far more likely to have
-opened in the first person, and much less likely to have named anybody:
-
-| At gamma=1.5 | Opens in first person | Names a character | Words written |
-|---|---|---|---|
-| Kept | 14% | 98% | 206 |
-| Looped | 67% | 67% | 292 |
-
-The displacement sometimes pushes the opening into an unnamed first-person
-present-tense register -- breathless, short sentences -- and the model cannot
-resolve it into a story that ends, so it runs forty per cent long and repeats
-until the token cap.
-
-### The allocation the method's own output asks for
-
-The budget is divided by what the *untouched* model gets wrong. The displacement
-then breaks requirements the untouched model does not. Re-measuring on the
-method's own 200 stories:
-
-| Direction | Round 1, untouched | Round 2, own output | Passes: untouched -> under method |
-|---|---|---|---|
-| present tense | 1.00 | 1.00 | 0% -> 10% |
-| varied openings | 0.81 | 0.73 | 19% -> 35% |
-| **named character** | 0.34 | **0.65** | 66% -> **42%** |
-| **sensory** | 0.38 | **0.61** | 62% -> 46% |
-| **plain words** | 0.56 | **0.00** | 44% -> **100%** |
-
-Naming is the requirement the displacement breaks, and round two moves budget
-onto it while taking it off plain words, which the method already satisfies in
-every story. The two rounds agree to a cosine of 0.913, so this is a correction
-and not a different method.
-
-**It will not fix the coherence, though.** Pooled over 3,000 stories a story
-with no named character fails 4.7% of the time against 3.6% for one that names
-somebody, and raising the naming rate to 100% predicts about one story of the
-six. The 67%-against-14% figure above is six failures in one arm and does not
-hold at scale; it is left in place because it is what the failures in that arm
-look like, not because it supports the intervention.
-
-This is one step of a fixed point -- allocate from the untouched model, run,
-re-measure, allocate again -- and it is the next thing to run. It is not a
-sweep: the direction and the size of every change are read off the measurement.
-
-## The trade is structural: writing-time displacement is what carries variety
-
-The perturbation can be applied over the instruction alone, or over the
-instruction and while the model writes. The first keeps 199 stories of 200 --
-five more than the second -- so it is the obvious candidate for the coherence
-criterion. It does not have the variety, and not because of the 40-word cut:
-
-| Variety of what happens, against nucleus | at 40 words | at 100 words |
-|---|---|---|
-| Top-k 40 | +5.2 [+2.5, +7.3] | +4.7 [+2.8, +6.6] |
-| **Over the instruction only** (199/200 coherent) | **−5.9 [−8.9, −3.2]** | **−5.7 [−7.7, −3.5]** |
-| **Over the instruction and while writing** (194/200) | **+2.9 [+0.8, +5.4]** | **+4.4 [+2.3, +6.4]** |
-
-The deficit is the same size at both cuts and both intervals are clear of zero.
-So displacing the model while it writes is what produces variety of content, and
-it is the same component that re-admits the base model's loops. Coherence and
-variety are not trading through a knob that could be tuned -- they are trading
-through one mechanism that does both.
-
-## The coherence floor, and why neither lever moves it
-
-Four things are measured, and together they say the remaining gap is not a
-tuning problem.
-
-| | Coherent |
+| Layer | Directions the probe can resolve |
 |---|---|
-| Untouched Qwen3-1.7B, T=1.0 | 194/200, every failure a loop |
-| The push alone | **200/200** |
-| Push + any displacement that improves variety | 184–195/200 |
-| Nucleus 0.95 / top-k 40 at T=1.8 | 200/200, 199/200 |
+| 6 | 22 of 31 |
+| 7 | 20 of 31 |
+| 8 | 22 of 31 |
+| 9 | 21 of 31 |
 
-**The base model loops at temperature 1.0 and the push cures it.** Every
-displacement large enough to beat nucleus sampling on variety re-admits the
-loops, and lands back at or below the model's own rate. The decoding baselines
-avoid loops by running at 1.8, which is the thing this method exists not to do.
-
-**A larger push makes it worse, not better** (table below), so the obvious lever
-is the wrong way round.
-
-**Spending the same push differently gains about one story.** Pooled over 15
-perturbed arms and 3,000 stories, a story with no named character fails 4.7% of
-the time against 3.6% for one that names somebody -- 1.3 times, not the five
-times a six-story sample suggested. Raising the naming rate from 38% to 100%
-predicts 7.3 failures per 200 against the present 8.6.
-
-So within the constraints -- temperature fixed at 1.0, no filtering of outputs,
-no decoding guard -- the base model's loop rate at temperature 1.0 is a floor,
-and any perturbation strong enough to carry variety sits on it. That is a
-statement about the constraint set, not a missing experiment.
-
-A generation-stopping gate removes it: the same gate that takes the untouched
-model from 194 to 200 takes this method from 194 to 196, and the residue is not
-n-gram looping. The gate is not part of the method.
-
-## Pushing harder does not restore coherence
-
-The push alone is 200 of 200 and the displacement re-admits the base model's
-loops, which makes "push harder at the same displacement" the obvious
-inference. It is wrong, and the runs already on disk say so. Coherence against
-total push, at matched displacement, across every middle-school arm:
-
-| Displacement | Push 2.0 | Push 2.5 | Push 3.0 | Push 3.5 |
-|---|---|---|---|---|
-| 1.50 | 145/200 | 183–199 | **173/200** | — |
-| 1.75 | 162, 177 | 178–191 | **164/200** | — |
-| 2.00 | 165/200 | 170–193 | 176/200 | **109/200** |
-
-2.5 is already at or near the best, and 3.5 collapses. The arms differ in other
-settings, so this is not a controlled sweep, but the direction is consistent at
-three displacements and it agrees with what this project measured long before:
-raising the total from 2 to 4 was far worse than leaving it at 2.
-
-So the lever for the coherence gap is not the size of the push but **where it is
-spent**. The budget re-measured on the method's own output moves it onto naming
-a character -- the requirement the displacement breaks, and the one whose
-failure produces the unnamed first-person register that runs long and loops --
-at the same total. That remains untested.
-
-## Would a repetition gate close the coherence gap?
-
-The residual failures are repetition loops, and a generation-stopping gate is
-the obvious guard. Measured rather than assumed: a gate that stops when some
-five-word run has been produced three times, cutting back to the last sentence
-end.
-
-| | As written | With that gate |
-|---|---|---|
-| Untouched, T=1.0 | 194/200 | **200/200** |
-| Nucleus 0.95, T=1.8 | 200/200 | 200/200 |
-| Ours, gamma=1.5 | 194/200 | 196/200 |
-| Ours, gamma=1.75 | 191/200 | 192/200 |
-| Ours, gamma=2.0 | 184/200 | 188/200 |
-
-**It fixes the untouched model completely and ours only partly.** The base
-model's failures are plain n-gram loops; ours are not all of that kind. Of the
-four that survive at gamma=1.5, one degenerates from its first sentence and two
-are flagged for low window entropy on prose that repeats its sentence shape
-rather than its words. The gate is not in the method and this is not a result --
-it is what the number would be under a guard anyone would add.
-
-### A scorer fault found the same way, and fixed
-
-The fourth survivor was not a failure at all. The refusal check matched any
-opening of the form "I can't ...", so a character saying *"I can't breathe. My
-knees buckle."* was counted as the model declining the task. It fired on two of
-the perturbed arms and on none of the baselines, because only a perturbed arm
-writes first-person distress -- so the coherence number was biased against
-exactly the register the method produces.
-
-A refusal now has to decline the *task*: the opening must reach for the request
-within a short span. Re-scored across every arm, it moves one number by one
-story, gamma=1.75 from 190 to 191, and leaves every baseline untouched. Small,
-and in our favour, which is why it is stated rather than folded in quietly.
+**About a third of the subspace moves the model's predictions by less than the
+probe can measure, at every layer of the band.** A displacement drawn uniformly
+spends that share of its length pushing where the model does not react, so the
+length that reaches the story is smaller than the setting says, by an amount
+nothing measured. That is a concrete reason why covering the subspace evenly
+does not cover the output evenly.
 
 ## The frontier, measured against top-k directly
+
 
 Top-k sampling is the strongest decoder on this task, so it is the reference
 here rather than nucleus. Comparing two differences-from-nucleus is not a
@@ -397,6 +223,7 @@ stretching those directions is what does not pay.
 
 ## Every published decoder, on this task
 
+
 Seven decoding methods at the raised temperature they need, 200 stories each,
 one prompt and one seed sequence. Nucleus reproduces at 3.92 requirements broken
 and top-k at 3.95, matching every earlier run.
@@ -428,6 +255,7 @@ enabled.
 
 ## The mechanism, and the ablation that isolates it
 
+
 The method has two parts and they do opposite jobs.
 
 | | Coherent | Broken /12 | Content diversity vs untouched |
@@ -447,27 +275,8 @@ once makes a small model compliant but repetitive, and perturbing along the
 model's own between-story variation restores diversity without giving the
 compliance back.*
 
-## Design choices worth stating
-
-**A fixed steering budget.** The twelve requirements are steered through four to
-six contrastive directions, made mutually orthogonal and summed to a fixed total
-norm, so adding a direction redistributes strength rather than pushing harder.
-Composing steering vectors is known to interfere; the fixed budget is what makes
-six of them compose. Ablation: the same budget split across three directions
-instead of four drops coherence to 83%, and raising the total from 2 to 4 is far
-worse than leaving it at 2.
-
-**Variation drawn from the model's own story manifold.** The per-story
-perturbation is drawn from the subspace along which the model's own sampled
-stories differ, projected clear of the constraint directions so it cannot undo
-the steering. Isotropic noise of comparable magnitude destroys the text.
-
-**A size unit tied to the data.** Perturbation size is expressed as a multiple
-of how far one of the model's own stories sits from their average (γ=1 is one
-story's distance), which makes the setting transferable across models without a
-blind sweep.
-
 ## Generality: Qwen3-8B, once the layer band is proportional
+
 
 The first attempt ran the 8B at layers 14-22 of 36, the band the published
 Arabic paper used, and it did not replicate: the method broke more requirements
@@ -502,7 +311,29 @@ its three conditions, so γ=2.0 at the corrected band is missing, and the 8B has
 not been run with the noise colour or the whitening that the 1.7B results use.
 The stories were recovered from the checkpoint rather than the run's own output.
 
+## Design choices worth stating
+
+
+**A fixed steering budget.** The twelve requirements are steered through four to
+six contrastive directions, made mutually orthogonal and summed to a fixed total
+norm, so adding a direction redistributes strength rather than pushing harder.
+Composing steering vectors is known to interfere; the fixed budget is what makes
+six of them compose. Ablation: the same budget split across three directions
+instead of four drops coherence to 83%, and raising the total from 2 to 4 is far
+worse than leaving it at 2.
+
+**Variation drawn from the model's own story manifold.** The per-story
+perturbation is drawn from the subspace along which the model's own sampled
+stories differ, projected clear of the constraint directions so it cannot undo
+the steering. Isotropic noise of comparable magnitude destroys the text.
+
+**A size unit tied to the data.** Perturbation size is expressed as a multiple
+of how far one of the model's own stories sits from their average (γ=1 is one
+story's distance), which makes the setting transferable across models without a
+blind sweep.
+
 ## Positioning
+
 
 The closest work on this task fine-tunes 8B models on 2,580 stories generated by
 GPT-4o and Llama-3.3-70B to hit K–2 readability targets, and reports diversity as
@@ -517,7 +348,272 @@ well established. Our method is not a decoding change — it operates on the
 representation — and it is what lets compliance and diversity move together
 rather than against each other.
 
+## The coherence limit, in one place
+
+Six separate passes at this question, gathered rather than left scattered. They agree.
+
+### Where the coherence gap actually comes from
+
+
+| 200 stories each | Coherent | Failures |
+|---|---|---|
+| Untouched Qwen3-1.7B, T=1.0 | 194/200 | 6, every one a loop |
+| **The steering push alone** | **200/200** | none |
+| Push + displacement, gamma=1.5 | 194/200 | 6, every one a loop |
+| Nucleus 0.95, T=1.8 | 200/200 | none |
+| Top-k 40, T=1.8 | 199/200 | 1 |
+
+**The base model loops at temperature 1.0.** Six of its own 200 stories
+degenerate, and every failure is a repetition loop. The decoding baselines reach
+200 and 199 by running at temperature 1.8, which flattens the distribution out
+of the low-entropy attractors a peaked distribution falls into. Their perfect
+coherence is bought with the temperature this method exists to avoid.
+
+**The push cures them.** Steering alone is 200 of 200, better than the model it
+is applied to.
+
+**The displacement costs back exactly the base rate.** At gamma=1.5 coherence
+returns to 194 of 200 and all six failures are loops again -- the model's own
+failure mode re-admitted, not new damage. Against the model it runs on, the
+displacement costs nothing.
+
+So the gap is not mysterious and it is not a coherence problem in the ordinary
+sense: the push suppresses the base model's loops and the displacement
+re-admits them. **A stronger push at the same displacement is the specific
+intervention**, and every arm measured here runs at a total push of 2.5.
+
+### Why the coherence is 194 and not 200
+
+
+Read the stories that fail rather than counting them. At gamma=1.5 six of 200
+are rejected, and five of the six have a clean first sixty words: the median
+rejected story is fine until word 220 of the 291 it writes, and then loops --
+"I'm trapped in the dark" over and over, or "I don't." sixty-eight times. At
+gamma=2.0, fourteen of the sixteen rejected stories have clean openings.
+
+Two things follow.
+
+**The failures are endings, not stories.** Variety is scored over the first
+forty words, which these stories get right. Coherence and variety are reading
+different parts of the same story, and the trade between them is not the
+straight exchange the frontier makes it look.
+
+**The failures share a register.** A story that loops is far more likely to have
+opened in the first person, and much less likely to have named anybody:
+
+| At gamma=1.5 | Opens in first person | Names a character | Words written |
+|---|---|---|---|
+| Kept | 14% | 98% | 206 |
+| Looped | 67% | 67% | 292 |
+
+The displacement sometimes pushes the opening into an unnamed first-person
+present-tense register -- breathless, short sentences -- and the model cannot
+resolve it into a story that ends, so it runs forty per cent long and repeats
+until the token cap.
+
+#### The allocation the method's own output asks for
+
+The budget is divided by what the *untouched* model gets wrong. The displacement
+then breaks requirements the untouched model does not. Re-measuring on the
+method's own 200 stories:
+
+| Direction | Round 1, untouched | Round 2, own output | Passes: untouched -> under method |
+|---|---|---|---|
+| present tense | 1.00 | 1.00 | 0% -> 10% |
+| varied openings | 0.81 | 0.73 | 19% -> 35% |
+| **named character** | 0.34 | **0.65** | 66% -> **42%** |
+| **sensory** | 0.38 | **0.61** | 62% -> 46% |
+| **plain words** | 0.56 | **0.00** | 44% -> **100%** |
+
+Naming is the requirement the displacement breaks, and round two moves budget
+onto it while taking it off plain words, which the method already satisfies in
+every story. The two rounds agree to a cosine of 0.913, so this is a correction
+and not a different method.
+
+**It will not fix the coherence, though.** Pooled over 3,000 stories a story
+with no named character fails 4.7% of the time against 3.6% for one that names
+somebody, and raising the naming rate to 100% predicts about one story of the
+six. The 67%-against-14% figure above is six failures in one arm and does not
+hold at scale; it is left in place because it is what the failures in that arm
+look like, not because it supports the intervention.
+
+This is one step of a fixed point -- allocate from the untouched model, run,
+re-measure, allocate again -- and it is the next thing to run. It is not a
+sweep: the direction and the size of every change are read off the measurement.
+
+### The trade is structural: writing-time displacement is what carries variety
+
+
+The perturbation can be applied over the instruction alone, or over the
+instruction and while the model writes. The first keeps 199 stories of 200 --
+five more than the second -- so it is the obvious candidate for the coherence
+criterion. It does not have the variety, and not because of the 40-word cut:
+
+| Variety of what happens, against nucleus | at 40 words | at 100 words |
+|---|---|---|
+| Top-k 40 | +5.2 [+2.5, +7.3] | +4.7 [+2.8, +6.6] |
+| **Over the instruction only** (199/200 coherent) | **−5.9 [−8.9, −3.2]** | **−5.7 [−7.7, −3.5]** |
+| **Over the instruction and while writing** (194/200) | **+2.9 [+0.8, +5.4]** | **+4.4 [+2.3, +6.4]** |
+
+The deficit is the same size at both cuts and both intervals are clear of zero.
+So displacing the model while it writes is what produces variety of content, and
+it is the same component that re-admits the base model's loops. Coherence and
+variety are not trading through a knob that could be tuned -- they are trading
+through one mechanism that does both.
+
+### The coherence floor, and why neither lever moves it
+
+
+Four things are measured, and together they say the remaining gap is not a
+tuning problem.
+
+| | Coherent |
+|---|---|
+| Untouched Qwen3-1.7B, T=1.0 | 194/200, every failure a loop |
+| The push alone | **200/200** |
+| Push + any displacement that improves variety | 184–195/200 |
+| Nucleus 0.95 / top-k 40 at T=1.8 | 200/200, 199/200 |
+
+**The base model loops at temperature 1.0 and the push cures it.** Every
+displacement large enough to beat nucleus sampling on variety re-admits the
+loops, and lands back at or below the model's own rate. The decoding baselines
+avoid loops by running at 1.8, which is the thing this method exists not to do.
+
+**A larger push makes it worse, not better** (table below), so the obvious lever
+is the wrong way round.
+
+**Spending the same push differently gains about one story.** Pooled over 15
+perturbed arms and 3,000 stories, a story with no named character fails 4.7% of
+the time against 3.6% for one that names somebody -- 1.3 times, not the five
+times a six-story sample suggested. Raising the naming rate from 38% to 100%
+predicts 7.3 failures per 200 against the present 8.6.
+
+So within the constraints -- temperature fixed at 1.0, no filtering of outputs,
+no decoding guard -- the base model's loop rate at temperature 1.0 is a floor,
+and any perturbation strong enough to carry variety sits on it. That is a
+statement about the constraint set, not a missing experiment.
+
+A generation-stopping gate removes it: the same gate that takes the untouched
+model from 194 to 200 takes this method from 194 to 196, and the residue is not
+n-gram looping. The gate is not part of the method.
+
+### Pushing harder does not restore coherence
+
+
+The push alone is 200 of 200 and the displacement re-admits the base model's
+loops, which makes "push harder at the same displacement" the obvious
+inference. It is wrong, and the runs already on disk say so. Coherence against
+total push, at matched displacement, across every middle-school arm:
+
+| Displacement | Push 2.0 | Push 2.5 | Push 3.0 | Push 3.5 |
+|---|---|---|---|---|
+| 1.50 | 145/200 | 183–199 | **173/200** | — |
+| 1.75 | 162, 177 | 178–191 | **164/200** | — |
+| 2.00 | 165/200 | 170–193 | 176/200 | **109/200** |
+
+2.5 is already at or near the best, and 3.5 collapses. The arms differ in other
+settings, so this is not a controlled sweep, but the direction is consistent at
+three displacements and it agrees with what this project measured long before:
+raising the total from 2 to 4 was far worse than leaving it at 2.
+
+So the lever for the coherence gap is not the size of the push but **where it is
+spent**. The budget re-measured on the method's own output moves it onto naming
+a character -- the requirement the displacement breaks, and the one whose
+failure produces the unnamed first-person register that runs long and loops --
+at the same total. That remains untested.
+
+### Would a repetition gate close the coherence gap?
+
+
+The residual failures are repetition loops, and a generation-stopping gate is
+the obvious guard. Measured rather than assumed: a gate that stops when some
+five-word run has been produced three times, cutting back to the last sentence
+end.
+
+| | As written | With that gate |
+|---|---|---|
+| Untouched, T=1.0 | 194/200 | **200/200** |
+| Nucleus 0.95, T=1.8 | 200/200 | 200/200 |
+| Ours, gamma=1.5 | 194/200 | 196/200 |
+| Ours, gamma=1.75 | 191/200 | 192/200 |
+| Ours, gamma=2.0 | 184/200 | 188/200 |
+
+**It fixes the untouched model completely and ours only partly.** The base
+model's failures are plain n-gram loops; ours are not all of that kind. Of the
+four that survive at gamma=1.5, one degenerates from its first sentence and two
+are flagged for low window entropy on prose that repeats its sentence shape
+rather than its words. The gate is not in the method and this is not a result --
+it is what the number would be under a guard anyone would add.
+
+#### A scorer fault found the same way, and fixed
+
+The fourth survivor was not a failure at all. The refusal check matched any
+opening of the form "I can't ...", so a character saying *"I can't breathe. My
+knees buckle."* was counted as the model declining the task. It fired on two of
+the perturbed arms and on none of the baselines, because only a perturbed arm
+writes first-person distress -- so the coherence number was biased against
+exactly the register the method produces.
+
+A refusal now has to decline the *task*: the opening must reach for the request
+within a short span. Re-scored across every arm, it moves one number by one
+story, gamma=1.75 from 190 to 191, and leaves every baseline untouched. Small,
+and in our favour, which is why it is stated rather than folded in quietly.
+
+## The rules, rewritten to be about the whole story
+
+The twelve requirements above are mostly thresholds: six sensory words, three
+lines of speech, a name used three times, no word of four letters used more than
+five. A threshold is easy to score and easy to meet by accident, it says nothing
+about whether the story is any good, and its number has to be chosen in advance.
+
+Eight rules replace them, none of them a count. Pass rates are the model's own,
+unprompted, so they are a lower bound -- these stories were written for the
+older instruction and were never asked for a comparison or a single name.
+
+| Rule | Unprompted |
+|---|---|
+| every verb in the present tense | **0%** |
+| something compared with "like" or "as ... as" | **30%** |
+| exactly one character is named | **37%** |
+| two characters, one referred to as he and one as she | **38%** |
+| Flesch-Kincaid grade at least 3 | 61% |
+| somebody speaks, inside quotation marks | 76% |
+| no sentence written twice | 86% |
+| the story alone, no title or preamble | 100% |
+
+A ninth was written and dropped: reaching past sight passes 98-100% of the time
+even narrowed to sound, smell and taste, so it describes how the model already
+writes rather than asking anything of it.
+
+## Steering strength without a calibration run
+
+The budget split above is measured on a calibration sample, which means knowing
+in advance how often this model breaks each requirement. That is a property of
+one model on one prompt, and it is the part of the method least likely to carry.
+
+Every rule in the new set is satisfied or not, so the error is one-sided: a
+direction pushes while its rule is unmet and goes silent the moment it is met.
+The coefficient is then a function of the story being written.
+
+- **closure** is zero until the story runs past the length it was asked for, and
+  rises with the overrun. The failures this method leaves are stories that do
+  not end.
+- **present tense** goes to full the instant a past-tense verb appears.
+- **the comparison, the speech and the second character** are asked for only
+  once the story is far enough in that their absence means something. "No simile
+  yet" is true of every story at its third word.
+- **naming** pushes for a name at none and *against* one at three, which a
+  constant coefficient cannot express.
+
+The controller reads the story with the scorer's own counters. Its first version
+used a capitalised-word heuristic of its own and agreed with the scorer on 65%
+of 120 real stories, so the naming direction would have pushed the wrong way on
+a third of them. It now agrees on all of them.
+
+Neither of these has been run.
+
 ## Still to add
+
 
 - **The steering budget at the larger displacements.** Every arm here runs at a
   total push of 2.5. Beating top-k on variety of what happens needs gamma=2.0,
