@@ -10,6 +10,17 @@ temperature they need.
 
 ## What is established, and what is not
 
+**And every whole-story result was asked for the wrong reader.** Until commit
+413ebe0 the whole-story rule set fell through to the children's instruction:
+every story under it -- every table from "The rules, rewritten to be about the
+whole story" onward -- was generated from "Write one short story for a young
+child to read", under a system prompt about young children learning to read.
+The rules were the middle-school ones; the request was not. Comparisons inside
+those tables are fair, since every arm got the same prompt, but none of them is
+a middle-school result. The whole set now takes the middle-school instruction
+and middle-school steering pairs where they exist.
+
+
 **Read this first: every perturbed result below used the rejected method.** The
 perturbation in every "steering + variation" row, in the noise-colour result, in
 the 8B transfer and in the frontier was drawn in a basis estimated from 16 or 32
