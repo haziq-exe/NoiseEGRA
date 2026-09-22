@@ -934,3 +934,30 @@ spends less of its effect on derailing the story. Several of these arms open
 some stories in lower case (rotary 9 of 20, head temperature 5, rotation 4),
 which the scorer counts as a broken format rule, not a broken story.
 
+## On the middle-school prompt
+
+The first comparison after the prompt fix: middle-school instruction and
+middle-school steering pairs where they exist, 30 stories an arm, pooled at 28,
+differences from nucleus sampling (plot 17.6 and wording 8.4 over 40 words, 16.4
+and 4.7 over 100; 2.55 rules broken; 29 of 30 coherent). Noise at 1.0 throughout.
+
+| | Coherent | Rules broken | Plot 40 | Wording 40 | Plot 100 | Wording 100 |
+|---|---|---|---|---|---|---|
+| Untouched, T=1.0 | 30/30 | 2.57 | -1.4 [-2.0, -0.8] | -2.2 [-3.2, -1.4] | -1.2 [-1.7, -0.8] | -0.8 [-1.3, -0.4] |
+| Steering only | 29/30 | 1.76 | -1.1 [-1.7, -0.6] | -2.0 [-3.0, -1.2] | -1.1 [-1.7, -0.5] | -1.3 [-1.8, -0.8] |
+| Residual offset | 30/30 | 2.13 | +0.1 [-0.3, +0.5] | -1.3 [-2.3, -0.4] | +0.4 [-0.1, +0.8] | -0.3 [-0.8, +0.2] |
+| Rotation | 29/30 | 1.76 | -0.3 [-0.8, +0.2] | -1.0 [-1.9, +0.0] | +0.3 [-0.2, +0.8] | -0.8 [-1.3, -0.3] |
+| MLP feature dropout | 28/30 | 2.11 | +0.0 [-0.5, +0.4] | -0.5 [-1.4, +0.4] | -0.1 [-0.6, +0.4] | -0.3 [-0.8, +0.2] |
+| Prompt value noise | 28/30 | 1.71 | +0.2 [-0.1, +0.6] | -1.3 [-2.1, -0.4] | +0.2 [-0.2, +0.6] | -0.2 [-0.8, +0.3] |
+
+The register is what the task asks for now ("The door slams shut behind him,
+sending a jolt through the room"), and nucleus sampling's lead in variety is far
+smaller than on the children's prompt. Every noise arm ties it on what happens,
+MLP dropout ties it on wording even over the opening, and every noise arm breaks
+fewer rules -- rotation and value noise as few as the steering alone. A new
+failure appears under noise: echoing the instruction back ("Aim for roughly 150
+words -- long enough for something to happen in it"), counted as not a story.
+
+Running: the four noise sites at 1.5x and 2x, and rotation and MLP dropout with a
+fresh draw per sentence at 1.0.
+
