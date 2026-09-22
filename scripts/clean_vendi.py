@@ -105,9 +105,17 @@ def main() -> None:
         emb = np.asarray(scorer.encode(kept, truncate=args.truncate_words))
         keep_mask, sims = (similarity_outliers(emb, args.trim_z) if args.trim_z > 0
                            else (np.ones(len(emb), bool), np.zeros(len(emb))))
-        conds.append(dict(name=label_run(p.stem).text, n=len(texts), kept=len(kept),
+        conds.append(dict(name=label_run(p.stem).text, rid=p.stem, n=len(texts), kept=len(kept),
                           emb=emb, keep=keep_mask, sims=sims, why=why))
         print(f"  scored {p.stem[-46:]}", flush=True)
+
+    # Two conditions the describer cannot tell apart -- it does not know every
+    # mechanism -- would share a row name and overwrite each other's saved
+    # embeddings. Where names collide, the end of the run id goes into the name.
+    names = [c["name"] for c in conds]
+    for c in conds:
+        if names.count(c["name"]) > 1:
+            c["name"] = f"{c['name'][:28]} | {c['rid'][-26:]}"
 
     if not conds:
         raise SystemExit("nothing to score")
@@ -145,7 +153,7 @@ def main() -> None:
     out = Path(args.out_dir or (d / "CLEAN_VENDI"))
     out.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(out / "embeddings.npz",
-                        **{c["name"][:40]: c["emb"] for c in conds})
+                        **{c["rid"]: c["emb"] for c in conds})
     print(f"\nembeddings saved to {out / 'embeddings.npz'}")
 
 
