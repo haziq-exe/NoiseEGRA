@@ -1,5 +1,5 @@
 {
- "_readme": "Contrast pairs for the whole-story rules on the middle-school task. Each direction comes from the middle-school pair file where that file has it -- present tense, register, dialogue, naming -- and otherwise from the children's file: both_genders, simile, distinct_sentences, no_heading, in_story and closure have no middle-school pairs yet. Those properties depend little on register (a comparison drawn with 'like' is one at any reading age), but their pairs are written at a young child's sentence length, and writing middle-school versions would remove the mismatch.",
+ "_readme": "Contrast pairs for the whole-story rules on the middle-school task. Each direction comes from the middle-school pair file where it has one -- present tense, register, dialogue, naming, repeated sentences -- and otherwise from the children's file. Four of those are already written at middle-school sentence length in that file (both_genders, simile, no_heading, in_story: sentences of about fourteen to seventeen words, two of them framed around middle-school readers); closure is the one still in the children's register.",
  "constraints": {
   "present_tense": {
    "targets": "present_tense",
@@ -390,66 +390,67 @@
    ]
   },
   "distinct_sentences": {
+   "targets": "distinct_sentences",
    "pairs": [
     {
-     "prefix": "The class waits.",
-     "positive": "Mr Ali is late. Someone opens a window. A paper plane crosses the room and lands.",
-     "negative": "Mr Ali is late. Someone opens a window. Mr Ali is late. A paper plane lands badly."
+     "prefix": "The bus is late again.",
+     "positive": "Jonah checks the schedule taped inside the shelter while the rain drums on its roof. A delivery van swings wide around the corner and splashes the puddle across his shoes. The girl beside him sighs, pockets her phone, and starts walking toward the next stop.",
+     "negative": "Jonah checks the schedule taped inside the shelter while the rain drums on its roof. A delivery van swings wide around the corner and splashes the puddle across his shoes. Jonah checks the schedule taped inside the shelter while the rain drums on its roof."
     },
     {
-     "prefix": "The tide goes out.",
-     "positive": "Weed lies flat on the rocks. Crabs move under it. The boats tilt where they were.",
-     "negative": "The boats tilt where they were. Crabs move under it. The boats tilt where they were."
+     "prefix": "The science fair opens at noon.",
+     "positive": "Priya straightens the poster that keeps sliding off the board every time someone walks past. A judge stops at the next table and frowns at a volcano that refuses to erupt. Her partner finally arrives with the extension cord, out of breath and grinning an apology.",
+     "negative": "Priya straightens the poster that keeps sliding off the board every time someone walks past. A judge stops at the next table and frowns at a volcano that refuses to erupt. Priya straightens the poster that keeps sliding off the board every time someone walks past."
     },
     {
-     "prefix": "She cannot sleep.",
-     "positive": "The pipes knock. A car turns in the road below. Her alarm is set for six.",
-     "negative": "The pipes knock. A car turns in the road below. The pipes knock. It is set."
+     "prefix": "The power goes out during the storm.",
+     "positive": "The refrigerator stops humming all at once, and the kitchen fills with a strange quiet. Marcus feels his way to the drawer beneath the sink and finds the old flashlight. Outside, a branch cracks loudly and lands across the fence his father just repaired.",
+     "negative": "The refrigerator stops humming all at once, and the kitchen fills with a strange quiet. Marcus feels his way to the drawer beneath the sink and finds the old flashlight. The refrigerator stops humming all at once, and the kitchen fills with a strange quiet."
     },
     {
-     "prefix": "The cake is ready.",
-     "positive": "Steam lifts off the top. Nadia burns two fingers. Nobody waits for it to cool.",
-     "negative": "Steam lifts off the top. Nobody waits for it. Steam lifts off the top. Nadia burns."
+     "prefix": "Tryouts begin on Monday.",
+     "positive": "Lena practices her free throws in the driveway until the streetlights flicker on above her. Her brother sits on the porch steps and counts every miss out loud, just to annoy her. The ball finally drops through the rim twice in a row, and she refuses to look over.",
+     "negative": "Lena practices her free throws in the driveway until the streetlights flicker on above her. Her brother sits on the porch steps and counts every miss out loud, just to annoy her. Lena practices her free throws in the driveway until the streetlights flicker on above her."
     },
     {
-     "prefix": "The match is close.",
-     "positive": "Two minutes are left. The keeper is limping. Someone on the touchline has stopped watching.",
-     "negative": "Two minutes are left. The keeper is limping. Two minutes are left. Someone stopped watching."
+     "prefix": "The museum is almost empty.",
+     "positive": "A guard leans against the marble wall and watches the clock above the exit sign. Dev stops in front of a painting of a burning ship and reads the small card twice. Somewhere down the long gallery a heavy door swings shut with a hollow, echoing thud.",
+     "negative": "A guard leans against the marble wall and watches the clock above the exit sign. Dev stops in front of a painting of a burning ship and reads the small card twice. A guard leans against the marble wall and watches the clock above the exit sign."
     },
     {
-     "prefix": "They miss the turn.",
-     "positive": "The lane narrows. Hedges scrape both mirrors. Dad refuses to admit he has gone wrong.",
-     "negative": "The lane narrows. Dad refuses to admit it. The lane narrows. Hedges scrape both mirrors."
+     "prefix": "The last bell rings.",
+     "positive": "Chairs scrape across the floor as everyone reaches for their bags at the same moment. Ms. Ortiz writes the homework on the board anyway, underlining the due date twice. Nobody copies it down except Sam, who is already worried about the test on Friday.",
+     "negative": "Chairs scrape across the floor as everyone reaches for their bags at the same moment. Ms. Ortiz writes the homework on the board anyway, underlining the due date twice. Chairs scrape across the floor as everyone reaches for their bags at the same moment."
     },
     {
-     "prefix": "The shop is empty.",
-     "positive": "Shelves stand half stocked. A radio plays to nobody. The till drawer hangs open.",
-     "negative": "A radio plays to nobody. Shelves stand stocked. A radio plays to nobody. It hangs."
+     "prefix": "The campfire burns low.",
+     "positive": "Ava pokes the coals with a long stick until a few bright sparks drift upward. An owl calls from somewhere past the canoes pulled up on the rocky shore. Her cousin pretends he is not afraid of the dark, but he stays close to her.",
+     "negative": "Ava pokes the coals with a long stick until a few bright sparks drift upward. An owl calls from somewhere past the canoes pulled up on the rocky shore. Ava pokes the coals with a long stick until a few bright sparks drift upward."
     },
     {
-     "prefix": "Snow starts falling.",
-     "positive": "It settles on the wall first. The road stays black for an hour. Then it goes.",
-     "negative": "It settles on the wall first. Then the road goes. It settles on the wall first."
+     "prefix": "The train stops between stations.",
+     "positive": "The lights flicker overhead and a baby starts to cry two seats away from Omar. He presses his forehead against the cold window and watches the tunnel wall stay still. A tired voice on the speaker apologizes for the delay and promises they will move soon.",
+     "negative": "The lights flicker overhead and a baby starts to cry two seats away from Omar. He presses his forehead against the cold window and watches the tunnel wall stay still. The lights flicker overhead and a baby starts to cry two seats away from Omar."
     },
     {
-     "prefix": "He forgets the words.",
-     "positive": "The hall is silent. His sheet is somewhere under the piano. He starts again from the top.",
-     "negative": "The hall is silent. He starts again. The hall is silent. His sheet is under the piano."
+     "prefix": "The garden has gone wild.",
+     "positive": "Tomato vines have climbed halfway up the shed door since anyone last came out here. Nora pulls weeds on her knees while her grandfather points at them with his cane. A fat bee circles the brim of her hat twice and then drifts off toward the roses.",
+     "negative": "Tomato vines have climbed halfway up the shed door since anyone last came out here. Nora pulls weeds on her knees while her grandfather points at them with his cane. Tomato vines have climbed halfway up the shed door since anyone last came out here."
     },
     {
-     "prefix": "The lift stops.",
-     "positive": "The light flickers once. Farah presses every button. A voice asks if anyone is inside.",
-     "negative": "The light flickers once. A voice asks. The light flickers once. Farah presses every button."
+     "prefix": "The debate team loses the first round.",
+     "positive": "Eli stuffs his note cards into his backpack without looking at any of them again. Their coach buys everyone pretzels from the vending machine and tells them to breathe. The next round starts in twenty minutes, and the other school already looks confident.",
+     "negative": "Eli stuffs his note cards into his backpack without looking at any of them again. Their coach buys everyone pretzels from the vending machine and tells them to breathe. Eli stuffs his note cards into his backpack without looking at any of them again."
     },
     {
-     "prefix": "The fox comes back.",
-     "positive": "It crosses the lawn slowly. The bin lid is already off. Nobody gets up to chase it.",
-     "negative": "It crosses the lawn slowly. Nobody chases it now. It crosses the lawn slowly. The lid is off."
+     "prefix": "Snow closes the roads.",
+     "positive": "The plow scrapes past the house twice before anyone in the family is even awake. Mia builds a low wall of snow along the edge of the driveway with a dustpan. Her dog keeps leaping at the falling flakes and snapping at them as they melt.",
+     "negative": "The plow scrapes past the house twice before anyone in the family is even awake. Mia builds a low wall of snow along the edge of the driveway with a dustpan. The plow scrapes past the house twice before anyone in the family is even awake."
     },
     {
-     "prefix": "They light a candle.",
-     "positive": "Wax runs onto the saucer. The room shrinks to one corner. Outside, the wind keeps on.",
-     "negative": "Wax runs onto the saucer. Outside the wind keeps on. Wax runs onto the saucer."
+     "prefix": "The school play opens tonight.",
+     "positive": "Theo repeats his first line under his breath while pacing the empty hallway outside. Someone backstage drops a whole box of paper flowers, and they scatter across the stage. The curtain stirs slightly as the audience begins to fill the rows of folding chairs.",
+     "negative": "Theo repeats his first line under his breath while pacing the empty hallway outside. Someone backstage drops a whole box of paper flowers, and they scatter across the stage. Theo repeats his first line under his breath while pacing the empty hallway outside."
     }
    ]
   },
