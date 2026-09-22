@@ -304,7 +304,7 @@ def main() -> None:
                              "ablate", "controls", "tame", "fsc", "core4", "combine", "dose", "siting", "dropone", "prefill", "asymmetric", "boundary", "bands", "whilewriting", "gatedwrite", "promptbudget", "opening", "framing", "final", "weighted", "quieten", "eventvary", "literature", "withdecoder", "vstopp", "pertoken", "wander", "varysize",
                              "amplify", "constdose", "spread", "frontier",
                              "window", "decay", "core", "ortho", "alpha", "gate",
-                             "beta", "loo", "colour", "colourfront", "wholefive", "wholeloop", "randomfisher", "randomvariants", "randomnext", "randombase", "randomfixed", "randomshadow", "randomloop", "randomsplit", "randomfront", "randomprompt", "archscreen", "all"])
+                             "beta", "loo", "colour", "colourfront", "wholefive", "wholeloop", "randomfisher", "randomvariants", "randomnext", "randombase", "randomfixed", "randomshadow", "randomloop", "randomsplit", "randomfront", "randomprompt", "archscreen", "headline", "all"])
     ap.add_argument("--task", default="generic", choices=["generic", "scenario"],
                     help="'generic' is the published design: one instruction with no "
                          "scenario, many requirements, and every story in one group, so "
@@ -675,6 +675,13 @@ def main() -> None:
     ap.add_argument("--secured-boost", type=float, default=1.0,
                     help="suite 'randomloop': how much the noise grows once every "
                          "rule that stays met is met -- 1.0 doubles it")
+    ap.add_argument("--fixed-lengths", type=float, nargs="+", default=[14.83, 18.0],
+                    help="suite 'headline': the fixed noise lengths; the first also "
+                         "gets the prompt at 1.5x and a start at 1.5x")
+    ap.add_argument("--online-start", type=float, default=0.10,
+                    help="suite 'headline': the length the noise sized while "
+                         "writing starts from, as a fraction of the residual "
+                         "stream's norm")
     ap.add_argument("--fixed-length", type=float, default=14.83,
                     help="suite 'randomfixed': the one offset length every story "
                          "gets -- by default the largest the output-based sizing "

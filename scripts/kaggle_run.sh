@@ -16,6 +16,9 @@
 # any time, so results are readable as they are produced rather than only at the
 # end.
 #
+# --score judges every arm's stories with NoveltyBench's classifier at the end,
+# on the same GPUs (scripts/score_novelty.py), so the run comes back scored.
+#
 # --profile selects which account to run on, for a project with more than one
 # person's Kaggle account: credentials live in ~/.kaggle/credentials-<name>.json
 # and that file is used instead of the default.
@@ -30,6 +33,7 @@ while :; do
     --profile) PROFILE="$2"; shift 2 ;;
     --no-gpu) NOGPU="--no-gpu"; shift ;;
     --shards)  SHARDS="$2";  shift 2 ;;
+    --score)   SCORE="--then-score"; shift ;;
     --) shift; break ;;
     *) break ;;
   esac
@@ -60,7 +64,7 @@ LIVE="/tmp/${NAME}.live"
 python scripts/run_english_experiment.py $ARGS --dry-run || { echo "ARGS REJECTED"; exit 1; }
 
 if [ "$SHARDS" -gt 1 ]; then
-  RUNCMD="scripts/run_sharded.py {OUT} $SHARDS -- $ARGS"
+  RUNCMD="scripts/run_sharded.py {OUT} $SHARDS ${SCORE:-} -- $ARGS"
 else
   RUNCMD="scripts/run_english_experiment.py $ARGS"
 fi

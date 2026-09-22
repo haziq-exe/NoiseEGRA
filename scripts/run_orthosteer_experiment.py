@@ -122,6 +122,7 @@ def make_plan(
     offset_random_rank=None,
     offset_envelope_steps=0,
     shadow_protect=False,
+    offset_online=0.0,
     offset_secured_boost=0.0,
     steer_split_concentration=0.0,
     offset_front_gain=1.0,
@@ -221,6 +222,7 @@ def make_plan(
                             if offset_random_rank is None else offset_random_rank),
         offset_envelope_steps=offset_envelope_steps,
         shadow_protect=shadow_protect,
+        offset_online=offset_online,
         offset_secured_boost=offset_secured_boost,
         steer_split_concentration=steer_split_concentration,
         offset_front_gain=offset_front_gain,
@@ -2418,6 +2420,62 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         return [arm(g, taper=fade), arm(g, shadow=True), arm(1.0 + (g - 1.0) / 2)], (
             f"the prompt's noise at {g:g}x fading to {fade:g} of that by its end; "
             f"at {g:g}x with the shadow; and at {1.0 + (g - 1.0) / 2:g}x plain")
+
+    if name == "headline":
+        # Choosing the headline method: two ways to size the noise with no
+        # calibration phase before each story, against the method they would
+        # replace, all with the prompt's noise raised where that helped.
+        #   - sized before the story (the Fisher bisection), prompt at 1.5x;
+        #   - sized while the story is written (noiseegra.online_calibration),
+        #     from a starting length of a tenth of the stream's norm, prompt at
+        #     1.5x that start;
+        #   - one fixed length for every story: 14.83 (the largest the sizing
+        #     ever chose) and larger, and 14.83 with the two additions that
+        #     helped the sized noise -- the prompt at 1.5x, and the noise
+        #     starting at 1.5x and falling back over the first 40 tokens.
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        b = float(getattr(args, "steer_budget", None) or 2.5)
+        keep = int((getattr(args, "tail_sweep", None) or [8])[0])
+        cn = float((getattr(args, "noise_beta_sweep", None) or [2.0])[0])
+        rank = int(getattr(args, "offset_random_rank", 64) or 64)
+        span = int(getattr(args, "front_tokens", 40) or 40)
+        lengths = [float(x) for x in (getattr(args, "fixed_lengths", None) or [14.83, 18.0])]
+        start = float(getattr(args, "online_start", 0.10) or 0.10)
+        vecs = getattr(vectors, "vectors", vectors)
+        dim = int(next(iter(next(iter(vecs.values())).values())).numel())
+        norm = float(rms_scale) * math.sqrt(dim)
+        flat = {n: 1.0 for n in names}
+
+        def arm(sizing, *, length=None, prompt_gain=1.0, front=1.0):
+            kw = dict(beta=flat, steer_budget=b, offset_mode="orth",
+                      offset_basis=None, offset_basis_kind="random",
+                      offset_random_rank=rank, steer_prefill=True,
+                      prompt_tail_clear=keep, offset_draw_shape="sphere",
+                      offset_prefill=True, offset_decode=True, noise_beta=cn,
+                      offset_prefill_gain=prompt_gain)
+            if front != 1.0:
+                kw.update(offset_envelope="front", offset_envelope_steps=span,
+                          offset_front_gain=front)
+            if sizing == "before":
+                kw.update(offset_gamma=1.0, offset_norm="fisher")
+            elif sizing == "while":
+                kw.update(offset_gamma=start, offset_norm="energy", offset_online=1.0)
+            else:
+                kw.update(offset_gamma=length / norm, offset_norm="energy")
+            return {"plan": make_plan(**kw, **quiet, **base)}
+
+        # The new arm first: if it fails on the real model, the run shows it in
+        # its first minutes rather than after the rest have spent their share.
+        items = [arm("while", prompt_gain=1.5), arm("before", prompt_gain=1.5)]
+        items += [arm("fixed", length=x) for x in lengths]
+        items += [arm("fixed", length=lengths[0], prompt_gain=1.5),
+                  arm("fixed", length=lengths[0], front=1.5)]
+        return items, (
+            "the noise sized before each story and while it is written (prompt at "
+            f"1.5x), and fixed at {', '.join(f'{x:g}' for x in lengths)}, with "
+            f"{lengths[0]:g} also given the prompt at 1.5x and a start at 1.5x "
+            f"falling back over {span} tokens")
 
     if name == "archscreen":
         # Random noise at different places in the transformer, each sized to move

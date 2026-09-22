@@ -519,6 +519,16 @@ class SteeringPlan:
     # A multiple of the offset applied to the prompt alone. 1 leaves the prompt
     # at the calibrated size.
     offset_prefill_gain: float = 1.0
+    # Size the noise while the story is written instead of before it (see
+    # noiseegra.online_calibration). The value is the target, in the Fisher
+    # calibration's units: the noise moves the next-token prediction this many
+    # times as far as top-p sampling at high temperature would at the same
+    # step, on average over the story. 0 leaves it off. The prompt's noise is
+    # written before the first measurement, so it keeps the starting length.
+    offset_online: float = 0.0
+    # The multiple of the starting length the controller has set for the next
+    # decode step. Reset to 1 for every story.
+    online_gain: float = 1.0
     # How the displacement's size runs over the story: "flat", "decay" (large
     # at the start, fading), or "rise" (small at the start, growing). The
     # register failures this project measures come from displacement early on,
@@ -951,6 +961,7 @@ class SteeringPlan:
         offset_scale: Optional[Mapping[int, torch.Tensor]] = None,
         offset_draw_shape: str = "sphere",
         offset_random_rank: int = 0,
+        offset_online: float = 0.0,
         shadow_protect: bool = False,
         steer_split_concentration: float = 0.0,
         arch_mechanism: str = "",
@@ -1168,6 +1179,7 @@ class SteeringPlan:
             offset_decode_steps=int(offset_decode_steps),
             offset_draw_shape=str(offset_draw_shape),
             offset_random_rank=int(offset_random_rank or 0),
+            offset_online=float(offset_online or 0.0),
             shadow_protect=bool(shadow_protect),
             steer_split_concentration=float(steer_split_concentration or 0.0),
             arch_mechanism=str(arch_mechanism or ""),
@@ -1467,6 +1479,9 @@ class SteeringPlan:
         # A fresh story restarts the walk, so one story's wandering aim is not
         # inherited by the next.
         self._jitter_step = -1
+        # And the size its noise is written at: an online controller starts
+        # every story from the starting length, not from where the last ended.
+        self.online_gain = 1.0
         if self.offset_mode == "none" or self.offset_gamma <= 0:
             for lp in self.layer_plans.values():
                 lp.offset = None
@@ -1672,7 +1687,11 @@ class SteeringPlan:
         if (with_offset and self.offset_decode and lp.offset is not None
                 and (not self.offset_layers or layer in self.offset_layers)
                 and (self.offset_decode_steps <= 0 or t < self.offset_decode_steps)):
-            off = lp.offset_at(t, self.envelope_at(t))
+            # The online controller's multiple of the starting length, 1 when
+            # the noise is sized before the story or not at all.
+            gain = getattr(self, "online_gain", 1.0)
+            gain = 1.0 if gain is None else float(gain)
+            off = lp.offset_at(t, self.envelope_at(t) * gain)
             if off is not None:
                 delta = off if delta is None else delta + off
 
@@ -1922,6 +1941,7 @@ class SteeringPlan:
             "noise_beta": self.noise_beta,
             "noise_fmin_cycles": self.noise_fmin_cycles,
             "offset_envelope": self.offset_envelope,
+            "offset_online": self.offset_online,
             "offset_decode": self.offset_decode,
             "amplify_lambda": self.amplify_lambda,
             "amplify_prefill": self.amplify_prefill,

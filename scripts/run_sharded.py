@@ -44,6 +44,11 @@ def main() -> None:
     if len(argv) < 2:
         raise SystemExit("usage: run_sharded.py <out-dir> <shards> -- <runner args...>")
     out, shards, rest = argv[0], int(argv[1]), argv[2:]
+    # --then-score: judge every arm's stories with NoveltyBench's classifier once
+    # the shards are merged, on the GPUs the run already has.
+    then_score = bool(rest) and rest[0] == "--then-score"
+    if then_score:
+        rest = rest[1:]
     if rest and rest[0] == "--":
         rest = rest[1:]
 
@@ -75,6 +80,14 @@ def main() -> None:
 
     merge(Path(out))
     print(f"=== {shards} shard(s) finished, exit codes {codes} ===", flush=True)
+    if then_score:
+        # A scoring failure costs the scores, never the stories: they are merged
+        # and checkpointed above, and can be judged again anywhere.
+        print("=== judging the stories (NoveltyBench classifier) ===", flush=True)
+        rc = subprocess.run([sys.executable, "-u", str(ROOT / "scripts" / "score_novelty.py"),
+                             out]).returncode
+        if rc:
+            print(f"=== judging failed (exit {rc}); the stories are unaffected ===", flush=True)
     sys.exit(max(codes) if codes else 0)
 
 

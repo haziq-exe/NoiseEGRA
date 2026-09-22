@@ -875,10 +875,15 @@ class EGRA:
                   flush=True)
 
         # A shadow copy of the story: a second row with the same words and the
-        # same steering but no perturbation, against which the story is held
-        # level along the protected directions at every steered layer. Set up
-        # after the sizing above, which measures on one row.
-        shadow = bool(getattr(plan, "shadow_protect", False)) and (
+        # same steering but no perturbation. With shadow_protect the story is
+        # held level with it along the protected directions at every steered
+        # layer; with offset_online it is only measured against, to size the
+        # noise while the story is written. Set up after the sizing above, which
+        # measures on one row.
+        protect = bool(getattr(plan, "shadow_protect", False))
+        online = (float(getattr(plan, "offset_online", 0.0) or 0.0) > 0
+                  and any(lp.offset is not None for lp in plan.layer_plans.values()))
+        shadow = (protect or online) and (
             float(getattr(plan, "offset_gamma", 0.0) or 0.0) > 0
             or float(getattr(plan, "noise_alpha", 0.0) or 0.0) > 0)
         if shadow:
@@ -943,6 +948,7 @@ class EGRA:
             # recorder added below is exactly such a reference, and it took a
             # Kaggle run to find out.
             processors = LogitsProcessorList(probes)
+        sizer = None
 
         try:
             def model_pre_hook(module, inp):
@@ -1161,8 +1167,9 @@ class EGRA:
                         # protected directions. The difference between the two
                         # rows is everything the perturbation has done so far,
                         # including what earlier layers carried back into these
-                        # directions; only that part is removed.
-                        prot = plan.layer_plans[layer_idx].protect
+                        # directions; only that part is removed. A shadow that
+                        # is there only to measure leaves the story alone.
+                        prot = plan.layer_plans[layer_idx].protect if protect else None
                         if prot is not None:
                             prot = prot.to(device=target.device, dtype=torch.float32)
                             diff = (target[0, rows, :] - target[1, rows, :]).float()
@@ -1210,6 +1217,12 @@ class EGRA:
                 from .arch_noise import SentenceCounter
                 processors = LogitsProcessorList(
                     [*(processors or []), SentenceCounter(self.tokenizer, arch)])
+            if online and shadow:
+                # First in the list, so it reads the model's own scores before
+                # anything else has touched them.
+                from .online_calibration import OnlineSizer
+                sizer = OnlineSizer(plan, float(plan.offset_online))
+                processors = LogitsProcessorList([sizer, *(processors or [])])
             if processors is not None:
                 gen_kwargs["logits_processor"] = processors
             stopper = self._word_budget_stopper(inputs["input_ids"].shape[-1], max_words)
@@ -1262,8 +1275,22 @@ class EGRA:
             plan.shadow_drift = int(getattr(plan, "shadow_drift", 0) or 0) + drift
             if drift:
                 print(f"  [shadow] the shadow copy left the story at {drift} of "
-                      f"{generated_ids.numel()} positions -- its protection was "
-                      "measured against the wrong text", flush=True)
+                      f"{generated_ids.numel()} positions -- what it protected or "
+                      "measured was measured against the wrong text", flush=True)
+        if sizer is not None:
+            got = sizer.summary()
+            start = next((lp.offset_length for lp in plan.layer_plans.values()
+                          if lp.offset_length is not None), None)
+            got["start_length"] = float(start) if start is not None else math.nan
+            if getattr(plan, "online_log", None) is None:
+                plan.online_log = []
+            plan.online_log.append(got)
+            if "final_gain" in got:
+                print(f"  [online] length {got['start_length']:.2f} -> "
+                      f"{got['start_length'] * got['final_gain']:.2f} "
+                      f"(settled at {got['late_gain']:.2f}x), moved the predictions "
+                      f"{got['achieved']:.2f} nucleus-units over the story "
+                      f"(asked {float(plan.offset_online):.2f})", flush=True)
         if gate_threshold > 0 and entropy_state["steps"]:
             self.last_gate_rate = entropy_state["open"] / entropy_state["steps"]
         else:
