@@ -961,3 +961,78 @@ words -- long enough for something to happen in it"), counted as not a story.
 Running: the four noise sites at 1.5x and 2x, and rotation and MLP dropout with a
 fresh draw per sentence at 1.0.
 
+## Every random-noise result, against the untouched model
+
+Every method compared with the untouched model on the prompt it ran on.
+Variety is the Vendi score over the first 40 words of coherent stories, with a
+95% interval from subsampling; an interval spanning zero is a tie. Unless a row
+says otherwise, "steering" is the eight rule directions at a constant total
+push of 2.5, and "random noise" is drawn fresh for every story in a random
+64-direction subspace kept clear of the rule directions, drifting slowly over
+the story, and sized so it moves the next-token distribution a set Fisher-Rao
+distance -- 1.0 is as far as nucleus sampling at temperature 1.8 moves it.
+Nothing is learned from the model's outputs except in the two rows marked as
+using pre-generated stories.
+
+### Middle-school prompt (30 stories an arm, pooled at 28)
+
+| Method | Prompt | Coherent | Rules broken (of 8) | Plot variety vs untouched | Wording variety vs untouched |
+|---|---|---|---|---|---|
+| Untouched model, temperature 1.0 | Middle school | 30/30 | 2.57 | 16.2 (baseline) | 6.2 (baseline) |
+| Nucleus sampling, temperature 1.8, top-p 0.95 | Middle school | 29/30 | 2.55 | +1.4 [+0.8, +2.0] | +2.2 [+1.2, +3.1] |
+| Rule steering only, no noise | Middle school | 29/30 | 1.76 | +0.3 [-0.5, +1.1] | +0.2 [-0.6, +1.1] |
+| Steering + random noise added to the residual stream, size 1.0 | Middle school | 30/30 | 2.13 | +1.4 [+0.8, +2.0] | +0.9 [-0.1, +1.9] |
+| Steering + random rotation of the hidden state (length kept, rule parts untouched), size 1.0 | Middle school | 29/30 | 1.76 | +1.1 [+0.4, +1.8] | +1.2 [+0.3, +2.2] |
+| **★ Steering + random MLP-unit dropout in the steered layers, size 1.0** | **Middle school** | **28/30** | **2.11** | **+1.4 [+0.8, +2.1]** | **+1.7 [+0.7, +2.6]** |
+| Steering + random noise on the prompt's cached attention values, size 1.0 | Middle school | 28/30 | 1.71 | +1.6 [+1.0, +2.3] | +0.9 [+0.0, +1.9] |
+
+### Children's prompt, generated before the prompt fix (pooled at 18)
+
+| Method | Prompt | Coherent | Rules broken (of 8) | Plot variety vs untouched | Wording variety vs untouched |
+|---|---|---|---|---|---|
+| Untouched model, temperature 1.0 | Young child (bug) | 46/50 | 2.93 | 9.8 (baseline) | 5.7 (baseline) |
+| Nucleus sampling, temperature 1.8, top-p 0.95 | Young child (bug) | 49/50 | 2.51 | +1.3 [+0.5, +2.0] | +1.5 [+0.3, +2.7] |
+| Rule steering only, no noise | Young child (bug) | 50/50 | 1.52 | +1.0 [+0.2, +1.8] | -1.0 [-2.1, +0.2] |
+| USES 16 PRE-GENERATED STORIES: steering + noise along the directions those stories differ (1.5 story-distances) | Young child (bug) | 23/25 | 2.65 | +1.8 [+1.1, +2.4] | +1.1 [-0.2, +2.2] |
+| USES 16 PRE-GENERATED STORIES: that noise alone, no steering | Young child (bug) | 17/25 | 3.47 | +1.5 [+0.8, +2.2] | +0.4 [-0.5, +1.4] |
+| Steering + random residual noise, size 0.5 | Young child (bug) | 49/50 | 1.67 | +1.2 [+0.5, +1.9] | -0.1 [-1.2, +1.0] |
+| Steering + random residual noise, size 1.0 | Young child (bug) | 50/50 | 2.28 | +1.5 [+0.8, +2.2] | +0.5 [-0.9, +1.7] |
+| Steering + random residual noise, size 1.4 | Young child (bug) | 49/50 | 2.84 | +1.6 [+0.9, +2.2] | +0.4 [-1.0, +1.6] |
+| Steering + random residual noise, size 2.0 | Young child (bug) | 15/25 | 3.33 | too few coherent to score | too few coherent to score |
+| Steering + random residual noise redrawn every token (prompt untouched), size 1.0 | Young child (bug) | 25/25 | 2.28 | +1.2 [+0.6, +1.9] | -1.0 [-2.2, +0.0] |
+| Steering + random residual noise at a fixed 0.4 x RMS (not output-sized) | Young child (bug) | 0/25 | - | too few coherent to score | too few coherent to score |
+| Same, with a cosine fade over 260 tokens | Young child (bug) | 1/25 | 3.00 | too few coherent to score | too few coherent to score |
+| Steering + per-token noise at a fixed 0.4 x RMS | Young child (bug) | 3/25 | 4.67 | too few coherent to score | too few coherent to score |
+| Same, with a cosine fade over 260 tokens | Young child (bug) | 5/25 | 4.00 | too few coherent to score | too few coherent to score |
+| Steering + random residual noise at a fixed length of 14.83 (0.149 x RMS) | Young child (bug) | 49/50 | 3.20 | +1.5 [+0.7, +2.2] | +1.0 [-0.5, +2.4] |
+| Same, with a cosine fade over 260 tokens | Young child (bug) | 49/50 | 3.08 | +1.4 [+0.7, +2.2] | +1.1 [-0.1, +2.5] |
+| Steering + random residual noise 1.0 that wanders faster within the story | Young child (bug) | 47/50 | 2.30 | +1.6 [+1.0, +2.3] | -0.2 [-1.2, +0.9] |
+| Steering + random residual noise 2.0, while writing only | Young child (bug) | 7/25 | 4.71 | too few coherent to score | too few coherent to score |
+| Steering + random residual noise 2.0, while writing only, brought in over 260 tokens | Young child (bug) | 48/50 | 1.85 | +1.0 [+0.2, +1.8] | -0.5 [-1.7, +0.5] |
+| Random residual noise 1.0 with no steering | Young child (bug) | 46/50 | 2.87 | +0.7 [-0.0, +1.5] | +1.2 [-0.1, +2.5] |
+| Steering + random residual noise 0.5 + shadow copy holding rule directions level | Young child (bug) | 48/50 | 1.73 | +1.1 [+0.4, +1.8] | -0.7 [-1.9, +0.4] |
+| Steering + random residual noise 1.0 + shadow copy | Young child (bug) | 50/50 | 2.04 | +1.3 [+0.6, +2.1] | +0.2 [-1.4, +1.4] |
+| Steering + random residual noise 1.4 + shadow copy | Young child (bug) | 50/50 | 2.82 | +1.3 [+0.6, +2.1] | +0.3 [-0.9, +1.6] |
+| Steering (closure direction included at weight 0) + random residual noise 1.0 | Young child (bug) | 49/50 | 2.45 | +1.5 [+0.8, +2.2] | +0.4 [-1.0, +1.6] |
+| Story-driven steering (pushes a rule once it is seen broken), gain 1, + noise 1.0 | Young child (bug) | 49/50 | 3.27 | +1.2 [+0.5, +1.8] | +1.1 [-0.0, +2.3] |
+| Story-driven steering, gain 2, + noise 1.0 | Young child (bug) | 49/50 | 3.31 | +1.3 [+0.7, +2.0] | +1.1 [-0.2, +2.4] |
+| Story-driven steering, gain 2, + noise 1.4 | Young child (bug) | 43/50 | 3.33 | +1.1 [+0.2, +1.9] | +1.6 [+0.2, +2.8] |
+| Story-driven steering, gain 2, + noise 1.0 rising to 2x as content rules are met | Young child (bug) | 46/50 | 3.37 | +1.3 [+0.7, +2.0] | +1.2 [-0.1, +2.4] |
+| Story-driven steering, gain 2, no noise | Young child (bug) | 50/50 | 2.86 | +0.0 [-1.0, +0.9] | -0.3 [-1.6, +0.9] |
+| Steering split across rules at random per story (Dirichlet 1) + noise 1.0 | Young child (bug) | 48/50 | 2.58 | +1.3 [+0.7, +2.0] | +0.1 [-1.1, +1.4] |
+| Steering split at random per story (Dirichlet 4) + noise 1.0 | Young child (bug) | 48/50 | 2.67 | +1.6 [+0.9, +2.2] | +0.1 [-1.2, +1.3] |
+| Steering with no share for the two rules already met + noise 1.0 | Young child (bug) | 45/50 | 2.24 | +1.1 [+0.3, +1.9] | -0.3 [-1.5, +1.0] |
+| Same, with a random split per story | Young child (bug) | 45/50 | 2.98 | +0.9 [+0.0, +1.8] | -0.3 [-1.6, +1.1] |
+| Steering + noise 1.0 starting at 1.5x and falling back over 40 tokens | Young child (bug) | 50/50 | 2.54 | +1.6 [+1.0, +2.2] | +0.1 [-1.1, +1.4] |
+| Steering + noise 1.0 starting at 2x and falling back over 40 tokens | Young child (bug) | 48/50 | 2.90 | +1.5 [+0.8, +2.2] | -0.0 [-1.3, +1.4] |
+| Same at 2x, with the prompt's noise also 2x | Young child (bug) | 36/50 | 3.50 | +1.5 [+0.8, +2.2] | +1.6 [+0.1, +3.0] |
+| Steering + noise 1.0, prompt's noise 2x fading to a quarter along the prompt | Young child (bug) | 40/50 | 2.65 | +1.7 [+1.1, +2.3] | +0.0 [-1.1, +1.3] |
+| Steering + noise 1.0, prompt's noise 2x, with the shadow copy | Young child (bug) | 37/50 | 3.43 | +1.4 [+0.7, +2.1] | +2.1 [+0.8, +3.2] |
+| Steering + noise 1.0, prompt's noise 1.5x | Young child (bug) | 49/50 | 2.63 | +1.6 [+0.8, +2.3] | +0.7 [-0.8, +2.1] |
+| Steering + random residual noise 1.0 (reference in the architecture screen) | Young child (bug) | 20/20 | 2.20 | +1.5 [+0.9, +2.2] | +0.4 [-0.6, +1.5] |
+| Steering + random rotation of the hidden state, size 1.0 | Young child (bug) | 19/20 | 1.79 | +1.7 [+1.1, +2.3] | -0.3 [-1.3, +0.6] |
+| Steering + random per-head attention temperature, size 1.0 | Young child (bug) | 18/20 | 2.44 | +1.3 [+0.6, +1.9] | -0.0 [-1.0, +0.8] |
+| Steering + random rotary-frequency jitter (only reached ~0.6) | Young child (bug) | 18/20 | 1.78 | +1.2 [+0.6, +1.9] | -1.2 [-2.2, -0.2] |
+| Steering + random noise on the prompt's cached attention values, size 1.0 | Young child (bug) | 19/20 | 1.79 | +1.5 [+0.9, +2.2] | -0.1 [-1.3, +0.9] |
+| Steering + random MLP-unit dropout, size 1.0 | Young child (bug) | 20/20 | 1.95 | +1.6 [+1.1, +2.3] | -0.3 [-1.3, +0.6] |
+
