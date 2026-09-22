@@ -97,6 +97,9 @@ EN_PAIRS = _DATA / "steering_pairs_en.json"
 PAIR_SETS = {
     "children": EN_PAIRS,
     "middle": _DATA / "steering_pairs_en_middle.json",
+    # The whole-story rules on the middle-school task: the middle-school pairs
+    # where they exist, the children's for the rest. See the file's readme.
+    "middle_whole": _DATA / "steering_pairs_en_middle_whole.json",
 }
 
 # Any suite that can draw a per-story offset from an estimated basis must be
@@ -945,6 +948,8 @@ def main() -> None:
             args.max_new_tokens = EN_MIDDLE_MAX_NEW_TOKENS
         if args.present_ratio == DEFAULT_PRESENT_RATIO:
             args.present_ratio = EN_MIDDLE_PRESENT_RATIO
+        if args.pairs == "children":
+            args.pairs = "middle_whole"
 
     if args.constraint_set == "middle":
         # The middle-school task: the same architecture with the four rules that
@@ -1221,7 +1226,10 @@ def main() -> None:
         messages = [
             wp.build_middle_messages(checker.requirements(), args.constraints,
                                      target=args.story_target)
-            if args.constraint_set == "middle" else
+            # The whole-story rules are the middle-school task's too. They were
+            # once given the children's instruction by falling through to it:
+            # every story asked for "a young child to read".
+            if args.constraint_set in ("middle", "whole") else
             wp.build_generic_messages(checker.requirements(), args.constraints)]
         stories_per_prompt = args.stories
         print(f"task: one generic instruction, {len(args.constraints)} requirements, "
