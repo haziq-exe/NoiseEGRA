@@ -949,6 +949,7 @@ class EGRA:
             # Kaggle run to find out.
             processors = LogitsProcessorList(probes)
         sizer = None
+        tilt = None
 
         try:
             def model_pre_hook(module, inp):
@@ -1223,6 +1224,13 @@ class EGRA:
                 from .online_calibration import OnlineSizer
                 sizer = OnlineSizer(plan, float(plan.offset_online))
                 processors = LogitsProcessorList([sizer, *(processors or [])])
+            if (float(getattr(plan, "output_tilt", 0.0) or 0.0) > 0
+                    and getattr(plan, "output_profile", None) is not None):
+                # Last, after everything that reads the model's own scores and
+                # before the sampler's own temperature and cut-offs.
+                from .online_calibration import RuleTilt
+                tilt = RuleTilt(plan.output_profile, float(plan.output_tilt))
+                processors = LogitsProcessorList([*(processors or []), tilt])
             if processors is not None:
                 gen_kwargs["logits_processor"] = processors
             stopper = self._word_budget_stopper(inputs["input_ids"].shape[-1], max_words)
@@ -1291,6 +1299,15 @@ class EGRA:
                       f"(settled at {got['late_gain']:.2f}x), moved the predictions "
                       f"{got['achieved']:.2f} nucleus-units over the story "
                       f"(asked {float(plan.offset_online):.2f})", flush=True)
+        if tilt is not None:
+            got = tilt.summary()
+            if getattr(plan, "tilt_log", None) is None:
+                plan.tilt_log = []
+            plan.tilt_log.append(got)
+            if got:
+                print(f"  [tilt] toward the rules at beta {got['mean_beta']:.2f} on average, "
+                      f"moving the predictions {got['achieved']:.2f} of top-p's distortion "
+                      f"(asked {float(plan.output_tilt):.2f})", flush=True)
         if gate_threshold > 0 and entropy_state["steps"]:
             self.last_gate_rate = entropy_state["open"] / entropy_state["steps"]
         else:

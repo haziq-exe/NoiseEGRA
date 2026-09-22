@@ -686,6 +686,10 @@ def main() -> None:
     ap.add_argument("--fixed-base", type=float, default=None,
                     help="suite 'headline': the fixed length given the prompt at 1.5x "
                          "and a start at 1.5x (default: the first of --fixed-lengths)")
+    ap.add_argument("--output-tilts", type=float, nargs="+", default=None,
+                    help="suite 'headline': tilt the next token toward the rules, as a "
+                         "share of top-p's own distortion at each step (0 = none); one "
+                         "set of arms per value")
     ap.add_argument("--headline-budgets", type=float, nargs="+", default=None,
                     help="suite 'headline': the rule steering's total strength, one "
                          "set of arms per value (default: --steer-budget)")
@@ -1103,6 +1107,9 @@ def main() -> None:
             components={n: {l: _t.linalg.qr(_t.randn(_dim, _rank))[0] for l in _layers}
                         for n in _all},
             positives={n: {l: _t.randn(_dim) for l in _layers} for n in args.steer_vectors},
+            # Every extraction now reads an output profile per rule, so the
+            # stand-ins carry one too; a plan that tilts toward the rules needs it.
+            output_profiles={n: _t.randn(32) for n in _all},
             shield=list(args.shield_vectors), shield_rank=int(args.shield_rank),
         )
         args.targets = _vecs.positives
@@ -1371,6 +1378,8 @@ def main() -> None:
             )
             vectors.save(vec_path)
             print(f"steering vectors: saved to {vec_path.name}")
+            for line in vectors.profile_report(get_model().tokenizer):
+                print(line)
         vectors.shield = list(args.shield_vectors)
         vectors.shield_rank = int(args.shield_rank)
         if vectors.shield:

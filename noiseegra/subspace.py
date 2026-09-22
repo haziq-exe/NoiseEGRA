@@ -529,6 +529,14 @@ class SteeringPlan:
     # The multiple of the starting length the controller has set for the next
     # decode step. Reset to 1 for every story.
     online_gain: float = 1.0
+    # Tilt the story's next-token distribution toward the tokens the rules make
+    # likelier (the constraints' output profiles, from the same forward passes
+    # as the steering directions). The value is the tilt's size at every step as
+    # a share of how far top-p sampling at high temperature would move that
+    # step's distribution, so it is measured in the same units as the noise.
+    # 0 leaves it off. See noiseegra.online_calibration.RuleTilt.
+    output_tilt: float = 0.0
+    output_profile: Optional[torch.Tensor] = None
     # How the displacement's size runs over the story: "flat", "decay" (large
     # at the start, fading), or "rise" (small at the start, growing). The
     # register failures this project measures come from displacement early on,
@@ -962,6 +970,8 @@ class SteeringPlan:
         offset_draw_shape: str = "sphere",
         offset_random_rank: int = 0,
         offset_online: float = 0.0,
+        output_tilt: float = 0.0,
+        output_profile: Optional[torch.Tensor] = None,
         shadow_protect: bool = False,
         steer_split_concentration: float = 0.0,
         arch_mechanism: str = "",
@@ -1180,6 +1190,9 @@ class SteeringPlan:
             offset_draw_shape=str(offset_draw_shape),
             offset_random_rank=int(offset_random_rank or 0),
             offset_online=float(offset_online or 0.0),
+            output_tilt=float(output_tilt or 0.0),
+            output_profile=(None if not output_tilt or output_profile is None
+                            else output_profile.detach().float().cpu()),
             shadow_protect=bool(shadow_protect),
             steer_split_concentration=float(steer_split_concentration or 0.0),
             arch_mechanism=str(arch_mechanism or ""),
@@ -1942,6 +1955,7 @@ class SteeringPlan:
             "noise_fmin_cycles": self.noise_fmin_cycles,
             "offset_envelope": self.offset_envelope,
             "offset_online": self.offset_online,
+            "output_tilt": self.output_tilt,
             "offset_decode": self.offset_decode,
             "amplify_lambda": self.amplify_lambda,
             "amplify_prefill": self.amplify_prefill,

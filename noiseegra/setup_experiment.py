@@ -311,6 +311,8 @@ def _ortho_tag_once(model_name: str, spec: ExperimentSpec, *, compress: bool) ->
         parts.append("__shadow")
     if float(getattr(plan, "offset_online", 0.0) or 0.0) > 0:
         parts.append(f"__online{_float_tag(plan.offset_online)}")
+    if float(getattr(plan, "output_tilt", 0.0) or 0.0) > 0:
+        parts.append(f"__otilt{_float_tag(plan.output_tilt)}")
     if float(getattr(plan, "offset_prefill_gain", 1.0) or 1.0) != 1.0:
         parts.append(f"__opg{_float_tag(plan.offset_prefill_gain)}")
     if float(getattr(plan, "steer_split_concentration", 0.0) or 0.0) > 0:

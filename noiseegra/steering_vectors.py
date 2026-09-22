@@ -47,6 +47,25 @@ def load_pairs(path: Optional[str | Path] = None) -> Dict[str, Dict[str, object]
     return raw["constraints"]
 
 
+def output_profile(pos: torch.Tensor, neg: torch.Tensor, *, floor: float = 1e-4,
+                   eps: float = 1e-6) -> torch.Tensor:
+    """Which next tokens rule-following text makes likelier than rule-breaking text.
+
+    ``pos`` and ``neg`` are the model's next-token distributions averaged over
+    the continuation positions of each side's texts. The profile is the
+    log-ratio of the two, a mean contrastive difference taken in the output
+    distribution rather than the residual stream: positive where the rule-
+    following side predicts a token more, negative where the rule-breaking side
+    does. Tokens neither side gives ``floor`` of probability are set to zero, so
+    the ratio of two negligible numbers cannot dominate it.
+    """
+    pos = pos.float().clamp_min(0)
+    neg = neg.float().clamp_min(0)
+    out = (pos + eps).log() - (neg + eps).log()
+    out[torch.maximum(pos, neg) < floor] = 0.0
+    return out
+
+
 # --------------------------------------------------------------------------- #
 #  Container                                                                   #
 # --------------------------------------------------------------------------- #
@@ -78,6 +97,13 @@ class SteeringVectorSet:
     # plan, and at 0.25 those failures came back in full. A region bounded in
     # many directions is not kept out of by naming one of them.
     shield_rank: int = 0
+    # Which next tokens each constraint makes likelier, read off the same forward
+    # passes the directions come from: the log-ratio of the model's average
+    # next-token distribution over the continuation positions, rule-following
+    # side against rule-breaking side, zero wherever neither side gives a token
+    # real probability. One vector over the vocabulary per constraint. See
+    # :meth:`output_profile`.
+    output_profiles: Dict[str, torch.Tensor] = field(default_factory=dict)
 
     @property
     def names(self) -> List[str]:
@@ -108,6 +134,7 @@ class SteeringVectorSet:
                 },
                 "diagnostics": self.diagnostics,
                 "meta": self.meta,
+                "output_profiles": {c: v.cpu() for c, v in self.output_profiles.items()},
             },
             p,
         )
@@ -128,7 +155,39 @@ class SteeringVectorSet:
             },
             diagnostics=blob.get("diagnostics", {}),
             meta=blob.get("meta", {}),
+            output_profiles=dict(blob.get("output_profiles", {}) or {}),
         )
+
+    def profile_report(self, tokenizer, top: int = 12, bottom: int = 8) -> List[str]:
+        """What each rule's output profile favours and disfavours, as lines.
+
+        So a profile can be read before anything is tilted by it: dialogue should
+        favour quotation marks and speech verbs, a simile "like" and "as".
+        """
+        lines = []
+        for name, prof in sorted(self.output_profiles.items()):
+            up = torch.topk(prof, min(top, prof.numel())).indices.tolist()
+            down = torch.topk(-prof, min(bottom, prof.numel())).indices.tolist()
+            show = lambda ids: " ".join(repr(tokenizer.decode([i])) for i in ids)
+            lines.append(f"  {name:18s} output profile favours {show(up)}")
+            lines.append(f"  {'':18s} and disfavours {show(down)}")
+        return lines
+
+    def output_profile(self, names: Sequence[str]) -> Optional[torch.Tensor]:
+        """One vector over the vocabulary for a set of constraints.
+
+        Each constraint's profile is scaled to unit length first, so a rule whose
+        pairs happen to differ in more tokens does not outweigh the rest, and
+        the scaled profiles are summed. ``None`` if none of them has one.
+        """
+        have = [self.output_profiles[n] for n in names if n in self.output_profiles]
+        if not have:
+            return None
+        out = torch.zeros_like(have[0], dtype=torch.float32)
+        for v in have:
+            v = v.float()
+            out += v / v.norm().clamp_min(1e-12)
+        return out
 
     def protect_extra(self, names: Sequence[str], rank: int) -> Dict[int, torch.Tensor]:
         """Per-layer matrix of extra directions to shield the noise from.
@@ -277,8 +336,13 @@ class SteeringVectorExtractor:
         count: Optional[int] = None,
         window: str = "all",
         window_tokens: int = 4,
-    ) -> Dict[int, torch.Tensor]:
+        with_output: bool = False,
+    ):
         """Mean block output over the continuation positions, for each layer.
+
+        With ``with_output`` it also returns the model's next-token distribution
+        averaged over the predictions of those same positions -- read off the
+        logits of the same forward pass, so it costs nothing extra.
 
         ``window`` chooses which of the continuation positions are averaged.
         ``all`` takes every one of them, which mixes the position where the
@@ -327,7 +391,7 @@ class SteeringVectorExtractor:
 
             ids = torch.tensor([input_ids], dtype=torch.long, device=self._device())
             self.egra.model.eval()
-            self.egra.model(input_ids=ids, use_cache=False, return_dict=True)
+            res = self.egra.model(input_ids=ids, use_cache=False, return_dict=True)
         finally:
             for h in handles:
                 try:
@@ -338,7 +402,20 @@ class SteeringVectorExtractor:
         missing = [li for li in norm_layers if li not in captured]
         if missing:
             raise RuntimeError(f"no activations captured for layers {missing}.")
-        return captured
+        if not with_output:
+            return captured
+        # The logits at position i predict token i+1, so the continuation's own
+        # tokens are predicted from start-1 onward. Same positions, same window.
+        n = len(input_ids)
+        stop = n if count is None else min(start + count, n)
+        rows = torch.arange(max(start - 1, 0), max(stop - 1, 0))
+        if window == "first":
+            rows = rows[:max(window_tokens, 1)]
+        elif window == "last":
+            rows = rows[-1:]
+        logits = res.logits[0, rows.to(res.logits.device), :].float()
+        probs = torch.softmax(logits, dim=-1).mean(dim=0).to("cpu")
+        return captured, probs
 
     # -- public ----------------------------------------------------------- #
 
@@ -371,6 +448,7 @@ class SteeringVectorExtractor:
         components: Dict[str, Dict[int, torch.Tensor]] = {}
         positives: Dict[str, Dict[int, torch.Tensor]] = {}
         diagnostics: Dict[str, Dict[int, Dict[str, float]]] = {}
+        output_profiles: Dict[str, torch.Tensor] = {}
 
         for name in names:
             if name not in constraints:
@@ -384,6 +462,7 @@ class SteeringVectorExtractor:
 
             per_item: Dict[int, List[torch.Tensor]] = {}
             pos_items: Dict[int, List[torch.Tensor]] = {}
+            out_sum: Dict[str, Optional[torch.Tensor]] = {"positive": None, "negative": None}
             act_sq: Dict[int, List[float]] = {}
             tok_deltas: List[int] = []
             word_deltas: List[int] = []
@@ -407,10 +486,11 @@ class SteeringVectorExtractor:
 
                 side: Dict[str, Dict[int, torch.Tensor]] = {}
                 for key in ("positive", "negative"):
-                    side[key] = self._segment_means(
+                    side[key], probs = self._segment_means(
                         context + prefix_ids + ids[key], start, layers, count=matched,
-                        window=window, window_tokens=window_tokens,
+                        window=window, window_tokens=window_tokens, with_output=True,
                     )
+                    out_sum[key] = probs if out_sum[key] is None else out_sum[key] + probs
 
                 for layer, pos_vec in side["positive"].items():
                     neg_vec = side["negative"][layer]
@@ -424,6 +504,8 @@ class SteeringVectorExtractor:
             components[name] = {}
             positives[name] = {}
             diagnostics[name] = {}
+            output_profiles[name] = output_profile(
+                out_sum["positive"] / len(pairs), out_sum["negative"] / len(pairs))
 
             for layer, diffs in per_item.items():
                 mat = torch.stack(diffs, dim=0)          # (n_items, dim)
@@ -463,6 +545,7 @@ class SteeringVectorExtractor:
             vectors=vectors,
             components=components,
             positives=positives,
+            output_profiles=output_profiles,
             diagnostics=diagnostics,
             meta={
                 "model": getattr(self.egra.model, "name_or_path", None)
@@ -478,4 +561,6 @@ class SteeringVectorExtractor:
         )
         if verbose:
             out.print_report()
+            for line in out.profile_report(self.egra.tokenizer):
+                print(line, flush=True)
         return out

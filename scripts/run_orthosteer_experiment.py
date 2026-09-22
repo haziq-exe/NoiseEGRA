@@ -123,6 +123,7 @@ def make_plan(
     offset_envelope_steps=0,
     shadow_protect=False,
     offset_online=0.0,
+    output_tilt=0.0,
     offset_secured_boost=0.0,
     steer_split_concentration=0.0,
     offset_front_gain=1.0,
@@ -188,6 +189,16 @@ def make_plan(
         for n in names
     ]
     extra = vectors.shielded_subspace(names, protect_rank)
+    # The output profile of the steered rules, for a plan that tilts the next
+    # token toward them. Asked for and missing is an error, not a silent no-op:
+    # a cached vector set from before profiles were read has none.
+    output_profile = None
+    if output_tilt and float(output_tilt) > 0:
+        output_profile = vectors.output_profile(
+            [n for n in names if betas.get(n, 0.0) != 0.0] or list(names))
+        if output_profile is None:
+            raise ValueError("output_tilt needs the rules' output profiles; these steering "
+                             "vectors were extracted without them -- re-extract")
     if offset_gamma_spread is None:
         offset_gamma_spread = RUN_DEFAULTS["offset_gamma_spread"]
     if offset_norm is None:
@@ -223,6 +234,8 @@ def make_plan(
         offset_envelope_steps=offset_envelope_steps,
         shadow_protect=shadow_protect,
         offset_online=offset_online,
+        output_tilt=output_tilt,
+        output_profile=output_profile,
         offset_secured_boost=offset_secured_boost,
         steer_split_concentration=steer_split_concentration,
         offset_front_gain=offset_front_gain,
@@ -2454,8 +2467,12 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         # push on those rules is the direct counter.
         budgets = [float(x) for x in (getattr(args, "headline_budgets", None) or [b])]
 
-        def arm(sizing, *, length=None, prompt_gain=1.0, front=1.0, budget=b):
-            kw = dict(beta=flat, steer_budget=budget, offset_mode="orth",
+        # The next token tilted toward the rules, as a share of top-p's own
+        # distortion at each step; 0 is no tilt. One set of arms per value.
+        tilts = [float(x) for x in (getattr(args, "output_tilts", None) or [0.0])]
+
+        def arm(sizing, *, length=None, prompt_gain=1.0, front=1.0, budget=b, tilt=0.0):
+            kw = dict(beta=flat, steer_budget=budget, output_tilt=tilt, offset_mode="orth",
                       offset_basis=None, offset_basis_kind="random",
                       offset_random_rank=rank, steer_prefill=True,
                       prompt_tail_clear=keep, offset_draw_shape="sphere",
@@ -2480,23 +2497,25 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         fbase = float(getattr(args, "fixed_base", None) or lengths[0])
         items = []
         for bb in budgets:
-            if "while" in want:
-                items.append(arm("while", prompt_gain=1.5, budget=bb))
-            if "before" in want:
-                items.append(arm("before", prompt_gain=1.5, budget=bb))
-            if "fixed" in want:
-                items += [arm("fixed", length=x, budget=bb) for x in lengths]
-            if "fixedprompt" in want:
-                items.append(arm("fixed", length=fbase, prompt_gain=1.5, budget=bb))
-            if "fixedfront" in want:
-                items.append(arm("fixed", length=fbase, front=1.5, budget=bb))
+            for tt in tilts:
+                if "while" in want:
+                    items.append(arm("while", prompt_gain=1.5, budget=bb, tilt=tt))
+                if "before" in want:
+                    items.append(arm("before", prompt_gain=1.5, budget=bb, tilt=tt))
+                if "fixed" in want:
+                    items += [arm("fixed", length=x, budget=bb, tilt=tt) for x in lengths]
+                if "fixedprompt" in want:
+                    items.append(arm("fixed", length=fbase, prompt_gain=1.5, budget=bb, tilt=tt))
+                if "fixedfront" in want:
+                    items.append(arm("fixed", length=fbase, front=1.5, budget=bb, tilt=tt))
         if not items:
             raise ValueError("suite 'headline': --headline-arms chose no arms")
         return items, (
             f"of the noise sized while written, sized before, and fixed: {', '.join(want)} "
             f"(fixed at {', '.join(f'{x:g}' for x in lengths)}; {fbase:g} with the "
             f"prompt or the start at 1.5x, falling back over {span} tokens), with the "
-            f"steering at {', '.join(f'{x:g}' for x in budgets)}")
+            f"steering at {', '.join(f'{x:g}' for x in budgets)} and the next token "
+            f"tilted toward the rules at {', '.join(f'{x:g}' for x in tilts)}")
 
     if name == "archscreen":
         # Random noise at different places in the transformer, each sized to move

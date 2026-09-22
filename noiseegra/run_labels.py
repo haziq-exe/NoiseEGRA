@@ -253,6 +253,9 @@ def label_run(run_id: str) -> RunLabel:
                 where += ", the set chosen together"
             if "__online" in rid:
                 where += ", sized while writing"
+            m = re.search(r"__otilt(\d+p?\d*)", rid)
+            if m:
+                where += f", output tilted toward the rules at {_fmt(untag_float(m.group(1)))}"
             return RunLabel(
                 f"per-story offset g={_fmt(v)} ({mode}){where}{push_txt}{site}{gate_txt}",
                 "per-story", v, rid)
