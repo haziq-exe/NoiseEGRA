@@ -60,6 +60,10 @@ RULE_TEXT = {
     "fresh_openings": "no two words begin more than 3 sentences",
     "mature_register": "sentences with some length and range",
     "story_format": "no title or heading, sentences keep their capitals",
+    "has_dialogue": "somebody speaks, inside quotation marks",
+    "one_named_character": "exactly one character is named",
+    "both_genders": "two characters, one he and one she",
+    "simile": "a comparison with 'like' or 'as ... as'",
 }
 
 
@@ -99,6 +103,12 @@ def main() -> None:
     ap.add_argument("--condition", action="append", default=[], metavar="NAME=RUN:FRAG")
     ap.add_argument("--csv", action="append", default=[], metavar="NAME=PATH")
     ap.add_argument("--embedding-vendi", action="append", default=[], metavar="NAME=VALUE")
+    ap.add_argument("--describe", action="append", default=[], metavar="NAME=TEXT",
+                    help="what the condition is, printed at the top of its sheet")
+    ap.add_argument("--source", action="append", default=[], metavar="NAME=TEXT",
+                    help="where the condition's stories came from, in place of the file path")
+    ap.add_argument("--prompt-label", action="append", default=[], metavar="NAME=TEXT",
+                    help="which instruction the condition's stories were written to")
     ap.add_argument("--constraint-set", choices=("monotone", "middle", "whole"),
                     default="monotone")
     ap.add_argument("--truncate-words", type=int, default=40)
@@ -126,6 +136,9 @@ def main() -> None:
                                   min_grade_level=args.min_grade, max_words=200)
     filt = CoherenceFilter()
     emb = dict(kv.split("=", 1) for kv in args.embedding_vendi)
+    desc = dict(kv.split("=", 1) for kv in args.describe)
+    prompt_of = dict(kv.split("=", 1) for kv in args.prompt_label)
+    source_of = dict(kv.split("=", 1) for kv in args.source)
 
     conds = []
     for spec in args.condition:
@@ -141,7 +154,8 @@ def main() -> None:
 
     HDR_FILL = PatternFill("solid", fgColor="1F3864")
     HDR_FONT = Font(bold=True, color="FFFFFF")
-    BAD = PatternFill("solid", fgColor="FCE4E4")
+    BAD = PatternFill("solid", fgColor="FFC7CE")
+    BAD_FONT = Font(bold=True, color="9C0006")
     WRAP = Alignment(wrap_text=True, vertical="top")
     TOP = Alignment(vertical="top")
 
@@ -166,7 +180,7 @@ def main() -> None:
                             words=agg["mean_word_count"],
                             uncommon=float(np.mean(uncommon_word_share(kept))))
         rows_by[name] = [
-            [i, "yes" if r.ok else "NO", "" if r.ok else r.reason, d.violations,
+            [i + 1, "yes" if r.ok else "NO", "" if r.ok else r.reason, d.violations,
              "; ".join(RULE_TEXT.get(k, k) for k in rules if not d.checks.get(k, True)),
              d.word_count, round(d.grade_level, 1), " ".join((r.text or texts[i]).split())]
             for i, (r, d) in enumerate(zip(reps, detail))]
@@ -205,22 +219,46 @@ def main() -> None:
         ws = wb.create_sheet(name[:31])
         ws["A1"] = name
         ws["A1"].font = Font(bold=True, size=14)
-        ws["A2"] = src
+        ws["A2"] = source_of.get(name, src)
         ws["A2"].font = Font(italic=True, size=10)
-        ws["A4"] = ("Rows marked NO were rejected by the coherence checks and left out of the "
-                    "scores; read them to audit the filter as well as the method.")
-        ws["A4"].alignment = WRAP
-        ws.merge_cells("A4:H4")
-        header(ws, 6, STORY_HEADS, [9, 10, 26, 13, 46, 8, 10, 125])
-        for i, row in enumerate(rows_by[name], start=7):
+        # The condition's results, before its stories.
+        v = scored[name]
+        results = [
+            ("Method", desc.get(name, name)),
+            ("Prompt", prompt_of.get(name, "")),
+            ("Stories", v["n"]),
+            ("Coherent", f'{v["kept"]} of {v["n"]} ({v["kept"]/v["n"]:.0%})'),
+            ("Rules broken", f'{v["broken"]:.2f} of {len(rules)} on average, over the coherent stories'),
+            ("Vendi score", emb.get(name, "")),
+            ("Variety of what happens", f'{v["happens"]:.1f} (all conditions pooled at {pool})'),
+            ("Variety of wording", f'{v["wording"]:.1f}'),
+            ("Reading grade", f'{v["grade"]:.1f}'),
+        ]
+        LABEL = Font(bold=True)
+        for j, (k, val) in enumerate(results, start=4):
+            ws.cell(row=j, column=1, value=k).font = LABEL
+            cell = ws.cell(row=j, column=2, value=val)
+            cell.alignment = Alignment(wrap_text=True, vertical="top")
+            ws.merge_cells(start_row=j, start_column=2, end_row=j, end_column=8)
+        note_row = 4 + len(results) + 1
+        ws.cell(row=note_row, column=1, value=(
+            "Rows shaded red were rejected by the coherence checks and left out of the "
+            "variety scores; read them to audit the filter as well as the method."))
+        ws.cell(row=note_row, column=1).alignment = WRAP
+        ws.merge_cells(start_row=note_row, start_column=1, end_row=note_row, end_column=8)
+        head_row = note_row + 2
+        header(ws, head_row, STORY_HEADS, [9, 10, 26, 13, 46, 8, 10, 125])
+        for i, row in enumerate(rows_by[name], start=head_row + 1):
             bad = row[1] == "NO"
             for c, val in enumerate(row, start=1):
                 cell = ws.cell(row=i, column=c, value=val)
                 cell.alignment = WRAP if c in (3, 5, 8) else TOP
                 if bad:
                     cell.fill = BAD
-        ws.auto_filter.ref = f"A6:H{6 + len(rows_by[name])}"
-        ws.freeze_panes = "A7"
+                    if c in (2, 3):
+                        cell.font = BAD_FONT
+        ws.auto_filter.ref = f"A{head_row}:H{head_row + len(rows_by[name])}"
+        ws.freeze_panes = f"A{head_row + 1}"
 
     wb.save(args.out)
     print(f"wrote {args.out}")
