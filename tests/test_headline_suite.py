@@ -86,6 +86,13 @@ check("with no sized-before arm and no plain 14.83",
                   and p.offset_envelope == "flat" for p in plans))
 ids = [_spec_to_run_id("Tiny", s) for s in make_specs(*[{"plan": p} for p in plans])]
 check("every arm has its own run id", len(set(ids)) == len(ids))
+plans, desc = build(headline_arms=["fixed"], fixed_lengths=[14.83], headline_budgets=[3.0, 3.5])
+check("a steering sweep builds the chosen arms at each strength",
+      len(plans) == 2 and [p.steer_budget for p in plans] == [3.0, 3.5]
+      and all(abs(length(p) - 14.83) < 1e-6 for p in plans), str([p.steer_budget for p in plans]))
+ids = [_spec_to_run_id("Tiny", s) for s in make_specs(*[{"plan": p} for p in plans])]
+check("and records the strength in each run id", len(set(ids)) == 2
+      and "bud3__" in ids[0] and "bud3p5" in ids[1], ids[0][-70:])
 try:
     build(headline_arms=[])
     check("an empty choice is refused", False)

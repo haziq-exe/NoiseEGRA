@@ -2447,8 +2447,15 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         norm = float(rms_scale) * math.sqrt(dim)
         flat = {n: 1.0 for n in names}
 
-        def arm(sizing, *, length=None, prompt_gain=1.0, front=1.0):
-            kw = dict(beta=flat, steer_budget=b, offset_mode="orth",
+        # The rule steering's total strength, one set of arms per value. The
+        # noise that varies the stories most also breaks the most rules, because
+        # it changes what the story contains (a second character, a line of
+        # speech), not because it leaks into the steered directions; a stronger
+        # push on those rules is the direct counter.
+        budgets = [float(x) for x in (getattr(args, "headline_budgets", None) or [b])]
+
+        def arm(sizing, *, length=None, prompt_gain=1.0, front=1.0, budget=b):
+            kw = dict(beta=flat, steer_budget=budget, offset_mode="orth",
                       offset_basis=None, offset_basis_kind="random",
                       offset_random_rank=rank, steer_prefill=True,
                       prompt_tail_clear=keep, offset_draw_shape="sphere",
@@ -2472,22 +2479,24 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                 if want is None else list(want))
         fbase = float(getattr(args, "fixed_base", None) or lengths[0])
         items = []
-        if "while" in want:
-            items.append(arm("while", prompt_gain=1.5))
-        if "before" in want:
-            items.append(arm("before", prompt_gain=1.5))
-        if "fixed" in want:
-            items += [arm("fixed", length=x) for x in lengths]
-        if "fixedprompt" in want:
-            items.append(arm("fixed", length=fbase, prompt_gain=1.5))
-        if "fixedfront" in want:
-            items.append(arm("fixed", length=fbase, front=1.5))
+        for bb in budgets:
+            if "while" in want:
+                items.append(arm("while", prompt_gain=1.5, budget=bb))
+            if "before" in want:
+                items.append(arm("before", prompt_gain=1.5, budget=bb))
+            if "fixed" in want:
+                items += [arm("fixed", length=x, budget=bb) for x in lengths]
+            if "fixedprompt" in want:
+                items.append(arm("fixed", length=fbase, prompt_gain=1.5, budget=bb))
+            if "fixedfront" in want:
+                items.append(arm("fixed", length=fbase, front=1.5, budget=bb))
         if not items:
             raise ValueError("suite 'headline': --headline-arms chose no arms")
         return items, (
             f"of the noise sized while written, sized before, and fixed: {', '.join(want)} "
             f"(fixed at {', '.join(f'{x:g}' for x in lengths)}; {fbase:g} with the "
-            f"prompt or the start at 1.5x, falling back over {span} tokens)")
+            f"prompt or the start at 1.5x, falling back over {span} tokens), with the "
+            f"steering at {', '.join(f'{x:g}' for x in budgets)}")
 
     if name == "archscreen":
         # Random noise at different places in the transformer, each sized to move

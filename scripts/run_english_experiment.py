@@ -686,6 +686,9 @@ def main() -> None:
     ap.add_argument("--fixed-base", type=float, default=None,
                     help="suite 'headline': the fixed length given the prompt at 1.5x "
                          "and a start at 1.5x (default: the first of --fixed-lengths)")
+    ap.add_argument("--headline-budgets", type=float, nargs="+", default=None,
+                    help="suite 'headline': the rule steering's total strength, one "
+                         "set of arms per value (default: --steer-budget)")
     ap.add_argument("--headline-arms", nargs="+",
                     choices=["while", "before", "fixed", "fixedprompt", "fixedfront"],
                     default=["while", "before", "fixed", "fixedprompt", "fixedfront"],
