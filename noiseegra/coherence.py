@@ -348,6 +348,10 @@ _LIST = re.compile(r"(^|\n)\s*(?:\d+\.|[-*\u2022])\s+\S(?:.|\n)*?"
 _SCRIPT = re.compile(r"(^|\n)\s*\*\*[A-Z][a-z]+:?\*\*\s*:?\s*(\n|\")", re.M)
 
 
+# Speech between straight or curly double quotes.
+_QUOTED = re.compile(r'"[^"\n]{0,400}"|\u201c[^\u201d\n]{0,400}\u201d')
+
+
 def is_not_a_story(text: str) -> bool:
     """True when the model answered the asker instead of telling a story.
 
@@ -359,7 +363,12 @@ def is_not_a_story(text: str) -> bool:
     a preamble, there is no story underneath it.
     """
     body = trim_lead(text)[0]
-    head = body.lstrip()[:260]
+    # The model addresses the asker in its own voice, never inside quotation
+    # marks. A character saying "You've got the ball, Jake" is a story, and the
+    # rules ask for speech, so quoted speech is taken out before looking.
+    # Without this, every story that opened on a line of dialogue containing one
+    # of these phrases counted as not a story, in every arm alike.
+    head = _QUOTED.sub(" ", body.lstrip())[:260]
     # The handover is looked for in the text as written, before the preamble
     # trimmer takes the line off: "here's a poetic description" is the evidence
     # that no story was written, and trimming it would hide that.
