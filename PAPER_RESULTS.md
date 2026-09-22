@@ -1036,3 +1036,24 @@ using pre-generated stories.
 | Steering + random noise on the prompt's cached attention values, size 1.0 | Young child (bug) | 19/20 | 1.79 | +1.5 [+0.9, +2.2] | -0.1 [-1.3, +0.9] |
 | Steering + random MLP-unit dropout, size 1.0 | Young child (bug) | 20/20 | 1.95 | +1.6 [+1.1, +2.3] | -0.3 [-1.3, +0.6] |
 
+### Re-scored after the dialogue fix (commit 5be1276)
+
+The not-a-story check counted characters' dialogue containing "you've got" as the
+model addressing the asker, and rejected real stories -- in every arm. With
+quoted speech excluded, the middle-school comparison (pooled at 29):
+
+| Method | Coherent | Rules broken | Plot vs untouched | Wording vs untouched |
+|---|---|---|---|---|
+| Untouched, T=1.0 | 30/30 | 2.57 | 16.9 (baseline) | 6.3 (baseline) |
+| Nucleus, T=1.8, top-p 0.95 | 30/30 | 2.50 | +1.5 [+0.9, +2.1] | +2.1 [+1.2, +3.0] |
+| Steering only | 30/30 | 1.80 | +0.4 [-0.3, +1.0] | +0.3 [-0.6, +1.1] |
+| Steering + residual noise 1.0 | 30/30 | 2.13 | +1.6 [+1.0, +2.2] | +1.0 [+0.1, +1.9] |
+| Steering + rotation 1.0 | 29/30 | 1.76 | +1.2 [+0.5, +1.9] | +1.3 [+0.2, +2.2] |
+| Steering + MLP dropout 1.0 | 29/30 | 2.07 | +1.5 [+0.9, +2.2] | +1.8 [+0.8, +2.7] |
+| Steering + prompt value noise 1.0 | 29/30 | 1.79 | +1.8 [+1.2, +2.5] | +1.2 [+0.1, +2.2] |
+
+Each remaining rejection is a real failure: MLP dropout's is a story that loses
+all punctuation, rotation's opens by echoing the instruction, and value noise's
+collapses into "the the the". The children's-prompt table above predates this
+fix and slightly undercounts coherence in every arm.
+
