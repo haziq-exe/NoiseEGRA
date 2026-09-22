@@ -18,6 +18,8 @@
 #
 # --score judges every arm's stories with NoveltyBench's classifier at the end,
 # on the same GPUs (scripts/score_novelty.py), so the run comes back scored.
+# --score-extra FILE does the same and also judges the earlier arms in FILE (a
+# committed JSON of stories), so the new arms come back compared with them.
 #
 # --profile selects which account to run on, for a project with more than one
 # person's Kaggle account: credentials live in ~/.kaggle/credentials-<name>.json
@@ -34,6 +36,7 @@ while :; do
     --no-gpu) NOGPU="--no-gpu"; shift ;;
     --shards)  SHARDS="$2";  shift 2 ;;
     --score)   SCORE="--then-score"; shift ;;
+    --score-extra) SCORE="--then-score --extra $2"; shift 2 ;;
     --) shift; break ;;
     *) break ;;
   esac

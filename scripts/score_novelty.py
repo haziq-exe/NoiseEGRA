@@ -64,14 +64,23 @@ def state_files(path: Path) -> list:
     return sorted(path.glob("shard*/*/state.json"))
 
 
-def arms(path: Path) -> dict:
-    """{run id: [story, ...]} in story order, every checkpoint pooled."""
+def arms(path: Path, extra: str = "") -> dict:
+    """{run id: [story, ...]} in story order, every checkpoint pooled.
+
+    ``extra`` is a JSON file of arms from earlier runs, ``{"arms": {run id:
+    [story, ...]}}``, judged alongside so the new arms have them to be compared
+    with. A run id the run itself wrote takes precedence.
+    """
     runs: dict = {}
     for f in state_files(path):
         for rid, cells in json.loads(f.read_text()).get("runs", {}).items():
             runs.setdefault(rid, {}).update(cells)
-    return {rid: [c[k] for k in sorted(c, key=lambda x: int(x.split(":")[1]))]
-            for rid, c in runs.items() if c}
+    out = {rid: [c[k] for k in sorted(c, key=lambda x: int(x.split(":")[1]))]
+           for rid, c in runs.items() if c}
+    if extra:
+        for rid, texts in json.loads(Path(extra).read_text())["arms"].items():
+            out.setdefault(rid, list(texts))
+    return out
 
 
 def coherent(texts: list) -> list:
@@ -183,8 +192,9 @@ def interval(a: np.ndarray, b: np.ndarray, seed: int = 1) -> list:
 #  Running                                                                     #
 # --------------------------------------------------------------------------- #
 
-def score(path: Path, rids: list, limit: int, subsets: int, device: str) -> dict:
-    stories = arms(path)
+def score(path: Path, rids: list, limit: int, subsets: int, device: str,
+          extra: str = "") -> dict:
+    stories = arms(path, extra)
     tok, model, torch = load_judge(device)
     out = {}
     for rid in rids:
@@ -249,9 +259,13 @@ def main() -> None:
     ap.add_argument("--subsets", type=int, default=500)
     ap.add_argument("--part", default="", help="i/n: judge every n-th arm from i (internal)")
     ap.add_argument("--device", default="")
+    ap.add_argument("--extra", default="",
+                    help="JSON of earlier arms to judge alongside: {\"arms\": {run id: [stories]}}")
     args = ap.parse_args()
     path = Path(args.path)
-    rids = sorted(arms(path))
+    if args.extra and not Path(args.extra).is_absolute():
+        args.extra = str((ROOT / args.extra) if (ROOT / args.extra).is_file() else Path(args.extra))
+    rids = sorted(arms(path, args.extra))
     if not rids:
         raise SystemExit(f"no stories under {path}")
 
@@ -260,7 +274,7 @@ def main() -> None:
     gpus = torch.cuda.device_count() if device == "cuda" else 0
     if args.part:
         i, n = (int(x) for x in args.part.split("/"))
-        judged = score(path, rids[i::n], args.limit, args.subsets, device)
+        judged = score(path, rids[i::n], args.limit, args.subsets, device, args.extra)
         (path if path.is_dir() else path.parent).joinpath(f"novelty_part{i}.json").write_text(
             json.dumps(judged))
         return
@@ -268,7 +282,8 @@ def main() -> None:
         print(f"judging {len(rids)} arms on {gpus} GPUs", flush=True)
         procs = [subprocess.Popen(
             [sys.executable, "-u", __file__, str(path), "--part", f"{i}/{gpus}",
-             "--limit", str(args.limit), "--subsets", str(args.subsets)],
+             "--limit", str(args.limit), "--subsets", str(args.subsets),
+             *(["--extra", args.extra] if args.extra else [])],
             env=dict(os.environ, CUDA_VISIBLE_DEVICES=str(i))) for i in range(gpus)]
         codes = [p.wait() for p in procs]
         judged = {}
@@ -280,7 +295,7 @@ def main() -> None:
         if any(codes):
             print(f"  some judging processes failed: exit codes {codes}", flush=True)
     else:
-        judged = score(path, rids, args.limit, args.subsets, device)
+        judged = score(path, rids, args.limit, args.subsets, device, args.extra)
     if judged:
         summarise(path, judged)
 

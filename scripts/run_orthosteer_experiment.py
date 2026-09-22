@@ -2467,15 +2467,27 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
 
         # The new arm first: if it fails on the real model, the run shows it in
         # its first minutes rather than after the rest have spent their share.
-        items = [arm("while", prompt_gain=1.5), arm("before", prompt_gain=1.5)]
-        items += [arm("fixed", length=x) for x in lengths]
-        items += [arm("fixed", length=lengths[0], prompt_gain=1.5),
-                  arm("fixed", length=lengths[0], front=1.5)]
+        want = getattr(args, "headline_arms", None)
+        want = (["while", "before", "fixed", "fixedprompt", "fixedfront"]
+                if want is None else list(want))
+        fbase = float(getattr(args, "fixed_base", None) or lengths[0])
+        items = []
+        if "while" in want:
+            items.append(arm("while", prompt_gain=1.5))
+        if "before" in want:
+            items.append(arm("before", prompt_gain=1.5))
+        if "fixed" in want:
+            items += [arm("fixed", length=x) for x in lengths]
+        if "fixedprompt" in want:
+            items.append(arm("fixed", length=fbase, prompt_gain=1.5))
+        if "fixedfront" in want:
+            items.append(arm("fixed", length=fbase, front=1.5))
+        if not items:
+            raise ValueError("suite 'headline': --headline-arms chose no arms")
         return items, (
-            "the noise sized before each story and while it is written (prompt at "
-            f"1.5x), and fixed at {', '.join(f'{x:g}' for x in lengths)}, with "
-            f"{lengths[0]:g} also given the prompt at 1.5x and a start at 1.5x "
-            f"falling back over {span} tokens")
+            f"of the noise sized while written, sized before, and fixed: {', '.join(want)} "
+            f"(fixed at {', '.join(f'{x:g}' for x in lengths)}; {fbase:g} with the "
+            f"prompt or the start at 1.5x, falling back over {span} tokens)")
 
     if name == "archscreen":
         # Random noise at different places in the transformer, each sized to move

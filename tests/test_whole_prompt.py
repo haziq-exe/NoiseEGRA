@@ -1,4 +1,4 @@
-"""The whole-story rules are asked for in the middle-school instruction.
+"""The whole-story rules are asked for in the middle-school instruction by default.
 
     python tests/test_whole_prompt.py
 
@@ -19,10 +19,16 @@ def check(name, cond, extra=""):
     print(f"  [{'PASS' if cond else 'FAIL'}] {name}{('  ' + extra) if extra else ''}")
 
 
-check("the whole set takes the middle-school instruction",
-      'if args.constraint_set in ("middle", "whole") else' in src)
-check("and the merged middle-school pairs by default",
-      'args.pairs = "middle_whole"' in src)
+check("the whole set takes the middle-school instruction by default",
+      'or (args.constraint_set == "whole" and args.whole_prompt == "middle") else' in src
+      and '"--whole-prompt", choices=["middle", "young"], default="middle"' in src)
+check("and the merged middle-school pairs with it",
+      'if args.pairs == "children" and args.whole_prompt == "middle":' in src
+      and 'args.pairs = "middle_whole"' in src)
+check("the young-child instruction is there to be asked for, with the children's pairs",
+      "wp.build_generic_messages(checker.requirements(), args.constraints)]" in src)
+check("and which one was used is pinned with the checkpoint",
+      '"whole_prompt": args.whole_prompt,' in src)
 pairs = json.load(open(ROOT / "noiseegra" / "data" / "steering_pairs_en_middle_whole.json"))
 want = ["present_tense", "mature_register", "dialogue", "named_character", "both_genders",
         "simile", "distinct_sentences", "no_heading", "in_story"]

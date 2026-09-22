@@ -46,9 +46,13 @@ def main() -> None:
     out, shards, rest = argv[0], int(argv[1]), argv[2:]
     # --then-score: judge every arm's stories with NoveltyBench's classifier once
     # the shards are merged, on the GPUs the run already has.
+    # Anything between it and "--" is passed to the scorer (e.g. --extra FILE).
     then_score = bool(rest) and rest[0] == "--then-score"
+    score_args = []
     if then_score:
         rest = rest[1:]
+        while rest and rest[0] != "--":
+            score_args.append(rest.pop(0))
     if rest and rest[0] == "--":
         rest = rest[1:]
 
@@ -85,7 +89,7 @@ def main() -> None:
         # and checkpointed above, and can be judged again anywhere.
         print("=== judging the stories (NoveltyBench classifier) ===", flush=True)
         rc = subprocess.run([sys.executable, "-u", str(ROOT / "scripts" / "score_novelty.py"),
-                             out]).returncode
+                             out, *score_args]).returncode
         if rc:
             print(f"=== judging failed (exit {rc}); the stories are unaffected ===", flush=True)
     sys.exit(max(codes) if codes else 0)

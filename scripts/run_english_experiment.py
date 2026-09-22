@@ -620,6 +620,12 @@ def main() -> None:
     ap.add_argument("--present-ratio", type=float, default=DEFAULT_PRESENT_RATIO,
                     help="share of finite verbs that must be in the present tense "
                          "for the tense requirement to count as met")
+    ap.add_argument("--whole-prompt", choices=["middle", "young"], default="middle",
+                    help="the instruction the whole-story rules are asked in: 'middle' "
+                         "(a middle-school reader) or 'young' (a young child to read, "
+                         "with the children's pairs) -- what every whole-story run "
+                         "before commit 413ebe0 used, so new arms can be set beside "
+                         "those runs' stories")
     ap.add_argument("--pairs", default="children", choices=sorted(PAIR_SETS),
                     help="which contrast-pair file the steering directions are "
                          "extracted from. 'children' is the original set, whose "
@@ -676,8 +682,16 @@ def main() -> None:
                     help="suite 'randomloop': how much the noise grows once every "
                          "rule that stays met is met -- 1.0 doubles it")
     ap.add_argument("--fixed-lengths", type=float, nargs="+", default=[14.83, 18.0],
-                    help="suite 'headline': the fixed noise lengths; the first also "
-                         "gets the prompt at 1.5x and a start at 1.5x")
+                    help="suite 'headline': the fixed noise lengths, each an arm")
+    ap.add_argument("--fixed-base", type=float, default=None,
+                    help="suite 'headline': the fixed length given the prompt at 1.5x "
+                         "and a start at 1.5x (default: the first of --fixed-lengths)")
+    ap.add_argument("--headline-arms", nargs="+",
+                    choices=["while", "before", "fixed", "fixedprompt", "fixedfront"],
+                    default=["while", "before", "fixed", "fixedprompt", "fixedfront"],
+                    help="suite 'headline': which of its arms to run -- sized while "
+                         "writing, sized before, the fixed lengths, and the base "
+                         "length with the prompt or the start at 1.5x")
     ap.add_argument("--online-start", type=float, default=0.10,
                     help="suite 'headline': the length the noise sized while "
                          "writing starts from, as a fraction of the residual "
@@ -955,7 +969,9 @@ def main() -> None:
             args.max_new_tokens = EN_MIDDLE_MAX_NEW_TOKENS
         if args.present_ratio == DEFAULT_PRESENT_RATIO:
             args.present_ratio = EN_MIDDLE_PRESENT_RATIO
-        if args.pairs == "children":
+        # The young-child instruction keeps the children's pairs, as every
+        # whole-story run before the middle-school instruction had them.
+        if args.pairs == "children" and args.whole_prompt == "middle":
             args.pairs = "middle_whole"
 
     if args.constraint_set == "middle":
@@ -1143,6 +1159,8 @@ def main() -> None:
         # pair sets give different directions, so stories from each are no more
         # comparable than stories written to different instructions.
         "pairs": args.pairs,
+        # Which instruction the whole-story rules were asked in.
+        "whole_prompt": args.whole_prompt,
         # Every threshold below is written into the requirement list the model is
         # given -- "no word begins more than N sentences" names its N in the
         # prompt. Changing one changes the instruction, so stories written before
@@ -1236,7 +1254,8 @@ def main() -> None:
             # The whole-story rules are the middle-school task's too. They were
             # once given the children's instruction by falling through to it:
             # every story asked for "a young child to read".
-            if args.constraint_set in ("middle", "whole") else
+            if args.constraint_set == "middle"
+            or (args.constraint_set == "whole" and args.whole_prompt == "middle") else
             wp.build_generic_messages(checker.requirements(), args.constraints)]
         stories_per_prompt = args.stories
         print(f"task: one generic instruction, {len(args.constraints)} requirements, "
