@@ -1131,3 +1131,102 @@ with scores at the same subsample size; the differences are comparable across.
 | Steering + random noise on the prompt's cached attention values, size 1.0 | Young child (bug) | 19/20 | 1.79 | 4.57 (8) | +0.58 [-0.11, +1.26] | -0.02 [-0.61, +0.59] |
 | Steering + random MLP-unit dropout, size 1.0 | Young child (bug) | 20/20 | 1.95 | 4.62 (8) | +0.62 [-0.04, +1.28] | +0.03 [-0.54, +0.62] |
 
+
+## The headline method: noise sized while the story is written (2026-09-23)
+
+Three Kaggle runs on one account, 50 stories per arm, Qwen3-1.7B, layers 6-13,
+sampling at temperature 1.0. Only stories the coherence checks pass are scored.
+"Same-story pairs" and "distinct of 10" are NoveltyBench's v1.0 classifier (first
+128 tokens of each story); intervals on differences come from 400 random
+half-size draws of each arm. "Lowercase drift" counts coherent stories whose
+sentences mostly lose their capitals. Rules are the eight whole-story rules.
+
+**The method.** The per-story noise (a fresh random direction in a fresh random
+64-dimensional subspace, kept off the rule directions, drifting slowly) is no
+longer sized by a bisection before each story. A noise-free copy of the story
+runs as a second batch row; after every step a controller compares how far the
+noise moved the next-token distribution with how far top-p 0.95 at T=1.8 would
+have moved it at that step, and rescales the noise for the next token so the
+two agree on average (target 1.0). The prompt's noise is written before any
+measurement: a tenth of the residual norm, times 1.5.
+
+### Middle-school prompt (run r134)
+
+| Method | Coherent | Rules broken | Same-story | Distinct of 10 | Lowercase |
+|---|---|---|---|---|---|
+| Untouched, T=1.0 | 50/50 | 2.68 | 99.7% | 1.03 | 0 |
+| Top-p 0.95, T=1.8 | 50/50 | 2.56 | 93.8% | 1.41 | 0 |
+| Steering only | 50/50 | 1.46 | 70.1% | 2.76 | 0 |
+| **Sized while writing, prompt 1.5x** | **50/50** | 2.54 | 13.9% | 7.43 | 3 |
+| Sized before each story, prompt 1.5x | 43/50 | 2.88 | 5.0% | 8.73 | 5 |
+| Fixed 14.83 | 48/50 | 3.31 | 23.3% | 6.24 | 12 |
+| Fixed 18 | 40/50 | 3.75 | 7.6% | 8.35 | 11 |
+| Fixed 14.83, prompt 1.5x | 33/50 | 3.42 | 8.0% | 8.80 | 2 |
+| Fixed 14.83, starting 1.5x | 45/50 | 3.22 | 15.5% | 7.14 | 12 |
+
+The controller reached a median 1.00 nucleus-units (45 of 50 stories within
+0.9-1.1) and settled at a median 0.8x the starting length in the second half:
+the noise's effect accumulates, so less is needed later, which is why the
+lowercase drift a fixed length produces late in a story mostly goes away. It is
+cheaper than the bisection (11.2 s a story against 13.8 s on a T4). The judge is
+very strict on this prompt: the untouched model's stories share one template
+(weather, a he, a she, "a strange ache in his chest") and it calls nearly all of
+them the same story. The ranking agrees with the opening-subject counts
+(effective 5.9 untouched, 15.9 sized while writing); the baselines' absolute
+levels are overstated.
+
+### Young-child prompt (runs r135, r136, against the earlier 50-story arms)
+
+The earlier arms (untouched, top-p, fixed 14.83, sized before with the prompt
+at 1.5x) were re-judged in the same session as the new ones and reproduced the
+Colab numbers exactly.
+
+| Method | Coherent | Rules broken | vs top-p | Same-story | Distinct of 10 | vs top-p | Vendi vs top-p |
+|---|---|---|---|---|---|---|---|
+| Untouched, T=1.0 | 48/50 | 2.96 | +0.45 [+0.10, +0.78] | 33.1% | 5.38 | | -1.54 [-2.32, -0.72] |
+| Top-p 0.95, T=1.8 | 49/50 | 2.51 | | 39.5% | 4.76 | | |
+| Sized before, prompt 1.5x | 49/50 | 2.65 | +0.14 [-0.33, +0.61] | 9.2% | 8.28 | +3.53 [+1.70, +5.26] | +0.57 [-0.39, +1.55] |
+| Fixed 14.83 | 49/50 | 3.20 | +0.69 [+0.29, +1.10] | 3.8% | 8.68 | +3.92 [+2.22, +5.40] | +0.63 [-0.35, +1.58] |
+| **Sized while writing** | 46/50 | 2.54 | +0.03 [-0.44, +0.50] | 8.1% | 8.35 | +3.59 [+1.60, +5.08] | +0.17 [-0.67, +1.08] |
+| + tilt 0.25 (reached 0.23) | 48/50 | 2.71 | +0.20 [-0.23, +0.61] | 6.7% | 8.69 | +3.94 [+2.06, +5.44] | +0.70 [-0.31, +1.62] |
+| + tilt 0.5 (reached ~0.41) | 49/50 | 2.71 | +0.20 [-0.27, +0.67] | 7.1% | 8.11 | +3.36 [+1.58, +4.74] | +0.01 [-0.84, +0.88] |
+| + tilt 1.0 (reached ~0.6) | 48/50 | 2.48 | -0.03 [-0.47, +0.41] | 5.6% | 8.61 | +3.85 [+2.08, +5.26] | +0.49 [-0.39, +1.33] |
+| Sized while writing, steering 3.0 | 47/50 | 2.70 | +0.19 [-0.24, +0.61] | 6.6% | 8.32 | +3.56 [+1.68, +5.08] | -0.44 [-1.25, +0.42] |
+| Sized while writing, steering 3.5 | 46/50 | 3.48 | +0.97 [+0.58, +1.36] | 2.4% | 9.12 | +4.36 [+2.72, +5.72] | +0.35 [-0.56, +1.24] |
+| Fixed 14.83, steering 3.0 | 44/50 | 3.14 | +0.63 [+0.20, +1.05] | 1.5% | 9.43 | +4.67 [+2.94, +6.00] | +0.18 [-0.81, +1.08] |
+| Fixed 14.83, steering 3.5 | 42/50 | 3.62 | +1.11 [+0.64, +1.57] | 2.3% | 9.15 | +4.40 [+2.72, +5.74] | +0.30 [-0.59, +1.33] |
+
+**Stronger rule steering does not buy compliance.** At 3.0 the rules tie; at 3.5
+they get worse, with far more lowercase drift (18-20 stories) and run-on
+sentences (reading grade 7-8).
+
+**The output tilt.** Every contrast pair is already run through the model to
+extract the steering directions; the extraction now also keeps, per rule, the
+log-ratio of the model's average next-token distribution on the rule-following
+side against the rule-breaking side (an output-space mean contrastive
+difference). While writing, the story's scores are tilted along the rules'
+combined profile by exactly a share of top-p's own per-step distortion. The
+strength ceiling (20) bound at the larger shares, so the reached shares were
+about 0.23, 0.41 and 0.6. The tilt kept the variety (8.1-8.7 distinct) and
+raised coherence (48-49 of 50 against 46), but did not move the rules as a
+whole. It added a few stories that open by talking about the task
+("Sure! Here's a short story...": 1, 1 and 3 at the three shares, 0 without).
+
+**Why the rules tie: the two sides break different rules** (share of coherent
+stories breaking each):
+
+| | present tense | grade >= 3 | dialogue | one name | he and she | simile | no repeats | format |
+|---|---|---|---|---|---|---|---|---|
+| Untouched | 100% | 69% | 0% | 83% | 21% | 0% | 23% | 0% |
+| Top-p | 98% | 35% | 8% | 67% | 35% | 0% | 8% | 0% |
+| Sized while writing | 22% | 11% | 37% | 74% | 59% | 37% | 4% | 11% |
+| + tilt 1.0 | 10% | 12% | 31% | 77% | 54% | 44% | 0% | 19% |
+
+The baselines almost never write in the present tense but always include
+speech and a simile; the method fixes the tense and loses speech, the he and
+the she, and the simile. The tilt helped exactly the rules whose profiles point
+at the right tokens: present tense (profile favours "follows", "reads", "asks";
+22% to 10% failing) and dialogue (favours `?"`, `,"`, "Yes"; 37% to 31%). It
+did nothing for the two whose profiles do not: both genders favours "both",
+"them", "they" rather than "he" and "she", and simile favours the things
+compared ("blanket", "mirror") rather than "like" or "as".
