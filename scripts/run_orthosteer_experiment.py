@@ -129,6 +129,7 @@ def make_plan(
     offset_taper=None,
     arch_mechanism="",
     arch_size=0.0,
+    arch_per_sentence=False,
     offset_gamma_spread=None,
     guard_direction="",
     noise_norm_match="energy",
@@ -226,6 +227,7 @@ def make_plan(
         offset_prefill_gain=offset_prefill_gain,
         arch_mechanism=arch_mechanism,
         arch_size=arch_size,
+        arch_per_sentence=arch_per_sentence,
         offset_anchors=RUN_DEFAULTS["offset_anchors"],
         anchor_scale=RUN_DEFAULTS["anchor_scale"],
         offset_gamma_spread=offset_gamma_spread,
@@ -2449,6 +2451,17 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                     beta=flat, steer_budget=b, offset_gamma=0.0, offset_mode="none",
                     steer_prefill=True, prompt_tail_clear=keep,
                     arch_mechanism=m, arch_size=size, **quiet, **base)})
+        # The same mechanisms with a fresh draw for every sentence, where a
+        # mechanism acts while the story is written.
+        for size in [float(x) for x in (getattr(args, "arch_sentence_sizes", None) or [])]:
+            for m in mechs:
+                if m in ("value", "rope"):
+                    continue
+                items.append({"plan": make_plan(
+                    beta=flat, steer_budget=b, offset_gamma=0.0, offset_mode="none",
+                    steer_prefill=True, prompt_tail_clear=keep,
+                    arch_mechanism=m, arch_size=size, arch_per_sentence=True,
+                    **quiet, **base)})
         return items, (
             "the rule steering with random noise at "
             + ", ".join(["the residual offset"] + mechs)

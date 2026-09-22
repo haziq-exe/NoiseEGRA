@@ -111,6 +111,35 @@ check("each story was sized", len(getattr(q, "arch_log", []) or []) == 2)
 check("nothing is left attached afterwards",
       torch.allclose(_logits(egra, p, ids, n_prompt, with_offset=False), clean, atol=1e-6))
 
+print("== per sentence ==")
+from noiseegra.arch_noise import SentenceCounter  # noqa: E402
+
+
+class _Tok:
+    def __init__(self, text): self.text = text
+    def decode(self, ids, skip_special_tokens=True): return self.text
+
+
+ps = ArchNoise(egra, p, "rotate", seed=4, n_prompt=n_prompt); ps.per_sentence = True
+SentenceCounter(_Tok("word"), ps)(torch.tensor([[1, 2]]), torch.zeros(1, 3))
+check("a word that ends nothing keeps the sentence", ps.sentence == 0)
+cnt = SentenceCounter(_Tok("end."), ps)
+cnt(torch.tensor([[1, 2]]), torch.zeros(1, 3))
+check("a full stop moves to the next sentence", ps.sentence == 1, str(ps.sentence))
+ps.knob = 0.4
+ps.sentence = 0; ps.attach(); first = _logits(egra, p, ids, n_prompt, with_offset=False); ps.detach()
+ps.sentence = 1; ps.attach(); second = _logits(egra, p, ids, n_prompt, with_offset=False); ps.detach()
+ps.sentence = 0; ps.attach(); again = _logits(egra, p, ids, n_prompt, with_offset=False); ps.detach()
+check("each sentence draws its own noise", float((first - second).abs().max()) > 1e-4)
+check("and a sentence's draw is the same whenever it is asked for", torch.allclose(first, again, atol=1e-5))
+flat_n = ArchNoise(egra, p, "rotate", seed=4, n_prompt=n_prompt); flat_n.knob = 0.4
+flat_n.sentence = 0; flat_n.attach(); at0 = _logits(egra, p, ids, n_prompt, with_offset=False); flat_n.detach()
+flat_n.sentence = 3; flat_n.attach(); at3 = _logits(egra, p, ids, n_prompt, with_offset=False); flat_n.detach()
+check("without it the sentence makes no difference", torch.allclose(at0, at3, atol=1e-6))
+qs = plan("rotate", 0.1); qs.arch_per_sentence = True
+outs = [egra.generate_with_orthogonal_steering(PROMPT, qs, max_new_tokens=8, seed=s) for s in (1, 2)]
+check("a story generates with per-sentence noise", all(isinstance(o, str) and o for o in outs))
+
 sys.argv = ["x"]
 from noiseegra.setup_experiment import ExperimentSpec, _ortho_tag  # noqa: E402
 check("the run name records the mechanism and size",

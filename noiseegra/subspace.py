@@ -847,6 +847,8 @@ class SteeringPlan:
     # zero leaves it off.
     arch_mechanism: str = ""
     arch_size: float = 0.0
+    # Fresh draws for every sentence the story writes, at the same size.
+    arch_per_sentence: bool = False
     # How much the size of the per-story displacement varies between stories,
     # as a fraction of its nominal size. 0 gives every story the same
     # displacement, which is what every run so far has done.
@@ -953,6 +955,7 @@ class SteeringPlan:
         steer_split_concentration: float = 0.0,
         arch_mechanism: str = "",
         arch_size: float = 0.0,
+        arch_per_sentence: bool = False,
         offset_anchors: Optional[Mapping[int, torch.Tensor]] = None,
         anchor_scale: Optional[torch.Tensor] = None,
         offset_gamma_spread: float = 0.0,
@@ -1169,6 +1172,7 @@ class SteeringPlan:
             steer_split_concentration=float(steer_split_concentration or 0.0),
             arch_mechanism=str(arch_mechanism or ""),
             arch_size=float(arch_size or 0.0),
+            arch_per_sentence=bool(arch_per_sentence),
             offset_gamma_spread=float(offset_gamma_spread),
             offset_taper=float(offset_taper),
             guard_direction=str(guard_direction),

@@ -863,6 +863,9 @@ class EGRA:
                              n_prompt=int(input_ids.shape[-1]))
             got = arch_calibrate(arch, input_ids, float(plan.arch_size),
                                  cache=plan._arch_cache)
+            # Sized on the first sentence's draw; later sentences get draws of
+            # their own at the same knob.
+            arch.per_sentence = bool(getattr(plan, "arch_per_sentence", False))
             if getattr(plan, "arch_log", None) is None:
                 plan.arch_log = []
             plan.arch_log.append(got)
@@ -1203,6 +1206,10 @@ class EGRA:
                               if processors is not None
                               else LogitsProcessorList([probe]))
                 entropy_out.append(probe_state)
+            if arch is not None and arch.per_sentence:
+                from .arch_noise import SentenceCounter
+                processors = LogitsProcessorList(
+                    [*(processors or []), SentenceCounter(self.tokenizer, arch)])
             if processors is not None:
                 gen_kwargs["logits_processor"] = processors
             stopper = self._word_budget_stopper(inputs["input_ids"].shape[-1], max_words)

@@ -315,6 +315,8 @@ def _ortho_tag_once(model_name: str, spec: ExperimentSpec, *, compress: bool) ->
         parts.append(f"__split{_float_tag(plan.steer_split_concentration)}")
     if getattr(plan, "arch_mechanism", "") and float(getattr(plan, "arch_size", 0.0) or 0.0) > 0:
         parts.append(f"__arch{plan.arch_mechanism}{_float_tag(plan.arch_size)}")
+        if getattr(plan, "arch_per_sentence", False):
+            parts.append("ps")
     # The colour of the displacement's wandering, and the slowest wobble it is
     # allowed. Both change what is generated, so both have to be in the id: two
     # arms differing only in a setting the id does not carry write to the same

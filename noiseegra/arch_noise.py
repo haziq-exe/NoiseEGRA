@@ -76,6 +76,15 @@ class ArchNoise:
         self.knob = 0.0
         self.handles: List = []
         self._units: Dict = {}
+        # Per-sentence: the draws that act while the story is written are keyed
+        # by the sentence being written as well as the story, so each sentence
+        # gets fresh noise of the same size. Advanced by SentenceCounter.
+        self.per_sentence = False
+        self.sentence = 0
+
+    def _k(self, *key):
+        """A draw's key, with the sentence index when the noise changes per sentence."""
+        return key + (("sentence", self.sentence),) if self.per_sentence else key
 
     # -- fixed random draws ------------------------------------------------ #
     def _draw(self, key, shape, device, kind="normal"):
@@ -133,7 +142,7 @@ class ArchNoise:
             with torch.no_grad():
                 x = t.float()
                 prot = self.plan.layer_plans[li].protect
-                u = self._draw(("rot", li), (x.shape[-1],), x.device)
+                u = self._draw(self._k("rot", li), (x.shape[-1],), x.device)
                 if prot is not None:
                     p = prot.to(x.device, torch.float32)
                     u = u - p @ (p.t() @ u)
@@ -160,10 +169,10 @@ class ArchNoise:
             with torch.no_grad():
                 if out.dim() == 4:                   # (b, seq, heads, head_dim)
                     h = out.shape[2]
-                    z = self._draw(("head", li), (h,), out.device)
+                    z = self._draw(self._k("head", li), (h,), out.device)
                     out.mul_(torch.exp(self.knob * z).to(out.dtype).view(1, 1, h, 1))
                 elif out.dim() == 3 and heads:       # (b, seq, heads * head_dim)
-                    z = self._draw(("head", li), (heads,), out.device)
+                    z = self._draw(self._k("head", li), (heads,), out.device)
                     s = torch.exp(self.knob * z).to(out.dtype)
                     b, n, d = out.shape
                     out.view(b, n, heads, d // heads).mul_(s.view(1, 1, heads, 1))
@@ -208,7 +217,7 @@ class ArchNoise:
             x = inp[0]
             if not isinstance(x, torch.Tensor) or self.knob <= 0:
                 return None
-            u = self._draw(("mask", li), (x.shape[-1],), x.device, kind="uniform")
+            u = self._draw(self._k("mask", li), (x.shape[-1],), x.device, kind="uniform")
             keep = (u >= self.knob).to(x.dtype) / max(1.0 - self.knob, 1e-3)
             return (x * keep,) + tuple(inp[1:])
         return hook
@@ -269,3 +278,23 @@ def calibrate(noise: ArchNoise, prompt_ids: torch.Tensor, target: float, *,
             hi = mid
     noise.knob = best[0]
     return {"knob": best[0], "distance": best[1] / unit, "unit": unit, "reached": 1.0}
+
+
+class SentenceCounter:
+    """A logits processor that advances the noise to a new sentence.
+
+    It runs after each forward pass and reads the token just written, so the
+    next forward uses the next sentence's draw -- one step of lag at a sentence
+    boundary, which puts the change at the start of the new sentence.
+    """
+
+    def __init__(self, tokenizer, noise: ArchNoise):
+        self.tokenizer, self.noise = tokenizer, noise
+        self.noise.sentence = 0
+
+    def __call__(self, input_ids, scores):
+        last = self.tokenizer.decode(input_ids[0, -1:], skip_special_tokens=True)
+        if any(c in last for c in ".!?"):
+            self.noise.sentence += 1
+        return scores
+

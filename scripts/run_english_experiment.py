@@ -656,6 +656,9 @@ def main() -> None:
     ap.add_argument("--arch-mechanisms", nargs="+", default=None,
                     help="suite 'archscreen': which of noiseegra.arch_noise's "
                          "mechanisms to screen (default: all)")
+    ap.add_argument("--arch-sentence-sizes", type=float, nargs="*", default=[],
+                    help="suite 'archscreen': sizes at which to add each mechanism "
+                         "with a fresh draw per sentence")
     ap.add_argument("--arch-sizes", type=float, nargs="+", default=[1.0],
                     help="suite 'archscreen': sizes in nucleus-units")
     ap.add_argument("--prompt-gain", type=float, default=2.0,
