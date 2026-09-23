@@ -91,6 +91,37 @@ with tempfile.TemporaryDirectory() as d:
     check("the summary is saved next to the stories",
           set(saved["arms"]) == set(runs) and saved["threshold"] == 0.102)
 
+print("\n== runs of other tasks ==")
+cases = ('is_palindrome("level") -> True\nis_palindrome("") -> True\nis_palindrome("abc") -> False\n'
+         'is_palindrome("Noon") -> False\nis_palindrome("x y x") -> True')
+check("a task's own validity check is used for its runs",
+      len(S.coherent([cases, ""], "dom-tests__Qwen3-1.7B__BASELINE")) == 1)
+check("where the story checks would reject good test cases as a broken story",
+      len(S.coherent([cases], "Qwen3-1.7B__BASELINE")) == 0)
+with tempfile.TemporaryDirectory() as d:
+    d = Path(d)
+    (d / "Qwen3-1.7B").mkdir()
+    runs = {}
+    for dom in ("poem", "plan"):
+        runs[f"dom-{dom}__Qwen3-1.7B__BASELINE"] = [f"{dom} one {i} words here and more" for i in range(8)]
+        runs[f"dom-{dom}__Qwen3-1.7B__BASELINE__temp1p8__topp0p95"] = [
+            f"{dom} {i % 2} words here and more text" for i in range(8)]
+        runs[f"dom-{dom}__Qwen3-1.7B__ORTHO__method"] = [f"{dom} {i} words here and more text"
+                                                         for i in range(8)]
+    (d / "Qwen3-1.7B" / "state.json").write_text(json.dumps(
+        {"runs": {r: {f"0:{i}": t for i, t in enumerate(ts)} for r, ts in runs.items()}}))
+
+    def by_second_word(texts, *a, **k):
+        key = [t.split()[1] for t in texts]
+        return np.array([[a == b for b in key] for a in key], dtype=bool)
+
+    S.same_matrix = by_second_word
+    rows = S.summarise(d, S.score(d, sorted(runs), 0, 100, "cpu"))
+    m = rows["dom-plan__Qwen3-1.7B__ORTHO__method"]
+    check("each arm is compared with its own task's untouched model",
+          abs(m["same_vs_untouched"][0] - (0.0 - 1.0)) < 1e-9, str(m["same_vs_untouched"][0]))
+    check("and labelled with its task", m["label"].startswith("[plan]"), m["label"])
+
 print()
 if FAILURES:
     print(f"{len(FAILURES)} FAILED: {FAILURES}")

@@ -18,6 +18,9 @@
 #
 # --score judges every arm's stories with NoveltyBench's classifier at the end,
 # on the same GPUs (scripts/score_novelty.py), so the run comes back scored.
+# --runner PATH generates with another runner that takes --shard and --out, e.g.
+# scripts/run_domains.py for the tasks beyond stories.
+#
 # --score-extra FILE does the same and also judges the earlier arms in FILE (a
 # committed JSON of stories), so the new arms come back compared with them.
 #
@@ -37,6 +40,7 @@ while :; do
     --shards)  SHARDS="$2";  shift 2 ;;
     --score)   SCORE="--then-score"; shift ;;
     --score-extra) SCORE="--then-score --extra $2"; shift 2 ;;
+    --runner)  RUNNER="$2"; shift 2 ;;
     --) shift; break ;;
     *) break ;;
   esac
@@ -64,10 +68,10 @@ LIVE="/tmp/${NAME}.live"
 : > "$LIVE"
 
 # Reject a bad flag here rather than after a session start and a model download.
-python scripts/run_english_experiment.py $ARGS --dry-run || { echo "ARGS REJECTED"; exit 1; }
+python "${RUNNER:-scripts/run_english_experiment.py}" $ARGS --dry-run || { echo "ARGS REJECTED"; exit 1; }
 
 if [ "$SHARDS" -gt 1 ]; then
-  RUNCMD="scripts/run_sharded.py {OUT} $SHARDS ${SCORE:-} -- $ARGS"
+  RUNCMD="scripts/run_sharded.py {OUT} $SHARDS ${RUNNER:+--runner $RUNNER} ${SCORE:-} -- $ARGS"
 else
   RUNCMD="scripts/run_english_experiment.py $ARGS"
 fi

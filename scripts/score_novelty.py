@@ -83,7 +83,15 @@ def arms(path: Path, extra: str = "") -> dict:
     return out
 
 
-def coherent(texts: list) -> list:
+def coherent(texts: list, rid: str = "") -> list:
+    """The responses that count: through the story coherence checks, or, for a run
+    of another task (``dom-<name>__``), through that task's own validity check --
+    a poem or a list of test cases is not failed for not being a story."""
+    from noiseegra.domains import domain_of, get
+    dom = domain_of(rid)
+    if dom:
+        d = get(dom)
+        return [t for t in texts if d.valid(t)[0]]
     from noiseegra.coherence import CoherenceFilter
     filt = CoherenceFilter()
     reps = [filt.check(t) for t in texts]
@@ -199,7 +207,7 @@ def score(path: Path, rids: list, limit: int, subsets: int, device: str,
     out = {}
     for rid in rids:
         texts = stories[rid][:limit] if limit else stories[rid]
-        kept = coherent(texts)
+        kept = coherent(texts, rid)
         t0 = time.time()
         same = same_matrix(kept, tok, model, torch, device)
         out[rid] = {"stories": len(texts), "coherent": len(kept),
@@ -215,13 +223,20 @@ def score(path: Path, rids: list, limit: int, subsets: int, device: str,
 def summarise(path: Path, judged: dict) -> dict:
     from noiseegra.run_labels import label_run
 
-    base = next((r for r in judged if r.endswith("__BASELINE")), None)
-    topp = next((r for r in judged if "BASELINE__temp1p8__topp0p95" in r), None)
+    from noiseegra.domains import domain_of
+
+    def reference(rid, pred):
+        # Within the arm's own task: another domain's baseline is no reference.
+        return next((r for r in judged if pred(r) and domain_of(r) == domain_of(rid)), None)
+
     draws = {r: half_draws(np.array(v["same"], dtype=bool)) for r, v in judged.items()}
     rows = {}
     for rid, v in judged.items():
+        base = reference(rid, lambda r: r.endswith("__BASELINE"))
+        topp = reference(rid, lambda r: "BASELINE__temp1p8__topp0p95" in r)
         row = {k: v[k] for k in ("stories", "coherent", "same_story_share", "distinct10")}
-        row["label"] = label_run(rid).text
+        dom = domain_of(rid)
+        row["label"] = (f"[{dom}] " if dom else "") + label_run(rid.split("__", 1)[1] if dom else rid).text
         for name, ref in (("untouched", base), ("top_p", topp)):
             if ref and ref != rid:
                 # The difference itself from the full sets; only its spread from
