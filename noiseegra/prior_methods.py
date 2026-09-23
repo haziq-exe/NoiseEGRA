@@ -45,7 +45,9 @@ import torch
 
 from .EGRA_functions import strip_reasoning
 
-METHODS = ("verbalized", "ssot", "incontext", "stars", "noiseinject")
+# Ordered so that, split alternately over two GPUs with min-p and the steering
+# combination first, the two cards carry about the same generation time.
+METHODS = ("verbalized", "ssot", "stars", "incontext", "noiseinject")
 
 NAMES = {
     "verbalized": "Verbalized Sampling (ICML 2026)",
