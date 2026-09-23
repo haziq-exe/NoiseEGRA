@@ -24,6 +24,10 @@
 # --score-extra FILE does the same and also judges the earlier arms in FILE (a
 # committed JSON of stories), so the new arms come back compared with them.
 #
+# --allow-dirty runs the last pushed commit even when the working tree has
+# uncommitted changes (they are not in the run either way; the kernel clones the
+# commit).
+#
 # --profile selects which account to run on, for a project with more than one
 # person's Kaggle account: credentials live in ~/.kaggle/credentials-<name>.json
 # and that file is used instead of the default.
@@ -39,6 +43,7 @@ while :; do
     --no-gpu) NOGPU="--no-gpu"; shift ;;
     --shards)  SHARDS="$2";  shift 2 ;;
     --score)   SCORE="--then-score"; shift ;;
+    --allow-dirty) DIRTY="--allow-dirty"; shift ;;
     --score-extra) SCORE="--then-score --extra $2"; shift 2 ;;
     --runner)  RUNNER="$2"; shift 2 ;;
     --) shift; break ;;
@@ -78,7 +83,7 @@ fi
 # If the harness refuses -- an uncommitted working tree, a bad flag, no quota --
 # stop here. Carrying on polls a kernel that was never created, which looks
 # exactly like a run in progress and wasted forty minutes once.
-if ! kh run --name "$NAME" --max-minutes 420 ${NOGPU:-} --no-wait -- $RUNCMD 2>&1 | tee -a "$LOG"; then
+if ! kh run --name "$NAME" --max-minutes 420 ${NOGPU:-} ${DIRTY:-} --no-wait -- $RUNCMD 2>&1 | tee -a "$LOG"; then
   echo "launch refused; not watching" | tee -a "$LOG"; exit 1
 fi
 if ! grep -q "pushed\. Watch it with" "$LOG"; then
