@@ -1344,3 +1344,25 @@ noise without steering loses 48 of 200 to loops and stalls and breaks the most
 rules of any arm (3.36), while being less varied than ours.
 
 **Weak spot:** 15 of our 194 coherent stories drift into lowercase partway through.
+
+### The method with high-temperature top-p on top (run r140, 2026-09-24)
+
+The same method sampled with top-p 0.95 at temperature 1.8, the decoder of the
+top-p baseline, instead of at 1.0. Every arm in this project, this one included,
+also keeps Qwen3's shipped top-k 20 and top-p 0.95 unless a setting replaces it.
+Same prompt, seeds, steering directions and judge; the noise is still sized
+against top-p's distortion measured on the model's own scores, before the
+temperature and cut-off are applied.
+
+| | Coherent | Rules broken | vs ours at 1.0 | Same-story pairs | Distinct of 10 | vs ours at 1.0 | Opening subjects |
+|---|---|---|---|---|---|---|---|
+| Ours at T=1.0 | 194/200 | 2.45 | | 24.5% | 6.48 | | 21.7 |
+| Ours + top-p 0.95, T=1.8 | 199/200 | 2.37 | -0.08 [-0.31, +0.14] | 32.4% | 5.57 | -0.91 [-1.70, +0.52] | 24.6 |
+| Top-p 0.95, T=1.8 alone | 200/200 | 2.50 | | 94.8% | 1.29 | | 6.7 |
+
+The high temperature adds nothing measurable on either axis: it keeps five more
+stories coherent and breaks slightly fewer rules, and is slightly less varied by
+the judge, all within the intervals. Against top-p alone it is 4.28 [+3.62,
++5.30] distinct stories of 10 ahead and ties on rules (-0.13 [-0.33, +0.07]); it
+beats the untouched model on rules (-0.34 [-0.54, -0.14]). Fifteen of its coherent
+stories drift into lowercase, the same count as at 1.0.
