@@ -1284,3 +1284,63 @@ overshoot is mild (the poem: every line turned into a question -- "at least one
 question" went from 38% failing to 4% while three stanzas went from 8% to 76%),
 so the steering's share of the damage cannot be separated from the noise's
 without a steering-only arm per task.
+
+## 200 stories: the headline method against the baselines and seven published methods (2026-09-23, runs r138, r139)
+
+Middle-school prompt, Qwen3-1.7B, 200 stories per arm, one Kaggle account. Only
+stories the coherence checks pass are scored. "Same-story pairs" and "distinct of
+10" are NoveltyBench's v1.0 classifier (first 128 tokens); every pair was judged
+in half precision and every pair within 0.03 of the 0.102 line again at full
+precision (0 of 400 randomly checked other pairs per arm would have changed).
+Intervals are 95%, from 400 half-size draws (judge) or 20,000 bootstrap draws
+(rules). "Ours" is the rule steering at 2.5 plus the per-story noise sized while
+writing to 1.0 of top-p's distortion, prompt noise 1.5x. Vendi is no longer
+reported.
+
+| Method | Venue | Coherent | Rules broken (of 8) | vs ours | Same-story pairs | Distinct of 10 | vs ours | Opening subjects (effective) |
+|---|---|---|---|---|---|---|---|---|
+| **Ours** | | 194/200 | **2.45** | | **24.5%** | **6.48** | | **21.7** |
+| Untouched, T=1.0 | | 199/200 | 2.71 | +0.25 [+0.05, +0.46] | 99.0% | 1.06 | -5.42 [-6.12, -4.44] | 6.1 |
+| Top-p 0.95, T=1.8 | Holtzman et al., ICLR 2020 | 200/200 | 2.50 | +0.05 [-0.16, +0.26] | 94.8% | 1.29 | -5.19 [-5.88, -4.18] | 6.7 |
+| Min-p 0.1, T=1.5 | Nguyen et al., ICLR 2025 | 198/200 | 2.74 | +0.28 [+0.07, +0.49] | 96.9% | 1.18 | -5.30 [-6.02, -4.32] | 6.4 |
+| Verbalized Sampling | ICML 2026 | 196/200 | 3.78 (2.78*) | +1.33 (+0.33*) | 93.3% | 1.42 | -5.06 [-5.74, -4.10] | 4.2 |
+| String Seed of Thought | ICLR 2026 | 170/200 | 2.25 | -0.21 [-0.43, +0.01] | 82.7% | 2.02 | -4.47 [-5.22, -3.34] | 4.6 |
+| In-context regeneration | NoveltyBench, COLM 2025 | 200/200 | 2.97 | +0.52 [+0.32, +0.71] | 99.8% | 1.03 | -5.45 [-6.16, -4.52] | 13.3 |
+| STARS activation steering | ICLR 2026 | 181/200 | 3.34 | +0.89 [+0.67, +1.11] | 95.8% | 1.24 | -5.24 [-5.92, -4.26] | 6.9 |
+| Noise injection (Liu et al.) | ICLR 2026 | 199/200 | 2.80 | +0.35 [+0.14, +0.54] | 98.9% | 1.07 | -5.41 [-6.12, -4.46] | 6.2 |
+| Rule steering only | | 200/200 | 1.57 | -0.88 [-1.09, -0.67] | 76.9% | 2.38 | -4.10 [-5.02, -3.04] | 13.6 |
+| Rule steering + top-p 0.95, T=1.8 | | 200/200 | 1.65 | -0.81 [-1.03, -0.59] | 75.5% | 2.51 | -3.97 [-4.84, -2.98] | 19.1 |
+| Noise alone (fixed 14.83, no steering) | | 152/200 | 3.36 | +0.91 [+0.64, +1.17] | 41.3% | 4.93 | -1.55 [-2.66, -0.04] | 6.4 |
+
+\* Verbalized Sampling writes its stories inside JSON strings, so the model puts
+speech in single quotes, which the dialogue rule does not count. With that speech
+converted to double quotes it breaks 2.78 (+0.33 [+0.11, +0.54] against ours).
+
+**Ours is the most varied arm by a wide margin**: 6.48 distinct stories of 10
+against 1.03-2.51 for every baseline and published method, and against 4.93 for
+the same noise without steering. It keeps 194 of 200 coherent. On rules it beats
+the untouched model, min-p, Verbalized Sampling, in-context regeneration, STARS
+and noise injection, ties top-p and String Seed of Thought, and loses to the two
+arms that steer without noise (1.57-1.65), which are also the least varied after
+the baselines.
+
+**What the published methods do on this model**, read from the stories:
+- In-context regeneration keeps the plot and swaps the surface: "The wind howled
+  like a furious wolf... as Lily clutched her backpack... 'I can't do this'", then
+  the rain and Emily, the sun and Sam, the clouds and Clara. The judge calls it
+  the same story every time (99.8%).
+- Noise injection at its published size (alpha 0.07, tuned for hallucination
+  detection) barely moves Qwen3-1.7B: its first stories are nearly word for word
+  the untouched model's at the same seeds.
+- STARS (twenty stories written together) loses 19 to repetition loops and keeps
+  the same he/she scene.
+- String Seed of Thought loses 30 of 200 (repetition, fragments of its seed
+  string) and its stories share an opening 46% of the time.
+- Verbalized Sampling followed its format (39 of 40 replies parsed fully) but
+  starts 68% of its stories with a named character walking somewhere.
+
+**Noise alone breaks stories; steering holds them together.** The same fixed
+noise without steering loses 48 of 200 to loops and stalls and breaks the most
+rules of any arm (3.36), while being less varied than ours.
+
+**Weak spot:** 15 of our 194 coherent stories drift into lowercase partway through.
