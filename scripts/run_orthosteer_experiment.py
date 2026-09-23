@@ -2210,6 +2210,7 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         words = int(getattr(args, "story_target", 150) or 150)
         flat = {n: 1.0 for n in names}
         want = list(getattr(args, "prior_methods", None) or ["minp", "steertopp", *METHODS])
+        # (nucleusfull is only run when asked for by name)
         params = {"verbalized": {"k": 5, "words": words}, "ssot": {},
                   "incontext": {"n": 10}, "stars": {"n": 20, "layer": 20, "C": 0.1},
                   "noiseinject": {"alpha": 0.07, "lo": 20, "hi": 28}}
@@ -2217,6 +2218,11 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         if "minp" in want:
             # Nguyen et al.'s creative-writing configuration: min-p 0.1 at 1.5.
             items.append({"mode": "baseline", "temperature": 1.5, "min_p": 0.1})
+        if "nucleusfull" in want:
+            # Nucleus sampling at the high temperature with the checkpoint's
+            # top-k 20 switched off (top_k 0), which every other arm keeps: the
+            # high-temperature baseline without the cut that limits it.
+            items.append({"mode": "baseline", "temperature": t, "top_p": 0.95, "top_k": 0})
         if "steertopp" in want:
             items.append({"plan": make_plan(beta=flat, steer_budget=b, offset_gamma=0.0,
                                             offset_mode="none", steer_prefill=True,
@@ -2525,7 +2531,14 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                 kw.update(offset_gamma=start, offset_norm="energy", offset_online=1.0)
             else:
                 kw.update(offset_gamma=length / norm, offset_norm="energy")
-            return {"plan": make_plan(**kw, **quiet, **base)}
+            item = {"plan": make_plan(**kw, **quiet, **base)}
+            # A decoder on top of the method, when asked: every arm otherwise
+            # samples at the run's temperature with the checkpoint's own cut-offs.
+            if getattr(args, "headline_temperature", None) is not None:
+                item["temperature"] = float(args.headline_temperature)
+            if getattr(args, "headline_top_p", None) is not None:
+                item["top_p"] = float(args.headline_top_p)
+            return item
 
         # The new arm first: if it fails on the real model, the run shows it in
         # its first minutes rather than after the rest have spent their share.

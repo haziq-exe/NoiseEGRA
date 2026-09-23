@@ -692,8 +692,13 @@ def main() -> None:
                          "set of arms per value")
     ap.add_argument("--prior-methods", nargs="+", default=None,
                     choices=["minp", "steertopp", "verbalized", "ssot", "incontext", "stars",
-                             "noiseinject"],
+                             "noiseinject", "nucleusfull"],
                     help="suite 'priorwork': which published methods to run (default all)")
+    ap.add_argument("--headline-temperature", type=float, default=None,
+                    help="suite 'headline': sample its arms at this temperature instead of "
+                         "the run's")
+    ap.add_argument("--headline-top-p", type=float, default=None,
+                    help="suite 'headline': and with this top-p")
     ap.add_argument("--headline-budgets", type=float, nargs="+", default=None,
                     help="suite 'headline': the rule steering's total strength, one "
                          "set of arms per value (default: --steer-budget)")

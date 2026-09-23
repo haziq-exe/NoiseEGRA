@@ -102,6 +102,16 @@ check("the noise-alone arm is the fixed length with no rule steering",
 check("and the arm sized while writing still steers", all(sp.beta > 0 for sp in plans[0].specs))
 ids = [_spec_to_run_id("Tiny", s) for s in make_specs(*[{"plan": p} for p in plans])]
 check("the two have their own run ids", len(set(ids)) == 2)
+items_args = dict(BASE, headline_arms=["while"], headline_temperature=1.8, headline_top_p=0.95)
+from run_orthosteer_experiment import build_suite as _bs  # noqa: E402
+its, _ = _bs("headline", VECS, LAYERS, list(NAMES), RMS, types.SimpleNamespace(**items_args))
+spec = make_specs(*its)[0]
+check("a decoder can be put on top of the method",
+      spec.temperature == 1.8 and spec.top_p == 0.95 and spec.steering_plan.offset_online == 1.0)
+rid = _spec_to_run_id("Tiny", spec)
+check("and the run id records it", rid.endswith("__temp1p8__topp0p95"), rid[-40:])
+its, _ = _bs("headline", VECS, LAYERS, list(NAMES), RMS, types.SimpleNamespace(**dict(BASE, headline_arms=["while"])))
+check("by default the method keeps the run's decoding", make_specs(*its)[0].top_p is None)
 try:
     build(headline_arms=[])
     check("an empty choice is refused", False)
