@@ -30,8 +30,13 @@ whole group when its first story is asked for and hand the rest out in order.
   model), the same draw at every layer and position. alpha = 0.07, the paper's
   main setting.
 
-Every method samples at the run's temperature with no top-p or top-k cut, the
-same decoding the headline method uses; none of them is steered toward the rules.
+- ``creative``: the untouched model with the instruction asking for creativity
+  outright: "Be creative and think of a very unique story." added to the user's
+  request. The plainest thing a user would try first.
+
+Every method samples at the run's temperature with the checkpoint's own cut-offs,
+the same decoding the headline method uses; none of them is steered toward the
+rules.
 """
 
 from __future__ import annotations
@@ -47,7 +52,7 @@ from .EGRA_functions import strip_reasoning
 
 # Ordered so that, split alternately over two GPUs with min-p and the steering
 # combination first, the two cards carry about the same generation time.
-METHODS = ("verbalized", "ssot", "stars", "incontext", "noiseinject")
+METHODS = ("verbalized", "ssot", "stars", "incontext", "noiseinject", "creative")
 
 NAMES = {
     "verbalized": "Verbalized Sampling (ICML 2026)",
@@ -55,6 +60,7 @@ NAMES = {
     "incontext": "In-context regeneration (NoveltyBench, COLM 2025)",
     "stars": "STARS activation steering (ICLR 2026)",
     "noiseinject": "Noise injection, Liu et al. (ICLR 2026)",
+    "creative": "Prompted to be creative",
 }
 
 # The group each method writes at once. Story k belongs to group k // size.
@@ -302,6 +308,21 @@ def _noiseinject(egra, messages, params, seed, temperature, max_new_tokens, max_
 
 
 # --------------------------------------------------------------------------- #
+#  Asked to be creative                                                        #
+# --------------------------------------------------------------------------- #
+
+CREATIVE = "Be creative and think of a very unique story."
+
+
+def creative_messages(messages):
+    """The same conversation, with the request for creativity ending the user's turn."""
+    out = [dict(m) for m in messages]
+    last = max(i for i, m in enumerate(out) if m["role"] == "user")
+    out[last]["content"] = out[last]["content"].rstrip() + "\n\n" + CREATIVE
+    return out
+
+
+# --------------------------------------------------------------------------- #
 #  Entry point                                                                 #
 # --------------------------------------------------------------------------- #
 
@@ -311,6 +332,10 @@ def generate_prior(egra, method: str, params: dict, messages, *, seed: int, stor
     """Story ``story_index`` of ``method`` on ``messages``."""
     if method not in METHODS:
         raise ValueError(f"unknown prior method {method!r}; one of {METHODS}")
+    if method == "creative":
+        return egra.generate(creative_messages(messages), max_new_tokens=max_new_tokens,
+                             do_sample=True, temperature=temperature, seed=seed,
+                             max_words=max_words)
     if method == "ssot":
         return _ssot(egra, messages, params, seed, temperature, max_new_tokens)
     if method == "noiseinject":

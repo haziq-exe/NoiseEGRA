@@ -51,6 +51,11 @@ check("the VS instruction asks for 5 of about 150 words with probabilities",
       "Generate 5 responses" in sysmsg and "approximately 150 words" in sysmsg
       and "'probability'" in sysmsg)
 
+m2 = P.creative_messages(MSG0 := [{"role": "system", "content": "s"}, {"role": "user", "content": "Write a story."}])
+check("the creative prompt ends the user's request by asking for a very unique story",
+      m2[1]["content"] == "Write a story.\n\nBe creative and think of a very unique story."
+      and MSG0[1]["content"] == "Write a story." and m2[0] == MSG0[0])
+
 print("\n== run ids ==")
 items = [{"prior_method": m, "prior_params": {"n": 3}} for m in P.METHODS]
 specs = make_specs(*items)

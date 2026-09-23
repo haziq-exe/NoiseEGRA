@@ -2209,11 +2209,21 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         t = float(getattr(args, "baseline_temperature", 1.8) or 1.8)
         words = int(getattr(args, "story_target", 150) or 150)
         flat = {n: 1.0 for n in names}
-        want = list(getattr(args, "prior_methods", None) or ["minp", "steertopp", *METHODS])
+        want = list(getattr(args, "prior_methods", None)
+                    or ["minp", "steertopp", *[m for m in METHODS if m != "creative"]])
         # (nucleusfull is only run when asked for by name)
+        # Layers the published methods act on, by the model's depth. STARS used
+        # layer 20 on every model it ran, 28 and 36 blocks alike; the noise
+        # injection paper uses roughly the top third, with the exact ranges it
+        # lists (20-28 of 28, 20-32 of 32, 25-40 of 40) and two thirds up
+        # otherwise.
+        from noiseegra.defaults import EN_MODEL_DEPTHS
+        depth = int(EN_MODEL_DEPTHS.get(getattr(args, "model", ""), 28))
+        lo = {28: 20, 32: 20, 40: 25}.get(depth, int(round(depth * 2 / 3)))
         params = {"verbalized": {"k": 5, "words": words}, "ssot": {},
                   "incontext": {"n": 10}, "stars": {"n": 20, "layer": 20, "C": 0.1},
-                  "noiseinject": {"alpha": 0.07, "lo": 20, "hi": 28}}
+                  "noiseinject": {"alpha": 0.07, "lo": lo, "hi": depth},
+                  "creative": {}}
         items = []
         if "minp" in want:
             # Nguyen et al.'s creative-writing configuration: min-p 0.1 at 1.5.
@@ -2546,6 +2556,13 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         want = (["while", "before", "fixed", "fixedprompt", "fixedfront"]
                 if want is None else list(want))
         fbase = float(getattr(args, "fixed_base", None) or lengths[0])
+        # On another model the same length means something else: its stream has
+        # its own size. --fixed-fraction gives the length as a share of this
+        # model's residual norm instead (14.83 was 0.1419 of Qwen3-1.7B's).
+        frac = getattr(args, "fixed_fraction", None)
+        if frac:
+            fbase = float(frac) * norm
+            lengths = [fbase]
         items = []
         for bb in budgets:
             for tt in tilts:

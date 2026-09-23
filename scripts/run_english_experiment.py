@@ -692,8 +692,12 @@ def main() -> None:
                          "set of arms per value")
     ap.add_argument("--prior-methods", nargs="+", default=None,
                     choices=["minp", "steertopp", "verbalized", "ssot", "incontext", "stars",
-                             "noiseinject", "nucleusfull"],
+                             "noiseinject", "nucleusfull", "creative"],
                     help="suite 'priorwork': which published methods to run (default all)")
+    ap.add_argument("--fixed-fraction", type=float, default=None,
+                    help="suite 'headline': the fixed noise length as a share of the "
+                         "model's residual norm, for running the same arms on another "
+                         "model (14.83 on Qwen3-1.7B's middle-school run is 0.141935)")
     ap.add_argument("--headline-temperature", type=float, default=None,
                     help="suite 'headline': sample its arms at this temperature instead of "
                          "the run's")
@@ -2056,6 +2060,10 @@ def main() -> None:
         print("  " + line)
 
     summary = out / "live_scores.csv"
+    if not rows:
+        # A shard given no conditions (more GPUs than arms) has nothing to write.
+        print("\nno conditions ran in this process; no summary written")
+        return
     with summary.open("w", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, fieldnames=["run", "label"] + [k for k in rows[0] if k != "run"])
         w.writeheader()

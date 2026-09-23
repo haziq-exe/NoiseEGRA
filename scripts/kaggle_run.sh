@@ -24,6 +24,9 @@
 # --score-extra FILE does the same and also judges the earlier arms in FILE (a
 # committed JSON of stories), so the new arms come back compared with them.
 #
+# --max-minutes N stops the session at N minutes of wall clock (default 420;
+# Kaggle's own cap is 720). Everything is checkpointed, so a stopped run resumes.
+#
 # --allow-dirty runs the last pushed commit even when the working tree has
 # uncommitted changes (they are not in the run either way; the kernel clones the
 # commit).
@@ -44,6 +47,7 @@ while :; do
     --shards)  SHARDS="$2";  shift 2 ;;
     --score)   SCORE="--then-score"; shift ;;
     --allow-dirty) DIRTY="--allow-dirty"; shift ;;
+    --max-minutes) MAXMIN="$2"; shift 2 ;;
     --score-extra) SCORE="--then-score --extra $2"; shift 2 ;;
     --runner)  RUNNER="$2"; shift 2 ;;
     --) shift; break ;;
@@ -83,7 +87,7 @@ fi
 # If the harness refuses -- an uncommitted working tree, a bad flag, no quota --
 # stop here. Carrying on polls a kernel that was never created, which looks
 # exactly like a run in progress and wasted forty minutes once.
-if ! kh run --name "$NAME" --max-minutes 420 ${NOGPU:-} ${DIRTY:-} --no-wait -- $RUNCMD 2>&1 | tee -a "$LOG"; then
+if ! kh run --name "$NAME" --max-minutes "${MAXMIN:-420}" ${NOGPU:-} ${DIRTY:-} --no-wait -- $RUNCMD 2>&1 | tee -a "$LOG"; then
   echo "launch refused; not watching" | tee -a "$LOG"; exit 1
 fi
 if ! grep -q "pushed\. Watch it with" "$LOG"; then

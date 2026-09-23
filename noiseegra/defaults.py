@@ -61,6 +61,13 @@ EN_MODEL_HF_IDS: Dict[str, str] = {
     # else. A model that fails those requirements gives the direction room to show
     # whether it helps.
     "Qwen3-1.7B": "Qwen/Qwen3-1.7B",
+    # The small models the published diversity methods were run on. Llama-3.2-3B
+    # (STARS, noise injection, Avoidance Decoding) is gated at meta-llama; this is
+    # Unsloth's ungated copy of the same weights (identical file sizes). Qwen3-4B
+    # in its July 2025 non-thinking instruct release ("Where You Inject Diversity
+    # Matters"; PRISM used Qwen3-4B).
+    "Llama-3.2-3B": "unsloth/Llama-3.2-3B-Instruct",
+    "Qwen3-4B": "Qwen/Qwen3-4B-Instruct-2507",
     "Qwen2.5-1.5B": "Qwen/Qwen2.5-1.5B-Instruct",
     "Llama-3.2-1B": "meta-llama/Llama-3.2-1B-Instruct",
     "SmolLM2-1.7B": "HuggingFaceTB/SmolLM2-1.7B-Instruct",
@@ -78,6 +85,8 @@ EN_MODEL_HF_IDS: Dict[str, str] = {
 EN_MODEL_DEPTHS: Dict[str, int] = {
     "Qwen3-8B": 36,
     "Qwen3-1.7B": 28,
+    "Llama-3.2-3B": 28,
+    "Qwen3-4B": 36,
     "Qwen2.5-1.5B": 28,
     "Llama-3.2-1B": 16,
     "SmolLM2-1.7B": 24,
