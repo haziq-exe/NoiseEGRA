@@ -57,7 +57,8 @@ specs = make_specs(*items)
 ids = [_spec_to_run_id("M", sp) for sp in specs]
 check("each method is its own mode", all(_spec_mode(sp) == "prior_method" for sp in specs))
 check("and has its own run id", len(set(ids)) == len(ids), ids[0])
-check("with its name readable", label_run(ids[3]).text.startswith("STARS"), label_run(ids[3]).text)
+sid = ids[P.METHODS.index("stars")]
+check("with its name readable", label_run(sid).text.startswith("STARS"), label_run(sid).text)
 try:
     make_specs({"prior_method": "stars", "plan": object()})
     bad = _spec_mode(make_specs({"prior_method": "stars", "plan": object()})[0])
