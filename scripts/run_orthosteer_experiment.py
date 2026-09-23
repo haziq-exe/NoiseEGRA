@@ -2195,6 +2195,40 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         ], (f"the model as it ships, nucleus sampling at temperature {t:g}, "
             "and the rule steering alone")
 
+    if name == "priorwork":
+        # Published methods, each on the same instruction with the same rules:
+        # min-p sampling (ICLR 2025) at its creative-writing setting, the rule
+        # steering with high-temperature top-p on top (the obvious combination),
+        # and the five in noiseegra.prior_methods. None generates a baseline this
+        # project already has.
+        from noiseegra.prior_methods import METHODS
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        quiet = dict(noise_mode="none", noise_alpha=0.0)
+        b = float(getattr(args, "steer_budget", None) or 2.5)
+        keep = int((getattr(args, "tail_sweep", None) or [8])[0])
+        t = float(getattr(args, "baseline_temperature", 1.8) or 1.8)
+        words = int(getattr(args, "story_target", 150) or 150)
+        flat = {n: 1.0 for n in names}
+        want = list(getattr(args, "prior_methods", None) or ["minp", "steertopp", *METHODS])
+        params = {"verbalized": {"k": 5, "words": words}, "ssot": {},
+                  "incontext": {"n": 10}, "stars": {"n": 20, "layer": 20, "C": 0.1},
+                  "noiseinject": {"alpha": 0.07, "lo": 20, "hi": 28}}
+        items = []
+        if "minp" in want:
+            # Nguyen et al.'s creative-writing configuration: min-p 0.1 at 1.5.
+            items.append({"mode": "baseline", "temperature": 1.5, "min_p": 0.1})
+        if "steertopp" in want:
+            items.append({"plan": make_plan(beta=flat, steer_budget=b, offset_gamma=0.0,
+                                            offset_mode="none", steer_prefill=True,
+                                            prompt_tail_clear=keep, **quiet, **base),
+                          "temperature": t, "top_p": 0.95})
+        for m in METHODS:
+            if m in want:
+                items.append({"prior_method": m, "prior_params": params[m]})
+        if not items:
+            raise ValueError("suite 'priorwork': --prior-methods chose nothing")
+        return items, ("published methods on the same instruction: " + ", ".join(want))
+
     if name == "randomfixed":
         # The per-story noise at one fixed length for every story, with and
         # without a cosine fade: the length the output-based sizing reached at

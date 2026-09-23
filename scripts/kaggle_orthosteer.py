@@ -142,6 +142,12 @@ def generate_one(model, spec, mode, story_prompt, seed, max_new_tokens, max_word
             max_new_tokens=max_new_tokens, do_sample=spec.do_sample,
             temperature=spec.temperature, top_p=spec.top_p, top_k=spec.top_k, seed=seed,
         )
+    if mode == "prior_method":
+        from noiseegra.prior_methods import generate_prior
+        return generate_prior(model, spec.prior_method, dict(spec.prior_params), story_prompt,
+                              seed=seed, story_index=int(story_index or 0),
+                              max_new_tokens=max_new_tokens, max_words=max_words,
+                              temperature=spec.temperature)
     if mode == "baseline":
         return model.generate(
             story_prompt, max_new_tokens=max_new_tokens, do_sample=spec.do_sample,

@@ -26,7 +26,7 @@ from typing import Dict, List, Optional, Sequence
 # thing being swept.
 FAMILY_ORDER = [
     "baseline", "sampling", "steer", "per-token", "per-story", "f(Sc)", "amplify",
-    "embed", "attn", "resid", "entropy", "double", "two-stage", "other",
+    "embed", "attn", "resid", "entropy", "double", "two-stage", "prior", "other",
 ]
 
 # What the perturbation is allowed to move along, relative to the constraint
@@ -196,6 +196,11 @@ def label_run(run_id: str) -> RunLabel:
     """Readable name, family and magnitude for one run id."""
     rid = run_id
     up = rid.upper()
+
+    if "__PRIOR__" in rid:
+        from .prior_methods import NAMES
+        method = rid.split("__PRIOR__", 1)[1].split("__", 1)[0]
+        return RunLabel(NAMES.get(method, method), "prior", 0.0, rid)
 
     if "__ORTHO" in up:
         # Where the constraint vector itself is applied. Every f(S_c) arm and every

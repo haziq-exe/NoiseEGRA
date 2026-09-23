@@ -62,6 +62,10 @@ class ExperimentSpec:
     min_p: Optional[float] = None          # Nguyen et al., ICLR 2025
     eta_cutoff: Optional[float] = None     # Hewitt et al., EMNLP Findings 2022
     penalty_alpha: Optional[float] = None  # Su et al., NeurIPS 2022
+    # A published method run as a comparison (noiseegra.prior_methods): its name,
+    # and its settings as sorted (key, value) pairs so the spec stays hashable.
+    prior_method: Optional[str] = None
+    prior_params: tuple = ()
 
 
 def _seed_for_story(x: int) -> int:
@@ -108,6 +112,10 @@ def _float_tag(x: float) -> str:
 
 
 def _spec_mode(spec: ExperimentSpec) -> str:
+    if spec.prior_method:
+        if spec.use_orthogonal_steering or spec.steering_plan is not None:
+            raise ValueError("a prior-method spec cannot also carry a steering plan")
+        return "prior_method"
     active = sum([
         spec.use_two_stage_zero_shot,
         spec.use_two_stage_residual_noise,
@@ -360,6 +368,11 @@ def _spec_to_run_id(model_name: str, spec: ExperimentSpec) -> str:
 
     if mode == "baseline":
         return f"{model_name}__BASELINE{sampling_tag}"
+
+    if mode == "prior_method":
+        params = "".join(f"__{k}{_float_tag(v) if isinstance(v, (int, float)) else v}"
+                         for k, v in spec.prior_params)
+        return f"{model_name}__PRIOR__{spec.prior_method}{params}{sampling_tag}"
 
     if mode == "orthogonal_steering":
         return _ortho_tag(model_name, spec) + sampling_tag
@@ -1115,6 +1128,8 @@ def make_specs(*items: Any) -> list[ExperimentSpec]:
                     min_p=_optional_float(it.get("min_p")),
                     eta_cutoff=_optional_float(it.get("eta_cutoff")),
                     penalty_alpha=_optional_float(it.get("penalty_alpha")),
+                    prior_method=it.get("prior_method"),
+                    prior_params=tuple(sorted(dict(it.get("prior_params") or {}).items())),
                 )
             )
             continue
