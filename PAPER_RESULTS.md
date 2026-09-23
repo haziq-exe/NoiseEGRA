@@ -1230,3 +1230,57 @@ at the right tokens: present tense (profile favours "follows", "reads", "asks";
 did nothing for the two whose profiles do not: both genders favours "both",
 "them", "they" rather than "he" and "she", and simile favours the things
 compared ("blanket", "mirror") rather than "like" or "as".
+
+## The headline method on four other tasks (2026-09-23, run r137)
+
+Qwen3-1.7B, 50 answers per arm, arms at shared seeds: the untouched model, top-p
+0.95 at T=1.8, and the headline method (steering 2.5 on the task's own rules from
+its own contrast pairs, noise sized while writing, prompt noise 1.5x a tenth of
+the residual norm; built by the same suite code as the story runs). Tasks and
+checks are in noiseegra/domains.py. "Valid" is a check that means the same in
+every task (not empty, not a refusal, no repeated lines or loops); rules and
+correctness are counted over valid answers; "distinct of 10" is NoveltyBench's
+classifier.
+
+| Task | Arm | Valid | Rules broken | Correct | Distinct of 10 |
+|---|---|---|---|---|---|
+| Number puzzle (4 rules) | untouched | 50/50 | 0.00 | 0% | 1.00 |
+| | top-p | 50/50 | 0.00 | 0% | 1.00 |
+| | method | 14/50 | 1.29 | 0% | 1.00 |
+| Test cases (5 rules) | untouched | 50/50 | 0.32 | 82% | 1.05 |
+| | top-p | 50/50 | 0.58 | 46% | 2.38 |
+| | method | 49/50 | 3.73 | 8% | 6.79 |
+| Library plan (5 rules) | untouched | 50/50 | 0.08 | | 3.23 |
+| | top-p | 50/50 | 0.10 | | 6.31 |
+| | method | 48/50 | 1.54 | | 7.01 |
+| Poem (5 rules) | untouched | 50/50 | 2.02 | | 3.64 |
+| | top-p | 50/50 | 1.74 | | 6.86 |
+| | method | 46/50 | 3.00 | | 3.64 |
+
+**As built, the method does not transfer.** It breaks more rules than both
+baselines on every task, is far less often right on the test cases (8% against
+82% untouched and 46% top-p), and gives more variety than top-p only where its
+answers are broken (the test cases) -- it ties top-p on the plan and loses to it
+on the poem. Its plans are nonsense ("three identical bottles of water ... a
+single red marble"), its test cases wrong and wrapped in explanation, its poems
+strings of lowercase questions with no stanzas.
+
+**Why: the prompt's noise is not sized.** On these tasks the model is confident,
+so top-p moves each step's distribution very little and the target the
+controller aims at is small. The writing noise shrinks to its floor (a quarter
+of the starting length) but the prompt's noise is written before anything is
+measured, and it alone overshoots: over all 200 method answers the noise moved
+the predictions a median 1.85 nucleus-units against 1.00 asked (26 within
+0.9-1.1, 134 above 1.5; 8-24 on the number puzzle). On stories the model is
+uncertain enough that the same prompt noise sits inside the target.
+
+**The number puzzle measured nothing.** Its rules carried worked examples
+("1407 ÷ 7 = 201"), and every untouched and top-p answer copied them -- all
+format rules kept, the answer wrong every time. A design fault in the task, not a
+finding; a rerun would state the formats without a number that could be copied.
+
+**Steering alone is untested here.** Rules got worse even where the noise
+overshoot is mild (the poem: every line turned into a question -- "at least one
+question" went from 38% failing to 4% while three stanzas went from 8% to 76%),
+so the steering's share of the damage cannot be separated from the noise's
+without a steering-only arm per task.
