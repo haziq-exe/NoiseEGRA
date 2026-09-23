@@ -12,8 +12,10 @@ judged. Results are written to ``<run-dir>/novelty.json`` and printed.
 The judge is NoveltyBench's v1.0 classifier (DeBERTa-v3-large fine-tuned on
 human same/different labels, ``yimingzhang/deberta-v3-large-generation-
 similarity``), exactly as ``eval/creativity_metrics.ipynb`` runs it: the first
-128 tokens of each story, a pair counted the same story above 0.102, at full
-precision, since half precision can move a borderline pair across that line.
+128 tokens of each story, a pair counted the same story above 0.102. On a GPU
+every pair is scored in half precision and every pair near 0.102 is scored again
+at full precision, with a random sample checked too, so no verdict rests on
+rounding; the log reports how many the check would have changed.
 It judges openings: the maintainers' later v1.1 reads whole responses.
 
 Per arm:
@@ -83,15 +85,7 @@ def arms(path: Path, extra: str = "") -> dict:
     return out
 
 
-def coherent(texts: list, rid: str = "") -> list:
-    """The responses that count: through the story coherence checks, or, for a run
-    of another task (``dom-<name>__``), through that task's own validity check --
-    a poem or a list of test cases is not failed for not being a story."""
-    from noiseegra.domains import domain_of, get
-    dom = domain_of(rid)
-    if dom:
-        d = get(dom)
-        return [t for t in texts if d.valid(t)[0]]
+def coherent(texts: list) -> list:
     from noiseegra.coherence import CoherenceFilter
     filt = CoherenceFilter()
     reps = [filt.check(t) for t in texts]
@@ -115,13 +109,9 @@ def load_judge(device: str):
     return tok, model, torch
 
 
-def same_matrix(texts: list, tok, model, torch, device: str, batch: int = 64) -> np.ndarray:
-    """n x n: whether the judge calls stories i and j the same story."""
-    enc = [tok.encode(t, truncation=True, max_length=MAX_TOKENS, add_special_tokens=False)
-           for t in texts]
-    n = len(texts)
-    pairs = [(i, j) for i in range(n) for j in range(i)]
-    probs = []
+def _pair_probs(pairs, enc, tok, model, torch, device, batch: int, half: bool) -> list:
+    """The judge's same-story probability for each (i, j), story i first."""
+    out = []
     for s in range(0, len(pairs), batch):
         ids, tts = [], []
         for i, j in pairs[s:s + batch]:
@@ -134,11 +124,56 @@ def same_matrix(texts: list, tok, model, torch, device: str, batch: int = 64) ->
         att = [[1] * len(x) + [0] * (width - len(x)) for x in ids]
         ids = [x + [tok.pad_token_id] * (width - len(x)) for x in ids]
         tts = [t + [0] * (width - len(t)) for t in tts]
-        with torch.inference_mode():
+        with torch.inference_mode(), torch.autocast(
+                device_type="cuda", dtype=torch.float16, enabled=half):
             lg = model(input_ids=torch.tensor(ids, device=device),
                        token_type_ids=torch.tensor(tts, device=device),
                        attention_mask=torch.tensor(att, device=device)).logits
-        probs += lg.float().softmax(-1)[:, 1].cpu().tolist()
+        out += lg.float().softmax(-1)[:, 1].cpu().tolist()
+    return out
+
+
+# A pair whose half-precision probability is this close to the threshold is
+# judged again at full precision, so no verdict rests on rounding. Half
+# precision moves the probability by about 1e-3; the margin is thirty times that.
+MARGIN = 0.03
+CHECK_PAIRS = 400
+
+
+def same_matrix(texts: list, tok, model, torch, device: str, batch: int = 64,
+                report: dict = None) -> np.ndarray:
+    """n x n: whether the judge calls stories i and j the same story.
+
+    On a GPU every pair is scored in half precision, three to eight times
+    faster on a T4, and then every pair near the threshold, plus a random
+    sample of the rest, is scored again at full precision. The full-precision
+    verdict is the one kept, and ``report`` records how many sampled verdicts
+    half precision alone would have got wrong -- the evidence that it did not
+    matter, measured on these stories.
+    """
+    enc = [tok.encode(t, truncation=True, max_length=MAX_TOKENS, add_special_tokens=False)
+           for t in texts]
+    n = len(texts)
+    pairs = [(i, j) for i in range(n) for j in range(i)]
+    half = str(device).startswith("cuda")
+    probs = _pair_probs(pairs, enc, tok, model, torch, device, batch, half)
+    if half and pairs:
+        near = [k for k, p in enumerate(probs) if abs(p - THRESHOLD) < MARGIN]
+        rng = random.Random(0)
+        rest = [k for k in range(len(pairs)) if abs(probs[k] - THRESHOLD) >= MARGIN]
+        sample = rng.sample(rest, min(CHECK_PAIRS, len(rest)))
+        redo = near + sample
+        full = _pair_probs([pairs[k] for k in redo], enc, tok, model, torch, device,
+                           batch, False)
+        flipped = sum((probs[k] > THRESHOLD) != (f > THRESHOLD)
+                      for k, f in zip(sample, full[len(near):]))
+        near_flipped = sum((probs[k] > THRESHOLD) != (f > THRESHOLD)
+                           for k, f in zip(near, full[:len(near)]))
+        for k, f in zip(redo, full):
+            probs[k] = f
+        if report is not None:
+            report.update(pairs=len(pairs), near=len(near), near_flipped=near_flipped,
+                          checked=len(sample), checked_flipped=flipped)
     same = np.eye(n, dtype=bool)
     for (i, j), p in zip(pairs, probs):
         same[i, j] = same[j, i] = p > THRESHOLD
@@ -207,36 +242,37 @@ def score(path: Path, rids: list, limit: int, subsets: int, device: str,
     out = {}
     for rid in rids:
         texts = stories[rid][:limit] if limit else stories[rid]
-        kept = coherent(texts, rid)
+        kept = coherent(texts)
         t0 = time.time()
-        same = same_matrix(kept, tok, model, torch, device)
+        rep = {}
+        same = same_matrix(kept, tok, model, torch, device, report=rep)
         out[rid] = {"stories": len(texts), "coherent": len(kept),
                     "same": same.astype(int).tolist(),
                     "same_story_share": share_same(same),
-                    "distinct10": distinct_k(same, subsets=subsets)}
+                    "distinct10": distinct_k(same, subsets=subsets),
+                    "precision_check": rep}
+        extra = ""
+        if rep:
+            extra = (f"; half precision rechecked on {rep['near']} pairs near the line "
+                     f"({rep['near_flipped']} changed) and {rep['checked']} others "
+                     f"({rep['checked_flipped']} would have changed)")
         print(f"  judged {rid[-60:]}: {len(kept)} coherent, "
               f"{out[rid]['same_story_share']:.1%} same-story pairs, distinct of 10 "
-              f"{out[rid]['distinct10']:.2f}  ({time.time() - t0:.0f}s)", flush=True)
+              f"{out[rid]['distinct10']:.2f}  ({time.time() - t0:.0f}s{extra})", flush=True)
     return out
 
 
 def summarise(path: Path, judged: dict) -> dict:
     from noiseegra.run_labels import label_run
 
-    from noiseegra.domains import domain_of
-
-    def reference(rid, pred):
-        # Within the arm's own task: another domain's baseline is no reference.
-        return next((r for r in judged if pred(r) and domain_of(r) == domain_of(rid)), None)
-
+    base = next((r for r in judged if r.endswith("__BASELINE")), None)
+    topp = next((r for r in judged if "BASELINE__temp1p8__topp0p95" in r), None)
     draws = {r: half_draws(np.array(v["same"], dtype=bool)) for r, v in judged.items()}
     rows = {}
     for rid, v in judged.items():
-        base = reference(rid, lambda r: r.endswith("__BASELINE"))
-        topp = reference(rid, lambda r: "BASELINE__temp1p8__topp0p95" in r)
         row = {k: v[k] for k in ("stories", "coherent", "same_story_share", "distinct10")}
-        dom = domain_of(rid)
-        row["label"] = (f"[{dom}] " if dom else "") + label_run(rid.split("__", 1)[1] if dom else rid).text
+        row["precision_check"] = v.get("precision_check", {})
+        row["label"] = label_run(rid).text
         for name, ref in (("untouched", base), ("top_p", topp)):
             if ref and ref != rid:
                 # The difference itself from the full sets; only its spread from

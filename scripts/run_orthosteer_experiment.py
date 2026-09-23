@@ -2471,10 +2471,14 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         # distortion at each step; 0 is no tilt. One set of arms per value.
         tilts = [float(x) for x in (getattr(args, "output_tilts", None) or [0.0])]
 
-        def arm(sizing, *, length=None, prompt_gain=1.0, front=1.0, budget=b, tilt=0.0):
-            kw = dict(beta=flat, steer_budget=budget, output_tilt=tilt, offset_mode="orth",
+        none = {n: 0.0 for n in names}
+
+        def arm(sizing, *, length=None, prompt_gain=1.0, front=1.0, budget=b, tilt=0.0,
+                steer=True):
+            kw = dict(beta=(flat if steer else none), steer_budget=(budget if steer else None),
+                      output_tilt=tilt, offset_mode="orth",
                       offset_basis=None, offset_basis_kind="random",
-                      offset_random_rank=rank, steer_prefill=True,
+                      offset_random_rank=rank, steer_prefill=steer,
                       prompt_tail_clear=keep, offset_draw_shape="sphere",
                       offset_prefill=True, offset_decode=True, noise_beta=cn,
                       offset_prefill_gain=prompt_gain)
@@ -2508,6 +2512,11 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                     items.append(arm("fixed", length=fbase, prompt_gain=1.5, budget=bb, tilt=tt))
                 if "fixedfront" in want:
                     items.append(arm("fixed", length=fbase, front=1.5, budget=bb, tilt=tt))
+        # The noise alone at the fixed length, no rule steering: the ablation that
+        # separates what the noise does from what the steering does. Once, not
+        # per steering strength.
+        if "fixednoise" in want:
+            items.append(arm("fixed", length=fbase, steer=False))
         if not items:
             raise ValueError("suite 'headline': --headline-arms chose no arms")
         return items, (

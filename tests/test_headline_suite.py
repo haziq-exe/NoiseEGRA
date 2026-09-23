@@ -93,6 +93,15 @@ check("a steering sweep builds the chosen arms at each strength",
 ids = [_spec_to_run_id("Tiny", s) for s in make_specs(*[{"plan": p} for p in plans])]
 check("and records the strength in each run id", len(set(ids)) == 2
       and "bud3__" in ids[0] and "bud3p5" in ids[1], ids[0][-70:])
+plans, _ = build(headline_arms=["while", "fixednoise"], fixed_base=14.83)
+nz = plans[-1]
+check("the noise-alone arm is the fixed length with no rule steering",
+      len(plans) == 2 and abs(length(nz) - 14.83) < 1e-6
+      and all(sp.beta == 0.0 for sp in nz.specs) and not nz.steer_prefill,
+      str([sp.beta for sp in nz.specs]))
+check("and the arm sized while writing still steers", all(sp.beta > 0 for sp in plans[0].specs))
+ids = [_spec_to_run_id("Tiny", s) for s in make_specs(*[{"plan": p} for p in plans])]
+check("the two have their own run ids", len(set(ids)) == 2)
 try:
     build(headline_arms=[])
     check("an empty choice is refused", False)

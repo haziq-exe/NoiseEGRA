@@ -694,7 +694,8 @@ def main() -> None:
                     help="suite 'headline': the rule steering's total strength, one "
                          "set of arms per value (default: --steer-budget)")
     ap.add_argument("--headline-arms", nargs="+",
-                    choices=["while", "before", "fixed", "fixedprompt", "fixedfront"],
+                    choices=["while", "before", "fixed", "fixedprompt", "fixedfront",
+                             "fixednoise"],
                     default=["while", "before", "fixed", "fixedprompt", "fixedfront"],
                     help="suite 'headline': which of its arms to run -- sized while "
                          "writing, sized before, the fixed lengths, and the base "
@@ -1191,13 +1192,22 @@ def main() -> None:
     # written back, so the first run after a key is added records it and every
     # run after that is held to it.
     prev = state.get("task")
+
+    def _differs(k, v):
+        # More stories than the checkpoint was written with extends it: the
+        # story count reaches neither the prompt nor any story's seed, so the
+        # stories already there are the first ones of the larger set.
+        if k == "stories" and isinstance(v, int) and isinstance(prev.get(k), int):
+            return v < prev[k]
+        return prev[k] != v
+
     if prev is None:
         state["task"] = task
         save_state(state_path, state)
-    elif any(prev[k] != v for k, v in task.items() if k in prev) \
+    elif any(_differs(k, v) for k, v in task.items() if k in prev) \
             and not args.allow_task_change:
         changed = [f"    {k}: {prev[k]!r} -> {task[k]!r}"
-                   for k in task if k in prev and prev[k] != task[k]]
+                   for k in task if k in prev and _differs(k, task[k])]
         raise SystemExit(
             f"{state_path} holds stories generated under a different task setup:\n"
             + "\n".join(changed)
@@ -1206,8 +1216,9 @@ def main() -> None:
               "  --allow-task-change if you are certain you want them mixed."
         )
     else:
-        # Record any setting this checkpoint predates, so it is pinned from now on.
-        if any(k not in prev for k in task):
+        # Record any setting this checkpoint predates, and a larger story count,
+        # so they are pinned from now on.
+        if any(k not in prev for k in task) or task["stories"] != prev.get("stories"):
             state["task"] = {**prev, **task}
             save_state(state_path, state)
 

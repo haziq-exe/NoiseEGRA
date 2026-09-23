@@ -49,6 +49,31 @@ lo = S.interval(np.full(50, 0.1), np.full(50, 0.4))
 check("an interval is the difference and its spread",
       abs(lo[0] + 0.3) < 1e-9 and lo[1] - 1e-9 <= lo[0] <= lo[2] + 1e-9)
 
+print("\n== half precision, checked ==")
+true_p = {}
+def fake_probs(pairs, enc, tok, model, torch, device, batch, half):
+    # half precision is off by 0.02 on every pair; full precision is exact
+    return [true_p[pq] + (0.02 if half else 0.0) for pq in pairs]
+S._pair_probs = fake_probs
+class _Tok:
+    def encode(self, t, **k): return [1]
+rng = np.random.default_rng(0)
+n = 30
+for i in range(n):
+    for j in range(i):
+        true_p[(i, j)] = float(rng.choice([0.01, 0.09, 0.11, 0.5, 0.95]))
+rep = {}
+m = S.same_matrix(["x"] * n, _Tok(), None, None, "cuda", report=rep)
+want = all(m[i, j] == (true_p[(i, j)] > S.THRESHOLD) for (i, j) in true_p)
+check("every verdict near the line is the full-precision one", want)
+check("the near pairs are all rechecked", rep["near"] == sum(abs(v + 0.02 - S.THRESHOLD) < S.MARGIN
+                                                            for v in true_p.values()), str(rep))
+check("rounding that crossed the line is counted", rep["near_flipped"] > 0)
+check("and a sample of the rest is checked", rep["checked"] == min(S.CHECK_PAIRS, len(true_p) - rep["near"]))
+m_cpu = S.same_matrix(["x"] * n, _Tok(), None, None, "cpu", report={})
+check("on a CPU everything is full precision", all(
+    m_cpu[i, j] == (true_p[(i, j)] > S.THRESHOLD) for (i, j) in true_p))
+
 print("\n== a run ==")
 openers = ["Maya", "Leo", "Sam", "Ava", "Noor", "Kai", "Ivy", "Omar", "Zoe", "Eli", "Ana", "Ben"]
 story = ("{w} walks to the old library after school. The rain taps on the windows. "
@@ -90,37 +115,6 @@ with tempfile.TemporaryDirectory() as d:
     saved = json.loads((d / "novelty.json").read_text())
     check("the summary is saved next to the stories",
           set(saved["arms"]) == set(runs) and saved["threshold"] == 0.102)
-
-print("\n== runs of other tasks ==")
-cases = ('is_palindrome("level") -> True\nis_palindrome("") -> True\nis_palindrome("abc") -> False\n'
-         'is_palindrome("Noon") -> False\nis_palindrome("x y x") -> True')
-check("a task's own validity check is used for its runs",
-      len(S.coherent([cases, ""], "dom-tests__Qwen3-1.7B__BASELINE")) == 1)
-check("where the story checks would reject good test cases as a broken story",
-      len(S.coherent([cases], "Qwen3-1.7B__BASELINE")) == 0)
-with tempfile.TemporaryDirectory() as d:
-    d = Path(d)
-    (d / "Qwen3-1.7B").mkdir()
-    runs = {}
-    for dom in ("poem", "plan"):
-        runs[f"dom-{dom}__Qwen3-1.7B__BASELINE"] = [f"{dom} one {i} words here and more" for i in range(8)]
-        runs[f"dom-{dom}__Qwen3-1.7B__BASELINE__temp1p8__topp0p95"] = [
-            f"{dom} {i % 2} words here and more text" for i in range(8)]
-        runs[f"dom-{dom}__Qwen3-1.7B__ORTHO__method"] = [f"{dom} {i} words here and more text"
-                                                         for i in range(8)]
-    (d / "Qwen3-1.7B" / "state.json").write_text(json.dumps(
-        {"runs": {r: {f"0:{i}": t for i, t in enumerate(ts)} for r, ts in runs.items()}}))
-
-    def by_second_word(texts, *a, **k):
-        key = [t.split()[1] for t in texts]
-        return np.array([[a == b for b in key] for a in key], dtype=bool)
-
-    S.same_matrix = by_second_word
-    rows = S.summarise(d, S.score(d, sorted(runs), 0, 100, "cpu"))
-    m = rows["dom-plan__Qwen3-1.7B__ORTHO__method"]
-    check("each arm is compared with its own task's untouched model",
-          abs(m["same_vs_untouched"][0] - (0.0 - 1.0)) < 1e-9, str(m["same_vs_untouched"][0]))
-    check("and labelled with its task", m["label"].startswith("[plan]"), m["label"])
 
 print()
 if FAILURES:
