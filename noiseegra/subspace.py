@@ -529,6 +529,13 @@ class SteeringPlan:
     # The multiple of the starting length the controller has set for the next
     # decode step. Reset to 1 for every story.
     online_gain: float = 1.0
+    # The largest multiple of the starting length the controller may reach. 2.5
+    # held on Qwen3-1.7B, where the second-half gain never passed 1.5; a model
+    # far less sensitive to a residual offset needs more room.
+    online_max_gain: float = 2.5
+    # Carry the size the controller settled on into the next story, prompt
+    # included, as the adaptive scaling of Plappert et al. runs across episodes.
+    online_carry: bool = False
     # Tilt the story's next-token distribution toward the tokens the rules make
     # likelier (the constraints' output profiles, from the same forward passes
     # as the steering directions). The value is the tilt's size at every step as
@@ -970,6 +977,8 @@ class SteeringPlan:
         offset_draw_shape: str = "sphere",
         offset_random_rank: int = 0,
         offset_online: float = 0.0,
+        online_max_gain: float = 2.5,
+        online_carry: bool = False,
         output_tilt: float = 0.0,
         output_profile: Optional[torch.Tensor] = None,
         shadow_protect: bool = False,
@@ -1190,6 +1199,8 @@ class SteeringPlan:
             offset_draw_shape=str(offset_draw_shape),
             offset_random_rank=int(offset_random_rank or 0),
             offset_online=float(offset_online or 0.0),
+            online_max_gain=float(online_max_gain or 2.5),
+            online_carry=bool(online_carry),
             output_tilt=float(output_tilt or 0.0),
             output_profile=(None if not output_tilt or output_profile is None
                             else output_profile.detach().float().cpu()),
@@ -1643,6 +1654,17 @@ class SteeringPlan:
             else:
                 lp.offset = vec * (gamma * self.rms_scale)
                 lp.offset_length = float(lp.offset.norm())
+        # Sized while writing, with the size carried over: this story starts --
+        # prompt included -- at the size the controller settled on in the last
+        # one, instead of at the nominal starting length. The direction is still
+        # this story's own.
+        carried = getattr(self, "_carried_gain", None)
+        if (float(getattr(self, "offset_online", 0.0) or 0.0) > 0
+                and getattr(self, "online_carry", False) and carried):
+            for lp in self.layer_plans.values():
+                if lp.offset is not None:
+                    lp.offset = lp.offset * float(carried)
+                    lp.offset_length = float(lp.offset.norm())
 
     def delta_for(
         self,
@@ -1955,6 +1977,8 @@ class SteeringPlan:
             "noise_fmin_cycles": self.noise_fmin_cycles,
             "offset_envelope": self.offset_envelope,
             "offset_online": self.offset_online,
+            "online_max_gain": self.online_max_gain,
+            "online_carry": self.online_carry,
             "output_tilt": self.output_tilt,
             "offset_decode": self.offset_decode,
             "amplify_lambda": self.amplify_lambda,

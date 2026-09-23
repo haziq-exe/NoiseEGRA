@@ -123,6 +123,8 @@ def make_plan(
     offset_envelope_steps=0,
     shadow_protect=False,
     offset_online=0.0,
+    online_max_gain=2.5,
+    online_carry=False,
     output_tilt=0.0,
     offset_secured_boost=0.0,
     steer_split_concentration=0.0,
@@ -234,6 +236,8 @@ def make_plan(
         offset_envelope_steps=offset_envelope_steps,
         shadow_protect=shadow_protect,
         offset_online=offset_online,
+        online_max_gain=online_max_gain,
+        online_carry=online_carry,
         output_tilt=output_tilt,
         output_profile=output_profile,
         offset_secured_boost=offset_secured_boost,
@@ -2524,7 +2528,7 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         none = {n: 0.0 for n in names}
 
         def arm(sizing, *, length=None, prompt_gain=1.0, front=1.0, budget=b, tilt=0.0,
-                steer=True):
+                steer=True, carry=None):
             kw = dict(beta=(flat if steer else none), steer_budget=(budget if steer else None),
                       output_tilt=tilt, offset_mode="orth",
                       offset_basis=None, offset_basis_kind="random",
@@ -2538,7 +2542,10 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             if sizing == "before":
                 kw.update(offset_gamma=1.0, offset_norm="fisher")
             elif sizing == "while":
-                kw.update(offset_gamma=start, offset_norm="energy", offset_online=1.0)
+                kw.update(offset_gamma=start, offset_norm="energy", offset_online=1.0,
+                          online_max_gain=float(getattr(args, "online_max_gain", 2.5) or 2.5),
+                          online_carry=bool(getattr(args, "online_carry", False)
+                                            if carry is None else carry))
             else:
                 kw.update(offset_gamma=length / norm, offset_norm="energy")
             item = {"plan": make_plan(**kw, **quiet, **base)}
@@ -2568,6 +2575,9 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             for tt in tilts:
                 if "while" in want:
                     items.append(arm("while", prompt_gain=1.5, budget=bb, tilt=tt))
+                if "whilecarry" in want:
+                    # The same, with the size carried from one story to the next.
+                    items.append(arm("while", prompt_gain=1.5, budget=bb, tilt=tt, carry=True))
                 if "before" in want:
                     items.append(arm("before", prompt_gain=1.5, budget=bb, tilt=tt))
                 if "fixed" in want:

@@ -1222,7 +1222,8 @@ class EGRA:
                 # First in the list, so it reads the model's own scores before
                 # anything else has touched them.
                 from .online_calibration import OnlineSizer
-                sizer = OnlineSizer(plan, float(plan.offset_online))
+                sizer = OnlineSizer(plan, float(plan.offset_online),
+                                    bounds=(0.25, float(getattr(plan, "online_max_gain", 2.5) or 2.5)))
                 processors = LogitsProcessorList([sizer, *(processors or [])])
             if (float(getattr(plan, "output_tilt", 0.0) or 0.0) > 0
                     and getattr(plan, "output_profile", None) is not None):
@@ -1293,6 +1294,11 @@ class EGRA:
             if getattr(plan, "online_log", None) is None:
                 plan.online_log = []
             plan.online_log.append(got)
+            if "late_gain" in got and getattr(plan, "online_carry", False):
+                # The next story starts where this one settled.
+                prev = float(getattr(plan, "_carried_gain", None) or 1.0)
+                plan._carried_gain = prev * float(got["late_gain"])
+                got["carried_into_next"] = plan._carried_gain
             if "final_gain" in got:
                 print(f"  [online] length {got['start_length']:.2f} -> "
                       f"{got['start_length'] * got['final_gain']:.2f} "

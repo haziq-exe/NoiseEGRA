@@ -694,6 +694,12 @@ def main() -> None:
                     choices=["minp", "steertopp", "verbalized", "ssot", "incontext", "stars",
                              "noiseinject", "nucleusfull", "creative"],
                     help="suite 'priorwork': which published methods to run (default all)")
+    ap.add_argument("--online-max-gain", type=float, default=2.5,
+                    help="suite 'headline': the largest multiple of its starting length "
+                         "the noise sized while writing may reach")
+    ap.add_argument("--online-carry", action="store_true",
+                    help="suite 'headline': carry the size the noise settled on into the "
+                         "next story, prompt included")
     ap.add_argument("--fixed-fraction", type=float, default=None,
                     help="suite 'headline': the fixed noise length as a share of the "
                          "model's residual norm, for running the same arms on another "
@@ -707,8 +713,8 @@ def main() -> None:
                     help="suite 'headline': the rule steering's total strength, one "
                          "set of arms per value (default: --steer-budget)")
     ap.add_argument("--headline-arms", nargs="+",
-                    choices=["while", "before", "fixed", "fixedprompt", "fixedfront",
-                             "fixednoise"],
+                    choices=["while", "whilecarry", "before", "fixed", "fixedprompt",
+                             "fixedfront", "fixednoise"],
                     default=["while", "before", "fixed", "fixedprompt", "fixedfront"],
                     help="suite 'headline': which of its arms to run -- sized while "
                          "writing, sized before, the fixed lengths, and the base "

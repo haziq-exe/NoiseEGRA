@@ -147,6 +147,45 @@ still = plan(gamma=0.0)
 egra.generate_with_orthogonal_steering(PROMPT, still, max_new_tokens=8, seed=1)
 check("with no noise to size, none runs", getattr(still, "online_log", None) is None)
 
+print("\n== a wider range, and the size carried between stories ==")
+def plan2(**kw):
+    return SteeringPlan.build(
+        VECS, LAYERS, [ConstraintSpec(n, beta=1.0) for n in NAMES], rms_scale=1.0,
+        noise_mode="none", noise_alpha=0.0, steer_budget=1.0,
+        offset_gamma=0.15, offset_mode="orth", offset_norm="energy",
+        offset_basis_kind="random", offset_random_rank=RANK, noise_beta=2.0,
+        offset_prefill=True, steer_prefill=True, prompt_tail_clear=2,
+        offset_prefill_gain=1.5, offset_online=1.0, **kw)
+d = plan2()
+rid0 = _ortho_tag("M", ExperimentSpec(use_orthogonal_steering=True, steering_plan=d))
+check("the default keeps the run id every earlier arm has", "__online1__" in rid0
+      and "max" not in rid0.split("__online1")[1][:6] and "carry" not in rid0, rid0[-50:])
+w = plan2(online_max_gain=10.0, online_carry=True)
+rid1 = _ortho_tag("M", ExperimentSpec(use_orthogonal_steering=True, steering_plan=w))
+check("the wider range and the carry are in the run id", "__online1max10carry" in rid1, rid1[-60:])
+seen_bounds = {}
+import noiseegra.online_calibration as OC
+orig_init = OC.OnlineSizer.__init__
+def spy_init(self, plan, target, **kw):
+    seen_bounds["b"] = kw.get("bounds"); orig_init(self, plan, target, **kw)
+OC.OnlineSizer.__init__ = spy_init
+egra.generate_with_orthogonal_steering(PROMPT, w, max_new_tokens=12, seed=1)
+OC.OnlineSizer.__init__ = orig_init
+check("the controller is given the wider range", seen_bounds.get("b") == (0.25, 10.0), str(seen_bounds))
+first = w.online_log[-1]
+check("a story records the size it hands on", abs(first["carried_into_next"] - first["late_gain"]) < 1e-9)
+torch.manual_seed(7); w.resample_offset()
+L0 = next(lp.offset_length for lp in w.layer_plans.values() if lp.offset is not None)
+base = 0.15 * math.sqrt(DIM)
+check("the next story starts at the carried size, prompt included",
+      abs(L0 - base * first["carried_into_next"]) < 1e-3 and w.online_gain == 1.0,
+      f"{L0:.3f} vs {base * first['carried_into_next']:.3f}")
+nc = plan2(online_max_gain=10.0)
+egra.generate_with_orthogonal_steering(PROMPT, nc, max_new_tokens=12, seed=1)
+torch.manual_seed(7); nc.resample_offset()
+L1 = next(lp.offset_length for lp in nc.layer_plans.values() if lp.offset is not None)
+check("without the carry every story starts at the nominal length", abs(L1 - base) < 1e-3)
+
 print()
 if FAILURES:
     print(f"{len(FAILURES)} FAILED: {FAILURES}")
