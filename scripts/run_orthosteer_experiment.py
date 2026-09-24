@@ -2608,9 +2608,12 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                         # The same, with the size carried from one story to the next.
                         items.append(arm("while", prompt_gain=1.5, budget=bb, tilt=tt,
                                          carry=True, target=tg))
+                # The simple arms put the writing length on the prompt unless asked
+                # for a multiple of it.
+                sgains = list(getattr(args, "simple_prompt_gains", None) or [1.0])
                 for kind in ("simple", "promptonly"):
                     if kind in want:
-                        items.append(arm(kind, prompt_gain=1.0, budget=bb, tilt=tt))
+                        items += [arm(kind, prompt_gain=g, budget=bb, tilt=tt) for g in sgains]
                 if "before" in want:
                     items.append(arm("before", prompt_gain=1.5, budget=bb, tilt=tt))
                 if "fixed" in want:

@@ -706,6 +706,10 @@ def main() -> None:
     ap.add_argument("--headline-prompt-gains", type=float, nargs="+", default=None,
                     help="suite 'headline': the noise on the prompt as multiples of the "
                          "starting length, one 'while' arm each (default 1.5)")
+    ap.add_argument("--simple-prompt-gains", type=float, nargs="+", default=None,
+                    help="suite 'headline': the noise on the prompt as multiples of the "
+                         "writing length for the 'simple' and 'promptonly' arms, one arm "
+                         "each (default 1.0: the same length)")
     ap.add_argument("--online-rule-start", action="store_true",
                     help="with --online-rule-k: also measure the starting length before "
                          "any story -- the length at which random draws of the noise "

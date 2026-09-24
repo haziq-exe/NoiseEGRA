@@ -131,6 +131,8 @@ check("the simple arms build",
 check("one writes with the noise and one does not", [p.offset_decode for p in plans] == [True, False])
 check("both with the prompt's noise at the writing length", [p.offset_prefill_gain for p in plans] == [1.0, 1.0],
       str([p.offset_prefill_gain for p in plans]))
+plans, _ = build(headline_arms=["simple"], online_rule_k=0.43, simple_prompt_gains=[1.0, 1.5])
+check("the simple arm can take the prompt's noise as a multiple", [p.offset_prefill_gain for p in plans] == [1.0, 1.5])
 try:
     build(headline_arms=[])
     check("an empty choice is refused", False)
