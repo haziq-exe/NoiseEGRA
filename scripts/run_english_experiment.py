@@ -651,6 +651,10 @@ def main() -> None:
                     help="per-story offset magnitudes used by --suite offset")
     ap.add_argument("--offset-rank", type=int, default=64,
                     help="how many activation principal components offsets may use")
+    ap.add_argument("--probe-scale", type=int, default=0, metavar="N",
+                    help="measure the model under the noise before any story (top-p's "
+                         "shift, uncertainty, sensitivity, fluency cost) over N draws, "
+                         "write scale_probe.json and exit")
     ap.add_argument("--diagnose-leakage", type=int, default=0, metavar="N",
                     help="measure how much of each perturbed arm's noise ends up "
                          "along the rule directions downstream, on the first N "
@@ -1806,6 +1810,32 @@ def main() -> None:
         built, desc = build_suite(suite, vectors, layers, args.steer_vectors, rms_scale, args)
         items.extend(built)
         print(f"  suite {suite}: {desc} ({len(built)} runs)")
+
+    if args.probe_scale:
+        # Measure, before any story, what the model is like under the noise:
+        # top-p's per-step shift, uncertainty, sensitivity to the noise and the
+        # fluency it costs, for the first arm sized while writing. See
+        # noiseegra.scale_probe. Writes scale_probe.json and exits.
+        from noiseegra.scale_probe import probe
+        plan = next((it["plan"] for it in items if isinstance(it, dict) and "plan" in it
+                     and float(getattr(it["plan"], "offset_online", 0.0) or 0.0) > 0), None)
+        if plan is None:
+            raise SystemExit("--probe-scale needs an arm sized while writing "
+                             "(suite headline, --headline-arms while)")
+        egra = get_model()
+        chat = egra.apply_chat_template(messages[0], tokenize=False, add_generation_prompt=True)
+        pids = egra.tokenizer(chat, return_tensors="pt").to(egra._input_device())["input_ids"]
+        seeds = [seed_for(0, x, args.story_seed_offset) for x in range(int(args.probe_scale))]
+        got = probe(egra, plan, pids, seeds=seeds)
+        got["model"] = args.model
+        (out / "scale_probe.json").write_text(json.dumps(got, indent=1))
+        print(f"\nscale probe, {args.model}: norm {got['norm']:.2f}, top-p's shift per step "
+              f"{got['unit']:.4f}, entropy {got['entropy']:.3f}, top token {got['top_prob']:.3f}, "
+              f"clean NLL {got['clean_nll']:.3f}")
+        for f, r in got["by_fraction"].items():
+            print(f"  noise at {f:>5} of the norm: moves {r['moved']:.4f} ({r['units']:.2f} units), "
+                  f"noisy greedy text NLL +{r['nll_rise']:.3f}")
+        raise SystemExit(0)
 
     if args.diagnose_leakage:
         # Measure where each perturbed arm's noise ends up, on the offsets the
