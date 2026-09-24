@@ -1605,3 +1605,62 @@ about 1% over 200 stories. String Seed of Thought costs 2-5x (it writes a random
 string and its reasoning first); in-context regeneration up to 3x (each story
 reads the ones before it); STARS is cheapest per story only because it writes 20
 at once, which any of these methods could do.
+
+### Is the sizing machinery needed? The simple method against the full one (runs r149-r151, 2026-09-24)
+
+A review of the method found parts that do nothing or reduce to something
+simpler: the top-p unit cancels (the rule's target times top-p's shift is a
+fixed Fisher-Rao distance, 2 asin(0.43 p1)); the rule is within 2% of a constant
+0.63 on every model so far; a random vector in a random 64-dimensional subspace
+is a random direction; the projection off the nine rule and shield directions
+removes 0.3-0.4% of the noise; 82% of the drifting direction is its per-story
+constant. The controller settles near the measured start when the prompt's
+noise equals the writing length; its settling at 0.8x on Qwen3-1.7B came from
+the prompt's noise at 1.5x, which the measurement does not include (not from the
+effect accumulating, as said above).
+
+"Simple" (commit ddc7897) is one isotropic random vector per story, constant
+through the story, at a length measured once per prompt from the rule's target
+and held (no controller, no shadow row, no subspace, projection or drift).
+"Prompt-only" is the same with no noise while writing. Stories 0-49, same seeds.
+
+| Qwen3-1.7B | Noise on the prompt (of the norm) | Coherent | Rules broken | Same-story pairs | Distinct of 10 | Lowercase drift |
+|---|---|---|---|---|---|---|
+| Full method, prompt 1.0x | 0.103 | 50/50 | 2.18 | 55.6% | 3.74 | 9 |
+| Simple, prompt 1.0x | 0.103 | 50/50 | 2.20 | 52.0% | 4.02 | 3 |
+| Prompt-only, 1.0x | 0.103 | 50/50 | 1.70 | 69.5% | 2.88 | 1 |
+| Full method, prompt 1.5x (the headline) | 0.15 | 50/50 | 2.54 | 13.9% | 7.43 | 3 |
+| Simple, prompt 1.5x | 0.155 | 47/50 | 2.55 | 35.0% | 5.50 | 2 |
+| Rule steering only | | 50/50 | 1.46 | 70.1% | 2.76 | 0 |
+
+| Llama-3.2-3B | Noise on the prompt | Coherent | Rules broken | Same-story pairs | Distinct of 10 | Garbled / minor slips (30 read blind) |
+|---|---|---|---|---|---|---|
+| Full method, prompt 1.0x | 0.210 | 50/50 | 1.28 | 24.2% | 6.35 | 1 / 14 |
+| Simple, prompt 1.0x | 0.233 | 50/50 | 1.68 | 22.9% | 6.73 | 0 / 10 |
+| Prompt-only, 1.0x | 0.233 | 50/50 | 1.66 | 21.6% | 6.27 | 0 / 5 |
+
+**At prompt 1.0x the simple method matches the full one on variety on both
+models**: Qwen 4.02 against 3.74, Llama 6.73 against 6.35. On Qwen it matches on
+rules too (+0.02 [-0.40, +0.44]) with fewer lowercase drifts (3 against 9). On
+Llama it breaks 0.40 more [+0.02, +0.78]; the full method's first 50 stories
+were 0.20 better than its 200-story mean, and the simple arm's measured length
+came out 11% longer (four draws of a different kind of noise), which lengthens
+the prompt's noise, the setting Llama's rules respond to.
+
+**At Qwen's headline setting (prompt 1.5x) the simple method is less varied**:
+5.50 against 7.43 distinct of 10 (-1.92 [-3.88, -0.22]; same-story +21.1%
+[+4.3%, +39.7%]), rules tied (+0.01 [-0.45, +0.47]), 47 of 50 coherent (two
+formatted as scripts, one loop). Something removed matters here. The likeliest
+is the controller: with the prompt at 1.5x it shrank the writing noise (median
+0.8x the start, to its 0.25 floor in a quarter of stories), so the full method
+was strong noise on the prompt and weaker noise while writing; the simple
+method writes at the full length. The drift is the other candidate.
+
+**The prompt's noise is the main lever, and writing noise matters on Qwen**:
+Qwen's variety roughly doubles from prompt 1.0x to 1.5x (3.74 to 7.43), and
+prompt-only noise on Qwen is no more varied than steering alone (2.88 against
+2.76). On Llama prompt-only noise is as varied as the full method.
+
+Cost: without the controller there is no shadow row. On Qwen the simple arms
+took about 69 ms a word against 78 for the full method, one story at a time;
+written in batches the full method does about twice the arithmetic.
