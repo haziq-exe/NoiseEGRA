@@ -127,6 +127,7 @@ def make_plan(
     online_carry=False,
     online_rule_k=0.0,
     online_rule_start=False,
+    offset_measured=False,
     output_tilt=0.0,
     offset_secured_boost=0.0,
     steer_split_concentration=0.0,
@@ -242,6 +243,7 @@ def make_plan(
         online_carry=online_carry,
         online_rule_k=online_rule_k,
         online_rule_start=online_rule_start,
+        offset_measured=offset_measured,
         output_tilt=output_tilt,
         output_profile=output_profile,
         offset_secured_boost=offset_secured_boost,
@@ -2556,6 +2558,18 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                                             if carry is None else carry),
                           online_rule_k=float(getattr(args, "online_rule_k", 0.0) or 0.0),
                           online_rule_start=bool(getattr(args, "online_rule_start", False)))
+            elif sizing in ("simple", "promptonly"):
+                # The method with everything the sizing did not need taken out:
+                # one isotropic random vector per story (no random subspace, no
+                # projection off the rule directions, no drift), at one length
+                # measured before the stories from the rule's target and held
+                # for the whole story (no controller, no shadow row), the same
+                # length on the prompt as while writing. "promptonly" writes
+                # with the noise off.
+                kw.update(offset_gamma=start, offset_norm="energy", offset_mode="iso",
+                          offset_random_rank=0, noise_beta=None, offset_measured=True,
+                          online_rule_k=float(getattr(args, "online_rule_k", 0.0) or 0.43),
+                          offset_decode=(sizing == "simple"))
             else:
                 kw.update(offset_gamma=length / norm, offset_norm="energy")
             item = {"plan": make_plan(**kw, **quiet, **base)}
@@ -2594,6 +2608,9 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                         # The same, with the size carried from one story to the next.
                         items.append(arm("while", prompt_gain=1.5, budget=bb, tilt=tt,
                                          carry=True, target=tg))
+                for kind in ("simple", "promptonly"):
+                    if kind in want:
+                        items.append(arm(kind, prompt_gain=1.0, budget=bb, tilt=tt))
                 if "before" in want:
                     items.append(arm("before", prompt_gain=1.5, budget=bb, tilt=tt))
                 if "fixed" in want:

@@ -810,8 +810,9 @@ class EGRA:
         # noise already reach that target. Before the seed, because measuring
         # the start draws noise of its own.
         rule = None
-        if (float(getattr(plan, "online_rule_k", 0.0) or 0.0) > 0
-                and float(getattr(plan, "offset_online", 0.0) or 0.0) > 0):
+        online = float(getattr(plan, "offset_online", 0.0) or 0.0) > 0
+        measured = bool(getattr(plan, "offset_measured", False))
+        if float(getattr(plan, "online_rule_k", 0.0) or 0.0) > 0 and (online or measured):
             from .online_calibration import (_reference, measure_for_rule,
                                              start_for_target, target_from_top_share)
             cache = getattr(plan, "_rule_cache", None)
@@ -829,9 +830,17 @@ class EGRA:
                 msg = (f"  [rule] top-p moves {m['unit']:.4f} per step, top word "
                        f"{m['top_prob']:.3f}: noise target {m['target']:.3f} "
                        f"(k {float(plan.online_rule_k):g})")
-                if getattr(plan, "online_rule_start", False):
-                    st = start_for_target(self, plan, ids, m["target"], m["unit"],
-                                          reference=ref)
+                if getattr(plan, "online_rule_start", False) or measured:
+                    # Always the length at which the whole noise -- prompt and
+                    # writing -- reaches the target, so a length means the same
+                    # thing in an arm that writes with the noise off.
+                    decode = plan.offset_decode
+                    plan.offset_decode = True
+                    try:
+                        st = start_for_target(self, plan, ids, m["target"], m["unit"],
+                                              reference=ref)
+                    finally:
+                        plan.offset_decode = decode
                     m.update(st)
                     msg += (f"; starting length {st['start']:.2f} "
                             f"({st['fraction']:.3f} of the norm) moves it "
@@ -889,7 +898,8 @@ class EGRA:
         # The rule's target, and with it the starting length when that was
         # measured too, applied to this story's own draw.
         if rule is not None:
-            plan.offset_online = float(rule["target"])
+            if online:
+                plan.offset_online = float(rule["target"])
             if "start" in rule:
                 from .online_calibration import scale_offsets
                 scale_offsets(plan, float(rule["start"]))

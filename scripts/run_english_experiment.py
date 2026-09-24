@@ -734,11 +734,14 @@ def main() -> None:
                          "set of arms per value (default: --steer-budget)")
     ap.add_argument("--headline-arms", nargs="+",
                     choices=["while", "whilecarry", "before", "fixed", "fixedprompt",
-                             "fixedfront", "fixednoise"],
+                             "fixedfront", "fixednoise", "simple", "promptonly"],
                     default=["while", "before", "fixed", "fixedprompt", "fixedfront"],
                     help="suite 'headline': which of its arms to run -- sized while "
-                         "writing, sized before, the fixed lengths, and the base "
-                         "length with the prompt or the start at 1.5x")
+                         "writing, sized before, the fixed lengths, the base length "
+                         "with the prompt or the start at 1.5x, and the simple method "
+                         "(one isotropic vector per story at a length measured before "
+                         "the stories, no controller) with and without noise while "
+                         "writing")
     ap.add_argument("--online-start", type=float, default=0.10,
                     help="suite 'headline': the length the noise sized while "
                          "writing starts from, as a fraction of the residual "

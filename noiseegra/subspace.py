@@ -544,6 +544,11 @@ class SteeringPlan:
     # length at which random draws of the noise already reach the target (see
     # online_calibration.start_for_target). Off keeps offset_gamma.
     online_rule_start: bool = False
+    # A fixed length measured before the stories instead of sized while writing:
+    # with online_rule_k, the rule's target and the length at which random draws
+    # of the noise reach it (online_calibration.start_for_target), held for the
+    # whole story -- no controller, no shadow row.
+    offset_measured: bool = False
     # Tilt the story's next-token distribution toward the tokens the rules make
     # likelier (the constraints' output profiles, from the same forward passes
     # as the steering directions). The value is the tilt's size at every step as
@@ -989,6 +994,7 @@ class SteeringPlan:
         online_carry: bool = False,
         online_rule_k: float = 0.0,
         online_rule_start: bool = False,
+        offset_measured: bool = False,
         output_tilt: float = 0.0,
         output_profile: Optional[torch.Tensor] = None,
         shadow_protect: bool = False,
@@ -1213,6 +1219,7 @@ class SteeringPlan:
             online_carry=bool(online_carry),
             online_rule_k=float(online_rule_k or 0.0),
             online_rule_start=bool(online_rule_start),
+            offset_measured=bool(offset_measured),
             output_tilt=float(output_tilt or 0.0),
             output_profile=(None if not output_tilt or output_profile is None
                             else output_profile.detach().float().cpu()),
@@ -1993,6 +2000,7 @@ class SteeringPlan:
             "online_carry": self.online_carry,
             "online_rule_k": self.online_rule_k,
             "online_rule_start": self.online_rule_start,
+            "offset_measured": self.offset_measured,
             "output_tilt": self.output_tilt,
             "offset_decode": self.offset_decode,
             "amplify_lambda": self.amplify_lambda,

@@ -124,6 +124,13 @@ check("a sweep of the prompt's noise builds one arm each",
 ids = [_spec_to_run_id("Tiny", s) for s in make_specs(*[{"plan": p} for p in plans])]
 check("with it in each run id (1.0, the default, untagged)",
       "__opg" not in ids[0] and "__opg0p5__" in ids[1], ids[1][-40:])
+plans, _ = build(headline_arms=["simple", "promptonly"], online_rule_k=0.43)
+check("the simple arms build",
+      len(plans) == 2 and all(p.offset_measured and p.offset_mode == "iso" and p.offset_random_rank == 0
+                              and p.noise_beta is None and p.offset_online == 0 for p in plans))
+check("one writes with the noise and one does not", [p.offset_decode for p in plans] == [True, False])
+check("both with the prompt's noise at the writing length", [p.offset_prefill_gain for p in plans] == [1.0, 1.0],
+      str([p.offset_prefill_gain for p in plans]))
 try:
     build(headline_arms=[])
     check("an empty choice is refused", False)

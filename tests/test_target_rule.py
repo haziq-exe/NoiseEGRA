@@ -124,6 +124,49 @@ first_draw(ps, 6)
 OC.measure_for_rule = real
 check("a second story reuses the measurement", calls == [])
 
+print("\n== a fixed measured length, no controller ==")
+
+
+def simple(decode=True):
+    return SteeringPlan.build(V, [2, 3], [ConstraintSpec(n, beta=1.0) for n in V], rms_scale=1.0,
+        noise_mode="none", noise_alpha=0.0, steer_budget=1.0, offset_gamma=0.1, offset_mode="iso",
+        offset_norm="energy", offset_basis_kind="random", offset_random_rank=0, noise_beta=None,
+        offset_prefill=True, offset_decode=decode, steer_prefill=True, prompt_tail_clear=2,
+        online_rule_k=0.43, offset_measured=True)
+
+
+sp = simple()
+rid_s = _ortho_tag("M", ExperimentSpec(use_orthogonal_steering=True, steering_plan=sp))
+rid_p = _ortho_tag("M", ExperimentSpec(use_orthogonal_steering=True, steering_plan=simple(False)))
+check("the run id records the measured length", "__meas0p43" in rid_s and "__online" not in rid_s, rid_s[-40:])
+check("and a prompt-only arm differs from it", rid_p != rid_s)
+rows = []
+real_gen = egra.model.generate
+def spy_rows(*a, **k):
+    ids_ = k.get("input_ids", a[0] if a else None)
+    rows.append(int(ids_.shape[0]))
+    lp = next(iter(sp.layer_plans.values()))
+    rows.append(float(lp.offset_length))
+    return real_gen(*a, **k)
+egra.model.generate = spy_rows
+try:
+    out = egra.generate_with_orthogonal_steering(PROMPT, sp, max_new_tokens=6, seed=3)
+finally:
+    egra.model.generate = real_gen
+m = next(iter(sp._rule_cache.values()))
+check("it writes one row: no shadow copy", rows[0] == 1, str(rows[0]))
+check("at the measured length", abs(rows[1] - m["start"]) < 1e-4, f"{rows[1]:.4f} vs {m['start']:.4f}")
+check("with no controller in the log", not getattr(sp, "online_log", None))
+check("and the target is the rule's", abs(m["target"] - want) < 1e-6)
+lp0 = next(iter(sp.layer_plans.values()))
+check("the noise is one constant vector", lp0.offset_traj is None and lp0.offset_basis is None)
+pp = simple(False)
+egra.generate_with_orthogonal_steering(PROMPT, pp, max_new_tokens=6, seed=3)
+mp = next(iter(pp._rule_cache.values()))
+check("a prompt-only arm is given the same length", abs(mp["start"] - m["start"]) < 1e-6,
+      f"{mp['start']:.4f} vs {m['start']:.4f}")
+check("and still writes with the noise off", pp.offset_decode is False)
+
 print()
 if FAILURES:
     print(f"{len(FAILURES)} FAILED: {FAILURES}")
