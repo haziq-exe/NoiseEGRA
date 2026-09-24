@@ -76,6 +76,54 @@ egra.generate_with_orthogonal_steering(PROMPT, off, max_new_tokens=6, seed=1)
 check("without the rule the target stays as set", off.offset_online == 1.0
       and getattr(off, "_rule_cache", None) is None)
 
+print("\n== the starting length ==")
+from noiseegra.online_calibration import start_for_target  # noqa: E402
+
+ps = plan(0.43)
+ps.online_rule_start = True
+rid = _ortho_tag("M", ExperimentSpec(use_orthogonal_steering=True, steering_plan=ps))
+check("the run id records the measured start", "rule0p43start" in rid, rid[-50:])
+st = start_for_target(egra, plan(0.43), ids, want, ref["unit"])
+check("the start it finds moves the predictions by the target",
+      st["reached"] == 1.0 and abs(st["moves"] - want) < 0.05 * want,
+      f"{st['moves']:.4f} vs {want:.4f} at {st['fraction']:.4f} of the norm")
+st2 = start_for_target(egra, plan(0.43), ids, 2 * want, ref["unit"])
+check("and a larger target needs a longer start", st2["start"] > st["start"])
+
+
+def first_draw(pl, seed):
+    """The story's own noise basis and its length when writing starts."""
+    got = {}
+    real_gen = egra.model.generate
+    def spy(*a, **k):
+        lp = next(iter(pl.layer_plans.values()))
+        got["basis"] = lp.offset_basis.detach().clone()
+        got["length"] = float(lp.offset_length)
+        got["target"] = float(pl.offset_online)
+        return real_gen(*a, **k)
+    egra.model.generate = spy
+    try:
+        egra.generate_with_orthogonal_steering(PROMPT, pl, max_new_tokens=4, seed=seed)
+    finally:
+        egra.model.generate = real_gen
+    return got
+
+
+a = first_draw(plan(0.43), 5)
+ps = plan(0.43); ps.online_rule_start = True
+b = first_draw(ps, 5)
+check("measuring the start leaves the story's own noise draw as it was",
+      torch.allclose(a["basis"], b["basis"]))
+check("the story starts at the measured length", abs(b["length"] - ps._rule_cache[key0]["start"]) < 1e-4
+      if (key0 := next(iter(ps._rule_cache))) else False,
+      f"{b['length']:.4f} vs {ps._rule_cache[key0]['start']:.4f}")
+check("and aims at the rule's target", abs(b["target"] - want) < 1e-6)
+calls.clear()
+OC.measure_for_rule = counting
+first_draw(ps, 6)
+OC.measure_for_rule = real
+check("a second story reuses the measurement", calls == [])
+
 print()
 if FAILURES:
     print(f"{len(FAILURES)} FAILED: {FAILURES}")

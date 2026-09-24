@@ -802,6 +802,45 @@ class EGRA:
                 ``SteeringPlan.build(...)`` from an extracted
                 :class:`noiseegra.steering_vectors.SteeringVectorSet`.
         """
+        # The noise's target from the model itself, measured once per prompt
+        # before any story and before any hook is attached: top-p's shift and
+        # the top word's probability along the greedy continuation with the
+        # noise off (see online_calibration.target_from_top_share), and, with
+        # online_rule_start, the starting length at which random draws of the
+        # noise already reach that target. Before the seed, because measuring
+        # the start draws noise of its own.
+        rule = None
+        if (float(getattr(plan, "online_rule_k", 0.0) or 0.0) > 0
+                and float(getattr(plan, "offset_online", 0.0) or 0.0) > 0):
+            from .online_calibration import (_reference, measure_for_rule,
+                                             start_for_target, target_from_top_share)
+            cache = getattr(plan, "_rule_cache", None)
+            if cache is None:
+                cache = plan._rule_cache = {}
+            ids = self.tokenizer(self.apply_chat_template(prompt, tokenize=False,
+                                                          add_generation_prompt=True),
+                                 return_tensors="pt")["input_ids"].to(self._input_device())
+            key = tuple(int(i) for i in ids.view(-1).tolist())
+            if key not in cache:
+                ref = _reference(self, plan, ids, 48)
+                m = measure_for_rule(self, plan, ids, reference=ref)
+                m["target"] = target_from_top_share(m["unit"], m["top_prob"],
+                                                    float(plan.online_rule_k))
+                msg = (f"  [rule] top-p moves {m['unit']:.4f} per step, top word "
+                       f"{m['top_prob']:.3f}: noise target {m['target']:.3f} "
+                       f"(k {float(plan.online_rule_k):g})")
+                if getattr(plan, "online_rule_start", False):
+                    st = start_for_target(self, plan, ids, m["target"], m["unit"],
+                                          reference=ref)
+                    m.update(st)
+                    msg += (f"; starting length {st['start']:.2f} "
+                            f"({st['fraction']:.3f} of the norm) moves it "
+                            f"{st['moves']:.3f}"
+                            + ("" if st["reached"] else "  -- NOT REACHED at the norm"))
+                cache[key] = m
+                print(msg, flush=True)
+            rule = cache[key]
+
         if seed is not None:
             torch.manual_seed(seed)
             if torch.cuda.is_available():
@@ -847,26 +886,13 @@ class EGRA:
                   + ("" if got["reached"] else "  -- NOT REACHED at the largest length"),
                   flush=True)
 
-        # The noise's target from the model itself, measured once per prompt
-        # before any story and before any hook is attached: top-p's shift and
-        # the top word's probability along the greedy continuation with the
-        # noise off. See online_calibration.target_from_top_share.
-        if (float(getattr(plan, "online_rule_k", 0.0) or 0.0) > 0
-                and float(getattr(plan, "offset_online", 0.0) or 0.0) > 0):
-            from .online_calibration import measure_for_rule, target_from_top_share
-            cache = getattr(plan, "_rule_cache", None)
-            if cache is None:
-                cache = plan._rule_cache = {}
-            key = tuple(int(i) for i in input_ids.view(-1).tolist())
-            if key not in cache:
-                m = measure_for_rule(self, plan, input_ids)
-                m["target"] = target_from_top_share(m["unit"], m["top_prob"],
-                                                    float(plan.online_rule_k))
-                cache[key] = m
-                print(f"  [rule] top-p moves {m['unit']:.4f} per step, top word "
-                      f"{m['top_prob']:.3f}: noise target {m['target']:.3f} "
-                      f"(k {float(plan.online_rule_k):g})", flush=True)
-            plan.offset_online = float(cache[key]["target"])
+        # The rule's target, and with it the starting length when that was
+        # measured too, applied to this story's own draw.
+        if rule is not None:
+            plan.offset_online = float(rule["target"])
+            if "start" in rule:
+                from .online_calibration import scale_offsets
+                scale_offsets(plan, float(rule["start"]))
 
         # Random noise at another place in the architecture, drawn for this
         # story from its seed and sized like the offset. Attached once the

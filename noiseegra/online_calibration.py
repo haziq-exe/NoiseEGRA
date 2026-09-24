@@ -287,24 +287,93 @@ def target_from_top_share(unit: float, top_prob: float, k: float = 0.43) -> floa
     relative unit alone over-noises exactly the models that tolerate least.
 
     k = 0.43 sits within 3% of the best target found on both models tried:
-    Qwen3-1.7B (unit 0.685, top word 0.762: best 1.0, rule 0.98) and
+    Qwen3-1.7B (unit 0.685, top word 0.762: best 1.0, rule 0.97) and
     Llama-3.2-3B (unit 1.345, top word 0.678: best 0.43, rule 0.44).
     """
     s = min(1.0, float(k) * float(top_prob))
     return 2.0 * math.asin(s) / float(unit)
 
 
-def measure_for_rule(egra, plan, prompt_ids, n_tokens: int = 48) -> Dict[str, float]:
+def _reference(egra, plan, prompt_ids, n_tokens: int):
+    from .fisher_calibration import _logits, _probs, reference_passage
+
+    n_prompt = int(prompt_ids.shape[-1])
+    passage = reference_passage(egra, plan, prompt_ids, n_tokens)
+    clean = _probs(_logits(egra, plan, passage, n_prompt, with_offset=False), n_prompt)
+    return passage, clean
+
+
+def measure_for_rule(egra, plan, prompt_ids, n_tokens: int = 48,
+                     reference=None) -> Dict[str, float]:
     """Top-p's shift per step and the top word's probability, before any story.
 
     Along the model's greedy continuation of the prompt under the rule steering
     alone -- the calibration's reference passage -- so nothing is sampled; one
     pass per prompt.
     """
-    from .fisher_calibration import _logits, _probs, nucleus_unit, reference_passage
+    from .fisher_calibration import nucleus_unit
 
     n_prompt = int(prompt_ids.shape[-1])
-    passage = reference_passage(egra, plan, prompt_ids, n_tokens)
-    clean = _probs(_logits(egra, plan, passage, n_prompt, with_offset=False), n_prompt)
+    passage, clean = reference or _reference(egra, plan, prompt_ids, n_tokens)
     return {"unit": nucleus_unit(egra, plan, passage, n_prompt),
             "top_prob": float(clean.max(-1).values.mean())}
+
+
+def scale_offsets(plan, length: float) -> None:
+    """Give this story's noise ``length`` at every layer, keeping its direction."""
+    for lp in plan.layer_plans.values():
+        if lp.offset is None:
+            continue
+        now = lp.offset_length if lp.offset_length else float(lp.offset.norm())
+        lp.offset = lp.offset * (float(length) / max(float(now), 1e-12))
+        lp.offset_length = float(length)
+
+
+def start_for_target(egra, plan, prompt_ids, target: float, unit: float, *,
+                     reference=None, n_tokens: int = 48, seeds=(0, 1, 2, 3),
+                     iters: int = 10) -> Dict[str, float]:
+    """The starting length at which the noise already moves things by ``target``.
+
+    The controller multiplies the starting length by at most ``max_step`` a
+    step, and its averages lag the noise's effect, so a start far below the
+    size a model needs makes it overshoot over the opening words -- on
+    Llama-3.2-3B, at 0.10 of the residual norm against the 0.24 its target
+    needed, 17 of 40 openings garbled. Measured once per prompt instead, along
+    the same greedy passage as the target: a few random draws of the noise,
+    made exactly as a story makes them, at a common length, their mean
+    Fisher-Rao shift of the passage's predictions set to ``target * unit`` by
+    bisection on a log scale between 1/500 of the residual norm and all of it.
+    The same draws at every length, so the shift rises smoothly with it.
+
+    Changes the plan's noise draw and the torch random state, so it runs
+    before the story is seeded and draws its own noise.
+    """
+    from .fisher_calibration import offset_distance
+
+    n_prompt = int(prompt_ids.shape[-1])
+    passage, clean = reference or _reference(egra, plan, prompt_ids, n_tokens)
+    norm = float(plan.rms_scale) * math.sqrt(plan.dim)
+    goal = float(target) * float(unit)
+
+    def moved(length: float) -> float:
+        out = []
+        for s in seeds:
+            torch.manual_seed(1_000_003 + int(s))
+            plan.resample_offset(story_index=0)
+            scale_offsets(plan, length)
+            out.append(offset_distance(egra, plan, passage, n_prompt, clean))
+        return sum(out) / len(out)
+
+    lo, hi = math.log(norm / 500.0), math.log(norm)
+    top = moved(norm)
+    if top < goal:
+        return {"start": norm, "fraction": 1.0, "moves": top / unit, "reached": 0.0}
+    best = (norm, top)
+    for _ in range(int(iters)):
+        mid = 0.5 * (lo + hi)
+        d = moved(math.exp(mid))
+        if abs(d - goal) < abs(best[1] - goal):
+            best = (math.exp(mid), d)
+        lo, hi = (mid, hi) if d < goal else (lo, mid)
+    return {"start": best[0], "fraction": best[0] / norm, "moves": best[1] / unit,
+            "reached": 1.0}
