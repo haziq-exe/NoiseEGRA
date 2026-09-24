@@ -1530,3 +1530,78 @@ in 50.
 the difference to reach the same target: its settled gain (median) is 0.81,
 1.00 and 1.06 of the start at 1.5x, 1.0x and 0.5x, and at 0.5x it overshoots
 (0.49 against 0.44). The slips rise with it: 4, 15 and 33 of 50.
+
+### 200 stories with the measured start and prompt noise 1.0x (run r148, 2026-09-24)
+
+The prompt 1.0x arm above, continued to 200 stories. Stories 50-199 were written
+in a resumed session whose measured start came out at 0.225 of the norm rather
+than 0.210: the measurement's four noise draws landed on a different device
+(model loaded later), so different random numbers. The start measurement should
+draw on the CPU with its own generator, and with more draws.
+
+| Llama-3.2-3B, 200 stories | Coherent | Rules broken | vs this arm | Same-story pairs | Distinct of 10 | vs this arm | Opening subjects |
+|---|---|---|---|---|---|---|---|
+| **Measured start, prompt 1.0x** | 200/200 | 1.48 | | 28.0% | 6.13 | | 6.4 |
+| Capped (fixed start) | 200/200 | 1.29 | -0.19 [-0.35, -0.02] | 32.0% | 5.62 | -0.51 | 4.4 |
+| Untouched | 200/200 | 1.77 | +0.29 [+0.14, +0.45] | 42.5% | 4.78 | -1.35 [-2.48, -0.20] | 4.5 |
+| Top-p 0.95, T=1.8 | 195/200 | 2.01 | +0.53 [+0.36, +0.70] | 28.0% | 6.15 | +0.02 [-1.28, +1.04] | 6.6 |
+| In-context regeneration | 200/200 | 1.89 | +0.41 [+0.24, +0.57] | 21.0% | 6.73 | +0.60 | 9.5 |
+| Prompted to be creative | 200/200 | 1.62 | +0.15 [-0.01, +0.30] | 21.6% | 6.58 | +0.46 | 7.4 |
+| Rule steering + top-p T=1.8 | 198/200 | 1.75 | +0.27 [+0.08, +0.45] | 23.2% | 6.56 | +0.43 | 8.5 |
+| Rule steering only | 200/200 | 1.11 | -0.36 [-0.53, -0.20] | 36.2% | 5.28 | -0.85 | 4.5 |
+
+(The other published methods are as in the main table above; each breaks more
+rules than this arm and none is more varied by more than its interval.)
+
+Rules broken were 1.28 on stories 0-49 and 1.55 on 50-199 (present tense fails
+32% and he-and-she 24% on the later stories, against 22% and 10% earlier). The
+capped, untouched and steering-only arms are stable across the two ranges
+(1.36/1.27, 1.82/1.76, 1.10/1.12). The difference is about 1.8 standard errors;
+the 50-story figure was flattering, and the larger start may add to it.
+
+Blind reading of 40 random openings from stories 50-199, shuffled with the
+capped arm's at the same indices: 2 clearly garbled and 14 with minor slips,
+against 0 and 8 (on 0-49: 1 and 15, against 0 and 7).
+
+**On Llama the measured start trades rules for variety relative to the capped
+run**: it ties top-p on variety while breaking 0.53 fewer rules, but the capped
+run breaks 0.19 fewer rules than it. Neither is more varied than in-context
+regeneration, the creative prompt or steering + top-p (0.4-0.6 distinct of 10
+behind, within the intervals); both break fewer rules than each of them, the
+creative prompt within its interval for this arm.
+
+### Inference cost
+
+Seconds per story on one T4, one story at a time, from the progress logs (the
+logged rate is a running average; each arm's cost is the change in elapsed time
+over its block of stories). * includes loading the model. Wall-clock on Kaggle
+varies by about 20% between sessions: rule steering alone was slower than the
+untouched model on Llama and faster on Qwen.
+
+| Method | Llama s/story | words | ms/word | Qwen s/story | words | ms/word |
+|---|---|---|---|---|---|---|
+| Untouched | 7.3 | 141 | 52 | 10.6 | 143 | 74 |
+| Top-p T=1.8 | 8.8 | 161 | 55 | 10.6 | 153 | 69 |
+| Min-p T=1.5 | 7.5* | 144 | 52 | 10.2* | 147 | 69 |
+| Prompted to be creative | 9.1 | 151 | 60 | 10.3* | 154 | 67 |
+| Noise injection | 8.6 | 151 | 57 | 10.9 | 144 | 76 |
+| Rule steering only | 9.6 | 132 | 73 | 8.5 | 114 | 75 |
+| Rule steering + top-p | 8.2* | 136 | 60 | 8.5* | 114 | 74 |
+| Ours (fixed start) | 8.7 | 119 | 73 | 12.4* | 147 | 84 |
+| Ours (measured start, prompt 1.0x) | 8.8* | 119 | 74 | | | |
+| Verbalized Sampling (5 per reply) | 6.9 | 96 | 72 | 9.8 | 127 | 77 |
+| In-context regeneration (10 per conversation) | 22.5 | 129 | 174 | 10.0 | 134 | 75 |
+| String Seed of Thought | 33.8 | 95 | 356 | 30.1 | 240 | 125 |
+| STARS (20 written together) | 1.8 | 146 | 12 | 3.1 | 158 | 20 |
+
+Ours costs what rule steering alone costs per word (73-74 against 73 ms on
+Llama; 84 against 75 on Qwen) and up to 40% more than plain sampling; that
+overhead is the steering hooks. The shadow row is nearly free here because
+decoding one story at a time is limited by reading the weights, not by
+arithmetic; written in batches it doubles the arithmetic, so ours would cost
+about twice sampling. The measurement before the stories is about 95 forward
+passes over the prompt and a 48-token passage, once per prompt: a few seconds,
+about 1% over 200 stories. String Seed of Thought costs 2-5x (it writes a random
+string and its reasoning first); in-context regeneration up to 3x (each story
+reads the ones before it); STARS is cheapest per story only because it writes 20
+at once, which any of these methods could do.
