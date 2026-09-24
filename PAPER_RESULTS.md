@@ -1366,3 +1366,167 @@ the judge, all within the intervals. Against top-p alone it is 4.28 [+3.62,
 +5.30] distinct stories of 10 ahead and ties on rules (-0.13 [-0.33, +0.07]); it
 beats the untouched model on rules (-0.34 [-0.54, -0.14]). Fifteen of its coherent
 stories drift into lowercase, the same count as at 1.0.
+
+## On Llama-3.2-3B-Instruct (2026-09-24, runs r142-r148)
+
+The same 200-story comparison on a second model, one that STARS and the noise
+injection paper also used. Middle-school prompt, the same eight rules, seeds,
+coherence checks, judge and intervals as the Qwen3-1.7B comparison above.
+Steering is on layers 6-13, the same 21-46% of depth as on Qwen3-1.7B; STARS
+steers layer 20 as in its paper, and the noise injection covers the top third
+of layers (20-27). The noise-alone arm uses the same share of the residual norm
+as on Qwen3-1.7B (0.142). "Prompted to be creative" appends "Be creative and
+think of a very unique story." to the request.
+
+| Method | Venue | Coherent | Rules broken (of 8) | vs ours | Same-story pairs | Distinct of 10 | vs ours | Opening subjects (effective) |
+|---|---|---|---|---|---|---|---|---|
+| **Ours** (gain capped at 2.5x, reached 0.43-0.48 of top-p's shift) | | 200/200 | 1.29 | | 32.0% | 5.62 | | 4.4 |
+| Ours, target 0.43, gain allowed to 10x | | 200/200 | 1.33 | +0.04 [-0.12, +0.19] | 28.6% | 5.95 | +0.33 [-0.96, +1.44] | 4.3 |
+| Untouched, T=1.0 | | 200/200 | 1.77 | +0.48 [+0.33, +0.62] | 42.5% | 4.78 | -0.85 [-2.06, +0.18] | 4.5 |
+| Top-p 0.95, T=1.8 | Holtzman et al., ICLR 2020 | 195/200 | 2.01 | +0.72 [+0.55, +0.88] | 28.0% | 6.15 | +0.53 [-0.98, +1.54] | 6.6 |
+| Min-p 0.1, T=1.5 | Nguyen et al., ICLR 2025 | 200/200 | 1.86 | +0.57 [+0.42, +0.71] | 39.5% | 4.95 | -0.68 [-1.92, +0.50] | 4.4 |
+| Verbalized Sampling | ICML 2026 | 179/200 | 2.93 (2.07*) | +1.63 (+0.78*) | 51.9% | 3.88 | -1.74 [-2.80, -0.62] | 5.4 |
+| String Seed of Thought | ICLR 2026 | 139/200 | 2.35 | +1.05 [+0.87, +1.23] | 32.5% | 5.66 | +0.04 [-1.38, +1.06] | 6.6 |
+| In-context regeneration | NoveltyBench, COLM 2025 | 200/200 | 1.89 | +0.59 [+0.44, +0.74] | 21.0% | 6.73 | +1.11 [-0.14, +2.12] | 9.5 |
+| STARS activation steering | ICLR 2026 | 200/200 | 1.90 | +0.60 [+0.46, +0.75] | 39.5% | 4.99 | -0.64 [-1.76, +0.42] | 4.7 |
+| Noise injection (Liu et al.) | ICLR 2026 | 200/200 | 1.79 | +0.50 [+0.35, +0.63] | 42.9% | 4.59 | -1.03 [-2.24, -0.04] | 4.6 |
+| Prompted to be creative | | 200/200 | 1.62 | +0.33 [+0.19, +0.47] | 21.6% | 6.58 | +0.96 [-0.36, +1.88] | 7.4 |
+| Rule steering only | | 200/200 | 1.11 | -0.18 [-0.33, -0.03] | 36.2% | 5.28 | -0.34 [-1.62, +0.54] | 4.5 |
+| Rule steering + top-p 0.95, T=1.8 | | 198/200 | 1.75 | +0.45 [+0.28, +0.62] | 23.2% | 6.56 | +0.94 [-0.26, +2.08] | 8.5 |
+| Noise alone (0.142 of the norm, no steering) | | 200/200 | 2.09 | +0.79 [+0.65, +0.94] | 35.8% | 5.35 | -0.27 [-1.44, +0.74] | 4.6 |
+
+\* With Verbalized Sampling's single-quoted speech counted as dialogue.
+
+"vs ours" is against the first row. Stories 0-199 in every arm; the second row's
+first 50 stories are the target sweep's (below), continued to 200.
+
+**Llama-3.2-3B starts out far more varied than Qwen3-1.7B**: untouched, 42.5% of
+pairs are the same story (99.0% on Qwen3-1.7B) and 4.78 of 10 are distinct
+(1.06). It also breaks fewer rules (1.77 against 2.71).
+
+**Ours breaks fewer rules than every baseline and published method**: 1.29,
+against 1.62-2.93, each difference outside its interval. Only rule steering
+alone breaks fewer (1.11), and it is 0.34 distinct stories of 10 less varied
+(interval -1.62 to +0.54).
+
+**On variety it ties the published methods rather than beating them.** It is
+0.85 distinct stories of 10 above the untouched model (interval -0.32 to
++2.10). Top-p, in-context regeneration, the creative prompt and steering + top-p
+are 0.5-1.1 above ours, every interval including zero, and each of them breaks
+0.33-0.72 more rules. Our stories' opening subjects are as concentrated as the
+untouched model's (4.4 effective; 64% open on a pronoun), as are rule steering
+alone's.
+
+### The noise's size on Llama
+
+The first row was run at Qwen3-1.7B's target (1.0 of top-p's shift per step),
+but the controller may only multiply the starting length by 0.25-2.5, and on
+Llama the start (0.10 of the residual norm) moves the predictions far less than
+on Qwen3-1.7B. The gain sat at its 2.5 cap and the noise reached 0.43-0.48.
+With the cap raised to 10 at the full target (r143) the stories were word salad
+("she stes unlocking the one you you..."), and the run was stopped.
+
+A sweep of the target on stories 0-49 (r144, gain allowed to 10x). "Salad-free"
+flags runs of a repeated word or more than 8% of words not in a dictionary.
+
+| Target | Salad-free | Rules broken | Same-story pairs | Distinct of 10 |
+|---|---|---|---|---|
+| 0.43 | 49/50 | 1.28 | 29.3% | 5.90 |
+| 0.55 | 42/50 | 1.52 | 20.2% | 6.72 |
+| 0.70 | 39/50 | 1.51 | 21.6% | 6.96 |
+| 0.85 | 25/50 | 1.96 | 18.6% | 6.97 |
+
+Continued to 200 stories (the second row of the main table), target 0.43 ties
+the capped run on every number, but reading the stories shows what the salad
+check misses. In the first 45 words of the same 40 randomly chosen stories
+(read by hand):
+
+| | Clearly garbled | Minor slips |
+|---|---|---|
+| Untouched | 0 | 0 |
+| Ours, gain capped at 2.5x | 0 | 2 |
+| Ours, target 0.43, gain allowed to 10x | 17 | 5 |
+
+The garbling is local and early: "she stires her she sweeps you take like a
+guitar", "a, her, they we we we's", "searchinginginged her theedns", after
+which the story usually recovers. Both arms start from the same words ("As she
+rummages through the dusty attic,") and diverge where the gain climbs. The
+controller raises the noise by up to 1.25x a step, and its running averages lag
+the noise's effect, so a start far below the needed size makes it overshoot over
+the opening words. On Qwen3-1.7B the start already moves the predictions 0.93
+of top-p's shift against a target of 1.0; on Llama it moves them 0.17 against
+0.43. The sweep's 0.43 arm is the same set of stories as the first 50 here, so
+the sweep also undercounts garbling at every target, and 0.43 was its lowest
+setting.
+
+### A rule for the target, set before any story (commit a765a2c)
+
+A Fisher-Rao distance d between two next-token distributions bounds the
+probability mass that moves between them: their Bhattacharyya coefficient is
+cos(d/2), so total variation is at most sin(d/2). The rule caps the mass the
+noise may move per step at a share k of the probability the model gives its top
+word, p1: sin(d/2) = k p1. In the controller's unit u (top-p 0.95 at T=1.8's
+mean shift per step), the target is 2 asin(k p1) / u. Both u and p1 are
+measured once per prompt along the model's greedy continuation under the rule
+steering alone, so nothing is sampled (`--online-rule-k`).
+
+Measured on the middle-school prompt (r145):
+
+| Model | u (top-p's shift per step) | p1 (top word's probability) | Rule, k = 0.43 | Best found |
+|---|---|---|---|---|
+| Qwen3-1.7B | 0.685 | 0.762 | 0.97 | 1.0 (r134) |
+| Llama-3.2-3B | 1.345 | 0.678 | 0.44 | 0.43 (r144) |
+| Qwen3-4B-Instruct-2507 | 0.821 | 0.730 | 0.78 | not yet run |
+
+The share of p1 moved at the best target was 0.441 on Qwen3-1.7B and 0.421 on
+Llama. One constant fitted to two models is a fit, not a test; Qwen3-4B is the
+first test. The Llama point also comes from a sweep whose lowest setting won
+and whose arms all had the overshoot above, so it may move once the start is
+fixed. A rule that holds the absolute distance fixed, ignoring p1, would give
+Llama 0.51.
+
+### Measuring the starting length too (commits d38d695, 2df3522; runs r147, r148)
+
+With `--online-rule-start` the rule also finds, once per prompt, the starting
+length at which random draws of the noise already move the greedy passage's
+predictions by the target: bisection on a log scale, averaged over four draws
+of the noise made as a story makes them, the same draws at every length. It
+runs before the story is seeded, so each story's own draw is unchanged. On
+Llama the target is 0.440 and the start 0.210 of the residual norm, twice the
+fixed 0.10, and the controller settles at 0.74-1.03x of it instead of climbing.
+
+`--headline-prompt-gains` sets the noise on the prompt as a multiple of the
+start (1.5 was chosen on Qwen3-1.7B). Stories 0-49, same seeds in every arm.
+Garbling is from a blind reading of the first 45 words: the openings of three
+arms shuffled together with their labels hidden, twice. The capped arm was in
+both batches (0 and 0 garbled, 6 and 7 slips).
+
+| Arm | Noise on the prompt (of the norm) | Clearly garbled | Minor slips | Rules broken | Same-story pairs | Distinct of 10 |
+|---|---|---|---|---|---|---|
+| Capped (first row of the main table) | 0.15 | 0/50 | 6-7 | 1.36 | 36.1% | 5.37 |
+| Target 0.43, gain allowed to 10x | 0.15 | 29/50 | 17 | 1.28 | 29.3% | 5.90 |
+| Measured start, prompt 1.5x | 0.31 | 0/50 | 4 | 1.84 | 18.8% | 7.07 |
+| **Measured start, prompt 1.0x** | 0.21 | 1/50 | 15 | 1.28 | 24.2% | 6.35 |
+| Measured start, prompt 0.5x | 0.11 | 4/50 | 33 | 1.30 | 24.5% | 6.46 |
+| Untouched | | | | 1.82 | 52.7% | 4.06 |
+
+Minor slips are pronoun, quotation and grammar slips and single misspelt words;
+clearly garbled means a run of nonsense words or a made-up word.
+
+**The measured start removes the garbling.** At 1.5x, though, the noise on the
+prompt doubles with the start, and rule following falls to the untouched
+model's level (1.84 against 1.82). The losses are present tense (52% of
+stories fail it, 28% capped), simile (48%, 24%) and he-and-she (22%, 10%). The
+overshooting arm, whose prompt noise was 0.15, broke 1.28 despite its garbled
+openings, so these choices are made at the prompt.
+
+**At 1.0x the start, the rules come back.** 1.28 broken, against 1.36 capped
+(-0.08 [-0.42, +0.26]) and 1.82 untouched (-0.54 [-0.84, -0.22]); present tense
+fails 22%. It is 2.30 distinct stories of 10 above the untouched model [+0.58,
++4.24] and 0.98 above the capped arm [-0.80, +3.02], with one garbled opening
+in 50.
+
+**Less noise on the prompt means more while writing.** The controller makes up
+the difference to reach the same target: its settled gain (median) is 0.81,
+1.00 and 1.06 of the start at 1.5x, 1.0x and 0.5x, and at 0.5x it overshoots
+(0.49 against 0.44). The slips rise with it: 4, 15 and 33 of 50.
