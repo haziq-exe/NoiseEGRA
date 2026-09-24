@@ -112,6 +112,10 @@ rid = _spec_to_run_id("Tiny", spec)
 check("and the run id records it", rid.endswith("__temp1p8__topp0p95"), rid[-40:])
 its, _ = _bs("headline", VECS, LAYERS, list(NAMES), RMS, types.SimpleNamespace(**dict(BASE, headline_arms=["while"])))
 check("by default the method keeps the run's decoding", make_specs(*its)[0].top_p is None)
+plans, _ = build(headline_arms=["while"], online_targets=[0.43, 0.7])
+check("a sweep of targets builds one arm each", [p.offset_online for p in plans] == [0.43, 0.7])
+ids = [_spec_to_run_id("Tiny", s) for s in make_specs(*[{"plan": p} for p in plans])]
+check("with the target in each run id", "__online0p43" in ids[0] and "__online0p7" in ids[1])
 try:
     build(headline_arms=[])
     check("an empty choice is refused", False)

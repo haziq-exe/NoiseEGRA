@@ -694,6 +694,9 @@ def main() -> None:
                     choices=["minp", "steertopp", "verbalized", "ssot", "incontext", "stars",
                              "noiseinject", "nucleusfull", "creative"],
                     help="suite 'priorwork': which published methods to run (default all)")
+    ap.add_argument("--online-targets", type=float, nargs="+", default=None,
+                    help="suite 'headline': the targets the noise sized while writing aims "
+                         "at, in top-p's units, one arm each (default 1.0)")
     ap.add_argument("--online-max-gain", type=float, default=2.5,
                     help="suite 'headline': the largest multiple of its starting length "
                          "the noise sized while writing may reach")

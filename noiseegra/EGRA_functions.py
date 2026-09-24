@@ -1304,7 +1304,8 @@ class EGRA:
                       f"{got['start_length'] * got['final_gain']:.2f} "
                       f"(settled at {got['late_gain']:.2f}x), moved the predictions "
                       f"{got['achieved']:.2f} nucleus-units over the story "
-                      f"(asked {float(plan.offset_online):.2f})", flush=True)
+                      f"(asked {float(plan.offset_online):.2f}); per step, top-p moves "
+                      f"{got['budget']:.4f} and the noise {got['moved']:.4f}", flush=True)
         if tilt is not None:
             got = tilt.summary()
             if getattr(plan, "tilt_log", None) is None:

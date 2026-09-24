@@ -2527,8 +2527,12 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
 
         none = {n: 0.0 for n in names}
 
+        # The target the noise sized while writing aims at, in top-p's units: one
+        # arm per value (default 1.0, the headline's).
+        targets = [float(x) for x in (getattr(args, "online_targets", None) or [1.0])]
+
         def arm(sizing, *, length=None, prompt_gain=1.0, front=1.0, budget=b, tilt=0.0,
-                steer=True, carry=None):
+                steer=True, carry=None, target=1.0):
             kw = dict(beta=(flat if steer else none), steer_budget=(budget if steer else None),
                       output_tilt=tilt, offset_mode="orth",
                       offset_basis=None, offset_basis_kind="random",
@@ -2542,7 +2546,7 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             if sizing == "before":
                 kw.update(offset_gamma=1.0, offset_norm="fisher")
             elif sizing == "while":
-                kw.update(offset_gamma=start, offset_norm="energy", offset_online=1.0,
+                kw.update(offset_gamma=start, offset_norm="energy", offset_online=target,
                           online_max_gain=float(getattr(args, "online_max_gain", 2.5) or 2.5),
                           online_carry=bool(getattr(args, "online_carry", False)
                                             if carry is None else carry))
@@ -2573,11 +2577,13 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         items = []
         for bb in budgets:
             for tt in tilts:
-                if "while" in want:
-                    items.append(arm("while", prompt_gain=1.5, budget=bb, tilt=tt))
-                if "whilecarry" in want:
-                    # The same, with the size carried from one story to the next.
-                    items.append(arm("while", prompt_gain=1.5, budget=bb, tilt=tt, carry=True))
+                for tg in targets:
+                    if "while" in want:
+                        items.append(arm("while", prompt_gain=1.5, budget=bb, tilt=tt, target=tg))
+                    if "whilecarry" in want:
+                        # The same, with the size carried from one story to the next.
+                        items.append(arm("while", prompt_gain=1.5, budget=bb, tilt=tt,
+                                         carry=True, target=tg))
                 if "before" in want:
                     items.append(arm("before", prompt_gain=1.5, budget=bb, tilt=tt))
                 if "fixed" in want:
