@@ -536,6 +536,10 @@ class SteeringPlan:
     # Carry the size the controller settled on into the next story, prompt
     # included, as the adaptive scaling of Plappert et al. runs across episodes.
     online_carry: bool = False
+    # Set the target before the stories from the model itself instead of fixing
+    # it: the share of the top word's probability the noise may move each step
+    # (see online_calibration.target_from_top_share). 0 keeps offset_online.
+    online_rule_k: float = 0.0
     # Tilt the story's next-token distribution toward the tokens the rules make
     # likelier (the constraints' output profiles, from the same forward passes
     # as the steering directions). The value is the tilt's size at every step as
@@ -979,6 +983,7 @@ class SteeringPlan:
         offset_online: float = 0.0,
         online_max_gain: float = 2.5,
         online_carry: bool = False,
+        online_rule_k: float = 0.0,
         output_tilt: float = 0.0,
         output_profile: Optional[torch.Tensor] = None,
         shadow_protect: bool = False,
@@ -1201,6 +1206,7 @@ class SteeringPlan:
             offset_online=float(offset_online or 0.0),
             online_max_gain=float(online_max_gain or 2.5),
             online_carry=bool(online_carry),
+            online_rule_k=float(online_rule_k or 0.0),
             output_tilt=float(output_tilt or 0.0),
             output_profile=(None if not output_tilt or output_profile is None
                             else output_profile.detach().float().cpu()),
@@ -1979,6 +1985,7 @@ class SteeringPlan:
             "offset_online": self.offset_online,
             "online_max_gain": self.online_max_gain,
             "online_carry": self.online_carry,
+            "online_rule_k": self.online_rule_k,
             "output_tilt": self.output_tilt,
             "offset_decode": self.offset_decode,
             "amplify_lambda": self.amplify_lambda,

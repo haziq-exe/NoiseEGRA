@@ -265,3 +265,46 @@ class RuleTilt(LogitsProcessor):
         return {"steps": float(n), "mean_beta": sum(x[0] for x in h) / n,
                 "achieved": moved / budget if budget > 0 else math.nan,
                 "moved": moved, "budget": budget}
+
+
+# --------------------------------------------------------------------------- #
+#  Choosing the target before the stories                                      #
+# --------------------------------------------------------------------------- #
+
+def target_from_top_share(unit: float, top_prob: float, k: float = 0.43) -> float:
+    """The target, in top-p's units, that caps the noise's per-step shift.
+
+    A Fisher-Rao distance d between two next-token distributions bounds the
+    probability mass that can move between them: their Bhattacharyya coefficient
+    is cos(d/2), and total variation is at most sin(d/2). Coherence needs the
+    noise to vary how the model says things without overturning what it would
+    say, so the mass it may move is capped at a share ``k`` of the probability
+    the model gives its most likely next word, ``top_prob``: sin(d/2) = k *
+    top_prob. A less certain model tolerates less.
+
+    The cap is then expressed in the unit the controller uses -- top-p at 1.8's
+    own shift per step, ``unit`` -- which is larger on a flatter model: the
+    relative unit alone over-noises exactly the models that tolerate least.
+
+    k = 0.43 sits within 3% of the best target found on both models tried:
+    Qwen3-1.7B (unit 0.685, top word 0.762: best 1.0, rule 0.98) and
+    Llama-3.2-3B (unit 1.345, top word 0.678: best 0.43, rule 0.44).
+    """
+    s = min(1.0, float(k) * float(top_prob))
+    return 2.0 * math.asin(s) / float(unit)
+
+
+def measure_for_rule(egra, plan, prompt_ids, n_tokens: int = 48) -> Dict[str, float]:
+    """Top-p's shift per step and the top word's probability, before any story.
+
+    Along the model's greedy continuation of the prompt under the rule steering
+    alone -- the calibration's reference passage -- so nothing is sampled; one
+    pass per prompt.
+    """
+    from .fisher_calibration import _logits, _probs, nucleus_unit, reference_passage
+
+    n_prompt = int(prompt_ids.shape[-1])
+    passage = reference_passage(egra, plan, prompt_ids, n_tokens)
+    clean = _probs(_logits(egra, plan, passage, n_prompt, with_offset=False), n_prompt)
+    return {"unit": nucleus_unit(egra, plan, passage, n_prompt),
+            "top_prob": float(clean.max(-1).values.mean())}

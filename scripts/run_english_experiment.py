@@ -698,6 +698,11 @@ def main() -> None:
                     choices=["minp", "steertopp", "verbalized", "ssot", "incontext", "stars",
                              "noiseinject", "nucleusfull", "creative"],
                     help="suite 'priorwork': which published methods to run (default all)")
+    ap.add_argument("--online-rule-k", type=float, default=0.0,
+                    help="suite 'headline': set the target of the noise sized while "
+                         "writing from the model before any story -- the noise may move "
+                         "at most this share of the top word's probability per step "
+                         "(0.43 fits Qwen3-1.7B and Llama-3.2-3B); 0 uses --online-targets")
     ap.add_argument("--online-targets", type=float, nargs="+", default=None,
                     help="suite 'headline': the targets the noise sized while writing aims "
                          "at, in top-p's units, one arm each (default 1.0)")

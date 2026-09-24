@@ -125,6 +125,7 @@ def make_plan(
     offset_online=0.0,
     online_max_gain=2.5,
     online_carry=False,
+    online_rule_k=0.0,
     output_tilt=0.0,
     offset_secured_boost=0.0,
     steer_split_concentration=0.0,
@@ -238,6 +239,7 @@ def make_plan(
         offset_online=offset_online,
         online_max_gain=online_max_gain,
         online_carry=online_carry,
+        online_rule_k=online_rule_k,
         output_tilt=output_tilt,
         output_profile=output_profile,
         offset_secured_boost=offset_secured_boost,
@@ -2549,7 +2551,8 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                 kw.update(offset_gamma=start, offset_norm="energy", offset_online=target,
                           online_max_gain=float(getattr(args, "online_max_gain", 2.5) or 2.5),
                           online_carry=bool(getattr(args, "online_carry", False)
-                                            if carry is None else carry))
+                                            if carry is None else carry),
+                          online_rule_k=float(getattr(args, "online_rule_k", 0.0) or 0.0))
             else:
                 kw.update(offset_gamma=length / norm, offset_norm="energy")
             item = {"plan": make_plan(**kw, **quiet, **base)}

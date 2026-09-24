@@ -847,6 +847,27 @@ class EGRA:
                   + ("" if got["reached"] else "  -- NOT REACHED at the largest length"),
                   flush=True)
 
+        # The noise's target from the model itself, measured once per prompt
+        # before any story and before any hook is attached: top-p's shift and
+        # the top word's probability along the greedy continuation with the
+        # noise off. See online_calibration.target_from_top_share.
+        if (float(getattr(plan, "online_rule_k", 0.0) or 0.0) > 0
+                and float(getattr(plan, "offset_online", 0.0) or 0.0) > 0):
+            from .online_calibration import measure_for_rule, target_from_top_share
+            cache = getattr(plan, "_rule_cache", None)
+            if cache is None:
+                cache = plan._rule_cache = {}
+            key = tuple(int(i) for i in input_ids.view(-1).tolist())
+            if key not in cache:
+                m = measure_for_rule(self, plan, input_ids)
+                m["target"] = target_from_top_share(m["unit"], m["top_prob"],
+                                                    float(plan.online_rule_k))
+                cache[key] = m
+                print(f"  [rule] top-p moves {m['unit']:.4f} per step, top word "
+                      f"{m['top_prob']:.3f}: noise target {m['target']:.3f} "
+                      f"(k {float(plan.online_rule_k):g})", flush=True)
+            plan.offset_online = float(cache[key]["target"])
+
         # Random noise at another place in the architecture, drawn for this
         # story from its seed and sized like the offset. Attached once the
         # steering hooks are, removed with them.
