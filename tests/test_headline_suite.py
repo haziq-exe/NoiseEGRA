@@ -116,6 +116,14 @@ plans, _ = build(headline_arms=["while"], online_targets=[0.43, 0.7])
 check("a sweep of targets builds one arm each", [p.offset_online for p in plans] == [0.43, 0.7])
 ids = [_spec_to_run_id("Tiny", s) for s in make_specs(*[{"plan": p} for p in plans])]
 check("with the target in each run id", "__online0p43" in ids[0] and "__online0p7" in ids[1])
+plans, _ = build(headline_arms=["while"])
+check("the prompt's noise is 1.5x the start by default", [p.offset_prefill_gain for p in plans] == [1.5])
+plans, _ = build(headline_arms=["while"], headline_prompt_gains=[1.0, 0.5])
+check("a sweep of the prompt's noise builds one arm each",
+      [p.offset_prefill_gain for p in plans] == [1.0, 0.5])
+ids = [_spec_to_run_id("Tiny", s) for s in make_specs(*[{"plan": p} for p in plans])]
+check("with it in each run id (1.0, the default, untagged)",
+      "__opg" not in ids[0] and "__opg0p5__" in ids[1], ids[1][-40:])
 try:
     build(headline_arms=[])
     check("an empty choice is refused", False)

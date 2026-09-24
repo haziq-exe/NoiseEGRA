@@ -2580,12 +2580,16 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         if frac:
             fbase = float(frac) * norm
             lengths = [fbase]
+        # The noise on the prompt as a multiple of the starting length; 1.5 was
+        # chosen on Qwen3-1.7B.
+        pgains = list(getattr(args, "headline_prompt_gains", None) or [1.5])
         items = []
         for bb in budgets:
             for tt in tilts:
                 for tg in targets:
                     if "while" in want:
-                        items.append(arm("while", prompt_gain=1.5, budget=bb, tilt=tt, target=tg))
+                        items += [arm("while", prompt_gain=pg, budget=bb, tilt=tt, target=tg)
+                                  for pg in pgains]
                     if "whilecarry" in want:
                         # The same, with the size carried from one story to the next.
                         items.append(arm("while", prompt_gain=1.5, budget=bb, tilt=tt,

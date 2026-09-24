@@ -703,6 +703,9 @@ def main() -> None:
                          "writing from the model before any story -- the noise may move "
                          "at most this share of the top word's probability per step "
                          "(0.43 fits Qwen3-1.7B and Llama-3.2-3B); 0 uses --online-targets")
+    ap.add_argument("--headline-prompt-gains", type=float, nargs="+", default=None,
+                    help="suite 'headline': the noise on the prompt as multiples of the "
+                         "starting length, one 'while' arm each (default 1.5)")
     ap.add_argument("--online-rule-start", action="store_true",
                     help="with --online-rule-k: also measure the starting length before "
                          "any story -- the length at which random draws of the noise "
