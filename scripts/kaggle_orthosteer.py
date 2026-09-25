@@ -142,6 +142,12 @@ def generate_one(model, spec, mode, story_prompt, seed, max_new_tokens, max_word
             max_new_tokens=max_new_tokens, do_sample=spec.do_sample,
             temperature=spec.temperature, top_p=spec.top_p, top_k=spec.top_k, seed=seed,
         )
+    if mode == "search":
+        from noiseegra.search import search
+        return search(model, spec.search_kind, spec.search_width, spec.steering_plan,
+                      story_prompt, seed=seed, noise_plan=spec.noise_plan,
+                      max_new_tokens=max_new_tokens, max_words=max_words,
+                      diversity_penalty=spec.search_penalty, temperature=spec.temperature)
     if mode == "prior_method":
         from noiseegra.prior_methods import generate_prior
         return generate_prior(model, spec.prior_method, dict(spec.prior_params), story_prompt,

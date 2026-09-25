@@ -771,6 +771,8 @@ class EGRA:
         max_words=None,
         entropy_out=None,
         typical_p=None, min_p=None, eta_cutoff=None,
+        num_beams=1, num_return_sequences=1, length_penalty=1.0,
+        num_beam_groups=1, diversity_penalty=0.0,
     ):
         """
         Constraint steering with direction-constrained noise, injected at the same
@@ -1291,6 +1293,28 @@ class EGRA:
                 processors = LogitsProcessorList([*(processors or []), tilt])
             if processors is not None:
                 gen_kwargs["logits_processor"] = processors
+            if int(num_beams) > 1:
+                # Beam search over the steered model: every beam is a row of the
+                # batch and gets the same push. Not with a per-story perturbation
+                # or a shadow row, which assume one story in row 0.
+                if shadow or online:
+                    raise ValueError("beam search runs with the rule steering alone: "
+                                     "no shadow row and no noise sized while writing")
+                gen_kwargs.update(num_beams=int(num_beams), do_sample=False,
+                                  num_return_sequences=int(num_return_sequences),
+                                  length_penalty=float(length_penalty),
+                                  early_stopping=True)
+                for k in ("temperature", "top_p", "top_k"):
+                    gen_kwargs.pop(k, None)
+                if int(num_beam_groups) > 1:
+                    # Diverse Beam Search (Vijayakumar et al., AAAI 2018): the beams
+                    # split into groups, each penalised for repeating the tokens the
+                    # groups before it chose at the same step. No longer in the
+                    # transformers core (v5); it is loaded from the Hub.
+                    gen_kwargs.update(custom_generate="transformers-community/group-beam-search",
+                                      trust_remote_code=True,
+                                      num_beam_groups=int(num_beam_groups),
+                                      diversity_penalty=float(diversity_penalty))
             stopper = self._word_budget_stopper(inputs["input_ids"].shape[-1], max_words)
             if stopper is not None:
                 gen_kwargs["stopping_criteria"] = stopper
@@ -1335,6 +1359,10 @@ class EGRA:
 
         generated_ids = outputs[0][input_ids.shape[-1]:]
         text = strip_reasoning(self.tokenizer.decode(generated_ids, skip_special_tokens=True))
+        # Every returned sequence, best first, for a caller that keeps the set.
+        self.last_candidates = [
+            strip_reasoning(self.tokenizer.decode(o[input_ids.shape[-1]:], skip_special_tokens=True))
+            for o in outputs[:max(1, int(num_return_sequences))]]
         if shadow:
             other = outputs[1][input_ids.shape[-1]:]
             drift = int((generated_ids != other).sum())

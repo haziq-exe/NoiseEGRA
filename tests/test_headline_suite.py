@@ -139,6 +139,27 @@ check("the references suite is the untouched model and top-p at 1.8, nothing els
 from noiseegra.defaults import EN_MODEL_DEPTHS, EN_MODEL_HF_IDS
 check("Granite 4.0 1B is registered with its 40 blocks",
       EN_MODEL_HF_IDS.get("Granite-4.0-1B") == "ibm-granite/granite-4.0-1b" and EN_MODEL_DEPTHS.get("Granite-4.0-1B") == 40)
+sargs = types.SimpleNamespace(**dict(BASE, online_rule_k=0.43, online_rule_start=True,
+                                     search_kinds=["beam", "dbs", "sample", "noise", "npad", "fixed"],
+                                     search_width=5, search_dbs_penalty=0.5, search_prompt_gain=1.5,
+                                     search_npad_sigma=0.1))
+sitems, _ = build_suite("search", VECS, LAYERS, list(NAMES), RMS, sargs)
+by = {it["search"]: it for it in sitems}
+check("the search suite builds all six kinds at width 5",
+      sorted(by) == sorted(["beam", "dbs", "sample", "noise", "npad", "fixed"])
+      and all(it["width"] == 5 for it in sitems))
+steer = by["beam"]["plan"]
+check("every kind shares one plan of rule steering alone",
+      all(it["plan"] is steer for it in sitems) and steer.offset_mode == "none" and steer.noise_mode == "none")
+nz, fx, npd = by["noise"]["noise_plan"], by["fixed"]["noise_plan"], by["npad"]["noise_plan"]
+check("the noise paths are the full method at the search's prompt gain",
+      nz.offset_online > 0 and nz.online_rule_k == 0.43 and nz.online_rule_start and nz.offset_prefill_gain == 1.5)
+check("the fixed paths are one measured vector each, same prompt gain, no controller",
+      fx.offset_measured and fx.offset_online == 0 and fx.offset_prefill_gain == 1.5 and fx.offset_mode == "iso")
+check("NPAD's paths are isotropic per-step noise annealed as 1/t",
+      npd.noise_mode == "iso" and npd.noise_schedule == "inv_t" and abs(npd.noise_alpha - 0.1) < 1e-9
+      and npd.offset_mode == "none")
+check("Diverse Beam Search carries its penalty", by["dbs"]["penalty"] == 0.5)
 try:
     build(headline_arms=[])
     check("an empty choice is refused", False)

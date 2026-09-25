@@ -58,7 +58,7 @@ JITTER_DRAWS = ("iso", "basis")
 # How the constraint push is decided. See SteeringPlan.steer_mode.
 STEER_MODES = ("constant", "feedback", "error")
 NORM_MATCH_MODES = ("energy", "none")
-SCHEDULES = ("constant", "cosine_decay", "ramp", "linear_decay", "prefix", "tail")
+SCHEDULES = ("constant", "cosine_decay", "ramp", "linear_decay", "prefix", "tail", "inv_t")
 
 
 # --------------------------------------------------------------------------- #
@@ -89,6 +89,10 @@ def schedule_factor(kind: str, t: int, horizon: int) -> float:
     """
     if kind == "constant":
         return 1.0
+    if kind == "inv_t":
+        # Noisy parallel approximate decoding's annealing (Cho, 2016): sigma_0 / t,
+        # with t counted from 1 at the first decode step.
+        return 1.0 / (int(t) + 1)
     if horizon <= 0:
         return 0.0
     if kind == "cosine_decay":

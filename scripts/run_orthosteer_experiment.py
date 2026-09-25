@@ -2186,6 +2186,54 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             "only, with and without a rise over the first "
             f"{fade} tokens; and at 1.0 with a noise colour of 1")
 
+    if name == "search":
+        # Several decode paths per prompt, all under the rule steering alone, and
+        # the best by the steered model's own likelihood (noiseegra.search):
+        # beam search, Diverse Beam Search and best-of-W sampling at the same
+        # width, against one greedy steered path plus width - 1 greedy paths that
+        # each carry the full method's noise.
+        import copy
+        ns = copy.copy(args)
+        ref, _ = build_suite("randombase", vectors, layers, names, rms_scale, ns)
+        steer = ref[2]["plan"]
+        ns.headline_arms = ["while"]
+        ns.headline_prompt_gains = [float(getattr(args, "search_prompt_gain", None) or 1.5)]
+        noisy, _ = build_suite("headline", vectors, layers, names, rms_scale, ns)
+        noise = noisy[0]["plan"]
+        width = int(getattr(args, "search_width", None) or 5)
+        lam = float(getattr(args, "search_dbs_penalty", None) or 0.5)
+        kinds = list(getattr(args, "search_kinds", None) or ["beam", "dbs", "sample", "noise"])
+        paths = {"noise": noise}
+        if "npad" in kinds:
+            # Noisy parallel approximate decoding (Cho, 2016): isotropic noise at
+            # the steered layers, redrawn every step and annealed as sigma_0 / t.
+            # sigma_0 is a share of the residual norm, by default the starting
+            # length the rule measures on Qwen3-1.7B (0.10).
+            base = {k: v for k, v in common.items() if k != "steer_prefill"}
+            flat = {n: 1.0 for n in names}
+            paths["npad"] = make_plan(
+                beta=flat, steer_budget=float(getattr(args, "steer_budget", None) or 2.5),
+                offset_gamma=0.0, offset_mode="none", steer_prefill=True,
+                prompt_tail_clear=int((getattr(args, "tail_sweep", None) or [8])[0]),
+                noise_mode="iso", noise_schedule="inv_t",
+                noise_alpha=float(getattr(args, "search_npad_sigma", None) or 0.10), **base)
+        if "fixed" in kinds:
+            fs = copy.copy(ns)
+            fs.headline_arms = ["simple"]
+            fs.simple_prompt_gains = list(ns.headline_prompt_gains)
+            fixed, _ = build_suite("headline", vectors, layers, names, rms_scale, fs)
+            paths["fixed"] = fixed[0]["plan"]
+        items = []
+        for kind in kinds:
+            it = {"search": kind, "width": width, "plan": steer}
+            if kind in paths:
+                it["noise_plan"] = paths[kind]
+            if kind == "dbs":
+                it["penalty"] = lam
+            items.append(it)
+        return items, (f"{width} decode paths per prompt under the rule steering "
+                       f"({', '.join(kinds)}), the best by the steered model's likelihood")
+
     if name == "references":
         # The two references on their own: the model as it ships, and nucleus
         # sampling at the baseline temperature.

@@ -304,7 +304,7 @@ def main() -> None:
                              "ablate", "controls", "tame", "fsc", "core4", "combine", "dose", "siting", "dropone", "prefill", "asymmetric", "boundary", "bands", "whilewriting", "gatedwrite", "promptbudget", "opening", "framing", "final", "weighted", "quieten", "eventvary", "literature", "withdecoder", "vstopp", "pertoken", "wander", "varysize",
                              "amplify", "constdose", "spread", "frontier",
                              "window", "decay", "core", "ortho", "alpha", "gate",
-                             "beta", "loo", "colour", "colourfront", "wholefive", "wholeloop", "randomfisher", "randomvariants", "randomnext", "randombase", "references", "randomfixed", "randomshadow", "randomloop", "randomsplit", "randomfront", "randomprompt", "archscreen", "headline", "priorwork", "all"])
+                             "beta", "loo", "colour", "colourfront", "wholefive", "wholeloop", "randomfisher", "randomvariants", "randomnext", "randombase", "references", "search", "randomfixed", "randomshadow", "randomloop", "randomsplit", "randomfront", "randomprompt", "archscreen", "headline", "priorwork", "all"])
     ap.add_argument("--task", default="generic", choices=["generic", "scenario"],
                     help="'generic' is the published design: one instruction with no "
                          "scenario, many requirements, and every story in one group, so "
@@ -706,6 +706,21 @@ def main() -> None:
     ap.add_argument("--headline-prompt-gains", type=float, nargs="+", default=None,
                     help="suite 'headline': the noise on the prompt as multiples of the "
                          "starting length, one 'while' arm each (default 1.5)")
+    ap.add_argument("--search-kinds", nargs="+", default=None,
+                    choices=["beam", "dbs", "sample", "noise", "npad", "fixed"],
+                    help="suite 'search': which searches to run (default all four)")
+    ap.add_argument("--search-width", type=int, default=5,
+                    help="suite 'search': candidates per prompt -- the beam width, the "
+                         "groups of Diverse Beam Search, the samples, and 1 steered "
+                         "path plus width - 1 noise paths")
+    ap.add_argument("--search-dbs-penalty", type=float, default=0.5,
+                    help="suite 'search': Diverse Beam Search's diversity penalty")
+    ap.add_argument("--search-npad-sigma", type=float, default=0.10,
+                    help="suite 'search': NPAD's first-step noise, as a share of the "
+                         "residual norm (annealed as 1/t after)")
+    ap.add_argument("--search-prompt-gain", type=float, default=1.5,
+                    help="suite 'search': the noise on the prompt, as a multiple of the "
+                         "starting length, on the noise paths")
     ap.add_argument("--simple-prompt-gains", type=float, nargs="+", default=None,
                     help="suite 'headline': the noise on the prompt as multiples of the "
                          "writing length for the 'simple' and 'promptonly' arms, one arm "
@@ -2063,6 +2078,10 @@ def main() -> None:
                                     max_words=word_budget, story_index=k,
                                     entropy_out=probes)
                 state["runs"][rid][f"{p_idx}:{k}"] = text
+                if mode == "search":
+                    # The whole candidate set, scored, for the set-level measures.
+                    state.setdefault("candidates", {}).setdefault(rid, {})[f"{p_idx}:{k}"] = \
+                        list(getattr(model, "last_search", None) or [])
                 if probes is not None and probes[-1].get("history"):
                     state.setdefault("uncertainty", {}).setdefault(rid, []).append(
                         float(np.mean(probes[-1]["history"])))

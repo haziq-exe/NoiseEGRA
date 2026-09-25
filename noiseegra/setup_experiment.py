@@ -66,6 +66,13 @@ class ExperimentSpec:
     # and its settings as sorted (key, value) pairs so the spec stays hashable.
     prior_method: Optional[str] = None
     prior_params: tuple = ()
+    # A search over several decode paths (noiseegra.search): its kind, how many
+    # candidates, Diverse Beam Search's penalty, and the full method's plan the
+    # noise paths use. The steering plan is the rule steering alone.
+    search_kind: Optional[str] = None
+    search_width: int = 0
+    search_penalty: float = 0.0
+    noise_plan: Any = None
 
 
 def _seed_for_story(x: int) -> int:
@@ -112,6 +119,8 @@ def _float_tag(x: float) -> str:
 
 
 def _spec_mode(spec: ExperimentSpec) -> str:
+    if spec.search_kind:
+        return "search"
     if spec.prior_method:
         if spec.use_orthogonal_steering or spec.steering_plan is not None:
             raise ValueError("a prior-method spec cannot also carry a steering plan")
@@ -382,6 +391,19 @@ def _spec_to_run_id(model_name: str, spec: ExperimentSpec) -> str:
         params = "".join(f"__{k}{_float_tag(v) if isinstance(v, (int, float)) else v}"
                          for k, v in spec.prior_params)
         return f"{model_name}__PRIOR__{spec.prior_method}{params}{sampling_tag}"
+
+    if mode == "search":
+        tag = f"{model_name}__SEARCH__{spec.search_kind}__w{int(spec.search_width)}"
+        if spec.search_kind == "dbs":
+            tag += f"__dp{_float_tag(spec.search_penalty)}"
+        if spec.search_kind == "sample":
+            tag += sampling_tag
+        if spec.search_kind in ("noise", "npad", "fixed") and spec.noise_plan is not None:
+            import hashlib
+            full = _ortho_tag(model_name, ExperimentSpec(use_orthogonal_steering=True,
+                                                         steering_plan=spec.noise_plan))
+            tag += "__" + hashlib.md5(full.encode()).hexdigest()[:8]
+        return tag
 
     if mode == "orthogonal_steering":
         return _ortho_tag(model_name, spec) + sampling_tag
@@ -1139,6 +1161,10 @@ def make_specs(*items: Any) -> list[ExperimentSpec]:
                     penalty_alpha=_optional_float(it.get("penalty_alpha")),
                     prior_method=it.get("prior_method"),
                     prior_params=tuple(sorted(dict(it.get("prior_params") or {}).items())),
+                    search_kind=it.get("search"),
+                    search_width=int(it.get("width", 0) or 0),
+                    search_penalty=float(it.get("penalty", 0.0) or 0.0),
+                    noise_plan=it.get("noise_plan"),
                 )
             )
             continue
