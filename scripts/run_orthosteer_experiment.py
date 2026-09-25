@@ -2186,6 +2186,13 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             "only, with and without a rise over the first "
             f"{fade} tokens; and at 1.0 with a noise colour of 1")
 
+    if name == "references":
+        # The two references on their own: the model as it ships, and nucleus
+        # sampling at the baseline temperature.
+        t = float(getattr(args, "baseline_temperature", 1.8) or 1.8)
+        return ["baseline", {"mode": "baseline", "temperature": t, "top_p": 0.95}], (
+            f"the model as it ships and nucleus sampling at temperature {t:g}")
+
     if name == "randombase":
         # The three references, with no perturbation and so nothing sampled
         # first: the model as it ships, nucleus sampling at the baseline

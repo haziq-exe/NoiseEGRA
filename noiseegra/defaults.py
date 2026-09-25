@@ -68,6 +68,10 @@ EN_MODEL_HF_IDS: Dict[str, str] = {
     # Matters"; PRISM used Qwen3-4B).
     "Llama-3.2-3B": "unsloth/Llama-3.2-3B-Instruct",
     "Qwen3-4B": "Qwen/Qwen3-4B-Instruct-2507",
+    # IBM's Granite 4.0 Nano, the dense (all-attention, no experts) 1.6B instruct
+    # release of October 2025; Apache 2.0, ungated. Loaded through transformers'
+    # GraniteMoeHybrid class, which needs transformers >= 4.56.
+    "Granite-4.0-1B": "ibm-granite/granite-4.0-1b",
     "Qwen2.5-1.5B": "Qwen/Qwen2.5-1.5B-Instruct",
     "Llama-3.2-1B": "meta-llama/Llama-3.2-1B-Instruct",
     "SmolLM2-1.7B": "HuggingFaceTB/SmolLM2-1.7B-Instruct",
@@ -87,6 +91,7 @@ EN_MODEL_DEPTHS: Dict[str, int] = {
     "Qwen3-1.7B": 28,
     "Llama-3.2-3B": 28,
     "Qwen3-4B": 36,
+    "Granite-4.0-1B": 40,
     "Qwen2.5-1.5B": 28,
     "Llama-3.2-1B": 16,
     "SmolLM2-1.7B": 24,
