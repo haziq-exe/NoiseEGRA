@@ -1612,8 +1612,11 @@ A review of the method found parts that do nothing or reduce to something
 simpler: the top-p unit cancels (the rule's target times top-p's shift is a
 fixed Fisher-Rao distance, 2 asin(0.43 p1)); the rule is within 2% of a constant
 0.63 on every model so far; a random vector in a random 64-dimensional subspace
-is a random direction; the projection off the nine rule and shield directions
-removes 0.3-0.4% of the noise; 82% of the drifting direction is its per-story
+is a random direction; the projection off the protected subspace (73
+dimensions: the eight rule directions, eight principal components of each
+rule's pair differences, and the shield) removes 3.6% of the noise's energy on
+Qwen3-1.7B and 2.4% on Llama-3.2-3B (the review counted nine directions and
+0.3-0.4%, which the run logs contradict); 82% of the drifting direction is its per-story
 constant. The controller settles near the measured start when the prompt's
 noise equals the writing length; its settling at 0.8x on Qwen3-1.7B came from
 the prompt's noise at 1.5x, which the measurement does not include (not from the
