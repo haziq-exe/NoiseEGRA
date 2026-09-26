@@ -1754,3 +1754,61 @@ method at prompt noise 1.0x.
   here is twice the method's measured start (Granite is sensitive), so it is a
   stronger perturbation than the method's. Rule steering alone fixes tense but
   on Granite does not lower the total (2.20 against 2.21 untouched).
+
+## The method as a search over decode paths (runs r157, r158, 2026-09-26)
+
+Beam search keeps the W most likely continuations of one model; here each of W
+paths is instead the steered model under its own perturbation. Closest prior
+work: noisy parallel approximate decoding (NPAD; Cho, 2016, arXiv) runs one
+noise-free path and several paths with Gaussian noise on the hidden state,
+redrawn every step and annealed as 1/t, and keeps the output the noise-free
+model finds most likely; Ippolito et al. (ACL 2019) found it adds no diversity
+to beam search. Wu et al. (EMNLP 2020, a dropout mask per candidate), SPREAD
+(AAAI 2026, optimised per-path steering vectors for reasoning) and Liu et al.
+(ICLR 2026, one noise vector per sample) are the other per-path perturbations.
+
+Setup: Qwen3-1.7B, 60 WritingPrompts scenarios (the standard story benchmark
+for decoding methods), each with one global constraint, "written entirely in
+the present tense", steered by the present-tense direction in every kind.
+Width 5 for every kind. Each candidate is scored by its mean log-probability
+per token under the steered model with no noise, and the best is chosen (the
+beam objective, and NPAD's rule). Kinds: beam search; Diverse Beam Search
+(Vijayakumar et al., AAAI 2018; 5 groups, penalty 0.5); best-of-5 sampling at
+T=1.0; NPAD (1 steered greedy path + 4 greedy paths with isotropic noise,
+sigma_0 = 0.10 of the norm, annealed 1/t); ours (1 steered greedy path + 4
+greedy paths with the full method: rule target, measured start, controller,
+prompt noise 1.5x); one fixed random vector per path at the measured length
+with no controller.
+
+| Width 5, 60 prompts | Chosen coherent | Chosen present tense | Chosen log-prob/token | Any candidate coherent + present | Candidates coherent | Candidates present | Same-story pairs in set | Distinct stories in set (of 5) |
+|---|---|---|---|---|---|---|---|---|
+| **Ours** | 78% | 93% | -0.251 | 97% | 68% | 94% | 48% | **2.72** |
+| Beam search | 57% | 98% | -0.175 | 58% | 56% | 97% | 100% | 1.00 |
+| Diverse Beam Search | 52% | 100% | -0.193 | 95% | 76% | 96% | 79% | 1.60 |
+| Best-of-5 sampling | 72% | 100% | -0.392 | 98% | 90% | 98% | 66% | 2.18 |
+| NPAD | 58% | 98% | -0.211 | 95% | 81% | 97% | 85% | 1.37 |
+| Fixed vector per path | 75% | 95% | -0.251 | 98% | 67% | 94% | 52% | 2.77 |
+
+Paired against ours over prompts (other minus ours, 95% bootstrap): distinct
+stories in the set, beam -1.72 [-2.07, -1.37], Diverse Beam Search -1.12
+[-1.43, -0.80], best-of-5 sampling -0.53 [-0.92, -0.18], NPAD -1.35 [-1.68,
+-1.03], fixed vector +0.05 [-0.25, +0.33]; chosen story coherent, beam -22
+points [-35, -10], Diverse Beam Search -27 [-38, -15], sampling -7 [-18, +5].
+
+- **As a set of candidates, the noise paths are the most varied** of any search:
+  2.7 different stories among 5 against 1.0 for beam search, 1.6 for Diverse
+  Beam Search, 1.4 for NPAD and 2.2 for independent sampling, with the
+  constraint held in 94% of candidates. The price is coherence: 68% of the
+  candidates pass the checks against 90% of samples (the noise paths stall or
+  loop more, and some drift from the scenario).
+- **With likelihood selection the noise paths are almost never chosen** (the
+  steered greedy path wins 97% of prompts): a perturbed path is less likely
+  under the clean model by construction (-1.1 to -2.5 per token against -0.3),
+  the reason NPAD's gains over beam search were small. The chosen story is
+  still more often coherent than beam search's (78% against 57%), because on
+  open-ended stories the most likely beam loops (20 of 60 chosen beams are
+  flagged for repetition).
+- **NPAD adds little diversity here too** (1.37 of 5), as Ippolito et al. found;
+  one constant direction per path is what changes that, since the fixed vector
+  ties the full method (2.77 against 2.72): the controller does not matter in
+  this setting.
