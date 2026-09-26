@@ -1720,5 +1720,5 @@ Granite's stories are also short under the method (75 words against 105).
 **On Granite the method's variety gain holds at the setting fixed in advance**
 (prompt noise 1.0x: 2.1x the untouched model's distinct stories, 1.25x top-p's)
 with rule following no worse than the untouched model and better than top-p,
-at a cost in empty or broken outputs (3% of all stories) and literal-minded
-rule slips.
+at a cost in broken outputs (9 of 200 fail the coherence checks, 6 of them
+empty; 4 of the 30 read blind were broken) and literal-minded rule slips.
