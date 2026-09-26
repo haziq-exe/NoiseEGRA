@@ -2193,6 +2193,11 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             "only, with and without a rise over the first "
             f"{fade} tokens; and at 1.0 with a noise colour of 1")
 
+    if name == "steering":
+        # The rule steering alone, without the two references 'randombase' adds.
+        ref, _ = build_suite("randombase", vectors, layers, names, rms_scale, args)
+        return [ref[2]], "the rule steering alone"
+
     if name == "search":
         # Several decode paths per prompt, all under the rule steering alone, and
         # the best by the steered model's own likelihood (noiseegra.search):
