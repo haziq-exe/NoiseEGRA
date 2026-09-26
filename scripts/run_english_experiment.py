@@ -305,7 +305,7 @@ def main() -> None:
                              "amplify", "constdose", "spread", "frontier",
                              "window", "decay", "core", "ortho", "alpha", "gate",
                              "beta", "loo", "colour", "colourfront", "wholefive", "wholeloop", "randomfisher", "randomvariants", "randomnext", "randombase", "references", "search", "steering", "randomfixed", "randomshadow", "randomloop", "randomsplit", "randomfront", "randomprompt", "archscreen", "headline", "priorwork", "all"])
-    ap.add_argument("--task", default="generic", choices=["generic", "scenario"],
+    ap.add_argument("--task", default="generic", choices=["generic", "scenario", "math"],
                     help="'generic' is the published design: one instruction with no "
                          "scenario, many requirements, and every story in one group, so "
                          "the measure is how many different stories the model invents. "
@@ -715,6 +715,10 @@ def main() -> None:
                          "path plus width - 1 noise paths")
     ap.add_argument("--search-dbs-penalty", type=float, default=0.5,
                     help="suite 'search': Diverse Beam Search's diversity penalty")
+    ap.add_argument("--search-no-steer", action="store_true",
+                    help="suite 'search': no rule steering on any path (a task with no "
+                         "whole-output rule, e.g. maths); the noise paths carry the "
+                         "method's noise alone")
     ap.add_argument("--search-npad-sigma", type=float, default=0.10,
                     help="suite 'search': NPAD's first-step noise, as a share of the "
                          "residual norm (annealed as 1/t after)")
@@ -752,7 +756,7 @@ def main() -> None:
                     help="suite 'headline': the rule steering's total strength, one "
                          "set of arms per value (default: --steer-budget)")
     ap.add_argument("--headline-arms", nargs="+",
-                    choices=["while", "whilecarry", "before", "fixed", "fixedprompt",
+                    choices=["while", "whilecarry", "whilenosteer", "before", "fixed", "fixedprompt",
                              "fixedfront", "fixednoise", "simple", "promptonly"],
                     default=["while", "before", "fixed", "fixedprompt", "fixedfront"],
                     help="suite 'headline': which of its arms to run -- sized while "
@@ -1221,7 +1225,7 @@ def main() -> None:
         "min_words": args.min_words,
         "max_words": args.max_words,
         "max_grade": args.max_grade,
-        "num_prompts": args.num_prompts if args.task == "scenario" else 1,
+        "num_prompts": args.num_prompts if args.task in ("scenario", "math") else 1,
         "stories": args.stories if args.task == "generic" else args.stories_per_prompt,
         "prompt_seed": args.prompt_seed,
         "prompt_split": args.prompt_split,
@@ -1343,6 +1347,21 @@ def main() -> None:
         print(f"task: one generic instruction, {len(args.constraints)} requirements, "
               f"{stories_per_prompt} stories in a single group")
         print("\n" + messages[0][1]["content"] + "\n")
+    elif args.task == "math":
+        # GSM8K: one correct number per problem, kept with the problems so the
+        # analysis scores every candidate without the dataset.
+        from noiseegra import math_task
+        problems = state.get("math")
+        if not problems or len(problems) != args.num_prompts:
+            problems = math_task.load_problems(args.num_prompts, seed=args.prompt_seed)
+            state["math"] = problems
+            save_state(state_path, state)
+        prompts = [p["question"] for p in problems]
+        messages = [math_task.build_messages(q) for q in prompts]
+        stories_per_prompt = args.stories_per_prompt
+        print(f"task: {len(prompts)} GSM8K problems, e.g.:")
+        for q in prompts[:2]:
+            print(f"   - {q[:110]}{'...' if len(q) > 110 else ''}")
     else:
         prompts = state.get("prompts")
         if not prompts or len(prompts) != args.num_prompts:

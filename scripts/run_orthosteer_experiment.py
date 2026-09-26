@@ -2206,9 +2206,18 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         # each carry the full method's noise.
         import copy
         ns = copy.copy(args)
-        ref, _ = build_suite("randombase", vectors, layers, names, rms_scale, ns)
-        steer = ref[2]["plan"]
-        ns.headline_arms = ["while"]
+        nosteer = bool(getattr(args, "search_no_steer", False))
+        base = {k: v for k, v in common.items() if k != "steer_prefill"}
+        keep = int((getattr(args, "tail_sweep", None) or [8])[0])
+        if nosteer:
+            steer = make_plan(beta={n: 0.0 for n in names}, steer_budget=None,
+                              offset_gamma=0.0, offset_mode="none", steer_prefill=False,
+                              prompt_tail_clear=keep, noise_mode="none", noise_alpha=0.0,
+                              **base)
+        else:
+            ref, _ = build_suite("randombase", vectors, layers, names, rms_scale, ns)
+            steer = ref[2]["plan"]
+        ns.headline_arms = ["whilenosteer" if nosteer else "while"]
         ns.headline_prompt_gains = [float(getattr(args, "search_prompt_gain", None) or 1.5)]
         noisy, _ = build_suite("headline", vectors, layers, names, rms_scale, ns)
         noise = noisy[0]["plan"]
@@ -2221,14 +2230,17 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             # the steered layers, redrawn every step and annealed as sigma_0 / t.
             # sigma_0 is a share of the residual norm, by default the starting
             # length the rule measures on Qwen3-1.7B (0.10).
-            base = {k: v for k, v in common.items() if k != "steer_prefill"}
-            flat = {n: 1.0 for n in names}
+            flat = {n: (0.0 if nosteer else 1.0) for n in names}
             paths["npad"] = make_plan(
-                beta=flat, steer_budget=float(getattr(args, "steer_budget", None) or 2.5),
-                offset_gamma=0.0, offset_mode="none", steer_prefill=True,
+                beta=flat, steer_budget=(None if nosteer else
+                                         float(getattr(args, "steer_budget", None) or 2.5)),
+                offset_gamma=0.0, offset_mode="none", steer_prefill=not nosteer,
                 prompt_tail_clear=int((getattr(args, "tail_sweep", None) or [8])[0]),
                 noise_mode="iso", noise_schedule="inv_t",
                 noise_alpha=float(getattr(args, "search_npad_sigma", None) or 0.10), **base)
+        if "fixed" in kinds and nosteer:
+            raise ValueError("suite 'search': the fixed-vector paths are steered; "
+                             "not available with --search-no-steer")
         if "fixed" in kinds:
             fs = copy.copy(ns)
             fs.headline_arms = ["simple"]
@@ -2674,6 +2686,11 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                 for kind in ("simple", "promptonly"):
                     if kind in want:
                         items += [arm(kind, prompt_gain=g, budget=bb, tilt=tt) for g in sgains]
+                if "whilenosteer" in want:
+                    # The noise sized while writing with no rule steering, for a
+                    # task that has no whole-output rule.
+                    items += [arm("while", prompt_gain=pg, budget=bb, tilt=tt, target=tg,
+                                  steer=False) for tg in targets for pg in pgains]
                 if "before" in want:
                     items.append(arm("before", prompt_gain=1.5, budget=bb, tilt=tt))
                 if "fixed" in want:

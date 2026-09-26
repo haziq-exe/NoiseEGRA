@@ -143,6 +143,22 @@ rb, _ = build_suite("randombase", VECS, LAYERS, list(NAMES), RMS, types.SimpleNa
 check("the steering suite is the rule steering alone, as randombase builds it",
       len(st) == 1 and st[0]["plan"].offset_mode == "none" and st[0]["plan"].noise_mode == "none"
       and st[0]["plan"].steer_budget == rb[2]["plan"].steer_budget)
+nargs_ = types.SimpleNamespace(**dict(BASE, online_rule_k=0.43, online_rule_start=True,
+                                      search_kinds=["beam", "dbs", "sample", "noise", "npad"],
+                                      search_width=5, search_dbs_penalty=0.5, search_prompt_gain=1.0,
+                                      search_npad_sigma=0.1, search_no_steer=True))
+nitems, _ = build_suite("search", VECS, LAYERS, list(NAMES), RMS, nargs_)
+nby = {it["search"]: it for it in nitems}
+nst = nby["beam"]["plan"]
+check("with no steering, the shared plan pushes nothing",
+      nst.steer_budget is None and all(abs(sp.beta) == 0 for sp in nst.specs)
+      and nst.offset_mode == "none" and nst.noise_mode == "none")
+nz = nby["noise"]["noise_plan"]
+check("and the noise paths carry the method's noise alone",
+      nz.offset_online > 0 and nz.online_rule_start and nz.steer_budget is None
+      and all(abs(sp.beta) == 0 for sp in nz.specs) and nz.offset_prefill_gain == 1.0)
+check("as do NPAD's", nby["npad"]["noise_plan"].steer_budget is None
+      and nby["npad"]["noise_plan"].noise_schedule == "inv_t")
 from noiseegra.defaults import EN_MODEL_DEPTHS, EN_MODEL_HF_IDS
 check("Granite 4.0 1B is registered with its 40 blocks",
       EN_MODEL_HF_IDS.get("Granite-4.0-1B") == "ibm-granite/granite-4.0-1b" and EN_MODEL_DEPTHS.get("Granite-4.0-1B") == 40)
