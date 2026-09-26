@@ -1664,3 +1664,61 @@ prompt-only noise on Qwen is no more varied than steering alone (2.88 against
 Cost: without the controller there is no shadow row. On Qwen the simple arms
 took about 69 ms a word against 78 for the full method, one story at a time;
 written in batches the full method does about twice the arithmetic.
+
+## On a third model: IBM Granite 4.0 1B (2026-09-26, runs r152, r153)
+
+Granite 4.0 1B (IBM, October 2025; the dense 1.6B instruct release, strong on
+instruction following for its size) on the middle-school prompt, 200 stories an
+arm, the same rules, judge and checks. It overflows in float16 (infinite
+activations by block 5), so it runs in float32 on the T4s. Steering on blocks
+9-18 (the same 21-46% of depth). The full method with every setting fixed in
+advance: the rule's target, the measured start, the controller; prompt noise at
+1.0x (Llama's) and 1.5x (Qwen3-1.7B's). Only the two references were run.
+
+The first attempt steered with an activation scale of 462 instead of 0.3 and
+wrote nonsense: Kaggle's transformers (5.0.0) returns no cache from Granite's
+hybrid class unless handed one, so the calibrator's token-by-token decode ran
+every token without context. Fixed in commit 6484672; the rerun measured the
+rule's quantities as top-p's shift 0.768, top word 0.700, target 0.796 (the rule
+predicted 0.78 for Qwen3-4B, a model of similar certainty), start 0.071 of the
+norm.
+
+| Granite 4.0 1B, 200 stories | Coherent | Rules broken (of 8) | Same-story pairs | Distinct of 10 | Opening subjects | Words |
+|---|---|---|---|---|---|---|
+| Untouched, T=1.0 | 200/200 | 2.21 | 64.2% | 3.12 | 1.5 | 105 |
+| Top-p 0.95, T=1.8 | 194/200 | 2.40 | 35.6% | 5.26 | 1.9 | 94 |
+| **Ours, prompt noise 1.0x** | 191/200 | 2.15 | 20.9% | 6.60 | 4.3 | 75 |
+| Ours, prompt noise 1.5x | 170/200 | 2.35 | 13.3% | 7.70 | 7.9 | 76 |
+
+At 1.0x: +3.48 distinct stories of 10 over the untouched model [+2.46, +4.48]
+and +1.34 over top-p [+0.20, +2.52]; rules tied with the untouched model (-0.06
+[-0.24, +0.13]) and 0.26 fewer broken than top-p [-0.45, -0.06]. At 1.5x the
+variety is larger (+4.58 and +2.44, both outside their intervals) but 30 of 200
+stories fail the coherence checks (17 too short, 9 cut off, 3 not a story) and
+rules tie both references.
+
+Where the rules moved (share of coherent stories failing):
+
+| Rule | Untouched | Top-p | Ours 1.0x | Ours 1.5x |
+|---|---|---|---|---|
+| Present tense | 100% | 99% | 57% | 43% |
+| A he and a she | 18% | 35% | 45% | 54% |
+| Dialogue | 10% | 14% | 15% | 25% |
+| Story format (no title or preamble) | 0% | 0% | 3% | 9% |
+
+The steering fixes tense, which the untouched model never follows, and costs
+he-and-she and some format; the total ties the untouched model.
+
+Reading 30 random stories per arm blind (first 45 words, the three arms
+shuffled): untouched 0 broken and 1 minor slip; ours 1.0x 4 broken (empty, a
+preamble with no story, a single word) and 13 minor; ours 1.5x 5 and 12. Empty
+outputs over all 200: 0, 2, 6 and 10. The minor slips are mostly the rules
+taken literally ("He and she sat on the park bench"; a line of dialogue that is
+only a simile, "Like a cat on a mat," suggests Jake) and titles or preambles.
+Granite's stories are also short under the method (75 words against 105).
+
+**On Granite the method's variety gain holds at the setting fixed in advance**
+(prompt noise 1.0x: 2.1x the untouched model's distinct stories, 1.25x top-p's)
+with rule following no worse than the untouched model and better than top-p,
+at a cost in empty or broken outputs (3% of all stories) and literal-minded
+rule slips.
