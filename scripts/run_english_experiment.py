@@ -1388,7 +1388,11 @@ def main() -> None:
                 m.enable_thinking = (args.thinking == "on")
                 print(f"  reasoning blocks: {'allowed' if m.enable_thinking else 'off'}")
             d = next(m.model.parameters()).dtype
-            if torch.cuda.is_available() and d not in (torch.float16, torch.bfloat16):
+            # float32 on a GPU used to mean an old transformers had ignored the
+            # dtype asked for; it is fine when asked for (Granite 4.0 overflows
+            # in float16, and a T4 has no bfloat16).
+            if (torch.cuda.is_available() and d not in (torch.float16, torch.bfloat16)
+                    and not (d == torch.float32 and args.dtype == "float32")):
                 raise SystemExit(f"model loaded in {d}; upgrade transformers (>=4.56).")
             print(f"  dtype={d}")
             holder["model"], holder["dtype"] = m, d
@@ -1405,7 +1409,8 @@ def main() -> None:
         args.baseline_top_p = None
     if args.baseline_top_k is not None and args.baseline_top_k < 0:
         args.baseline_top_k = None
-    steering_needed = any(name not in ("baseline", "sampling") for name in suites_req)
+    steering_needed = any(name not in ("baseline", "sampling", "references")
+                          for name in suites_req)
     vectors, rms_scale = None, 0.0
 
     # ---- steering vectors ------------------------------------------------- #
