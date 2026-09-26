@@ -136,6 +136,8 @@ check("the simple arm can take the prompt's noise as a multiple", [p.offset_pref
 refs, _ = build_suite("references", VECS, LAYERS, list(NAMES), RMS, types.SimpleNamespace(**BASE))
 check("the references suite is the untouched model and top-p at 1.8, nothing else",
       refs == ["baseline", {"mode": "baseline", "temperature": 1.8, "top_p": 0.95}], str(refs))
+norefs, _ = build_suite("references", None, LAYERS, list(NAMES), 0.0, types.SimpleNamespace(**BASE))
+check("and it builds with no steering vectors at all", norefs == refs, str(norefs))
 from noiseegra.defaults import EN_MODEL_DEPTHS, EN_MODEL_HF_IDS
 check("Granite 4.0 1B is registered with its 40 blocks",
       EN_MODEL_HF_IDS.get("Granite-4.0-1B") == "ibm-granite/granite-4.0-1b" and EN_MODEL_DEPTHS.get("Granite-4.0-1B") == 40)

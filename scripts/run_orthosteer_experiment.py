@@ -438,6 +438,13 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                           (f" with top-p {a['top_p']:g}" if "top_p" in a else " (defaults)")
                           for a in arms)))
 
+    if name == "references":
+        # The two references on their own: the model as it ships, and nucleus
+        # sampling at the baseline temperature.
+        t = float(getattr(args, "baseline_temperature", 1.8) or 1.8)
+        return ["baseline", {"mode": "baseline", "temperature": t, "top_p": 0.95}], (
+            f"the model as it ships and nucleus sampling at temperature {t:g}")
+
     if vectors is None:
         raise ValueError(f"suite {name!r} needs steering vectors")
     resid_std = args.alpha * rms_scale
@@ -2233,13 +2240,6 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             items.append(it)
         return items, (f"{width} decode paths per prompt under the rule steering "
                        f"({', '.join(kinds)}), the best by the steered model's likelihood")
-
-    if name == "references":
-        # The two references on their own: the model as it ships, and nucleus
-        # sampling at the baseline temperature.
-        t = float(getattr(args, "baseline_temperature", 1.8) or 1.8)
-        return ["baseline", {"mode": "baseline", "temperature": t, "top_p": 0.95}], (
-            f"the model as it ships and nucleus sampling at temperature {t:g}")
 
     if name == "randombase":
         # The three references, with no perturbation and so nothing sampled
