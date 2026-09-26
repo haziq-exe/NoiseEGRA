@@ -167,6 +167,30 @@ check("a prompt-only arm is given the same length", abs(mp["start"] - m["start"]
       f"{mp['start']:.4f} vs {m['start']:.4f}")
 check("and still writes with the noise off", pp.offset_decode is False)
 
+print("\n== the absolute target ==")
+import types  # noqa: E402
+from noiseegra.fisher import fisher_rao_distance  # noqa: E402
+from noiseegra.online_calibration import OnlineSizer  # noqa: E402
+torch.manual_seed(0)
+clean = torch.randn(1, 50)
+noisy = clean + 0.3 * torch.randn(1, 50)
+scores = torch.cat([noisy, clean], 0)
+d_now = float(fisher_rao_distance(torch.softmax(clean, -1), torch.softmax(noisy, -1)))
+rel, ab = types.SimpleNamespace(online_gain=1.0), types.SimpleNamespace(online_gain=1.0)
+s_rel = OnlineSizer(rel, target=6.0, bounds=(0.25, 10.0))
+s_abs = OnlineSizer(ab, target=6.0, bounds=(0.25, 10.0), absolute=d_now)
+for _ in range(8):
+    s_rel(None, scores.clone()); s_abs(None, scores.clone())
+check("holding the absolute distance it already has, the gain stays put",
+      abs(ab.online_gain - 1.0) < 1e-6, f"{ab.online_gain:.3f}")
+check("while a relative target far above it keeps raising the gain", rel.online_gain > 2.0,
+      f"{rel.online_gain:.3f}")
+pa = plan(0.43); pa.online_rule_start = True; pa.online_absolute = True
+rid = _ortho_tag("M", ExperimentSpec(use_orthogonal_steering=True, steering_plan=pa))
+check("the run id records the absolute target", "rule0p43startabs" in rid, rid[-40:])
+out = egra.generate_with_orthogonal_steering(PROMPT, pa, max_new_tokens=6, seed=2)
+check("and a story generates with it", isinstance(out, str))
+
 print()
 if FAILURES:
     print(f"{len(FAILURES)} FAILED: {FAILURES}")

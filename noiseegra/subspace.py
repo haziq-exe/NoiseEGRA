@@ -553,6 +553,9 @@ class SteeringPlan:
     # of the noise reach it (online_calibration.start_for_target), held for the
     # whole story -- no controller, no shadow row.
     offset_measured: bool = False
+    # With the rule: hold the noise's per-step effect at the rule's absolute
+    # distance 2*asin(k*p1) rather than at target x the decoder's shift.
+    online_absolute: bool = False
     # Tilt the story's next-token distribution toward the tokens the rules make
     # likelier (the constraints' output profiles, from the same forward passes
     # as the steering directions). The value is the tilt's size at every step as
@@ -999,6 +1002,7 @@ class SteeringPlan:
         online_rule_k: float = 0.0,
         online_rule_start: bool = False,
         offset_measured: bool = False,
+        online_absolute: bool = False,
         output_tilt: float = 0.0,
         output_profile: Optional[torch.Tensor] = None,
         shadow_protect: bool = False,
@@ -1224,6 +1228,7 @@ class SteeringPlan:
             online_rule_k=float(online_rule_k or 0.0),
             online_rule_start=bool(online_rule_start),
             offset_measured=bool(offset_measured),
+            online_absolute=bool(online_absolute),
             output_tilt=float(output_tilt or 0.0),
             output_profile=(None if not output_tilt or output_profile is None
                             else output_profile.detach().float().cpu()),
@@ -2005,6 +2010,7 @@ class SteeringPlan:
             "online_rule_k": self.online_rule_k,
             "online_rule_start": self.online_rule_start,
             "offset_measured": self.offset_measured,
+            "online_absolute": self.online_absolute,
             "output_tilt": self.output_tilt,
             "offset_decode": self.offset_decode,
             "amplify_lambda": self.amplify_lambda,

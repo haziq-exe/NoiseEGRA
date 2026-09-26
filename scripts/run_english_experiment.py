@@ -729,6 +729,10 @@ def main() -> None:
                     help="suite 'headline': the noise on the prompt as multiples of the "
                          "writing length for the 'simple' and 'promptonly' arms, one arm "
                          "each (default 1.0: the same length)")
+    ap.add_argument("--online-absolute", action="store_true",
+                    help="with --online-rule-k: the controller holds the noise's per-step "
+                         "effect at the rule's absolute distance 2*asin(k*p1) instead of the "
+                         "target times top-p's shift at each step")
     ap.add_argument("--online-rule-start", action="store_true",
                     help="with --online-rule-k: also measure the starting length before "
                          "any story -- the length at which random draws of the noise "

@@ -1281,8 +1281,12 @@ class EGRA:
                 # First in the list, so it reads the model's own scores before
                 # anything else has touched them.
                 from .online_calibration import OnlineSizer
+                absolute = None
+                if getattr(plan, "online_absolute", False) and rule is not None:
+                    absolute = float(rule["target"]) * float(rule["unit"])
                 sizer = OnlineSizer(plan, float(plan.offset_online),
-                                    bounds=(0.25, float(getattr(plan, "online_max_gain", 2.5) or 2.5)))
+                                    bounds=(0.25, float(getattr(plan, "online_max_gain", 2.5) or 2.5)),
+                                    absolute=absolute)
                 processors = LogitsProcessorList([sizer, *(processors or [])])
             if (float(getattr(plan, "output_tilt", 0.0) or 0.0) > 0
                     and getattr(plan, "output_profile", None) is not None):

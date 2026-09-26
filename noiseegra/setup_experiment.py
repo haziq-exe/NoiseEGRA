@@ -334,7 +334,8 @@ def _ortho_tag_once(model_name: str, spec: ExperimentSpec, *, compress: bool) ->
             parts.append("carry")
         if float(getattr(plan, "online_rule_k", 0.0) or 0.0) > 0:
             parts.append(f"rule{_float_tag(plan.online_rule_k)}"
-                         + ("start" if getattr(plan, "online_rule_start", False) else ""))
+                         + ("start" if getattr(plan, "online_rule_start", False) else "")
+                         + ("abs" if getattr(plan, "online_absolute", False) else ""))
     if getattr(plan, "offset_measured", False):
         parts.append(f"__meas{_float_tag(getattr(plan, 'online_rule_k', 0.0) or 0.0)}")
     if float(getattr(plan, "output_tilt", 0.0) or 0.0) > 0:

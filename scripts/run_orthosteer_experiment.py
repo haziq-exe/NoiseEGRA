@@ -128,6 +128,7 @@ def make_plan(
     online_rule_k=0.0,
     online_rule_start=False,
     offset_measured=False,
+    online_absolute=False,
     output_tilt=0.0,
     offset_secured_boost=0.0,
     steer_split_concentration=0.0,
@@ -244,6 +245,7 @@ def make_plan(
         online_rule_k=online_rule_k,
         online_rule_start=online_rule_start,
         offset_measured=offset_measured,
+        online_absolute=online_absolute,
         output_tilt=output_tilt,
         output_profile=output_profile,
         offset_secured_boost=offset_secured_boost,
@@ -2629,7 +2631,8 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                           online_carry=bool(getattr(args, "online_carry", False)
                                             if carry is None else carry),
                           online_rule_k=float(getattr(args, "online_rule_k", 0.0) or 0.0),
-                          online_rule_start=bool(getattr(args, "online_rule_start", False)))
+                          online_rule_start=bool(getattr(args, "online_rule_start", False)),
+                          online_absolute=bool(getattr(args, "online_absolute", False)))
             elif sizing in ("simple", "promptonly"):
                 # The method with everything the sizing did not need taken out:
                 # one isotropic random vector per story (no random subspace, no

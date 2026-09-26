@@ -75,7 +75,8 @@ class OnlineSizer(LogitsProcessor):
     def __init__(self, plan, target: float, *, temperature: float = 1.8,
                  top_p: Optional[float] = 0.95, halflife: float = 16.0,
                  warmup: int = 2, rate: float = 0.5, max_step: float = 1.25,
-                 bounds: Tuple[float, float] = (0.25, 2.5)):
+                 bounds: Tuple[float, float] = (0.25, 2.5),
+                 absolute: Optional[float] = None):
         self.plan = plan
         self.target = float(target)
         self.temperature = float(temperature)
@@ -85,6 +86,12 @@ class OnlineSizer(LogitsProcessor):
         self.rate = float(rate)
         self.max_step = float(max_step)
         self.lo, self.hi = float(bounds[0]), float(bounds[1])
+        # A per-step Fisher-Rao distance to hold the noise's effect at, instead
+        # of ``target`` times the decoder's own shift at each step. The two agree
+        # when the text being written moves the decoder as much as the reference
+        # passage did (within 8% on stories); on text the model is far surer of
+        # than its reference passage (maths), the relative target runs away.
+        self.absolute = None if absolute is None else float(absolute)
         self.moved: Optional[float] = None    # recent average of the noise's effect
         self.budget: Optional[float] = None   # recent average of the decoder's
         # (noise's effect, decoder's, gain set for the next step), one per step
@@ -107,7 +114,8 @@ class OnlineSizer(LogitsProcessor):
             self.budget = self.keep * self.budget + (1.0 - self.keep) * budget
         gain = float(self.plan.online_gain)
         if len(self.history) + 1 > self.warmup and self.moved > 1e-12:
-            ratio = self.target * self.budget / self.moved
+            ratio = ((self.absolute if self.absolute is not None
+                      else self.target * self.budget) / self.moved)
             step = min(max(ratio ** self.rate, 1.0 / self.max_step), self.max_step)
             gain = min(max(gain * step, self.lo), self.hi)
             self.plan.online_gain = gain
