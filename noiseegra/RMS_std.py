@@ -148,6 +148,12 @@ class RMSCalibrator:
         stats = RMSStats()
         handles = []
         dbg = {"printed": 0}
+        # Some models return no cache unless handed one (Granite 4.0's hybrid
+        # class in transformers 5.0.0); decoding one token at a time without it
+        # runs every token with no context and measures nonsense (a scale of 462
+        # instead of 0.3). Then each step reruns the whole sequence instead, and
+        # the last position -- the token just written -- is what is measured.
+        mode = {"full": False}
 
         def make_hook(layer_idx: int):
             def hook(module, inp, out):
@@ -155,8 +161,9 @@ class RMSCalibrator:
                 if t is None or t.dim() != 3:
                     return None
 
-                # Only collect on decode steps (seq_len == 1 with KV cache active)
-                if t.shape[1] != 1:
+                # Only collect on decode steps (seq_len == 1 with KV cache active),
+                # or on every step after the prompt when rerunning without a cache.
+                if t.shape[1] != 1 and not mode["full"]:
                     return None
 
                 if debug_shapes and dbg["printed"] < 20:
@@ -189,6 +196,8 @@ class RMSCalibrator:
             out = self.egra.model(**enc, use_cache=True, return_dict=True)
             past = out.past_key_values
             next_logits = out.logits[:, -1, :]
+            ids = enc["input_ids"]
+            mode["full"] = past is None
 
             # Manual decode loop — seq_len == 1 at every step
             for _ in range(max_new_tokens):
@@ -224,13 +233,17 @@ class RMSCalibrator:
                     else:
                         next_token = torch.multinomial(probs / probs_sum, num_samples=1)
 
-                out = self.egra.model(
-                    input_ids=next_token,
-                    past_key_values=past,
-                    use_cache=True,
-                    return_dict=True,
-                )
-                past = out.past_key_values
+                if mode["full"]:
+                    ids = torch.cat([ids, next_token.to(ids.device)], dim=-1)
+                    out = self.egra.model(input_ids=ids, use_cache=False, return_dict=True)
+                else:
+                    out = self.egra.model(
+                        input_ids=next_token,
+                        past_key_values=past,
+                        use_cache=True,
+                        return_dict=True,
+                    )
+                    past = out.past_key_values
                 next_logits = out.logits[:, -1, :]
 
         finally:
