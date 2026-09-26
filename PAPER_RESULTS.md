@@ -1803,7 +1803,8 @@ points [-35, -10], Diverse Beam Search -27 [-38, -15], sampling -7 [-18, +5].
   loop more, and some drift from the scenario).
 - **With likelihood selection the noise paths are almost never chosen** (the
   steered greedy path wins 97% of prompts): a perturbed path is less likely
-  under the clean model by construction (-1.1 to -2.5 per token against -0.3),
+  under the clean model (median -0.87 per token, 10-90% -1.55 to -0.57, against
+  -0.28 for the steered greedy path),
   the reason NPAD's gains over beam search were small. The chosen story is
   still more often coherent than beam search's (78% against 57%), because on
   open-ended stories the most likely beam loops (20 of 60 chosen beams are
