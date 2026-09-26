@@ -51,3 +51,23 @@ assert (tmp2 / "Qwen3-1.7B" / "A.csv").is_file()
 assert (tmp2 / "Qwen3-1.7B" / "B.csv").is_file()
 shutil.rmtree(tmp2)
 print("merge OK: every condition in one state file, csvs kept, shard dirs removed")
+
+# --- a search's candidate sets and other fields survive the merge -------------
+tmp3 = Path(tempfile.mkdtemp())
+for i, rid in enumerate(["S1", "S2"]):
+    d = tmp3 / f"shard{i}" / "Qwen3-1.7B"
+    d.mkdir(parents=True)
+    (d / "state.json").write_text(json.dumps({
+        "task": {"stories": 2}, "rms_scale": {}, "entropy": {},
+        "prompts": ["p0", "p1"],
+        "runs": {rid: {f"0:{i}": "chosen"}, "SHARED": {f"0:{i}": "x"}},
+        "candidates": {rid: {f"0:{i}": [{"path": 0, "text": "a", "score": -1.0}]},
+                       "SHARED": {f"0:{i}": [{"path": 1, "text": "b", "score": -2.0}]}}}))
+merge(tmp3)
+st = json.loads((tmp3 / "Qwen3-1.7B" / "state.json").read_text())
+assert st.get("prompts") == ["p0", "p1"], "fields beyond the runs must survive"
+assert sorted(st["candidates"]) == ["S1", "S2", "SHARED"], st.get("candidates")
+assert sorted(st["candidates"]["SHARED"]) == ["0:0", "0:1"], "one run's sets from both shards"
+assert st["candidates"]["S1"]["0:0"][0]["text"] == "a"
+shutil.rmtree(tmp3)
+print("merge OK: candidate sets from both shards kept, prompts kept")

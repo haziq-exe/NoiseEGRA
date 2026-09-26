@@ -163,6 +163,24 @@ def merge(out: Path) -> None:
 
     merged, task = {}, None
     extra = {"rms_scale": {}, "entropy": {}}
+    # Every other field a shard's checkpoint carries (a search's candidate sets,
+    # the scenario prompts, uncertainty records) is kept too, merged one level
+    # down by run. Dropping them lost a whole run's candidate sets once.
+    others: dict = {}
+
+    def keep(blob):
+        for key, val in blob.items():
+            if key in ("task", "runs") or key in extra:
+                continue
+            if isinstance(val, dict):
+                slot = others.setdefault(key, {})
+                for k2, v2 in val.items():
+                    if isinstance(v2, dict) and isinstance(slot.get(k2), dict):
+                        slot[k2].update(v2)
+                    else:
+                        slot[k2] = v2
+            elif key not in others:
+                others[key] = val
     # Start from whatever a previous run left here. Rebuilding this file from the
     # shard states alone discards the history the checkpoint restored, so a
     # resumed run would come back holding only the stories it happened to
@@ -178,6 +196,7 @@ def merge(out: Path) -> None:
             extra[key].update(blob.get(key, {}) or {})
         for rid, cells in blob.get("runs", {}).items():
             merged.setdefault(rid, {}).update(cells)
+        keep(blob)
     for sp in states:
         blob = json.loads(sp.read_text())
         task = task or blob.get("task")
@@ -185,6 +204,7 @@ def merge(out: Path) -> None:
             extra[key].update(blob.get(key, {}) or {})
         for rid, cells in blob.get("runs", {}).items():
             merged.setdefault(rid, {}).update(cells)
+        keep(blob)
         for f in sp.parent.iterdir():
             if not f.is_file() or f.name == "state.json":
                 continue
@@ -207,7 +227,7 @@ def merge(out: Path) -> None:
                 shutil.copy2(f, dest)
 
     (model_dir / "state.json").write_text(
-        json.dumps({"task": task, "runs": merged, **extra}, indent=0))
+        json.dumps({"task": task, "runs": merged, **extra, **others}, indent=0))
     for d in out.glob("shard*"):
         shutil.rmtree(d, ignore_errors=True)
     n = sum(len(v) for v in merged.values())
