@@ -1722,3 +1722,35 @@ Granite's stories are also short under the method (75 words against 105).
 with rule following no worse than the untouched model and better than top-p,
 at a cost in broken outputs (9 of 200 fail the coherence checks, 6 of them
 empty; 4 of the 30 read blind were broken) and literal-minded rule slips.
+
+### Granite: the ablations and three published methods (runs r155, r156)
+
+Rule steering alone, noise alone (no steering, at 0.142 of the residual norm as
+on the other models), and the three published comparisons kept for the paper
+(chosen for how widely they are known: min-p, Verbalized Sampling, and simply
+asking for a creative story). 200 stories an arm; "vs ours" is against the
+method at prompt noise 1.0x.
+
+| Granite 4.0 1B | Coherent | Rules broken | vs ours | Same-story pairs | Distinct of 10 | vs ours | Opening subjects |
+|---|---|---|---|---|---|---|---|
+| **Ours, prompt noise 1.0x** | 191/200 | 2.15 | | 20.9% | 6.60 | | 4.3 |
+| Untouched | 200/200 | 2.21 | +0.06 [-0.13, +0.23] | 64.2% | 3.12 | -3.48 [-4.50, -2.52] | 1.5 |
+| Top-p 0.95, T=1.8 | 194/200 | 2.40 | +0.26 [+0.06, +0.45] | 35.6% | 5.26 | -1.34 [-2.54, -0.30] | 1.9 |
+| Min-p 0.1, T=1.5 | 200/200 | 2.21 | +0.07 [-0.11, +0.25] | 60.6% | 3.30 | -3.30 | 1.4 |
+| Verbalized Sampling | 196/200 | 2.81 (2.14*) | +0.66 (-0.01*) | 22.5% | 6.65 | +0.05 | 2.0 |
+| Prompted to be creative | 200/200 | 2.07 | -0.08 [-0.26, +0.11] | 48.0% | 4.26 | -2.34 | 1.7 |
+| Rule steering only | 197/200 | 2.20 | +0.05 [-0.15, +0.25] | 41.4% | 4.66 | -1.94 | 3.0 |
+| Noise alone | 171/200 | 3.61 | +1.47 [+1.25, +1.69] | 10.3% | 8.23 | +1.63 | 10.8 |
+
+\* Verbalized Sampling's single-quoted speech counted as dialogue.
+
+- **Against the published methods**: more varied than min-p and the creative
+  prompt by 3.3 and 2.3 distinct stories of 10 at the same rule following.
+  Verbalized Sampling matches the method on Granite on both variety (6.65) and,
+  with its quoted speech counted, rules (2.14) -- unlike on Qwen3-1.7B (1.42
+  distinct) and Llama-3.2-3B (3.88 distinct, 179/200 coherent).
+- **The ablations** follow the other models: noise alone is the most varied arm
+  but breaks by far the most rules (3.61) and loses 29 stories; the noise alone
+  here is twice the method's measured start (Granite is sensitive), so it is a
+  stronger perturbation than the method's. Rule steering alone fixes tense but
+  on Granite does not lower the total (2.20 against 2.21 untouched).
