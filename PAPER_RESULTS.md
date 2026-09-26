@@ -1816,3 +1816,72 @@ points [-35, -10], Diverse Beam Search -27 [-38, -15], sampling -7 [-18, +5].
   one constant direction per path is what changes that, since the fixed vector
   ties the full method (2.77 against 2.72): the controller does not matter in
   this setting.
+
+### On a task with one right answer: GSM8K (runs r160-r164, 2026-09-26)
+
+The question: do the noise paths reach right answers that the model's own
+greedy path gets wrong? GSM8K (Cobbe et al., 2021) is the standard benchmark
+for search and self-consistency on language models. 200 problems drawn from
+the test split with a fixed seed; the model is asked to solve step by step and
+end with "#### <number>" (the answer is read from that line, else from the
+last \boxed{}, else the last number; 95-99% of paths end with an answer line, outside ours at k = 0.43).
+Qwen3-1.7B, at most 512 new tokens, width 5 for every kind. **No rule steering
+on any path**: maths has no whole-output rule, so the noise paths carry the
+method's noise alone (random rank-64 direction per path, measured start,
+controller), and path 0 is plain greedy decoding. Kinds: beam search; Diverse
+Beam Search (5 groups, penalty 0.5); 5 samples at T=0.7 (the self-consistency
+setting); NPAD (greedy path + 4 paths with isotropic noise, sigma_0 = 0.10 of
+the norm, annealed 1/t); ours (greedy path + 4 noise paths).
+
+The controller's relative target (the rule's target times top-p's per-step
+shift on a greedy reference passage) ran to its cap on maths: the reference
+passage is far more certain than the text being written (top-p moves it 0.13
+a step against 0.40), so run r159 was stopped. The runs below hold the noise's
+per-step Fisher-Rao effect at the rule's absolute distance, 2 asin(k p1), with
+the story constant k = 0.43 and with k = 0.1.
+
+Measures per problem: one path right (the noise paths only, for ours and
+NPAD); the candidate the model finds most likely; majority vote over the 5
+answers (ties to the most likely); any path right (the ceiling a perfect
+checker reaches); rescued = of the problems greedy gets wrong, the share with
+a right candidate.
+
+| Width 5 | One path right | Most likely right | Majority vote right | Any path right | Rescued (of greedy's misses) | Distinct answers |
+|---|---|---|---|---|---|---|
+| Greedy alone | 75.0% | | | | | |
+| **Ours, k = 0.1** | 63.4% | 75.5% | **78.5%** | **87.5%** | **50%** (25 of 50) | 2.15 |
+| Ours, k = 0.43 (195 problems) | 3.6% | 74.9% | 52.8% | 76.4% | 6% (3 of 49) | 4.26 |
+| Best-of-5 sampling, T=0.7 | 74.9% | 76.5% | 77.0% | 86.5% | 50% | 1.51 |
+| Diverse Beam Search | 74.8% | 78.0% | 75.5% | 85.5% | 44% | 1.47 |
+| NPAD | 74.8% | 76.5% | 75.5% | 80.0% | 20% | 1.26 |
+| Beam search | 73.8% | 73.5% | 74.5% | 75.5% | 24% | 1.12 |
+
+Paired against ours at k = 0.1 over the 200 problems (other minus ours, 95%
+bootstrap): any path right, sampling -1.0 points [-4.5, +2.5], Diverse Beam
+Search -2.0 [-5.5, +1.5], NPAD -7.5 [-11.5, -4.0], beam -12.0 [-17.0, -7.5];
+rescued, sampling +0 [-14, +14], Diverse Beam Search -6 [-18, +6], NPAD -30
+[-44, -16], beam -26 [-40, -12]; majority vote, sampling -1.5 [-5.0, +2.0].
+Ours against greedy alone: any path right +12.5 [+8.0, +17.0], majority vote
++3.5 [-0.5, +7.5], most likely +0.5 [0.0, +1.5].
+
+- **At k = 0.1 the noise paths rescue half of greedy's misses**, as many as
+  independent sampling and 26-30 points more than beam search and NPAD. Any
+  path right and majority vote tie sampling and Diverse Beam Search.
+- **Each noise path is worse than a sample** (63% right against 75%) but the
+  set holds more different answers (2.15 against 1.51), so the set's ceiling
+  comes out level. The wrong paths read as ordinary slips (a skipped step, a
+  different quantity answered), not broken text. The rescues read as real
+  corrections: counting 7 gaps between 8 bottles where greedy counted 8;
+  setting up 36 + 5x = 76 where greedy lost the total.
+- **Likelihood selection gains nothing** (+0.5 points): the greedy path is the
+  most likely candidate on nearly every problem, as on stories. The gain needs
+  a vote or a checker.
+- **The story size breaks maths.** At k = 0.43 the noise moves each step about
+  twice as far as top-p at T=1.8 (0.79 against 0.38 per step); the paths loop,
+  fill with asterisks and garble ("3 times as many the same as Sam that Sam
+  lives on a timeline"), and only 3.6% are right. The rule's constant k is
+  task-dependent: the story value is too large for step-by-step maths. k = 0.1
+  was set after the relative target ran away and before any accuracy result;
+  no other value was tried.
+- The run at k = 0.43 hit its 6-hour cap at 195 of 200 problems and was not
+  resumed.
