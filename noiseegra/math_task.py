@@ -25,6 +25,7 @@ INSTRUCTION = (
 
 _NUM = r"-?\$?\d[\d,]*(?:\.\d+)?"
 _FINAL = re.compile(r"####\s*(" + _NUM + ")")
+_BOXED = re.compile(r"\\boxed\{([^{}]*)\}")
 _ANY = re.compile(_NUM)
 
 
@@ -43,10 +44,16 @@ def gold_answer(solution: str) -> Optional[float]:
 
 
 def extract_answer(text: str) -> Optional[float]:
-    """The model's final answer: the number after the last '####', else the last number."""
+    """The model's final answer: the number after the last '####', else the last
+    \\boxed{} (instruct models often answer that way), else the last number."""
     finals = _FINAL.findall(text or "")
     if finals:
         return _to_float(finals[-1])
+    boxed = _BOXED.findall(text or "")
+    if boxed:
+        inner = _ANY.findall(boxed[-1])
+        if inner:
+            return _to_float(inner[-1])
     nums = _ANY.findall(text or "")
     return _to_float(nums[-1]) if nums else None
 

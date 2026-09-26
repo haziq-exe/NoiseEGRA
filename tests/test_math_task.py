@@ -24,6 +24,8 @@ check("the model's answer is the last '####' number",
 check("or, without one, the last number", extract_answer("So she pays $18.50 in total.") == 18.5)
 check("a dollar sign and a full stop are ignored", extract_answer("#### $40.") == 40.0)
 check("no number is no answer", extract_answer("I cannot tell.") is None)
+check("a boxed answer is taken before a later stray number",
+      extract_answer("### Final Answer: $$ \\boxed{16} $$ (over 2 days)") == 16.0)
 check("correct when equal as numbers", is_correct("#### 7.0", 7.0) and not is_correct("#### 8", 7.0))
 m = build_messages("Tom has 3 apples. How many?")
 check("the prompt asks for the #### line", m[1]["content"].endswith("#### <number>") and m[0]["role"] == "system")
