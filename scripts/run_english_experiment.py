@@ -729,6 +729,24 @@ def main() -> None:
                     help="suite 'headline': the noise on the prompt as multiples of the "
                          "writing length for the 'simple' and 'promptonly' arms, one arm "
                          "each (default 1.0: the same length)")
+    ap.add_argument("--btrans-sigma", type=float, default=0.02,
+                    help="suite 'headline', arm 'btrans': the standard deviation of B-Trans's "
+                         "per-norm-layer offset (arXiv 2512.25063 gives 0.02)")
+    ap.add_argument("--guard-alpha", type=float, default=0.05,
+                    help="arms 'whileguard'/'whilefix': the story samples only tokens its "
+                         "noise-free shadow gives at least this share of its top token's "
+                         "probability; 'whileminp' uses it as min-p on the story instead")
+    ap.add_argument("--correct-eta", type=float, default=1.0,
+                    help="arm 'whilefix': the share of the noise's component along the "
+                         "offending token's gradient removed at each violation")
+    ap.add_argument("--feedback-eta", type=float, default=0.05,
+                    help="arms 'whiletoward'/'whileaway': radians the noise's direction turns "
+                         "per step toward/away from the displacement it caused downstream")
+    ap.add_argument("--feedback-cancel-eta", type=float, default=1.0,
+                    help="arm 'whilecancel': the share of the direction replaced each step by "
+                         "the opposite of the displacement it caused downstream")
+    ap.add_argument("--feedback-layer", type=int, default=20,
+                    help="the layer the feedback arms read the downstream displacement at")
     ap.add_argument("--online-absolute", action="store_true",
                     help="with --online-rule-k: the controller holds the noise's per-step "
                          "effect at the rule's absolute distance 2*asin(k*p1) instead of the "
@@ -761,7 +779,10 @@ def main() -> None:
                          "set of arms per value (default: --steer-budget)")
     ap.add_argument("--headline-arms", nargs="+",
                     choices=["while", "whilecarry", "whilenosteer", "before", "fixed", "fixedprompt",
-                             "fixedfront", "fixednoise", "simple", "promptonly"],
+                             "fixedfront", "fixednoise", "simple", "promptonly",
+                             "whilenodrift", "whilenoproj", "whilefixed", "whileguard",
+                             "whilefix", "whileminp", "whiletoward", "whileaway",
+                             "whilecancel", "btrans"],
                     default=["while", "before", "fixed", "fixedprompt", "fixedfront"],
                     help="suite 'headline': which of its arms to run -- sized while "
                          "writing, sized before, the fixed lengths, the base length "

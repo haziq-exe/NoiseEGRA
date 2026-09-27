@@ -129,6 +129,12 @@ def make_plan(
     online_rule_start=False,
     offset_measured=False,
     online_absolute=False,
+    guard_alpha=0.0,
+    correct_eta=0.0,
+    feedback_mode="",
+    feedback_eta=0.0,
+    feedback_layer=20,
+    btrans_sigma=0.0,
     output_tilt=0.0,
     offset_secured_boost=0.0,
     steer_split_concentration=0.0,
@@ -246,6 +252,12 @@ def make_plan(
         online_rule_start=online_rule_start,
         offset_measured=offset_measured,
         online_absolute=online_absolute,
+        guard_alpha=guard_alpha,
+        correct_eta=correct_eta,
+        feedback_mode=feedback_mode,
+        feedback_eta=feedback_eta,
+        feedback_layer=feedback_layer,
+        btrans_sigma=btrans_sigma,
         output_tilt=output_tilt,
         output_profile=output_profile,
         offset_secured_boost=offset_secured_boost,
@@ -2612,7 +2624,7 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         targets = [float(x) for x in (getattr(args, "online_targets", None) or [1.0])]
 
         def arm(sizing, *, length=None, prompt_gain=1.0, front=1.0, budget=b, tilt=0.0,
-                steer=True, carry=None, target=1.0):
+                steer=True, carry=None, target=1.0, extra=None, item_extra=None):
             kw = dict(beta=(flat if steer else none), steer_budget=(budget if steer else None),
                       output_tilt=tilt, offset_mode="orth",
                       offset_basis=None, offset_basis_kind="random",
@@ -2633,6 +2645,19 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                           online_rule_k=float(getattr(args, "online_rule_k", 0.0) or 0.0),
                           online_rule_start=bool(getattr(args, "online_rule_start", False)),
                           online_absolute=bool(getattr(args, "online_absolute", False)))
+            elif sizing == "whilefixed":
+                # The full method with the controller taken out: the same
+                # direction (random subspace, projection, drift) at the length
+                # measured before the stories, held -- no shadow row.
+                kw.update(offset_gamma=start, offset_norm="energy", offset_measured=True,
+                          online_rule_k=float(getattr(args, "online_rule_k", 0.0) or 0.43))
+            elif sizing == "btrans":
+                # B-Trans (arXiv 2512.25063) with the same rule steering: a
+                # Gaussian offset per norm layer, fixed per story, and no
+                # residual-stream noise.
+                kw.update(offset_gamma=0.0, offset_mode="none", offset_prefill=False,
+                          offset_decode=False, noise_beta=None, offset_random_rank=0,
+                          btrans_sigma=float(getattr(args, "btrans_sigma", None) or 0.02))
             elif sizing in ("simple", "promptonly"):
                 # The method with everything the sizing did not need taken out:
                 # one isotropic random vector per story (no random subspace, no
@@ -2647,7 +2672,11 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                           offset_decode=(sizing == "simple"))
             else:
                 kw.update(offset_gamma=length / norm, offset_norm="energy")
+            if extra:
+                kw.update(extra)
             item = {"plan": make_plan(**kw, **quiet, **base)}
+            if item_extra:
+                item.update(item_extra)
             # A decoder on top of the method, when asked: every arm otherwise
             # samples at the run's temperature with the checkpoint's own cut-offs.
             if getattr(args, "headline_temperature", None) is not None:
@@ -2689,6 +2718,35 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                 for kind in ("simple", "promptonly"):
                     if kind in want:
                         items += [arm(kind, prompt_gain=g, budget=bb, tilt=tt) for g in sgains]
+                # One change to the full method each, same prompt noise.
+                ga = float(getattr(args, "guard_alpha", None) or 0.05)
+                fe = float(getattr(args, "feedback_eta", None) or 0.05)
+                fl = int(getattr(args, "feedback_layer", None) or 20)
+                variants = {
+                    "whilenodrift": dict(extra=dict(noise_beta=None)),
+                    "whilenoproj": dict(extra=dict(offset_mode="iso")),
+                    "whileguard": dict(extra=dict(guard_alpha=ga)),
+                    "whilefix": dict(extra=dict(guard_alpha=ga, correct_eta=float(
+                        getattr(args, "correct_eta", None) or 1.0))),
+                    "whileminp": dict(item_extra=dict(min_p=ga)),
+                    "whiletoward": dict(extra=dict(noise_beta=None, feedback_mode="toward",
+                                                   feedback_eta=fe, feedback_layer=fl)),
+                    "whileaway": dict(extra=dict(noise_beta=None, feedback_mode="away",
+                                                 feedback_eta=fe, feedback_layer=fl)),
+                    "whilecancel": dict(extra=dict(noise_beta=None, feedback_mode="cancel",
+                                                   feedback_eta=float(getattr(
+                                                       args, "feedback_cancel_eta", None) or 1.0),
+                                                   feedback_layer=fl)),
+                }
+                for kind, v in variants.items():
+                    if kind in want:
+                        items += [arm("while", prompt_gain=pg, budget=bb, tilt=tt, target=tg, **v)
+                                  for tg in targets for pg in pgains]
+                if "whilefixed" in want:
+                    items += [arm("whilefixed", prompt_gain=pg, budget=bb, tilt=tt)
+                              for pg in pgains]
+                if "btrans" in want:
+                    items.append(arm("btrans", budget=bb, tilt=tt))
                 if "whilenosteer" in want:
                     # The noise sized while writing with no rule steering, for a
                     # task that has no whole-output rule.

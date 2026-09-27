@@ -1009,9 +1009,30 @@ class EGRA:
             processors = LogitsProcessorList(probes)
         sizer = None
         tilt = None
+        guard = None
+        fb_mode = str(getattr(plan, "feedback_mode", "") or "")
+        if fb_mode and float(getattr(plan, "feedback_eta", 0.0) or 0.0) <= 0:
+            fb_mode = ""
+        fb_stats = {"steps": 0, "cos_sum": 0.0}
+        guard_alpha = float(getattr(plan, "guard_alpha", 0.0) or 0.0)
+        guard_fix = guard_alpha > 0 and float(getattr(plan, "correct_eta", 0.0) or 0.0) > 0
+        cache_box = {}
+        if (fb_mode or guard_alpha > 0) and not shadow:
+            raise ValueError("the guard and the feedback read the noise-free shadow row; "
+                             "they need the noise sized while writing (offset_online)")
+        if fb_mode and any(lp.offset_traj is not None for lp in plan.layer_plans.values()):
+            raise ValueError("feedback turns a constant per-story direction; "
+                             "run it with no drift (noise_beta None)")
+        start_dirs = {l: lp.offset.detach().float().clone()
+                      for l, lp in plan.layer_plans.items()
+                      if fb_mode and lp.offset is not None}
 
         try:
             def model_pre_hook(module, inp):
+                # A replay of the current step (the direction correction's
+                # gradient) is not a new step.
+                if shared.get("replay"):
+                    return None
                 shared["forward_calls"] += 1
                 if shared["forward_calls"] == 1:
                     shared["is_prefill"] = True
@@ -1145,9 +1166,12 @@ class EGRA:
                         # changing the constraint pressure.
                         gate_open = (gate_threshold <= 0
                                      or entropy_state["entropy"] >= gate_threshold)
-                        if layer_idx == normalized_layers[0]:
+                        if layer_idx == normalized_layers[0] and not shared.get("replay"):
                             entropy_state["steps"] += 1
                             entropy_state["open"] += int(gate_open)
+                            # The controller may change the gain after this
+                            # forward; a replay of this step needs this one.
+                            shared["gain_used"] = getattr(plan, "online_gain", 1.0)
 
                         delta = plan.delta_for(
                             layer_idx, shared["cur_t"], with_noise=gate_open,
@@ -1243,6 +1267,47 @@ class EGRA:
             if arch is not None:
                 arch.attach()
 
+            # B-Trans: a Gaussian offset on every hidden-size norm layer, drawn
+            # now from this story's seed and held for the whole story.
+            if float(getattr(plan, "btrans_sigma", 0.0) or 0.0) > 0:
+                from .dynamic_noise import attach_btrans
+                handles.extend(attach_btrans(self.model, float(plan.btrans_sigma)))
+
+            # The noise's direction turned each step by the displacement it
+            # caused downstream: the story's state minus its shadow's at the
+            # feedback layer, read after the steered layers have acted.
+            if fb_mode:
+                from .dynamic_noise import feedback_update
+                fb_layer = self._normalize_layer_index(
+                    int(getattr(plan, "feedback_layer", 20)), len(blocks))
+
+                def fb_hook(module, input, output):
+                    if shared.get("replay") or shared["is_prefill"]:
+                        return None
+                    t_ = output if isinstance(output, torch.Tensor) else (
+                        output[0] if isinstance(output, (tuple, list)) and len(output) > 0
+                        and isinstance(output[0], torch.Tensor) else None)
+                    if t_ is None or t_.dim() != 3 or t_.shape[0] != 2:
+                        return None
+                    with torch.no_grad():
+                        cos = feedback_update(plan, (t_[0, -1] - t_[1, -1]).float(),
+                                              fb_mode, float(plan.feedback_eta))
+                    fb_stats["steps"] += 1
+                    fb_stats["cos_sum"] += cos
+                    return None
+
+                handles.append(blocks[fb_layer].register_forward_hook(fb_hook))
+
+            # The generation's own cache, for replaying the current step with a
+            # gradient when the guard corrects the noise's direction.
+            if guard_fix:
+                def grab_cache(module, args, kwargs):
+                    if not shared.get("replay"):
+                        cache_box["pkv"] = kwargs.get("past_key_values")
+                    return None
+
+                handles.append(self.model.register_forward_pre_hook(grab_cache, with_kwargs=True))
+
             # The push and a truncation scheme are different interventions --
             # one reshapes the representation, the other the distribution over
             # the next token -- so they compose. Every method arm until now used
@@ -1288,6 +1353,28 @@ class EGRA:
                                     bounds=(0.25, float(getattr(plan, "online_max_gain", 2.5) or 2.5)),
                                     absolute=absolute)
                 processors = LogitsProcessorList([sizer, *(processors or [])])
+                if guard_alpha > 0:
+                    # After the controller, which must read the story's raw
+                    # scores; before any cut-off.
+                    from .dynamic_noise import CleanGuard, correct_offsets, prefix_cache
+
+                    def on_violation(ids, token):
+                        # Not on the first token: it comes from the prompt's
+                        # forward pass, which a one-position replay does not
+                        # reproduce (the prompt is perturbed differently).
+                        if (not guard_fix or cache_box.get("pkv") is None
+                                or shared["is_prefill"]):
+                            return False
+                        grads = self._token_gradients(
+                            plan, blocks, normalized_layers, shared, cache_box["pkv"],
+                            ids, token, prefix_cache)
+                        if grads is None:
+                            return False
+                        return correct_offsets(plan, grads, float(plan.correct_eta),
+                                               shared["cur_t"])
+
+                    guard = CleanGuard(guard_alpha, on_violation)
+                    processors = LogitsProcessorList([sizer, guard, *list(processors)[1:]])
             if (float(getattr(plan, "output_tilt", 0.0) or 0.0) > 0
                     and getattr(plan, "output_profile", None) is not None):
                 # Last, after everything that reads the model's own scores and
@@ -1395,6 +1482,30 @@ class EGRA:
                       f"{got['achieved']:.2f} nucleus-units over the story "
                       f"(asked {float(plan.offset_online):.2f}); per step, top-p moves "
                       f"{got['budget']:.4f} and the noise {got['moved']:.4f}", flush=True)
+        if guard is not None:
+            got = guard.summary()
+            if getattr(plan, "guard_log", None) is None:
+                plan.guard_log = []
+            plan.guard_log.append(got)
+            print(f"  [guard] the noise pushed a token the clean model rules out at "
+                  f"{int(got['violations'])} of {int(got['steps'])} steps; corrected the "
+                  f"direction {int(got['corrections'])} times", flush=True)
+        if fb_mode:
+            turned = []
+            for l, u0 in start_dirs.items():
+                lp = plan.layer_plans[l]
+                if lp.offset is not None:
+                    a, b = u0.to(lp.offset.device), lp.offset.float()
+                    turned.append(float((a @ b) / (a.norm() * b.norm()).clamp_min(1e-12)))
+            got = {"steps": float(fb_stats["steps"]),
+                   "step_cos": fb_stats["cos_sum"] / max(fb_stats["steps"], 1),
+                   "start_end_cos": sum(turned) / len(turned) if turned else math.nan}
+            if getattr(plan, "feedback_log", None) is None:
+                plan.feedback_log = []
+            plan.feedback_log.append(got)
+            print(f"  [feedback] {fb_mode}: {int(got['steps'])} turns, mean cosine "
+                  f"{got['step_cos']:.4f} per step; the direction ends at cosine "
+                  f"{got['start_end_cos']:.3f} with where it started", flush=True)
         if tilt is not None:
             got = tilt.summary()
             if getattr(plan, "tilt_log", None) is None:
@@ -1409,6 +1520,56 @@ class EGRA:
         else:
             self.last_gate_rate = 1.0
         return text
+
+    def _token_gradients(self, plan, blocks, layers, shared, cache, input_ids, token,
+                         prefix_cache):
+        """d log p(token) / d(a vector added at each steered layer), this step.
+
+        Replays the step just taken for the story (row 0) with its own cache up
+        to the previous position and the same perturbation (the hooks see the
+        same step, and the gain the controller used for it), plus a zero vector
+        per steered layer at the current position whose gradient is returned.
+        The generation's cache and step count are untouched.
+        """
+        n = int(input_ids.shape[-1])
+        try:
+            ctx = prefix_cache(cache, 0, n - 1)
+        except Exception as err:  # an unfamiliar cache layout
+            if not getattr(self, "_replay_warned", False):
+                print(f"  [guard] cannot replay the step ({err!r}); no correction", flush=True)
+                self._replay_warned = True
+            return None
+        p0 = next(iter(self.model.parameters()))
+        es = {l: torch.zeros(int(plan.dim), dtype=p0.dtype, device=p0.device,
+                             requires_grad=True) for l in layers}
+
+        def add_e(l):
+            def h(module, inp, out):
+                if isinstance(out, torch.Tensor):
+                    return out + es[l].to(out.device).view(1, 1, -1)
+                if isinstance(out, (tuple, list)) and out and isinstance(out[0], torch.Tensor):
+                    return (out[0] + es[l].to(out[0].device).view(1, 1, -1), *out[1:])
+                return None
+            return h
+
+        hs = [blocks[l].register_forward_hook(add_e(l)) for l in layers]
+        saved = getattr(plan, "online_gain", 1.0)
+        plan.online_gain = shared.get("gain_used", saved)
+        shared["replay"] = True
+        try:
+            with torch.enable_grad():
+                out = self.model(input_ids=input_ids[:1, -1:], past_key_values=ctx,
+                                 use_cache=True)
+                lp = torch.log_softmax(out.logits[0, -1].float(), dim=-1)[int(token)]
+                # Kept so a test can check the replay reproduced the step.
+                self._last_replay_logprob = float(lp)
+                grads = torch.autograd.grad(lp, [es[l] for l in layers], allow_unused=True)
+        finally:
+            shared["replay"] = False
+            plan.online_gain = saved
+            for h in hs:
+                h.remove()
+        return {l: (None if g is None else g.detach().float()) for l, g in zip(layers, grads)}
 
     @torch.no_grad()
     def generate_with_entropy_noise(

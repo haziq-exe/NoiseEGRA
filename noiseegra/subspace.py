@@ -556,6 +556,28 @@ class SteeringPlan:
     # With the rule: hold the noise's per-step effect at the rule's absolute
     # distance 2*asin(k*p1) rather than at target x the decoder's shift.
     online_absolute: bool = False
+    # A guard on the story's next token from its noise-free shadow: the story
+    # samples only among tokens the shadow gives at least this share of its top
+    # token's probability (0 is off). Needs the shadow row, i.e. offset_online.
+    guard_alpha: float = 0.0
+    # With the guard: when the story's own top token is one the shadow rules
+    # out, turn each layer's noise away from the direction that raised it --
+    # remove this share (0-1) of the noise's component along the exact gradient
+    # of that token's log-probability at this position.
+    correct_eta: float = 0.0
+    # Turn the noise's direction by the displacement it caused downstream: the
+    # story's state minus its shadow's at ``feedback_layer`` (last position),
+    # each step. "toward" turns it toward the part of that displacement not
+    # along the noise itself (resonance), "away" away from it, "cancel" sets the
+    # next direction opposite the whole displacement. ``feedback_eta`` is the
+    # step (radians per step for toward/away; the share replaced for cancel).
+    feedback_mode: str = ""
+    feedback_eta: float = 0.0
+    feedback_layer: int = 20
+    # B-Trans (Yang & Zhang, arXiv 2512.25063): one Gaussian offset N(0,
+    # sigma^2) per hidden-size normalisation layer, drawn per story and added to
+    # that layer's output at every position. 0 is off.
+    btrans_sigma: float = 0.0
     # Tilt the story's next-token distribution toward the tokens the rules make
     # likelier (the constraints' output profiles, from the same forward passes
     # as the steering directions). The value is the tilt's size at every step as
@@ -1003,6 +1025,12 @@ class SteeringPlan:
         online_rule_start: bool = False,
         offset_measured: bool = False,
         online_absolute: bool = False,
+        guard_alpha: float = 0.0,
+        correct_eta: float = 0.0,
+        feedback_mode: str = "",
+        feedback_eta: float = 0.0,
+        feedback_layer: int = 20,
+        btrans_sigma: float = 0.0,
         output_tilt: float = 0.0,
         output_profile: Optional[torch.Tensor] = None,
         shadow_protect: bool = False,
@@ -1229,6 +1257,12 @@ class SteeringPlan:
             online_rule_start=bool(online_rule_start),
             offset_measured=bool(offset_measured),
             online_absolute=bool(online_absolute),
+            guard_alpha=float(guard_alpha or 0.0),
+            correct_eta=float(correct_eta or 0.0),
+            feedback_mode=str(feedback_mode or ""),
+            feedback_eta=float(feedback_eta or 0.0),
+            feedback_layer=int(feedback_layer),
+            btrans_sigma=float(btrans_sigma or 0.0),
             output_tilt=float(output_tilt or 0.0),
             output_profile=(None if not output_tilt or output_profile is None
                             else output_profile.detach().float().cpu()),
@@ -2011,6 +2045,12 @@ class SteeringPlan:
             "online_rule_start": self.online_rule_start,
             "offset_measured": self.offset_measured,
             "online_absolute": self.online_absolute,
+            "guard_alpha": self.guard_alpha,
+            "correct_eta": self.correct_eta,
+            "feedback_mode": self.feedback_mode,
+            "feedback_eta": self.feedback_eta,
+            "feedback_layer": self.feedback_layer,
+            "btrans_sigma": self.btrans_sigma,
             "output_tilt": self.output_tilt,
             "offset_decode": self.offset_decode,
             "amplify_lambda": self.amplify_lambda,

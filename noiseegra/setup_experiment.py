@@ -336,6 +336,15 @@ def _ortho_tag_once(model_name: str, spec: ExperimentSpec, *, compress: bool) ->
             parts.append(f"rule{_float_tag(plan.online_rule_k)}"
                          + ("start" if getattr(plan, "online_rule_start", False) else "")
                          + ("abs" if getattr(plan, "online_absolute", False) else ""))
+    if float(getattr(plan, "guard_alpha", 0.0) or 0.0) > 0:
+        parts.append(f"__guard{_float_tag(plan.guard_alpha)}")
+        if float(getattr(plan, "correct_eta", 0.0) or 0.0) > 0:
+            parts.append(f"fix{_float_tag(plan.correct_eta)}")
+    if getattr(plan, "feedback_mode", "") and float(getattr(plan, "feedback_eta", 0.0) or 0.0) > 0:
+        parts.append(f"__fb{plan.feedback_mode}{_float_tag(plan.feedback_eta)}"
+                     f"L{int(getattr(plan, 'feedback_layer', 20))}")
+    if float(getattr(plan, "btrans_sigma", 0.0) or 0.0) > 0:
+        parts.append(f"__btrans{_float_tag(plan.btrans_sigma)}")
     if getattr(plan, "offset_measured", False):
         parts.append(f"__meas{_float_tag(getattr(plan, 'online_rule_k', 0.0) or 0.0)}")
     if float(getattr(plan, "output_tilt", 0.0) or 0.0) > 0:
