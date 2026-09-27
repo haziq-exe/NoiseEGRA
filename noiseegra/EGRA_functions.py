@@ -835,14 +835,18 @@ class EGRA:
                 if getattr(plan, "online_rule_start", False) or measured:
                     # Always the length at which the whole noise -- prompt and
                     # writing -- reaches the target, so a length means the same
-                    # thing in an arm that writes with the noise off.
-                    decode = plan.offset_decode
-                    plan.offset_decode = True
+                    # thing in an arm that writes with the noise off, or reads
+                    # the prompt without it. Measured without the prompt's share
+                    # the length comes out a third longer (14.5 against 11.1 on
+                    # Qwen3-1.7B), more than the writing takes: the stories
+                    # overshoot and the controller sits at its floor.
+                    decode, prefill = plan.offset_decode, plan.offset_prefill
+                    plan.offset_decode, plan.offset_prefill = True, True
                     try:
                         st = start_for_target(self, plan, ids, m["target"], m["unit"],
                                               reference=ref)
                     finally:
-                        plan.offset_decode = decode
+                        plan.offset_decode, plan.offset_prefill = decode, prefill
                     m.update(st)
                     msg += (f"; starting length {st['start']:.2f} "
                             f"({st['fraction']:.3f} of the norm) moves it "

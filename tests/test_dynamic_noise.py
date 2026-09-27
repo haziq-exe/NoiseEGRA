@@ -286,6 +286,25 @@ check("no prompt noise: the noise is off on the prompt and the ids say so",
       and all("__opre" not in i for i in nids) and len(set(nids)) == 2
       and all(i not in rids for i in nids))
 
+def rule_plan(prefill):
+    return SteeringPlan.build(
+        VECS, LAYERS, [ConstraintSpec(n, beta=1.0) for n in NAMES], rms_scale=1.0,
+        noise_mode="none", noise_alpha=0.0, steer_budget=1.0,
+        offset_gamma=0.4, offset_mode="orth", offset_norm="energy",
+        offset_basis_kind="random", offset_random_rank=8, noise_beta=2.0,
+        offset_prefill=prefill, steer_prefill=True, prompt_tail_clear=2,
+        offset_online=1.0, online_rule_k=0.43, online_rule_start=True)
+
+
+starts = []
+for pf in (True, False):
+    rp = rule_plan(pf)
+    egra.generate_with_orthogonal_steering(PROMPT, rp, max_new_tokens=4, seed=3)
+    starts.append(next(iter(rp._rule_cache.values()))["start"])
+    check(f"the plan's own prompt setting is restored after measuring ({pf})", rp.offset_prefill is pf)
+check("with no prompt noise the starting length is measured as with it",
+      abs(starts[0] - starts[1]) < 1e-6 * max(starts[0], 1.0), f"{starts[0]:.4f} vs {starts[1]:.4f}")
+
 print()
 if FAILURES:
     print(f"{len(FAILURES)} FAILED: {FAILURES}")
