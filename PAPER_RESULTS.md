@@ -2090,3 +2090,40 @@ the same 200 seeds, 95% bootstrap.
   coherent stories of ours average 3.45).
 - Resonance ties ours; anti-resonance is 0.30 lower; resonance against
   anti-resonance +0.20 [-0.01, +0.42].
+
+#### Every other method run on Qwen at 200 stories
+
+The same protocol on the nine other 200-story methods (1,800 stories; twenty
+raters of 95, each 10 stories per method plus 5 of ours re-rated as an anchor,
+shuffled and anonymised; every rater read its whole batch). The anchor holds: the
+same 100 stories of ours scored 3.56 in the earlier rounds and 3.66 here (+0.10
+[-0.15, +0.35]; the two ratings of a story correlate at 0.54), so the rounds
+share one scale. "Against ours" is against the 100 anchors, same raters.
+Variety is the NoveltyBench judge on coherent stories (from the runs' own
+scoring).
+
+| Method | Quality (of 10) | Against ours | Rated 1-2 | Distinct of 10 | Same-story |
+|---|---|---|---|---|---|
+| Top-p 0.95, T=1.8 | 5.02 | | 2 | 1.29 | 94.8% |
+| Min-p 0.1, T=1.5 | 4.96 | +1.29 [+0.98, +1.60] | 7 | 1.18 | 96.9% |
+| Liu et al. noise injection | 4.86 | +1.20 [+0.90, +1.50] | 6 | 1.07 | 98.9% |
+| Untouched, T=1.0 | 4.82 | | 9 | 1.06 | 99.0% |
+| Verbalized Sampling | 4.40 | +0.74 [+0.43, +1.05] | 10 | 1.42 | 93.3% |
+| SSoT | 4.37 | +0.71 [+0.34, +1.08] | 43 | 2.02 | 82.7% |
+| In-context regeneration | 4.32 | +0.66 [+0.35, +0.96] | 6 | 1.03 | 99.8% |
+| Rule steering only | 4.08 | +0.42 [+0.12, +0.73] | 5 | 2.38 | 76.9% |
+| B-Trans, sigma 0.02 | 3.98 | +0.31 [+0.00, +0.62] | 10 | 2.95 | 66.4% |
+| Rule steering + top-p, T=1.8 | 3.77 | +0.10 [-0.21, +0.42] | 25 | 2.51 | 75.5% |
+| STARS | 3.69 | +0.03 [-0.31, +0.38] | 49 | 1.24 | 95.8% |
+| **Ours** | 3.42 | | 39 | **6.48** | 24.5% |
+| Resonance | 3.33 | | 61 | 7.76 | 12.6% |
+| Anti-resonance | 3.12 | | 71 | 7.28 | 16.1% |
+
+- **Quality and variety trade off across every method.** The four best-rated
+  (top-p, min-p, Liu et al., untouched) write almost one story (1.1-1.3
+  distinct of 10); ours writes the most different stories and is rated lowest
+  with its two variants; STARS is as low as ours without the variety.
+- **Rule steering itself costs quality**: 4.08 against the untouched 4.82 (the
+  same raters' scale), and the noise costs about 0.6 more (3.66 on the anchors).
+- None of the other methods has a slip opening (preamble, instruction echo,
+  title layout); ours has 35 of 200.
