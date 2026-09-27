@@ -76,7 +76,7 @@ class OnlineSizer(LogitsProcessor):
                  top_p: Optional[float] = 0.95, halflife: float = 16.0,
                  warmup: int = 2, rate: float = 0.5, max_step: float = 1.25,
                  bounds: Tuple[float, float] = (0.25, 2.5),
-                 absolute: Optional[float] = None):
+                 absolute: Optional[float] = None, hold: int = 0):
         self.plan = plan
         self.target = float(target)
         self.temperature = float(temperature)
@@ -92,6 +92,10 @@ class OnlineSizer(LogitsProcessor):
         # passage did (within 8% on stories); on text the model is far surer of
         # than its reference passage (maths), the relative target runs away.
         self.absolute = None if absolute is None else float(absolute)
+        # Steps it only watches before it starts: a noise faded in from zero
+        # moves things little on the way up, and a controller running then would
+        # wind the size up and undo the fade.
+        self.hold = int(hold)
         self.moved: Optional[float] = None    # recent average of the noise's effect
         self.budget: Optional[float] = None   # recent average of the decoder's
         # (noise's effect, decoder's, gain set for the next step), one per step
@@ -107,13 +111,16 @@ class OnlineSizer(LogitsProcessor):
             moved = float(fisher_rao_distance(clean, story))
             decoder = sampler_probs(scores[1:2], self.temperature, self.top_p)[0]
             budget = float(fisher_rao_distance(clean, decoder))
+        if len(self.history) < self.hold:
+            self.history.append((moved, budget, float(self.plan.online_gain)))
+            return scores
         if self.moved is None:
             self.moved, self.budget = moved, budget
         else:
             self.moved = self.keep * self.moved + (1.0 - self.keep) * moved
             self.budget = self.keep * self.budget + (1.0 - self.keep) * budget
         gain = float(self.plan.online_gain)
-        if len(self.history) + 1 > self.warmup and self.moved > 1e-12:
+        if len(self.history) - self.hold + 1 > self.warmup and self.moved > 1e-12:
             ratio = ((self.absolute if self.absolute is not None
                       else self.target * self.budget) / self.moved)
             step = min(max(ratio ** self.rate, 1.0 / self.max_step), self.max_step)

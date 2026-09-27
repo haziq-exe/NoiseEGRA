@@ -1356,7 +1356,10 @@ class EGRA:
                 sizer = OnlineSizer(plan, float(plan.offset_online),
                                     bounds=(float(getattr(plan, "online_min_gain", 0.25) or 0.25),
                                             float(getattr(plan, "online_max_gain", 2.5) or 2.5)),
-                                    absolute=absolute)
+                                    absolute=absolute,
+                                    hold=(int(getattr(plan, "offset_envelope_steps", 0) or 0)
+                                          if str(getattr(plan, "offset_envelope", "flat")) == "rise"
+                                          else 0))
                 processors = LogitsProcessorList([sizer, *(processors or [])])
                 if guard_alpha > 0:
                     # After the controller, which must read the story's raw

@@ -322,6 +322,40 @@ egra.generate_with_orthogonal_steering(PROMPT, fp, max_new_tokens=4, seed=1)
 _OC.OnlineSizer.__init__ = _oi
 check("and the controller is given it", seen_b.get("b") == (0.05, 2.5), str(seen_b))
 
+print("\n== the writing noise faded in ==")
+from noiseegra.online_calibration import OnlineSizer  # noqa: E402
+hp = types.SimpleNamespace(online_gain=1.0)
+hs = OnlineSizer(hp, 1.0, hold=5)
+Vn = 30
+cl = torch.randn(Vn) * 2.0
+near = cl + 0.01 * torch.randn(Vn)
+gains = []
+for _ in range(12):
+    hs(None, torch.stack([near, cl])); gains.append(hp.online_gain)
+check("the controller holds still while the noise fades in", all(g == 1.0 for g in gains[:7]),
+      str([round(g, 2) for g in gains]))
+check("and starts after it", gains[-1] > 1.0)
+fz = types.SimpleNamespace(**{**vars(npn), "writing_fade_in": [16, 32]})
+fi, _ = build_suite("headline", SV, LAYERS, list(NAMES), 1.5, fz)
+fids = [_spec_to_run_id("M", s) for s in make_specs(*fi)]
+check("each fade length is its own set of arms, in the plan and the id",
+      len(fi) == 4 and sorted(it["plan"].offset_envelope_steps for it in fi) == [16, 16, 32, 32]
+      and all(it["plan"].offset_envelope == "rise" for it in fi) and len(set(fids)) == 4
+      and all("__envrise" in i for i in fids), str([i[-60:] for i in fids]))
+fp2 = plan(); fp2.offset_envelope, fp2.offset_envelope_steps = "rise", 8
+seen_h = {}
+_oi2 = _OC.OnlineSizer.__init__
+def _spy_h(self, plan, target, **kw):
+    seen_h["h"] = kw.get("hold"); _oi2(self, plan, target, **kw)
+_OC.OnlineSizer.__init__ = _spy_h
+egra.generate_with_orthogonal_steering(PROMPT, fp2, max_new_tokens=12, seed=1)
+_OC.OnlineSizer.__init__ = _oi2
+check("a story faded in holds its controller for the fade", seen_h.get("h") == 8, str(seen_h))
+torch.manual_seed(1); fp2.resample_offset()
+lpf = fp2.layer_plans[LAYERS[0]]
+check("the noise starts at zero and reaches full size at the end of the fade",
+      fp2.envelope_at(0) == 0.0 and abs(fp2.envelope_at(8) - 1.0) < 1e-9 and 0 < fp2.envelope_at(4) < 1)
+
 print()
 if FAILURES:
     print(f"{len(FAILURES)} FAILED: {FAILURES}")

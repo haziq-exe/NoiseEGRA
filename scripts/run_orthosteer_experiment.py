@@ -37,6 +37,7 @@ combined <model>_RESULTS.txt.
 
 from __future__ import annotations
 
+import copy
 import math
 import argparse
 import json
@@ -2220,7 +2221,6 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         # beam search, Diverse Beam Search and best-of-W sampling at the same
         # width, against one greedy steered path plus width - 1 greedy paths that
         # each carry the full method's noise.
-        import copy
         ns = copy.copy(args)
         nosteer = bool(getattr(args, "search_no_steer", False))
         base = {k: v for k, v in common.items() if k != "steer_prefill"}
@@ -2583,6 +2583,18 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             f"at {g:g}x with the shadow; and at {1.0 + (g - 1.0) / 2:g}x plain")
 
     if name == "headline":
+        # Several fade-in lengths: one set of arms per length.
+        fades = getattr(args, "writing_fade_in", None) or [0]
+        fades = list(fades) if isinstance(fades, (list, tuple)) else [fades]
+        if len(fades) > 1:
+            out_items, desc = [], ""
+            for fd in fades:
+                sub = copy.copy(args)
+                sub.writing_fade_in = [fd]
+                its, desc = build_suite("headline", vectors, layers, names, rms_scale, sub)
+                out_items += its
+            return out_items, desc
+        fade = int(fades[0] or 0)
         # Choosing the headline method: two ways to size the noise with no
         # calibration phase before each story, against the method they would
         # replace, all with the prompt's noise raised where that helped.
@@ -2680,6 +2692,10 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             if getattr(args, "no_prompt_noise", False) and sizing != "btrans":
                 # The noise only while the story is written: none on the prompt.
                 kw["offset_prefill"] = False
+            if fade > 0 and sizing != "btrans":
+                # The writing noise faded in from zero over the first `fade`
+                # tokens, so it does not switch on at full size at the first word.
+                kw.update(offset_envelope="rise", offset_envelope_steps=fade)
             item = {"plan": make_plan(**kw, **quiet, **base)}
             if item_extra:
                 item.update(item_extra)

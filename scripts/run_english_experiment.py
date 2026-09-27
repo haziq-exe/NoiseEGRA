@@ -732,6 +732,10 @@ def main() -> None:
     ap.add_argument("--online-min-gain", type=float, default=0.25,
                     help="the controller's floor, as a multiple of the starting length "
                          "(0.25 by default; the noise-free prompt needs less while writing)")
+    ap.add_argument("--writing-fade-in", type=int, nargs="+", default=None,
+                    help="suite 'headline': fade the writing noise in from zero over this "
+                         "many tokens (a cosine rise; the controller waits until it is "
+                         "done); several values run one set of arms each")
     ap.add_argument("--no-prompt-noise", action="store_true",
                     help="suite 'headline': no per-story noise while the prompt is read; "
                          "the noise acts only on the tokens written")
