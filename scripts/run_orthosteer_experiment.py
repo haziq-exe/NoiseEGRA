@@ -2674,6 +2674,9 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                 kw.update(offset_gamma=length / norm, offset_norm="energy")
             if extra:
                 kw.update(extra)
+            if getattr(args, "no_prompt_noise", False) and sizing != "btrans":
+                # The noise only while the story is written: none on the prompt.
+                kw["offset_prefill"] = False
             item = {"plan": make_plan(**kw, **quiet, **base)}
             if item_extra:
                 item.update(item_extra)

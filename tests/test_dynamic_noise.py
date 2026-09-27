@@ -277,6 +277,15 @@ check("a B-Trans sweep builds one arm per size, each with its own id",
       [it["plan"].btrans_sigma for it in sw] == [0.05, 0.1, 0.2] and len(set(sids)) == 3
       and all(f"__btrans{t}" in i for t, i in zip(("0p05", "0p1", "0p2"), sids)))
 
+npn = types.SimpleNamespace(**{**vars(args), "headline_arms": ["while", "whiletoward"],
+                               "headline_prompt_gains": [1.0], "no_prompt_noise": True})
+ni, _ = build_suite("headline", SV, LAYERS, list(NAMES), 1.5, npn)
+nids = [_spec_to_run_id("M", s) for s in make_specs(*ni)]
+check("no prompt noise: the noise is off on the prompt and the ids say so",
+      all(not it["plan"].offset_prefill and it["plan"].offset_decode for it in ni)
+      and all("__opre" not in i for i in nids) and len(set(nids)) == 2
+      and all(i not in rids for i in nids))
+
 print()
 if FAILURES:
     print(f"{len(FAILURES)} FAILED: {FAILURES}")

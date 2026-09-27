@@ -729,6 +729,9 @@ def main() -> None:
                     help="suite 'headline': the noise on the prompt as multiples of the "
                          "writing length for the 'simple' and 'promptonly' arms, one arm "
                          "each (default 1.0: the same length)")
+    ap.add_argument("--no-prompt-noise", action="store_true",
+                    help="suite 'headline': no per-story noise while the prompt is read; "
+                         "the noise acts only on the tokens written")
     ap.add_argument("--btrans-sigma", type=float, nargs="+", default=[0.02],
                     help="suite 'headline', arm 'btrans': the standard deviation of B-Trans's "
                          "per-norm-layer offset, one arm per value (arXiv 2512.25063 gives 0.02)")
