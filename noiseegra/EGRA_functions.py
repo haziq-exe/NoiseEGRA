@@ -1018,6 +1018,7 @@ class EGRA:
         sizer = None
         tilt = None
         guard = None
+        anchor = None
         fb_mode = str(getattr(plan, "feedback_mode", "") or "")
         if fb_mode and float(getattr(plan, "feedback_eta", 0.0) or 0.0) <= 0:
             fb_mode = ""
@@ -1025,7 +1026,7 @@ class EGRA:
         guard_alpha = float(getattr(plan, "guard_alpha", 0.0) or 0.0)
         guard_fix = guard_alpha > 0 and float(getattr(plan, "correct_eta", 0.0) or 0.0) > 0
         cache_box = {}
-        if (fb_mode or guard_alpha > 0) and not shadow:
+        if (fb_mode or guard_alpha > 0 or float(getattr(plan, "anchor_p1", 0.0) or 0.0) > 0) and not shadow:
             raise ValueError("the guard and the feedback read the noise-free shadow row; "
                              "they need the noise sized while writing (offset_online)")
         if fb_mode and any(lp.offset_traj is not None for lp in plan.layer_plans.values()):
@@ -1388,6 +1389,11 @@ class EGRA:
 
                     guard = CleanGuard(guard_alpha, on_violation)
                     processors = LogitsProcessorList([sizer, guard, *list(processors)[1:]])
+                if float(getattr(plan, "anchor_p1", 0.0) or 0.0) > 0:
+                    # After the controller (raw scores) and before any cut-off.
+                    from .dynamic_noise import ConfidentAnchor
+                    anchor = ConfidentAnchor(float(plan.anchor_p1))
+                    processors = LogitsProcessorList([sizer, anchor, *list(processors)[1:]])
             if (float(getattr(plan, "output_tilt", 0.0) or 0.0) > 0
                     and getattr(plan, "output_profile", None) is not None):
                 # Last, after everything that reads the model's own scores and
@@ -1495,6 +1501,13 @@ class EGRA:
                       f"{got['achieved']:.2f} nucleus-units over the story "
                       f"(asked {float(plan.offset_online):.2f}); per step, top-p moves "
                       f"{got['budget']:.4f} and the noise {got['moved']:.4f}", flush=True)
+        if anchor is not None:
+            got = anchor.summary()
+            if getattr(plan, "anchor_log", None) is None:
+                plan.anchor_log = []
+            plan.anchor_log.append(got)
+            print(f"  [anchor] took the clean model's word at {int(got['anchored'])} of "
+                  f"{int(got['steps'])} steps", flush=True)
         if guard is not None:
             got = guard.summary()
             if getattr(plan, "guard_log", None) is None:

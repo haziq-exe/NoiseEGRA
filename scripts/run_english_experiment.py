@@ -732,6 +732,10 @@ def main() -> None:
     ap.add_argument("--online-min-gain", type=float, default=0.25,
                     help="the controller's floor, as a multiple of the starting length "
                          "(0.25 by default; the noise-free prompt needs less while writing)")
+    ap.add_argument("--anchor-p1", type=float, nargs="+", default=None,
+                    help="suite 'headline': where the noise-free shadow is at least this sure "
+                         "of its top token, the story takes the shadow's scores; several "
+                         "values run one set of arms each")
     ap.add_argument("--prompt-taper", type=float, nargs="+", default=None,
                     help="suite 'headline': fade the prompt's noise along the prompt to this "
                          "share of full strength at its end (1.0 = flat, the method's "

@@ -382,6 +382,25 @@ for tp in (1.0, 0.0):
 check("a fade to zero changes what the prompt's noise does (it is not read as flat)",
       float((lg[1.0] - lg[0.0]).abs().max()) > 1e-5)
 
+print("\n== the clean model's word where it is sure ==")
+from noiseegra.dynamic_noise import ConfidentAnchor  # noqa: E402
+ca = ConfidentAnchor(0.9)
+sure = torch.tensor([9.0, 0.0, 0.0, 0.0]); unsure = torch.tensor([1.0, 0.9, 0.8, 0.0])
+noisy = torch.tensor([0.0, 5.0, 0.0, 0.0])
+o1 = ca(None, torch.stack([noisy, sure])); o2 = ca(None, torch.stack([noisy, unsure]))
+check("where the shadow is sure the story takes its scores", torch.equal(o1[0], sure))
+check("elsewhere the story keeps its own", torch.equal(o2[0], noisy) and ca.anchored == 1 and ca.steps == 2)
+az = types.SimpleNamespace(**{**vars(args), "headline_arms": ["while", "whiletoward"], "anchor_p1": [0.9, 0.7]})
+ai, _ = build_suite("headline", SV, LAYERS, list(NAMES), 1.5, az)
+aids = [_spec_to_run_id("M", s) for s in make_specs(*ai)]
+check("one set of arms per threshold, on the while arms, in the id",
+      sorted(it["plan"].anchor_p1 for it in ai) == [0.7, 0.7, 0.9, 0.9] and len(set(aids)) == 4
+      and all("__anchor0p" in i for i in aids))
+ap_ = plan(anchor_p1=0.5)
+egra.generate_with_orthogonal_steering(PROMPT, ap_, max_new_tokens=12, seed=2)
+check("a story runs with the anchor and reports it", ap_.anchor_log and ap_.anchor_log[-1]["steps"] >= 10
+      and ap_.shadow_drift == 0, str(ap_.anchor_log))
+
 print()
 if FAILURES:
     print(f"{len(FAILURES)} FAILED: {FAILURES}")

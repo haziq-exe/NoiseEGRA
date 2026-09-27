@@ -137,6 +137,7 @@ def make_plan(
     feedback_eta=0.0,
     feedback_layer=20,
     btrans_sigma=0.0,
+    anchor_p1=0.0,
     output_tilt=0.0,
     offset_secured_boost=0.0,
     steer_split_concentration=0.0,
@@ -261,6 +262,7 @@ def make_plan(
         feedback_eta=feedback_eta,
         feedback_layer=feedback_layer,
         btrans_sigma=btrans_sigma,
+        anchor_p1=anchor_p1,
         output_tilt=output_tilt,
         output_profile=output_profile,
         offset_secured_boost=offset_secured_boost,
@@ -2607,6 +2609,18 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                 out_items += its
             return out_items, desc
         ptaper = float(tapers[0])
+        # Several anchor thresholds: one set of arms each.
+        anchors = getattr(args, "anchor_p1", None) or [0.0]
+        anchors = list(anchors) if isinstance(anchors, (list, tuple)) else [anchors]
+        if len(anchors) > 1:
+            out_items, desc = [], ""
+            for an in anchors:
+                sub = copy.copy(args)
+                sub.anchor_p1 = [an]
+                its, desc = build_suite("headline", vectors, layers, names, rms_scale, sub)
+                out_items += its
+            return out_items, desc
+        anchor_p1 = float(anchors[0])
         # Choosing the headline method: two ways to size the noise with no
         # calibration phase before each story, against the method they would
         # replace, all with the prompt's noise raised where that helped.
@@ -2704,6 +2718,8 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             if getattr(args, "no_prompt_noise", False) and sizing != "btrans":
                 # The noise only while the story is written: none on the prompt.
                 kw["offset_prefill"] = False
+            if anchor_p1 > 0 and sizing == "while":
+                kw["anchor_p1"] = anchor_p1
             if ptaper != 1.0 and sizing != "btrans":
                 # The prompt's noise faded along the prompt: full where the
                 # instruction begins, `ptaper` of it at the last position it

@@ -120,6 +120,38 @@ class CleanGuard(LogitsProcessor):
                 "corrections": float(self.corrections)}
 
 
+class ConfidentAnchor(LogitsProcessor):
+    """Where the noise-free shadow is near-certain, the story takes its word.
+
+    At a step whose shadow (row 1) puts at least ``threshold`` on its top token,
+    the story's scores (row 0) are replaced by the shadow's, so grammar,
+    capitals after a full stop and the ends of set phrases come from the clean
+    model; everywhere else the story samples from its own perturbed scores.
+    The perturbation itself is untouched, so the story's state keeps diverging.
+    """
+
+    def __init__(self, threshold: float):
+        self.threshold = float(threshold)
+        self.steps = 0
+        self.anchored = 0
+
+    def __call__(self, input_ids, scores):
+        if scores.dim() != 2 or scores.shape[0] < 2:
+            return scores
+        with torch.no_grad():
+            p1 = float(torch.softmax(scores[1].float(), dim=-1).max())
+        self.steps += 1
+        if p1 < self.threshold:
+            return scores
+        self.anchored += 1
+        out = scores.clone()
+        out[0] = scores[1]
+        return out
+
+    def summary(self) -> Dict[str, float]:
+        return {"steps": float(self.steps), "anchored": float(self.anchored)}
+
+
 def _off_protected(vec: torch.Tensor, protect: Optional[torch.Tensor]) -> torch.Tensor:
     if protect is None:
         return vec

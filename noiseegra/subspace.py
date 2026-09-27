@@ -588,6 +588,9 @@ class SteeringPlan:
     # sigma^2) per hidden-size normalisation layer, drawn per story and added to
     # that layer's output at every position. 0 is off.
     btrans_sigma: float = 0.0
+    # Take the noise-free shadow's scores at steps where it is at least this
+    # sure of its top token (0 is off). Needs the shadow row.
+    anchor_p1: float = 0.0
     # Tilt the story's next-token distribution toward the tokens the rules make
     # likelier (the constraints' output profiles, from the same forward passes
     # as the steering directions). The value is the tilt's size at every step as
@@ -1042,6 +1045,7 @@ class SteeringPlan:
         feedback_eta: float = 0.0,
         feedback_layer: int = 20,
         btrans_sigma: float = 0.0,
+        anchor_p1: float = 0.0,
         output_tilt: float = 0.0,
         output_profile: Optional[torch.Tensor] = None,
         shadow_protect: bool = False,
@@ -1275,6 +1279,7 @@ class SteeringPlan:
             feedback_eta=float(feedback_eta or 0.0),
             feedback_layer=int(feedback_layer),
             btrans_sigma=float(btrans_sigma or 0.0),
+            anchor_p1=float(anchor_p1 or 0.0),
             output_tilt=float(output_tilt or 0.0),
             output_profile=(None if not output_tilt or output_profile is None
                             else output_profile.detach().float().cpu()),
@@ -2064,6 +2069,7 @@ class SteeringPlan:
             "feedback_eta": self.feedback_eta,
             "feedback_layer": self.feedback_layer,
             "btrans_sigma": self.btrans_sigma,
+            "anchor_p1": self.anchor_p1,
             "output_tilt": self.output_tilt,
             "offset_decode": self.offset_decode,
             "amplify_lambda": self.amplify_lambda,
