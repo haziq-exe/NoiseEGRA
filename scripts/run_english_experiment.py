@@ -729,9 +729,9 @@ def main() -> None:
                     help="suite 'headline': the noise on the prompt as multiples of the "
                          "writing length for the 'simple' and 'promptonly' arms, one arm "
                          "each (default 1.0: the same length)")
-    ap.add_argument("--btrans-sigma", type=float, default=0.02,
+    ap.add_argument("--btrans-sigma", type=float, nargs="+", default=[0.02],
                     help="suite 'headline', arm 'btrans': the standard deviation of B-Trans's "
-                         "per-norm-layer offset (arXiv 2512.25063 gives 0.02)")
+                         "per-norm-layer offset, one arm per value (arXiv 2512.25063 gives 0.02)")
     ap.add_argument("--guard-alpha", type=float, default=0.05,
                     help="arms 'whileguard'/'whilefix': the story samples only tokens its "
                          "noise-free shadow gives at least this share of its top token's "

@@ -269,6 +269,14 @@ check("B-Trans: rule steering, its own noise, no residual offset",
       pb.btrans_sigma == 0.02 and pb.offset_gamma == 0.0 and pb.steer_prefill
       and "__btrans0p02" in by["btrans"][1], by["btrans"][1][-40:])
 
+sweep = types.SimpleNamespace(**{**vars(args), "headline_arms": ["btrans"],
+                                 "btrans_sigma": [0.05, 0.1, 0.2]})
+sw, _ = build_suite("headline", SV, LAYERS, list(NAMES), 1.5, sweep)
+sids = [_spec_to_run_id("M", s) for s in make_specs(*sw)]
+check("a B-Trans sweep builds one arm per size, each with its own id",
+      [it["plan"].btrans_sigma for it in sw] == [0.05, 0.1, 0.2] and len(set(sids)) == 3
+      and all(f"__btrans{t}" in i for t, i in zip(("0p05", "0p1", "0p2"), sids)))
+
 print()
 if FAILURES:
     print(f"{len(FAILURES)} FAILED: {FAILURES}")

@@ -2657,7 +2657,7 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                 # residual-stream noise.
                 kw.update(offset_gamma=0.0, offset_mode="none", offset_prefill=False,
                           offset_decode=False, noise_beta=None, offset_random_rank=0,
-                          btrans_sigma=float(getattr(args, "btrans_sigma", None) or 0.02))
+                          btrans_sigma=0.02)
             elif sizing in ("simple", "promptonly"):
                 # The method with everything the sizing did not need taken out:
                 # one isotropic random vector per story (no random subspace, no
@@ -2746,7 +2746,11 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                     items += [arm("whilefixed", prompt_gain=pg, budget=bb, tilt=tt)
                               for pg in pgains]
                 if "btrans" in want:
-                    items.append(arm("btrans", budget=bb, tilt=tt))
+                    # One arm per B-Trans size.
+                    sig = getattr(args, "btrans_sigma", None) or [0.02]
+                    sig = sig if isinstance(sig, (list, tuple)) else [sig]
+                    items += [arm("btrans", budget=bb, tilt=tt,
+                                  extra=dict(btrans_sigma=float(x))) for x in sig]
                 if "whilenosteer" in want:
                     # The noise sized while writing with no rule steering, for a
                     # task that has no whole-output rule.
