@@ -2621,6 +2621,18 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                 out_items += its
             return out_items, desc
         anchor_p1 = float(anchors[0])
+        # Several plateau lengths for the writing noise: one set each.
+        plateaus = getattr(args, "noise_plateau", None) or [0]
+        plateaus = list(plateaus) if isinstance(plateaus, (list, tuple)) else [plateaus]
+        if len(plateaus) > 1:
+            out_items, desc = [], ""
+            for pl in plateaus:
+                sub = copy.copy(args)
+                sub.noise_plateau = [pl]
+                its, desc = build_suite("headline", vectors, layers, names, rms_scale, sub)
+                out_items += its
+            return out_items, desc
+        plateau = int(plateaus[0] or 0)
         # Choosing the headline method: two ways to size the noise with no
         # calibration phase before each story, against the method they would
         # replace, all with the prompt's noise raised where that helped.
@@ -2718,6 +2730,10 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             if getattr(args, "no_prompt_noise", False) and sizing != "btrans":
                 # The noise only while the story is written: none on the prompt.
                 kw["offset_prefill"] = False
+            if plateau > 0 and sizing == "while":
+                # Full writing noise for `plateau` tokens, then faded out over
+                # as many; the controller's target follows the fade.
+                kw.update(offset_envelope="plateau", offset_envelope_steps=plateau)
             if anchor_p1 > 0 and sizing == "while":
                 kw["anchor_p1"] = anchor_p1
             if ptaper != 1.0 and sizing != "btrans":

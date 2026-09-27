@@ -401,6 +401,25 @@ egra.generate_with_orthogonal_steering(PROMPT, ap_, max_new_tokens=12, seed=2)
 check("a story runs with the anchor and reports it", ap_.anchor_log and ap_.anchor_log[-1]["steps"] >= 10
       and ap_.shadow_drift == 0, str(ap_.anchor_log))
 
+print("\n== the writing noise front-loaded ==")
+pp = plan(); pp.offset_envelope, pp.offset_envelope_steps = "plateau", 10
+check("full for the plateau, half way down in the middle of the fade, off after",
+      pp.envelope_at(5) == 1.0 and abs(pp.envelope_at(15) - 0.5) < 1e-9 and pp.envelope_at(25) == 0.0)
+hp2 = types.SimpleNamespace(online_gain=1.0, offset_envelope="plateau", envelope_at=pp.envelope_at)
+hs2 = OnlineSizer(hp2, 1.0)
+far2 = torch.randn(Vn) * 2.0
+for _ in range(30):
+    hs2(None, torch.stack([far2, cl]))
+g_at_end = hp2.online_gain
+check("the controller holds still once the envelope is off", abs(g_at_end - hs2.history[20][2]) < 1e-9,
+      f"{hs2.history[20][2]:.3f} -> {g_at_end:.3f}")
+pz = types.SimpleNamespace(**{**vars(args), "headline_arms": ["while"], "noise_plateau": [32, 64]})
+pi_, _ = build_suite("headline", SV, LAYERS, list(NAMES), 1.5, pz)
+pids = [_spec_to_run_id("M", s) for s in make_specs(*pi_)]
+check("one arm per plateau length, in the plan and the id",
+      [it["plan"].offset_envelope_steps for it in pi_] == [32, 64] and len(set(pids)) == 2
+      and all("__envplateau" in i for i in pids))
+
 print()
 if FAILURES:
     print(f"{len(FAILURES)} FAILED: {FAILURES}")

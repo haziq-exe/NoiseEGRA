@@ -1557,7 +1557,12 @@ class SteeringPlan:
             return float(1.0 + extra * 0.5 * (1.0 + math.cos(math.pi * frac)))
         if mode == "rise":
             return float(0.5 * (1.0 - math.cos(math.pi * frac)))
-        raise ValueError("offset_envelope must be flat, decay, rise, front or secured; "
+        if mode == "plateau":
+            # Full for the first `span` steps, where the story's course is
+            # set, then down to nothing over the next `span` on a cosine.
+            late = min(max((float(t) - span) / span, 0.0), 1.0)
+            return float(0.5 * (1.0 + math.cos(math.pi * late)))
+        raise ValueError("offset_envelope must be flat, decay, rise, plateau, front or secured; "
                          f"got {self.offset_envelope!r}")
 
     def resample_offset(self, story_index: Optional[int] = None) -> None:

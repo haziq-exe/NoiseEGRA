@@ -120,9 +120,16 @@ class OnlineSizer(LogitsProcessor):
             self.moved = self.keep * self.moved + (1.0 - self.keep) * moved
             self.budget = self.keep * self.budget + (1.0 - self.keep) * budget
         gain = float(self.plan.online_gain)
-        if len(self.history) - self.hold + 1 > self.warmup and self.moved > 1e-12:
+        # With a plateau envelope the target falls with it, so the controller
+        # follows the fade instead of winding the size up against it; where
+        # the envelope is nearly off it holds still.
+        env = 1.0
+        if str(getattr(self.plan, "offset_envelope", "flat")) == "plateau":
+            env = float(self.plan.envelope_at(len(self.history)))
+        if (len(self.history) - self.hold + 1 > self.warmup and self.moved > 1e-12
+                and env > 0.05):
             ratio = ((self.absolute if self.absolute is not None
-                      else self.target * self.budget) / self.moved)
+                      else self.target * self.budget) * env / self.moved)
             step = min(max(ratio ** self.rate, 1.0 / self.max_step), self.max_step)
             gain = min(max(gain * step, self.lo), self.hi)
             self.plan.online_gain = gain
