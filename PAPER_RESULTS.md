@@ -2009,3 +2009,31 @@ which differ only in the turn's sign: distinct +0.47 [-0.56, +1.66].
   direction and the larger prompt noise -- not from the feedback. For the same
   reason part of the variety gain may be the prompt noise, which this design
   cannot separate from the feedback.
+
+### B-Trans across sizes, and the all-removed method rerun, 50 stories (run r169)
+
+B-Trans as above at four more sizes, with the same rule steering; the reference
+is the full method's 50 stories from r166 (same seeds). The judge was run locally
+on CPU (the Kaggle scoring stopped on the arms with one or two coherent stories;
+fixed in 064f9b3); on the all-removed arm it reproduces the GPU score exactly.
+
+| 50 stories | Coherent | Rules broken | Same-story | Distinct of 10 |
+|---|---|---|---|---|
+| Full method (r166) | 48 | 2.58 | 11.7% | 7.58 |
+| B-Trans sigma 0.02 (200 stories, r165) | 200 of 200 | 1.69 | 66.4% | 2.95 |
+| B-Trans sigma 0.05 | 34 | 3.59 | 27.6% | 6.20 |
+| B-Trans sigma 0.1 | 1 | 6.00 | | |
+| B-Trans sigma 0.2 | 1 | 4.00 | | |
+| B-Trans sigma 0.4 | 2 | 6.00 | | |
+| All optional parts removed (rerun) | 47 | 2.55 | 35.0% | 5.50 |
+
+- **B-Trans has almost no working range on Qwen3-1.7B**: at 0.02 it adds little
+  variety over steering alone (2.95 against 2.38); at 0.05 a third of the stories
+  fail (loops, "creakes", "He's voice") and the rest are less varied than ours
+  (6.20 against 7.58) with more rules broken (+1.00 [+0.44, +1.60]); from 0.1 the
+  output is empty strings, Greek letters and dashes. The method's measured size
+  lands inside the range with no search (48/50, 7.58).
+- **The all-removed rerun wrote the same 50 stories word for word as r151**, so
+  its lower variety (5.50 against 7.58) stands under the current code. Removing
+  the drift alone or the controller alone costs nothing (7.44, 8.11); removing
+  both, with the projection and the random subspace, does.
