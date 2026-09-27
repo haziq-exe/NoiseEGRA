@@ -330,6 +330,8 @@ def _ortho_tag_once(model_name: str, spec: ExperimentSpec, *, compress: bool) ->
         parts.append(f"__online{_float_tag(plan.offset_online)}")
         if float(getattr(plan, "online_max_gain", 2.5) or 2.5) != 2.5:
             parts.append(f"max{_float_tag(plan.online_max_gain)}")
+        if float(getattr(plan, "online_min_gain", 0.25) or 0.25) != 0.25:
+            parts.append(f"min{_float_tag(plan.online_min_gain)}")
         if getattr(plan, "online_carry", False):
             parts.append("carry")
         if float(getattr(plan, "online_rule_k", 0.0) or 0.0) > 0:

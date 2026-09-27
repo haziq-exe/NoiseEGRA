@@ -537,6 +537,8 @@ class SteeringPlan:
     # held on Qwen3-1.7B, where the second-half gain never passed 1.5; a model
     # far less sensitive to a residual offset needs more room.
     online_max_gain: float = 2.5
+    # The controller's floor, as a multiple of the starting length.
+    online_min_gain: float = 0.25
     # Carry the size the controller settled on into the next story, prompt
     # included, as the adaptive scaling of Plappert et al. runs across episodes.
     online_carry: bool = False
@@ -1020,6 +1022,7 @@ class SteeringPlan:
         offset_random_rank: int = 0,
         offset_online: float = 0.0,
         online_max_gain: float = 2.5,
+        online_min_gain: float = 0.25,
         online_carry: bool = False,
         online_rule_k: float = 0.0,
         online_rule_start: bool = False,
@@ -1252,6 +1255,7 @@ class SteeringPlan:
             offset_random_rank=int(offset_random_rank or 0),
             offset_online=float(offset_online or 0.0),
             online_max_gain=float(online_max_gain or 2.5),
+            online_min_gain=float(online_min_gain or 0.25),
             online_carry=bool(online_carry),
             online_rule_k=float(online_rule_k or 0.0),
             online_rule_start=bool(online_rule_start),
@@ -2040,6 +2044,7 @@ class SteeringPlan:
             "offset_envelope": self.offset_envelope,
             "offset_online": self.offset_online,
             "online_max_gain": self.online_max_gain,
+            "online_min_gain": self.online_min_gain,
             "online_carry": self.online_carry,
             "online_rule_k": self.online_rule_k,
             "online_rule_start": self.online_rule_start,

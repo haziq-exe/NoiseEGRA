@@ -1354,7 +1354,8 @@ class EGRA:
                 if getattr(plan, "online_absolute", False) and rule is not None:
                     absolute = float(rule["target"]) * float(rule["unit"])
                 sizer = OnlineSizer(plan, float(plan.offset_online),
-                                    bounds=(0.25, float(getattr(plan, "online_max_gain", 2.5) or 2.5)),
+                                    bounds=(float(getattr(plan, "online_min_gain", 0.25) or 0.25),
+                                            float(getattr(plan, "online_max_gain", 2.5) or 2.5)),
                                     absolute=absolute)
                 processors = LogitsProcessorList([sizer, *(processors or [])])
                 if guard_alpha > 0:

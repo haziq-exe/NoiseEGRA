@@ -729,6 +729,9 @@ def main() -> None:
                     help="suite 'headline': the noise on the prompt as multiples of the "
                          "writing length for the 'simple' and 'promptonly' arms, one arm "
                          "each (default 1.0: the same length)")
+    ap.add_argument("--online-min-gain", type=float, default=0.25,
+                    help="the controller's floor, as a multiple of the starting length "
+                         "(0.25 by default; the noise-free prompt needs less while writing)")
     ap.add_argument("--no-prompt-noise", action="store_true",
                     help="suite 'headline': no per-story noise while the prompt is read; "
                          "the noise acts only on the tokens written")

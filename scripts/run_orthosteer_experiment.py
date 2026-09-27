@@ -124,6 +124,7 @@ def make_plan(
     shadow_protect=False,
     offset_online=0.0,
     online_max_gain=2.5,
+    online_min_gain=0.25,
     online_carry=False,
     online_rule_k=0.0,
     online_rule_start=False,
@@ -247,6 +248,7 @@ def make_plan(
         shadow_protect=shadow_protect,
         offset_online=offset_online,
         online_max_gain=online_max_gain,
+        online_min_gain=online_min_gain,
         online_carry=online_carry,
         online_rule_k=online_rule_k,
         online_rule_start=online_rule_start,
@@ -2640,6 +2642,7 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             elif sizing == "while":
                 kw.update(offset_gamma=start, offset_norm="energy", offset_online=target,
                           online_max_gain=float(getattr(args, "online_max_gain", 2.5) or 2.5),
+                          online_min_gain=float(getattr(args, "online_min_gain", 0.25) or 0.25),
                           online_carry=bool(getattr(args, "online_carry", False)
                                             if carry is None else carry),
                           online_rule_k=float(getattr(args, "online_rule_k", 0.0) or 0.0),

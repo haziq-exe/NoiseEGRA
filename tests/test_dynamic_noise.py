@@ -305,6 +305,23 @@ for pf in (True, False):
 check("with no prompt noise the starting length is measured as with it",
       abs(starts[0] - starts[1]) < 1e-6 * max(starts[0], 1.0), f"{starts[0]:.4f} vs {starts[1]:.4f}")
 
+lo = types.SimpleNamespace(**{**vars(npn), "online_min_gain": 0.05})
+li, _ = build_suite("headline", SV, LAYERS, list(NAMES), 1.5, lo)
+lids = [_spec_to_run_id("M", s) for s in make_specs(*li)]
+check("a lower controller floor reaches the plan and the id",
+      all(it["plan"].online_min_gain == 0.05 for it in li) and all("min0p05" in i for i in lids)
+      and all("min" not in i.split("__online")[1][:25] for i in nids))
+seen_b = {}
+_oi = OC_init = __import__("noiseegra.online_calibration", fromlist=["OnlineSizer"]).OnlineSizer.__init__
+import noiseegra.online_calibration as _OC
+def _spy_b(self, plan, target, **kw):
+    seen_b["b"] = kw.get("bounds"); _oi(self, plan, target, **kw)
+_OC.OnlineSizer.__init__ = _spy_b
+fp = plan(); fp.online_min_gain = 0.05
+egra.generate_with_orthogonal_steering(PROMPT, fp, max_new_tokens=4, seed=1)
+_OC.OnlineSizer.__init__ = _oi
+check("and the controller is given it", seen_b.get("b") == (0.05, 2.5), str(seen_b))
+
 print()
 if FAILURES:
     print(f"{len(FAILURES)} FAILED: {FAILURES}")
