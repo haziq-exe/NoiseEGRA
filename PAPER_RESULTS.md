@@ -1981,3 +1981,31 @@ openings match for resonance and anti-resonance).
 None separates from the constant direction at 50 stories. Resonance is the
 largest, and longest (171 words against 157). Cancel flips the direction every
 step (mean cosine -0.26 between steps) and drifts into lowercase in 18 stories.
+
+### Resonance and anti-resonance at 200 stories (runs r172, r173)
+
+The same two arms as above, 200 stories each, one session each, against the
+200-story arms of r138 (no constant-direction arm at 200 was run). Both start
+from a constant direction (no drift) at the measured length for that draw, 11.83
+(0.113 of the norm) against r138's 0.10, so their prompt noise is 13% larger.
+
+| 200 stories | Coherent | Rules broken | Same-story | Distinct of 10 | Preamble / instruction echo / "Title" opening |
+|---|---|---|---|---|---|
+| Ours (r138) | 194 | 2.45 | 24.5% | 6.48 | 12 / 8 / 13 |
+| Resonance | 183 | 2.85 | 12.6% | 7.76 | 18 / 16 / 28 |
+| Anti-resonance | 189 | 2.57 | 16.1% | 7.28 | 18 / 15 / 28 |
+
+Against ours: resonance distinct +1.27 [+0.40, +2.54], same-story -11.9% [-19.9%,
+-4.1%], rules +0.39 [+0.14, +0.64], 11 fewer coherent (13 of its 17 rejects are
+not stories: instruction echoes, "Title/Story" layouts, one essay).
+Anti-resonance distinct +0.80 [-0.12, +2.02], same-story -8.4% [-16.1%, -0.8%],
+rules +0.11 [-0.13, +0.36], 5 fewer coherent. Resonance against anti-resonance,
+which differ only in the turn's sign: distinct +0.47 [-0.56, +1.66].
+
+- Resonance is more varied than our 200-story arm and breaks more rules; it
+  writes longer stories (176 words against 147).
+- The extra slips (preambles, instruction echoes, title layouts) are the same
+  in the two arms, so they come from what the arms share -- the constant
+  direction and the larger prompt noise -- not from the feedback. For the same
+  reason part of the variety gain may be the prompt noise, which this design
+  cannot separate from the feedback.
