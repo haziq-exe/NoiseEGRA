@@ -2037,3 +2037,32 @@ fixed in 064f9b3); on the all-removed arm it reproduces the GPU score exactly.
   its lower variety (5.50 against 7.58) stands under the current code. Removing
   the drift alone or the controller alone costs nothing (7.44, 8.11); removing
   both, with the projection and the random subspace, does.
+
+### Blind quality ratings by a language-model judge (2026-09-28)
+
+20 story indices drawn at random (the same 20 for every method, so the same
+seeds): untouched and top-p (r138), ours (r138), resonance (r172) and
+anti-resonance (r173), all 200-story runs on the middle-school prompt, rejected
+stories included. Four Claude Sonnet raters, 25 stories each, 5 from every method,
+shuffled and anonymised; each story rated once, 1-10, as a short story for a
+middle-school reader (coherent, grammatical, vivid; non-stories 1-2). Paired
+differences against ours over the 20 seeds, 95% bootstrap.
+
+| Method | Mean rating | Rated 1-2 | Rated 5+ | Against ours | Slip openings (mean) | Mean without them |
+|---|---|---|---|---|---|---|
+| Untouched, T=1.0 | 5.25 | 0 | 16 | +1.85 [+1.15, +2.55] | 0 | 5.25 |
+| Top-p 0.95, T=1.8 | 5.00 | 0 | 13 | +1.60 [+1.00, +2.20] | 0 | 5.00 |
+| Ours | 3.40 | 5 | 5 | | 5 (2.40) | 3.73 |
+| Resonance | 3.05 | 7 | 4 | -0.35 [-1.05, +0.40] | 7 (1.86) | 3.69 |
+| Anti-resonance | 3.15 | 6 | 5 | -0.25 [-1.00, +0.50] | 7 (2.43) | 3.54 |
+
+"Slip openings": the story opens with a preamble ("Sure, here's..."), a repeat of
+the prompt's instructions ("Aim for roughly 150 words...") or a title/"Story:"
+layout. No rater gave more than 6.
+
+- **The judge rates the noised stories well below the untouched model and
+  top-p**, by 1.6-1.9 points of 10. The slips explain part of it; the stories
+  without a slip are still rated about 1.5 points lower (3.7 against 5.25).
+- Resonance and anti-resonance tie with ours.
+- One judge model, one rating per story, 20 stories a method: a screen, not a
+  human evaluation.
