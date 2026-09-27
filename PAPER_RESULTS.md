@@ -2127,3 +2127,45 @@ scoring).
   same raters' scale), and the noise costs about 0.6 more (3.66 on the anchors).
 - None of the other methods has a slip opening (preamble, instruction echo,
   title layout); ours has 35 of 200.
+
+### The prompt's noise removed or faded, to cut the slips (runs r174-r182, 2026-09-28)
+
+The slips (preambles, instruction echoes, title layouts; 35 of 200 of ours) are
+traced to the noise on the prompt. Two ways of taking it off, Qwen3-1.7B, same
+seeds as the full method.
+
+**No noise on the prompt.** Measured without the prompt's share, the starting
+length came out 14.5 against 11.1 and the stories overshot; measured with it
+(e8b4809) the writing noise still switched on at full size at the first word and
+garbled the opening ("the old and. the boy knows the world of a lie"), and the
+damage, kept in the cache, held the effect above the target even at 5% of the
+start (lower floor, 517aa36). Faded in from zero over 8-64 tokens with the
+controller held (e1b7f42), 10 stories each: every story coherent and on target,
+but 3.3-4.1 distinct of 10 -- every story opens on the clean steered text.
+
+**The prompt's noise faded along the prompt** (full where the instruction
+begins, to a share of it at its end; eff8578, which also fixed offset_taper = 0
+being read as no fade). Pilot, 30 stories: slips 8 (flat) -> 2 / 2 / 1 at 0.5 /
+0.25 / 0; the fade to 0 was taken to 50 stories for ours and resonance.
+
+| 50 stories | Coherent | Slips | Lowercase drift | Rules broken | Same-story | Distinct of 10 | Quality (Sonnet, of 10) |
+|---|---|---|---|---|---|---|---|
+| Ours, prompt noise flat | 48 | 13 | 8 | 2.58 | 11.7% | 7.58 | 3.48 |
+| Ours, faded to 0 | 50 | 2 | 16 | 2.42 | 41.7% | 5.07 | 3.36 |
+| Resonance, flat | 47 | 14 | 5 | 2.79 | 7.0% | 8.55 | 3.48 |
+| Resonance, faded to 0 | 50 | 2 | 18 | 2.28 | 45.0% | 4.34 | 3.46 |
+
+Quality is the same blind protocol as above (standard Sonnet, quick answer), paired
+on the 50 seeds against the earlier ratings: ours faded -0.12 [-0.60, +0.34],
+resonance faded -0.02 [-0.42, +0.40]. Check stories re-rated in the same batches:
+ours flat 4.8 against 4.1 earlier, untouched 4.9 against 4.7 (10 each). A round
+with a low-effort Sonnet rater put nearly every story at 2 and the check stories
+1-2 points below their earlier ratings, and was discarded.
+
+- **The fade removes the slips but not the quality gap**: slips 13 -> 2, every
+  story coherent, rules slightly fewer, and the rating unchanged. Lowercase
+  drift doubles (8 -> 16, 5 -> 18): the text's failures move from the opening
+  to later sentences.
+- **Variety falls by a third to a half** (7.58 -> 5.07; 8.55 -> 4.34): the noise
+  at the end of the prompt is where much of it came from.
+- Not extended to 200 stories.
