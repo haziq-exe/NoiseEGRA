@@ -1885,3 +1885,99 @@ Ours against greedy alone: any path right +12.5 [+8.0, +17.0], majority vote
   no other value was tried.
 - The run at k = 0.43 hit its 6-hour cap at 195 of 200 problems and was not
   resumed.
+
+## B-Trans, and noise whose direction changes while writing (runs r165-r168, 2026-09-27)
+
+Qwen3-1.7B, middle-school prompt, rule steering at 2.5 in every arm, same seeds.
+Judge: NoveltyBench classifier, first 128 tokens, coherent stories; intervals
+are 95%, rules by bootstrap, judge by half-size draws.
+
+### B-Trans at its published size, 200 stories (run r165)
+
+B-Trans (Yang & Zhang, arXiv 2512.25063): one Gaussian offset z ~ N(0, 0.02^2)
+per hidden-size normalisation layer (57 on Qwen3-1.7B: two per layer and the
+final norm; the per-head query/key norms left alone), drawn per story and added
+to that layer's output at every position. 0.02 is the only value the paper
+states. Same rule steering as ours. The other rows are the 200-story arms of runs
+r138 (ours: target 1.0, start 0.10 of the norm, prompt 1.5x; the rule now gives
+0.97 and 0.10 on Qwen) and r139 (Liu et al.).
+
+| 200 stories | Coherent | Rules broken (of 8) | Same-story pairs | Distinct of 10 |
+|---|---|---|---|---|
+| Untouched, T=1.0 | 199 | 2.71 | 99.0% | 1.06 |
+| Top-p 0.95, T=1.8 | 200 | 2.50 | 94.8% | 1.29 |
+| Rule steering only | 200 | 1.57 | 76.9% | 2.38 |
+| **Ours** | 194 | 2.45 | 24.5% | **6.48** |
+| B-Trans, sigma 0.02, + steering | 200 | 1.69 | 66.4% | 2.95 |
+| Liu et al. noise injection (ICLR 2026) | 199 | 2.80 | 98.9% | 1.07 |
+
+B-Trans against ours: distinct -3.53 [-4.38, -2.20], same-story +41.8% [+32.6%,
++50.4%], rules -0.76 [-0.98, -0.54]. At 0.02 the offset barely moves Qwen3-1.7B:
+0.57 distinct above steering alone, and the stories read like steering alone ("The
+wind howls through the..." opens 16 of 200 B-Trans stories and 21 of 200
+steering-only ones). This is not a comparison at matched variety; it shows the
+paper's size does not carry over to this model. B-Trans costs 7.7 s a story on a
+T4 against about 25 s for ours (no shadow row).
+
+### The full method with one part removed, 50 stories (run r166)
+
+| 50 stories, prompt noise 1.5x | Coherent | Rules broken | Lowercase drift | Same-story | Distinct of 10 |
+|---|---|---|---|---|---|
+| Full method (rule target, measured start, controller, drift, projection) | 48 | 2.58 | 1 | 11.7% | 7.58 |
+| Without the drift (constant direction) | 46 | 2.46 | 4 | 13.2% | 7.44 |
+| Without the projection off the rule directions | 47 | 2.66 | 1 | 10.3% | 7.92 |
+| Without the controller (held at the measured length) | 45 | 2.96 | 5 | 9.2% | 8.11 |
+| All of them removed (run r151, 2026-09-24) | 47 | 2.55 | 2 | 35.0% | 5.50 |
+
+Against the full method: distinct -0.14 [-1.76, +1.56], +0.34 [-1.16, +2.06],
++0.53 [-1.14, +2.20] for the three single removals; rules -0.13, +0.08, +0.37
+[-0.11, +0.87]. No single part makes a detectable difference at 50 stories. The
+all-removed arm is less varied (-2.08 [-4.14, -0.18]) but comes from an earlier
+run; which combination matters is not settled.
+
+### A guard from the noise-free shadow, and a direction correction (run r167)
+
+The guard samples the story only among tokens the shadow gives at least 0.05 of
+its top token's probability. The correction, on a step where the story's own top
+token is outside that set, replays the step with a gradient (exact: the replay
+reproduces the story's log-probability to 5e-7) and removes the noise's
+component along that token's gradient at each steered layer.
+
+| 50 stories | Coherent | Rules broken | Lowercase drift | Preambles | Same-story | Distinct of 10 |
+|---|---|---|---|---|---|---|
+| Full method | 48 | 2.58 | 1 | 5 | 11.7% | 7.58 |
+| Guard only | 50 | 1.68 | 0 | 0 | 52.1% | 3.87 |
+| Guard + correction | 50 | 1.78 | 0 | 0 | 50.0% | 4.01 |
+| Min-p 0.05 on the story | 47 | 2.66 | 4 | 5 | 17.6% | 6.81 |
+
+- **The guard trades most of the variety for rules and coherence**: 0.90 fewer
+  rules broken [-1.32, -0.47], every story coherent, no lowercase drift or
+  preamble, but distinct -3.72 [-5.42, -2.16]. The noise puts a token the clean
+  model gives under 5% of its top token's probability on top at about 8% of
+  steps, and much of the variety comes through those tokens. Min-p on the noisy
+  story's own distribution changes little.
+- **The correction does nothing measurable**: 652 corrections over 50 stories,
+  and the rate of such steps is unchanged (8.0% against 8.2%). Removing the
+  noise's component along one token's gradient changes the direction by about
+  2%, and the next violation comes from another token.
+
+### Turning the direction by the displacement it caused (run r168)
+
+Each step, the displacement at layer 20 (the story's state minus its shadow's)
+turns every steered layer's per-story direction (constant, no drift): toward the
+part of it not along the noise (resonance, 0.05 rad a step), away from it
+(anti-resonance, 0.05 rad), or to the opposite of the whole displacement
+(cancel, replaced each step). The reference is the constant-direction arm, which
+starts from the same direction and writes the same first words (40 and 44 of 50
+openings match for resonance and anti-resonance).
+
+| 50 stories | Coherent | Rules broken | Lowercase drift | Distinct of 10 | Distinct vs constant direction | Direction's cosine, start to end |
+|---|---|---|---|---|---|---|
+| Constant direction | 46 | 2.46 | 4 | 7.44 | | 1 |
+| Resonance | 47 | 2.79 | 0 | 8.55 | +1.11 [-0.58, +2.64] | 0.02 |
+| Anti-resonance | 49 | 2.55 | 1 | 7.94 | +0.51 [-1.12, +2.06] | 0.09 |
+| Cancel | 48 | 2.27 | 18 | 7.57 | +0.13 [-1.64, +1.72] | -0.01 |
+
+None separates from the constant direction at 50 stories. Resonance is the
+largest, and longest (171 words against 157). Cancel flips the direction every
+step (mean cosine -0.26 between steps) and drifts into lowercase in 18 stories.
