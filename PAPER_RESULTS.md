@@ -2066,3 +2066,27 @@ layout. No rater gave more than 6.
 - Resonance and anti-resonance tie with ours.
 - One judge model, one rating per story, 20 stories a method: a screen, not a
   human evaluation.
+
+#### All 200 stories per method
+
+The same protocol on every story (1,000 ratings: the 100 above and 900 more from
+twelve raters of 75, each 15 stories per method, shuffled and anonymised; Sonnet,
+asked for a quick answer with no extended reasoning). Paired against ours over
+the same 200 seeds, 95% bootstrap.
+
+| Method | Mean rating | Rated 1-2 | Rated 5+ | Against ours | Slip openings (mean) | Mean without them |
+|---|---|---|---|---|---|---|
+| Untouched, T=1.0 | 4.82 | 9 | 136 | +1.40 [+1.15, +1.64] | 0 | 4.82 |
+| Top-p 0.95, T=1.8 | 5.02 | 2 | 150 | +1.59 [+1.38, +1.81] | 0 | 5.02 |
+| Ours | 3.42 | 39 | 42 | | 35 (2.69) | 3.58 |
+| Resonance | 3.33 | 61 | 51 | -0.10 [-0.34, +0.15] | 61 (2.59) | 3.65 |
+| Anti-resonance | 3.12 | 71 | 31 | -0.30 [-0.52, -0.09] | 61 (2.54) | 3.37 |
+
+- **Ours is rated 1.4 points below the untouched model and 1.6 below top-p**, and
+  all 16 raters agree (ours minus untouched within each rater: -0.53 to -2.40).
+- **The slips are a part of it, not the whole**: without the stories that open
+  with a preamble, an instruction echo or a title layout, ours is 3.58 against
+  4.82. The coherence checks pass nearly all of the low-rated stories (the 194
+  coherent stories of ours average 3.45).
+- Resonance ties ours; anti-resonance is 0.30 lower; resonance against
+  anti-resonance +0.20 [-0.01, +0.42].
