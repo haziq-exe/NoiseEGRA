@@ -267,14 +267,18 @@ def summarise(path: Path, judged: dict) -> dict:
 
     base = next((r for r in judged if r.endswith("__BASELINE")), None)
     topp = next((r for r in judged if "BASELINE__temp1p8__topp0p95" in r), None)
-    draws = {r: half_draws(np.array(v["same"], dtype=bool)) for r, v in judged.items()}
+    # An arm with only a handful of coherent stories has no half-size draws to
+    # take (one broken arm once cost a whole run its scores); it is reported
+    # without intervals.
+    draws = {r: half_draws(np.array(v["same"], dtype=bool)) for r, v in judged.items()
+             if len(v["same"]) >= 4}
     rows = {}
     for rid, v in judged.items():
         row = {k: v[k] for k in ("stories", "coherent", "same_story_share", "distinct10")}
         row["precision_check"] = v.get("precision_check", {})
         row["label"] = label_run(rid).text
         for name, ref in (("untouched", base), ("top_p", topp)):
-            if ref and ref != rid:
+            if ref and ref != rid and rid in draws and ref in draws:
                 # The difference itself from the full sets; only its spread from
                 # the half-size draws.
                 s = interval(draws[rid][0], draws[ref][0])
