@@ -258,6 +258,15 @@ def label_run(run_id: str) -> RunLabel:
                 where += ", the set chosen together"
             if "__online" in rid:
                 where += ", sized while writing"
+            fb = re.search(r"__fb(toward|away|cancel)(\d+p?\d*)", rid)
+            if fb:
+                where += {"toward": ", turned toward its downstream effect",
+                          "away": ", turned away from its downstream effect",
+                          "cancel": ", turned against its downstream effect"}[fb.group(1)]
+            gd = re.search(r"__guard(\d+p?\d*)(fix)?", rid)
+            if gd:
+                where += (f", story kept to tokens the clean model allows ({_fmt(untag_float(gd.group(1)))})"
+                          + (", direction corrected" if gd.group(2) else ""))
             m = re.search(r"__otilt(\d+p?\d*)", rid)
             if m:
                 where += f", output tilted toward the rules at {_fmt(untag_float(m.group(1)))}"
@@ -296,6 +305,11 @@ def label_run(run_id: str) -> RunLabel:
                 text += _steer_schedule(rid)
             return RunLabel(f"{text}{bud_txt if mode != 'gain' else ''}{draw}{site}{gate_txt}",
                             "f(Sc)", v, rid)
+        bt = re.search(r"__btrans(\d+p?\d*)", rid)
+        if bt:
+            v = untag_float(bt.group(1))
+            return RunLabel(f"B-Trans offset sigma {_fmt(v)} on every norm layer{bud_txt}{site}",
+                            "btrans", v, rid)
         return RunLabel(
             f"steering only, no perturbation{bud_txt}{_steer_schedule(rid)}{site}",
             "steer", 0.0, rid)
