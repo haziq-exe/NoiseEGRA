@@ -1,6 +1,7 @@
 from __future__ import annotations
 from . import prompts
 from .EGRA_functions import EGRA
+from .subspace import prompt_taper
 from .egra_constraint_checker import EGRAConstraintChecker
 from .creativity_metrics import CreativityScorer
 from .constraint_metrics import ExactConstraintChecker
@@ -13,6 +14,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Mapping, Optional, Sequence
 
 import torch
+
 
 @dataclass(frozen=True)
 class ExperimentSpec:
@@ -316,7 +318,7 @@ def _ortho_tag_once(model_name: str, spec: ExperimentSpec, *, compress: bool) ->
             parts.append(f"r{rank}")
     if getattr(plan, "guard_direction", ""):
         parts.append(f"__guard{plan.guard_direction[:4]}")
-    if float(getattr(plan, "offset_taper", 1.0) or 1.0) != 1.0:
+    if prompt_taper(plan) != 1.0:
         parts.append(f"__tap{_float_tag(plan.offset_taper)}")
     if getattr(plan, "offset_gamma_spread", 0.0):
         parts.append(f"__gs{_float_tag(plan.offset_gamma_spread)}")

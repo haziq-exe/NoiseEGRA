@@ -16,7 +16,6 @@ def _cosine_noise_decay(t: int, max_noise_tokens: int) -> float:
     return 0.5 * (1 + math.cos(math.pi * min(t, max_noise_tokens) / max_noise_tokens))
 
 
-
 _THINK = re.compile(r"<think>.*?</think>\s*", re.S)
 _OPEN_THINK = re.compile(r"^\s*<think>.*$", re.S)
 
@@ -840,13 +839,18 @@ class EGRA:
                     # the length comes out a third longer (14.5 against 11.1 on
                     # Qwen3-1.7B), more than the writing takes: the stories
                     # overshoot and the controller sits at its floor.
+                    # Likewise unfaded along the prompt: a fade changes where
+                    # the prompt's noise lands, not the length it is measured at.
                     decode, prefill = plan.offset_decode, plan.offset_prefill
+                    taper = getattr(plan, "offset_taper", 1.0)
                     plan.offset_decode, plan.offset_prefill = True, True
+                    plan.offset_taper = 1.0
                     try:
                         st = start_for_target(self, plan, ids, m["target"], m["unit"],
                                               reference=ref)
                     finally:
                         plan.offset_decode, plan.offset_prefill = decode, prefill
+                        plan.offset_taper = taper
                     m.update(st)
                     msg += (f"; starting length {st['start']:.2f} "
                             f"({st['fraction']:.3f} of the norm) moves it "
@@ -1091,7 +1095,8 @@ class EGRA:
                             # decoding alone, a band sweep produced three
                             # byte-identical arms and read as a clean null.
                             bands = getattr(plan, "offset_layers", None) or ()
-                            taper = float(getattr(plan, "offset_taper", 1.0) or 1.0)
+                            from .subspace import prompt_taper
+                            taper = prompt_taper(plan)
                             off = None
                             if offset_here and (not bands or layer_idx in bands):
                                 off = plan.layer_plans[layer_idx].offset
@@ -2131,7 +2136,6 @@ class EGRA:
         output_file="example_file.csv", num_stories=1, max_new_tokens=100, do_sample=True, include_sys=True, temperature=1.0, top_p=None, top_k=None, seed=None, print_output=False,
     ):
         output_csv = Path(output_file)
-
 
 
         for x in range(num_stories):

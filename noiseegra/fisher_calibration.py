@@ -47,6 +47,7 @@ from typing import Dict, List, Optional, Sequence
 import torch
 
 from .fisher import fisher_rao_distance
+from .subspace import prompt_taper
 
 
 def _prompt_range(plan, n: int) -> tuple:
@@ -87,7 +88,7 @@ def _logits(egra, plan, ids: torch.Tensor, n_prompt: int, *,
     n = int(ids.shape[-1])
     lo, hi = _prompt_range(plan, n_prompt)
     bands = getattr(plan, "offset_layers", None) or ()
-    taper = float(getattr(plan, "offset_taper", 1.0) or 1.0)
+    taper = prompt_taper(plan)
     offset_prefill = bool(getattr(plan, "offset_prefill", False))
 
     def make_hook(li):

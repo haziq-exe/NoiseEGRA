@@ -732,6 +732,10 @@ def main() -> None:
     ap.add_argument("--online-min-gain", type=float, default=0.25,
                     help="the controller's floor, as a multiple of the starting length "
                          "(0.25 by default; the noise-free prompt needs less while writing)")
+    ap.add_argument("--prompt-taper", type=float, nargs="+", default=None,
+                    help="suite 'headline': fade the prompt's noise along the prompt to this "
+                         "share of full strength at its end (1.0 = flat, the method's "
+                         "default); several values run one set of arms each")
     ap.add_argument("--writing-fade-in", type=int, nargs="+", default=None,
                     help="suite 'headline': fade the writing noise in from zero over this "
                          "many tokens (a cosine rise; the controller waits until it is "

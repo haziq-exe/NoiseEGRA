@@ -294,6 +294,14 @@ def constrained_noise(
 #  Per-layer plan                                                              #
 # --------------------------------------------------------------------------- #
 
+
+def prompt_taper(plan) -> float:
+    """How far a plan fades its prompt noise along the prompt: the share of full
+    strength left at the prompt's end. 0.0 is a fade to nothing, not "unset" --
+    read as ``x or 1.0`` it silently became the flat, unfaded method."""
+    v = getattr(plan, "offset_taper", None)
+    return 1.0 if v is None else float(v)
+
 @dataclass
 class ConstraintSpec:
     """One steered constraint: which direction to use and how hard to push it."""

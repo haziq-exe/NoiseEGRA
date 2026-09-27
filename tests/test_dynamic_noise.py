@@ -356,6 +356,32 @@ lpf = fp2.layer_plans[LAYERS[0]]
 check("the noise starts at zero and reaches full size at the end of the fade",
       fp2.envelope_at(0) == 0.0 and abs(fp2.envelope_at(8) - 1.0) < 1e-9 and 0 < fp2.envelope_at(4) < 1)
 
+print("\n== the prompt's noise faded along the prompt ==")
+tz = types.SimpleNamespace(**{**vars(args), "headline_arms": ["while"], "prompt_taper": [1.0, 0.25, 0.0]})
+ti, _ = build_suite("headline", SV, LAYERS, list(NAMES), 1.5, tz)
+tids = [_spec_to_run_id("M", s) for s in make_specs(*ti)]
+check("one arm per fade, the flat one unchanged",
+      [it["plan"].offset_taper for it in ti] == [1.0, 0.25, 0.0] and len(set(tids)) == 3
+      and "__tap" not in tids[0] and "__tap0p25" in tids[1] and all(it["plan"].offset_prefill for it in ti),
+      str([i[-50:] for i in tids]))
+tstarts = []
+for tp in (1.0, 0.0):
+    rp = rule_plan(True); rp.offset_taper = tp
+    egra.generate_with_orthogonal_steering(PROMPT, rp, max_new_tokens=4, seed=3)
+    tstarts.append(next(iter(rp._rule_cache.values()))["start"])
+    check(f"the fade is restored after measuring ({tp})", rp.offset_taper == tp)
+check("a faded prompt measures the same starting length as a flat one",
+      abs(tstarts[0] - tstarts[1]) < 1e-6 * max(tstarts[0], 1.0), f"{tstarts[0]:.4f} vs {tstarts[1]:.4f}")
+
+from noiseegra.fisher_calibration import _logits  # noqa: E402
+lg = {}
+for tp in (1.0, 0.0):
+    rp = rule_plan(True); rp.offset_taper = tp
+    torch.manual_seed(4); rp.resample_offset()
+    lg[tp] = _logits(egra, rp, ids, ids.shape[-1] - 3, with_offset=True)
+check("a fade to zero changes what the prompt's noise does (it is not read as flat)",
+      float((lg[1.0] - lg[0.0]).abs().max()) > 1e-5)
+
 print()
 if FAILURES:
     print(f"{len(FAILURES)} FAILED: {FAILURES}")

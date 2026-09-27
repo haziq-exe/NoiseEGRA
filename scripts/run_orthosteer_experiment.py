@@ -2595,6 +2595,18 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                 out_items += its
             return out_items, desc
         fade = int(fades[0] or 0)
+        # Several fades of the prompt's noise along the prompt: one set each.
+        tapers = getattr(args, "prompt_taper", None) or [1.0]
+        tapers = list(tapers) if isinstance(tapers, (list, tuple)) else [tapers]
+        if len(tapers) > 1:
+            out_items, desc = [], ""
+            for tp in tapers:
+                sub = copy.copy(args)
+                sub.prompt_taper = [tp]
+                its, desc = build_suite("headline", vectors, layers, names, rms_scale, sub)
+                out_items += its
+            return out_items, desc
+        ptaper = float(tapers[0])
         # Choosing the headline method: two ways to size the noise with no
         # calibration phase before each story, against the method they would
         # replace, all with the prompt's noise raised where that helped.
@@ -2692,6 +2704,11 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             if getattr(args, "no_prompt_noise", False) and sizing != "btrans":
                 # The noise only while the story is written: none on the prompt.
                 kw["offset_prefill"] = False
+            if ptaper != 1.0 and sizing != "btrans":
+                # The prompt's noise faded along the prompt: full where the
+                # instruction begins, `ptaper` of it at the last position it
+                # touches (the instructions' list sits at the end).
+                kw["offset_taper"] = ptaper
             if fade > 0 and sizing != "btrans":
                 # The writing noise faded in from zero over the first `fade`
                 # tokens, so it does not switch on at full size at the first word.
