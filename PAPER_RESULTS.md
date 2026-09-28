@@ -2311,3 +2311,66 @@ Against ours (95% bootstrap over problems): any path right, sampling +1.0
   against 71.5%); on Qwen the full-length noise paths were 12 points below
   (63% against 75%). A rescued example: greedy counts 4 quarter-hours in 3 hours
   (120); a noise path counts 12 (360).
+
+### Resonance added to the front-loaded method, three models, 200 stories (runs r193-r195, 2026-09-29)
+
+The front-loaded method (noise and steering full for 32 tokens, faded over 32)
+plus resonance: each step the noise's direction turns 0.05 rad toward the part
+of the displacement it caused at a later layer (story minus shadow) that is not
+along the noise itself. Resonance needs a constant direction, so these arms have
+no drift. Over a story the direction ends at cosine 0.01-0.3 with where it
+started. Same prompt and seeds as the references.
+
+| 200 stories | Coherent | Slips | Lowercase | Rules broken | Distinct of 10 | vs front-loaded: rules | vs front-loaded: distinct |
+|---|---|---|---|---|---|---|---|
+| Qwen, front-loaded | 187 | 50 | 1 | 2.52 | 6.05 | | |
+| Qwen, + resonance | 179 | 61 | 4 | 2.88 | 6.78 | +0.35 [+0.08, +0.62] | +0.73 [-0.38, +2.04] |
+| Granite, front-loaded | 190 | 3 | 9 | 2.03 | 5.67 | | |
+| Granite, + resonance | 190 | 3 | 19 | 2.27 | 5.65 | +0.24 [+0.03, +0.44] | -0.03 [-0.94, +1.30] |
+| Llama, front-loaded | 200 | 0 | 2 | 1.52 | 5.56 | | |
+| Llama, + resonance | 200 | 0 | 0 | 1.50 | 5.45 | -0.02 [-0.19, +0.16] | -0.11 [-1.32, +0.86] |
+
+Quality (blind Sonnet, quick answer): per model ten raters, each 20 resonance
+stories shuffled with 10 untouched and 10 front-loaded stories on the same seeds.
+
+| | Untouched mean | Front-loaded: gap | + resonance: gap | Resonance minus front-loaded | Resonance closer |
+|---|---|---|---|---|---|
+| Qwen3-1.7B | 4.64 | +0.08 [-0.34, +0.49] | -0.28 [-0.62, +0.04] | -0.36 [-0.68, -0.06] | 2 of 10 raters |
+| Granite 4.0 1B | 5.02 | -1.01 [-1.31, -0.68] | -1.17 [-1.41, -0.96] | -0.16 [-0.46, +0.11] | 3 of 10 |
+| Llama-3.2-3B | 5.79 | -0.41 [-0.60, -0.21] | -0.60 [-0.85, -0.33] | -0.19 [-0.40, +0.03] | 3 of 10 |
+
+- Resonance brings no measurable gain on any model. Variety is unchanged within
+  the intervals (Qwen +0.73, not significant); rules are worse on Qwen and
+  Granite; quality is lower on all three, significantly on Qwen.
+- The direction turns almost completely during the noisy stretch and nothing
+  measured changes, which agrees with the earlier finding that a random
+  direction's statistics do not depend on which direction it is: what the
+  noise does is set by its size and when it acts.
+
+Which rules the noise costs (Qwen, share of coherent stories failing):
+
+| Rule | Untouched | Steering only | Front-loaded | + resonance |
+|---|---|---|---|---|
+| present tense | 100% | 17% | 29% | 28% |
+| mature register | 71% | 56% | 26% | 23% |
+| dialogue | 0% | 2% | 16% | 25% |
+| one named character | 71% | 58% | 68% | 73% |
+| a he and a she | 6% | 10% | 50% | 59% |
+| a simile | 11% | 13% | 36% | 41% |
+| distinct sentences | 13% | 0% | 5% | 9% |
+| story format | 0% | 0% | 22% | 29% |
+
+The noise's rule cost is in the content rules (a he and a she, a simile,
+dialogue): the untouched model's one story has them, and many of the stories
+the noise opens do not.
+
+#### Keeping the noise off the words of owed rules (--debt-eta, stopped)
+
+While the noise was on, the text so far gave the owed content rules; where the
+noise lowered the story's probability of an owed rule's words (she/her, he/him,
+speech marks, like/as) below the shadow's by 0.3 nats, the step was replayed
+with a gradient and the noise's component along the direction lowering them
+removed. On Qwen it fired at 3-5 of about 61 noisy steps, and the first stories
+were word for word those of the front-loaded method on the same seeds: removing
+one gradient direction from a random direction in a 2048-dimensional stream
+barely changes it. Stopped after 2 stories.
