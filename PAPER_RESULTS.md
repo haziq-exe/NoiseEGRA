@@ -2169,3 +2169,33 @@ with a low-effort Sonnet rater put nearly every story at 2 and the check stories
 - **Variety falls by a third to a half** (7.58 -> 5.07; 8.55 -> 4.34): the noise
   at the end of the prompt is where much of it came from.
 - Not extended to 200 stories.
+
+### Keeping the stories' quality: 20-story pilots (runs r183-r186, 2026-09-28)
+
+Each pilot's 20 stories (seeds 0-19) were rated blind by two Sonnet raters (quick
+answer), shuffled with the untouched model's and the method's stories on the
+same seeds, 10 of each per rater. "Gap" is the arm minus the untouched model
+within the same raters.
+
+| 20 stories | Gap to untouched (rater 1 / rater 2 / pooled) | Our method, same raters | Coherent | Rules broken | Distinct of 10 |
+|---|---|---|---|---|---|
+| Clean-model anchor, shadow p1 >= 0.9 | -1.80 / -1.30 / -1.55 | -1.75 | 20 | 2.60 | 7.11 |
+| Clean-model anchor, p1 >= 0.7 | -1.40 / -1.70 / -1.55 | -1.75 | 20 | 2.75 | 7.40 |
+| Noise front-loaded, 32 tokens | -1.70 / -1.50 / -1.60 | -2.15 | 18 | 3.11 | 6.93 |
+| Noise front-loaded, 64 tokens | -1.70 / -1.80 / -1.75 | -2.15 | 19 | 2.53 | 6.53 |
+| Front-loaded 32, steering while writing off | -0.10 / +0.40 / +0.15 [-0.50, +0.80] | -1.90 | 20 | 3.20 | 5.04 |
+| **Front-loaded 32, steering following the noise** | **-0.90 / -0.10 / -0.50 [-1.25, +0.20]** | -1.90 | 19 | **2.63** | **6.48** |
+
+- The anchor (the story takes the shadow's scores where the shadow is at least
+  p1 sure; 40-58% of steps) does nothing measurable for quality.
+- Front-loading the writing noise (full, controller-sized, for N tokens, then
+  faded out over N, the controller's target following) closes about 0.5 of the gap.
+- The rest is the rule steering at every written token: with the steering
+  following the same envelope (full while the story's course is set, then let
+  go) the gap falls from -1.9 to -0.5 with rules unchanged (2.63) and variety
+  6.48; with no steering while writing quality ties the untouched model but the
+  stories turn to the past tense and break more rules (3.20) than the untouched
+  model does.
+- The steering-follows-noise arm keeps every part of the method (per-story noise
+  sized while writing against the noise-free shadow, rule steering) and adds one
+  shared envelope; it costs no more compute. Being extended to 200 stories.
