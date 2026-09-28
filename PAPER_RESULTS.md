@@ -2280,3 +2280,34 @@ intervals by bootstrap over raters.
   Granite 1.1 below. Granite, the smallest and the one run at full precision
   with the most literal rule-following ("He and she stood..."), keeps the
   largest gap.
+
+### The front-loaded method as a search on GSM8K, Granite 4.0 1B (runs r189-r192, 2026-09-28)
+
+Same set-up as the Qwen runs above (200 problems, width 5, no rule steering, answer
+from "####"/\boxed{}/last number): our paths are plain greedy decoding plus 4 paths
+with the per-generation noise at the absolute target 2 asin(0.1 p1), front-loaded
+(full for 32 tokens, faded out over 32). NPAD's first-step noise is Granite's
+measured starting length, 0.071 of the norm. Granite at full precision.
+
+| Granite, width 5 | One path right | Most likely right | Majority vote right | Any path right | Rescued (of greedy's 57 misses) | Distinct answers |
+|---|---|---|---|---|---|---|
+| Greedy alone | 71.5% | | | | | |
+| **Ours, front-loaded noise paths** | 69.5% | 68.5% | 76.0% | 87.5% | 56% | 1.81 |
+| Best-of-5 sampling, T=0.7 | 70.9% | 71.0% | 76.0% | 88.5% | 63% | 1.86 |
+| Diverse Beam Search | 71.8% | 71.0% | 76.0% | 87.5% | 56% | 1.71 |
+| NPAD | 72.1% | 72.5% | 73.0% | 77.0% | 19% | 1.19 |
+| Beam search | 69.4% | 66.5% | 72.5% | 76.0% | 28% | 1.27 |
+
+Against ours (95% bootstrap over problems): any path right, sampling +1.0
+[-2.5, +4.5], Diverse Beam Search 0.0, NPAD -10.5 [-15.5, -6.0], beam -11.5
+[-16.5, -6.5]; rescued, sampling +7 [-5, +19], NPAD -37 [-51, -23], beam -28
+[-42, -14]. Ours against greedy: any path right +16.0 [+11.0, +21.0], vote +4.5
+[0.0, +9.0].
+
+- The same picture as Qwen: the noise paths rescue over half of greedy's
+  misses, tie sampling and Diverse Beam Search, and beat NPAD and beam search
+  by 10-12 points on "any path right".
+- Front-loading keeps each noise path nearly as accurate as greedy (69.5%
+  against 71.5%); on Qwen the full-length noise paths were 12 points below
+  (63% against 75%). A rescued example: greedy counts 4 quarter-hours in 3 hours
+  (120); a noise path counts 12 (360).
