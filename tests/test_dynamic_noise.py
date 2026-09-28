@@ -532,6 +532,48 @@ check("one arm per budget, in the plan and the id",
       and all(it["plan"].offset_envelope == "budget" for it in bi)
       and "__envbudget32w3" in bids[0] and "__envbudget32w6" in bids[1], bids[0][-50:])
 
+print("\n== prompt fit ==")
+from noiseegra.dynamic_noise import slip_token_ids  # noqa: E402
+
+
+class _Tok2(_Tok):
+    vocab = ["<s>", "**", " Sure", "Here", " Title", "#", " The", " cat", " here", "Okay"]
+    vocab_size = len(vocab)
+
+
+check("the non-story openings found in the vocabulary", slip_token_ids(_Tok2()) == [1, 2, 3, 4, 5, 8, 9],
+      str(slip_token_ids(_Tok2())))
+# Half the tiny vocabulary counted as non-story openings, so the noise is bound to
+# raise their chance at some sizes; a strict tolerance forces the fit to step down.
+egra._slip_ids = list(range(0, V, 2))
+fp = plan(prompt_fit_tau=1e-6)
+fp.prompt_fit_floor = 0.0
+base_gain = fp.offset_prefill_gain
+fits = [egra.generate_with_orthogonal_steering(PROMPT, fp, max_new_tokens=12, seed=s) for s in range(4)]
+fl = fp.fit_log
+check("each story's prompt noise is fitted and logged", len(fl) == 4 and all(isinstance(o, str) for o in fits),
+      str([round(x["gain"], 2) for x in fl]))
+check("a story whose noise raised the chance is read again at a smaller size",
+      any(x["gain"] < 1.0 and x["reads"] > 1 for x in fl))
+check("the kept size passes, or is no noise at all",
+      all(x["kept"] <= x["shadow"] * math.exp(1e-6) + 1e-9 or x["gain"] == 0.0 for x in fl))
+check("with no noise on the prompt the story's chance is the shadow's",
+      all(abs(x["kept"] - x["shadow"]) < 1e-4 for x in fl if x["gain"] == 0.0))
+check("the plan's prompt size is restored after each story", fp.offset_prefill_gain == base_gain)
+check("the extra reads leave the controller's step count alone",
+      all(o["steps"] <= 12 for o in fp.online_log), str([o["steps"] for o in fp.online_log]))
+check("and the story and its copy in step", fp.shadow_drift == 0)
+lp_ = plan(prompt_fit_tau=50.0)
+egra.generate_with_orthogonal_steering(PROMPT, lp_, max_new_tokens=6, seed=1)
+check("a loose tolerance keeps the full size after one read",
+      lp_.fit_log[-1]["gain"] == 1.0 and lp_.fit_log[-1]["reads"] == 1.0)
+egra._slip_ids = None
+fz = types.SimpleNamespace(**{**vars(args), "headline_arms": ["while"], "prompt_fit_tau": 0.5})
+fi, _ = build_suite("headline", SV, LAYERS, list(NAMES), 1.5, fz)
+fid = _spec_to_run_id("M", make_specs(*fi)[0])
+check("the fit reaches the plan and the id", fi[0]["plan"].prompt_fit_tau == 0.5 and "__fit0p5" in fid,
+      fid[-60:])
+
 print()
 if FAILURES:
     print(f"{len(FAILURES)} FAILED: {FAILURES}")

@@ -745,6 +745,12 @@ def main() -> None:
                     help="suite 'headline': the writing noise at full size for this many "
                          "tokens, then faded to nothing over as many (the controller's "
                          "target follows); several values run one set of arms each")
+    ap.add_argument("--prompt-fit-tau", type=float, default=None,
+                    help="suite 'headline': size each story's prompt noise at the first word -- "
+                         "if it makes a non-story opening (heading, title, 'Sure', 'Here is') "
+                         "likelier than the noise-free shadow by more than this many nats "
+                         "(and above 0.05), read the prompt again at 3/4, 1/2, 1/4, 0 of its "
+                         "noise and keep the first that passes")
     ap.add_argument("--debt-eta", type=float, default=None,
                     help="suite 'headline': while the noise is on, where it lowers the story's "
                          "probability of the words of a content rule the text still owes "

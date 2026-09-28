@@ -1028,6 +1028,7 @@ class EGRA:
         cache_box = {}
         debt_eta = float(getattr(plan, "debt_eta", 0.0) or 0.0)
         debt = None
+        fit_base = None
         if (fb_mode or guard_alpha > 0 or debt_eta > 0
                 or float(getattr(plan, "anchor_p1", 0.0) or 0.0) > 0) and not shadow:
             raise ValueError("the guard and the feedback read the noise-free shadow row; "
@@ -1105,8 +1106,9 @@ class EGRA:
                             if offset_here and (not bands or layer_idx in bands):
                                 off = plan.layer_plans[layer_idx].offset
                                 if off is not None:
-                                    off = off.to(target.device) * float(
-                                        getattr(plan, "offset_prefill_gain", 1.0) or 1.0)
+                                    pg = getattr(plan, "offset_prefill_gain", 1.0)
+                                    # 0 is no prompt noise (the fit can ask for it).
+                                    off = off.to(target.device) * (1.0 if pg is None else float(pg))
                                     if taper >= 1.0:
                                         delta = off if delta is None else delta + off
                                         off = None      # folded in; applied flat
@@ -1475,11 +1477,16 @@ class EGRA:
 
                 gen_kwargs["stopping_criteria"] = StoppingCriteriaList(
                     [*(gen_kwargs.get("stopping_criteria") or []), _ShadowCopy()])
+            if shadow and float(getattr(plan, "prompt_fit_tau", 0.0) or 0.0) > 0:
+                fit_base = float(plan.offset_prefill_gain)
+                self._fit_prompt_noise(plan, inputs, shared, fit_base)
             outputs = self.model.generate(
                 **inputs, max_new_tokens=max_new_tokens, **gen_kwargs
             )
 
         finally:
+            if fit_base is not None:
+                plan.offset_prefill_gain = fit_base
             for h in handles:
                 try:
                     h.remove()
@@ -1589,6 +1596,43 @@ class EGRA:
         else:
             self.last_gate_rate = 1.0
         return text
+
+    @torch.no_grad()
+    def _fit_prompt_noise(self, plan, inputs, shared, base: float) -> float:
+        """Size this story's prompt noise by what it does to the first word.
+
+        Reads the prompt (story and shadow rows, hooks attached) at the
+        prompt's noise times 1, 3/4, 1/2, 1/4 and 0, and keeps the first at
+        which the story's chance of a non-story opening is at most the larger
+        of ``prompt_fit_floor`` and the shadow's chance times e^tau. Leaves
+        ``plan.offset_prefill_gain`` at that size and the step counters as if
+        nothing had run; the caller restores the base size after the story.
+        """
+        from .dynamic_noise import slip_token_ids
+        if getattr(self, "_slip_ids", None) is None:
+            self._slip_ids = slip_token_ids(self.tokenizer)
+        ids = torch.tensor(self._slip_ids, dtype=torch.long)
+        tau = float(plan.prompt_fit_tau)
+        floor = float(getattr(plan, "prompt_fit_floor", 0.05))
+        tried = []
+        for m in (1.0, 0.75, 0.5, 0.25, 0.0):
+            plan.offset_prefill_gain = base * m
+            shared.update(forward_calls=0, t=0, cur_t=0, is_prefill=True)
+            logits = self.model(**inputs, use_cache=False).logits[:2, -1].float()
+            p = torch.softmax(logits, dim=-1)[:, ids.to(logits.device)].sum(dim=-1)
+            story, clean = float(p[0]), float(p[1])
+            tried.append((m, story))
+            if story <= max(floor, clean * math.exp(tau)):
+                break
+        shared.update(forward_calls=0, t=0, cur_t=0, is_prefill=True)
+        got = {"gain": m, "first": tried[0][1], "kept": story, "shadow": clean,
+               "reads": float(len(tried))}
+        if getattr(plan, "fit_log", None) is None:
+            plan.fit_log = []
+        plan.fit_log.append(got)
+        print(f"  [fit] prompt noise at {m:.2f}x of its size: chance of a non-story "
+              f"opening {tried[0][1]:.3f} -> {story:.3f} (noise-free {clean:.3f})", flush=True)
+        return m
 
     def _token_gradients(self, plan, blocks, layers, shared, cache, input_ids, token,
                          prefix_cache):

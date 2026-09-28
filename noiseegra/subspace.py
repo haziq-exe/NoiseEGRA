@@ -599,6 +599,14 @@ class SteeringPlan:
     # component along the gradient that lowers them is removed. 0 is off.
     debt_eta: float = 0.0
     debt_tau: float = 0.3
+    # Size the prompt's noise per story at the first word: before the first
+    # word is sampled, if the noise has made a non-story opening (a heading, a
+    # title, "Sure", "Here is") likelier for the story than for its shadow --
+    # above both the shadow's chance times e^prompt_fit_tau and
+    # prompt_fit_floor -- the prompt is read again with its noise at 3/4, 1/2,
+    # 1/4 and none of its size, and the first that passes is kept. 0 is off.
+    prompt_fit_tau: float = 0.0
+    prompt_fit_floor: float = 0.05
     # Scale the rule steering while writing by the offset's envelope, so a
     # front-loaded (plateau) plan steers hard early and lets go later.
     steer_envelope: bool = False
@@ -1072,6 +1080,8 @@ class SteeringPlan:
         anchor_p1: float = 0.0,
         debt_eta: float = 0.0,
         debt_tau: float = 0.3,
+        prompt_fit_tau: float = 0.0,
+        prompt_fit_floor: float = 0.05,
         steer_envelope: bool = False,
         output_tilt: float = 0.0,
         output_profile: Optional[torch.Tensor] = None,
@@ -1310,6 +1320,8 @@ class SteeringPlan:
             anchor_p1=float(anchor_p1 or 0.0),
             debt_eta=float(debt_eta or 0.0),
             debt_tau=float(debt_tau),
+            prompt_fit_tau=float(prompt_fit_tau or 0.0),
+            prompt_fit_floor=float(prompt_fit_floor),
             steer_envelope=bool(steer_envelope),
             output_tilt=float(output_tilt or 0.0),
             output_profile=(None if not output_tilt or output_profile is None
@@ -2118,6 +2130,8 @@ class SteeringPlan:
             "anchor_p1": self.anchor_p1,
             "debt_eta": self.debt_eta,
             "debt_tau": self.debt_tau,
+            "prompt_fit_tau": self.prompt_fit_tau,
+            "prompt_fit_floor": self.prompt_fit_floor,
             "steer_envelope": self.steer_envelope,
             "output_tilt": self.output_tilt,
             "offset_decode": self.offset_decode,

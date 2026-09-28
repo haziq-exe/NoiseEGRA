@@ -262,6 +262,25 @@ class RuleDebt(LogitsProcessor):
         return out
 
 
+# How a reply that is not a story begins: a heading or title, or an answer to
+# the reader ("Sure", "Here is", "Certainly", "Okay", "Of course").
+_SLIP_STARTS = ("**", "#", "title", "sure", "here", "certainly", "okay", "of course", "aim ")
+
+
+def slip_token_ids(tokenizer) -> List[int]:
+    """Token ids a non-story opening starts with (heading marks, title, reply words)."""
+    out = []
+    for i in range(int(getattr(tokenizer, "vocab_size", 0) or len(tokenizer))):
+        try:
+            w = tokenizer.decode([i]).strip().lower()
+        except Exception:
+            continue
+        if w and (w.startswith(_SLIP_STARTS[:2]) or any(
+                w == x.strip() or w.startswith(x) for x in _SLIP_STARTS[2:])):
+            out.append(i)
+    return out
+
+
 def _off_protected(vec: torch.Tensor, protect: Optional[torch.Tensor]) -> torch.Tensor:
     if protect is None:
         return vec
