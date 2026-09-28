@@ -433,6 +433,76 @@ for ws, tagc in (("off", "__sdec0"), ("follow", "__senv")):
     wid = _spec_to_run_id("M", make_specs(*wi)[0])
     check(f"writing steer '{ws}' reaches the plan and the id", tagc in wid, wid[-70:])
 
+print("\n== rule debt ==")
+from noiseegra.dynamic_noise import RuleDebt, debt_token_sets, owed_rules  # noqa: E402
+check("owed rules read from the text",
+      owed_rules("Mia runs.") == ["dialogue", "she", "he", "simile"]
+      and owed_rules('"Hi," he says to her, quick as a fox.') == ["simile"]
+      and owed_rules('"Hi," he says to her, like a fox.') == [])
+
+
+class _Tok:
+    vocab = ["<s>", " she", " Her", "her", ' "', "\u201cWe", " he", " His", " like", " as", " cat"]
+    vocab_size = len(vocab)
+
+    def decode(self, ids, skip_special_tokens=True):
+        return "".join(self.vocab[i] for i in ids)
+
+
+ts = debt_token_sets(_Tok())
+check("each rule's words found in the vocabulary, only at a word's start",
+      ts == {"dialogue": [4, 5], "she": [1, 2], "he": [6, 7], "simile": [8, 9]}, str(ts))
+# Every id in the tiny vocabulary split among the rules, so the owed words carry
+# real probability and the noise is bound to lower some of them.
+V = int(egra.model.config.vocab_size)
+egra._debt_sets = {"dialogue": list(range(0, V, 4)), "she": list(range(1, V, 4)),
+                   "he": list(range(2, V, 4)), "simile": list(range(3, V, 4))}
+dp_ = plan(debt_eta=1.0, debt_tau=0.0)
+pairs.clear()
+_orig_debt = RuleDebt.__call__
+
+
+def _spy_debt(self, input_ids, scores):
+    if scores.dim() == 2 and scores.shape[0] >= 2:
+        self._row0 = torch.log_softmax(scores[0].float(), -1)
+        inner = self.on_suppressed
+        if inner is not None and not getattr(self, "_wrapped", False):
+            def wrapped(ids_, toks, self=self, inner=inner):
+                egra._last_replay_logprob = None
+                got = inner(ids_, toks)
+                if egra._last_replay_logprob is not None:
+                    pairs.append((float(torch.logsumexp(self._row0[toks], 0)),
+                                  egra._last_replay_logprob))
+                return got
+            self.on_suppressed = wrapped
+            self._wrapped = True
+    return _orig_debt(self, input_ids, scores)
+
+
+RuleDebt.__call__ = _spy_debt
+d_outs = [egra.generate_with_orthogonal_steering(PROMPT, dp_, max_new_tokens=16, seed=s)
+          for s in range(3)]
+RuleDebt.__call__ = _orig_debt
+dl = dp_.debt_log
+check("debt stories generate and report", len(dl) == 3 and all(isinstance(o, str) for o in d_outs),
+      str(dl[0]))
+check("the owed words' shortfall triggers corrections",
+      sum(x["corrections"] for x in dl) > 0, f"{sum(x['corrections'] for x in dl):.0f}")
+check("the replay reproduces the owed words' log-probability",
+      len(pairs) > 0 and max(abs(a - b) for a, b in pairs) < 1e-3,
+      f"{len(pairs)} replays, worst gap {max((abs(a - b) for a, b in pairs), default=float('nan')):.1e}")
+check("and leaves the story and its copy in step", dp_.shadow_drift == 0)
+off = plan(debt_eta=1.0, debt_tau=0.0); off.offset_envelope, off.offset_envelope_steps = "plateau", 2
+egra.generate_with_orthogonal_steering(PROMPT, off, max_new_tokens=16, seed=1)
+check("no corrections once the noise has faded", off.debt_log[-1]["steps"] <= 5,
+      str(off.debt_log[-1]))
+egra._debt_sets = None
+dz = types.SimpleNamespace(**{**vars(args), "headline_arms": ["while"], "debt_eta": 0.5})
+di, _ = build_suite("headline", SV, LAYERS, list(NAMES), 1.5, dz)
+did = _spec_to_run_id("M", make_specs(*di)[0])
+check("the debt option reaches the plan and the id",
+      di[0]["plan"].debt_eta == 0.5 and "__debt0p5t0p3" in did, did[-60:])
+
 print()
 if FAILURES:
     print(f"{len(FAILURES)} FAILED: {FAILURES}")

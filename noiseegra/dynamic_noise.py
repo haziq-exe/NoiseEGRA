@@ -16,6 +16,14 @@ Three things, all used by ``EGRA.generate_with_orthogonal_steering``:
     own top token falls outside that set (the noise has pushed a token the clean
     model rules out), ``on_violation`` is called -- the direction correction.
 
+``RuleDebt``
+    Reads, each step, which content rules the text so far still owes
+    (dialogue, a he and a she, a simile) and whether the noise has made the
+    story less likely than its shadow to write an owed rule's words; if so it
+    calls ``on_suppressed`` -- the noise's direction is then turned off the
+    gradient that lowers them. The directions the noise is kept clear of change
+    as the story pays its rules.
+
 ``feedback_update``
     Turns each layer's per-story noise by the displacement it caused downstream
     (the story's state minus its shadow's at a later layer): toward the part of
@@ -150,6 +158,108 @@ class ConfidentAnchor(LogitsProcessor):
 
     def summary(self) -> Dict[str, float]:
         return {"steps": float(self.steps), "anchored": float(self.anchored)}
+
+
+_QUOTES = ('"', "\u201c", "\u201d")
+
+
+def debt_token_sets(tokenizer) -> Dict[str, List[int]]:
+    """Token ids for each owed rule's words: speech marks, she/her, he/him, like/as."""
+    words = {"she": {"she", "her", "hers", "herself"},
+             "he": {"he", "him", "his", "himself"},
+             "simile": {"like", "as"}}
+    out: Dict[str, List[int]] = {"dialogue": [], "she": [], "he": [], "simile": []}
+    for i in range(int(getattr(tokenizer, "vocab_size", 0) or len(tokenizer))):
+        try:
+            txt = tokenizer.decode([i])
+        except Exception:
+            continue
+        if any(q in txt for q in _QUOTES):
+            out["dialogue"].append(i)
+            continue
+        w = txt.strip().lower()
+        if not w or not (txt[:1].isspace() or txt[:1].isupper()):
+            continue
+        for k, ws in words.items():
+            if w in ws:
+                out[k].append(i)
+    return out
+
+
+def owed_rules(text: str) -> List[str]:
+    """The content rules the text so far has not paid."""
+    from .constraint_metrics_en import _HE, _SHE, has_simile
+    owed = []
+    if not any(q in text for q in _QUOTES):
+        owed.append("dialogue")
+    if not _SHE.search(text):
+        owed.append("she")
+    if not _HE.search(text):
+        owed.append("he")
+    if not has_simile(text):
+        owed.append("simile")
+    return owed
+
+
+class RuleDebt(LogitsProcessor):
+    """Correct the noise where it lowers the words of a rule the story still owes.
+
+    At each step with ``active()`` true, for every owed rule whose words the
+    shadow (row 1) gives at least ``min_mass`` of its probability, the gap
+    log P_story(words) - log P_shadow(words) is read; the rule with the largest
+    shortfall beyond ``tau`` nats is passed to ``on_suppressed(input_ids,
+    token_ids)``, which returns whether it corrected anything. Scores pass
+    through unchanged.
+    """
+
+    def __init__(self, tokenizer, token_sets: Dict[str, List[int]], tau: float,
+                 on_suppressed: Optional[Callable[[torch.Tensor, List[int]], bool]] = None,
+                 active: Optional[Callable[[], bool]] = None, min_mass: float = 0.02):
+        self.tokenizer = tokenizer
+        self.sets = {k: torch.tensor(v, dtype=torch.long) for k, v in token_sets.items() if v}
+        self.tau = float(tau)
+        self.min_mass = float(min_mass)
+        self.on_suppressed = on_suppressed
+        self.active = active
+        self.prompt_len: Optional[int] = None
+        self.steps = 0
+        self.triggers: Dict[str, int] = {}
+        self.corrections = 0
+
+    def __call__(self, input_ids, scores):
+        if self.prompt_len is None:
+            self.prompt_len = int(input_ids.shape[-1])
+        if scores.dim() != 2 or scores.shape[0] < 2:
+            return scores
+        if self.active is not None and not self.active():
+            return scores
+        self.steps += 1
+        text = self.tokenizer.decode(input_ids[0, self.prompt_len:], skip_special_tokens=True)
+        owed = [r for r in owed_rules(text) if r in self.sets]
+        if not owed:
+            return scores
+        with torch.no_grad():
+            ls = torch.log_softmax(scores[:2].float(), dim=-1)
+            best, worst = None, self.tau
+            for r in owed:
+                ids = self.sets[r].to(ls.device)
+                clean = float(torch.logsumexp(ls[1, ids], dim=0))
+                if clean < math.log(self.min_mass):
+                    continue
+                short = clean - float(torch.logsumexp(ls[0, ids], dim=0))
+                if short > worst:
+                    best, worst = r, short
+        if best is None:
+            return scores
+        self.triggers[best] = self.triggers.get(best, 0) + 1
+        if self.on_suppressed is not None and self.on_suppressed(input_ids, self.sets[best].tolist()):
+            self.corrections += 1
+        return scores
+
+    def summary(self) -> Dict[str, float]:
+        out = {"steps": float(self.steps), "corrections": float(self.corrections)}
+        out.update({f"trig_{k}": float(v) for k, v in self.triggers.items()})
+        return out
 
 
 def _off_protected(vec: torch.Tensor, protect: Optional[torch.Tensor]) -> torch.Tensor:

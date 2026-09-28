@@ -591,6 +591,14 @@ class SteeringPlan:
     # Take the noise-free shadow's scores at steps where it is at least this
     # sure of its top token (0 is off). Needs the shadow row.
     anchor_p1: float = 0.0
+    # Keep the noise from working against the rules the story still owes. Each
+    # step while the noise is on, the text so far says which content rules are
+    # unpaid (dialogue, a he and a she, a simile); where the noise has lowered
+    # the story's probability of an unpaid rule's words below its shadow's by
+    # more than ``debt_tau`` nats, this share (0-1) of each layer's noise
+    # component along the gradient that lowers them is removed. 0 is off.
+    debt_eta: float = 0.0
+    debt_tau: float = 0.3
     # Scale the rule steering while writing by the offset's envelope, so a
     # front-loaded (plateau) plan steers hard early and lets go later.
     steer_envelope: bool = False
@@ -1049,6 +1057,8 @@ class SteeringPlan:
         feedback_layer: int = 20,
         btrans_sigma: float = 0.0,
         anchor_p1: float = 0.0,
+        debt_eta: float = 0.0,
+        debt_tau: float = 0.3,
         steer_envelope: bool = False,
         output_tilt: float = 0.0,
         output_profile: Optional[torch.Tensor] = None,
@@ -1284,6 +1294,8 @@ class SteeringPlan:
             feedback_layer=int(feedback_layer),
             btrans_sigma=float(btrans_sigma or 0.0),
             anchor_p1=float(anchor_p1 or 0.0),
+            debt_eta=float(debt_eta or 0.0),
+            debt_tau=float(debt_tau),
             steer_envelope=bool(steer_envelope),
             output_tilt=float(output_tilt or 0.0),
             output_profile=(None if not output_tilt or output_profile is None
@@ -2082,6 +2094,8 @@ class SteeringPlan:
             "feedback_layer": self.feedback_layer,
             "btrans_sigma": self.btrans_sigma,
             "anchor_p1": self.anchor_p1,
+            "debt_eta": self.debt_eta,
+            "debt_tau": self.debt_tau,
             "steer_envelope": self.steer_envelope,
             "output_tilt": self.output_tilt,
             "offset_decode": self.offset_decode,

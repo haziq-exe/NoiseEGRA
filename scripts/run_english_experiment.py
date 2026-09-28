@@ -739,6 +739,14 @@ def main() -> None:
                     help="suite 'headline': the writing noise at full size for this many "
                          "tokens, then faded to nothing over as many (the controller's "
                          "target follows); several values run one set of arms each")
+    ap.add_argument("--debt-eta", type=float, default=None,
+                    help="suite 'headline': while the noise is on, where it lowers the story's "
+                         "probability of the words of a content rule the text still owes "
+                         "(dialogue, a he and a she, a simile) below its shadow's, remove this "
+                         "share of the noise along the gradient that lowers them")
+    ap.add_argument("--debt-tau", type=float, default=None,
+                    help="with --debt-eta: the shortfall, in nats, that triggers a correction "
+                         "(default 0.3)")
     ap.add_argument("--anchor-p1", type=float, nargs="+", default=None,
                     help="suite 'headline': where the noise-free shadow is at least this sure "
                          "of its top token, the story takes the shadow's scores; several "

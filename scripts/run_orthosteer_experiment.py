@@ -138,6 +138,8 @@ def make_plan(
     feedback_layer=20,
     btrans_sigma=0.0,
     anchor_p1=0.0,
+    debt_eta=0.0,
+    debt_tau=0.3,
     steer_envelope=False,
     output_tilt=0.0,
     offset_secured_boost=0.0,
@@ -264,6 +266,8 @@ def make_plan(
         feedback_layer=feedback_layer,
         btrans_sigma=btrans_sigma,
         anchor_p1=anchor_p1,
+        debt_eta=debt_eta,
+        debt_tau=debt_tau,
         steer_envelope=steer_envelope,
         output_tilt=output_tilt,
         output_profile=output_profile,
@@ -2745,6 +2749,11 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                 kw.update(offset_envelope="plateau", offset_envelope_steps=plateau)
             if anchor_p1 > 0 and sizing == "while":
                 kw["anchor_p1"] = anchor_p1
+            debt_eta = float(getattr(args, "debt_eta", None) or 0.0)
+            if debt_eta > 0 and sizing == "while":
+                # Keep the noise off the words of the rules the story still owes.
+                kw.update(debt_eta=debt_eta,
+                          debt_tau=float(getattr(args, "debt_tau", None) or 0.3))
             if ptaper != 1.0 and sizing != "btrans":
                 # The prompt's noise faded along the prompt: full where the
                 # instruction begins, `ptaper` of it at the last position it

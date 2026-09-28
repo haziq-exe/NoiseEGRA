@@ -1026,7 +1026,10 @@ class EGRA:
         guard_alpha = float(getattr(plan, "guard_alpha", 0.0) or 0.0)
         guard_fix = guard_alpha > 0 and float(getattr(plan, "correct_eta", 0.0) or 0.0) > 0
         cache_box = {}
-        if (fb_mode or guard_alpha > 0 or float(getattr(plan, "anchor_p1", 0.0) or 0.0) > 0) and not shadow:
+        debt_eta = float(getattr(plan, "debt_eta", 0.0) or 0.0)
+        debt = None
+        if (fb_mode or guard_alpha > 0 or debt_eta > 0
+                or float(getattr(plan, "anchor_p1", 0.0) or 0.0) > 0) and not shadow:
             raise ValueError("the guard and the feedback read the noise-free shadow row; "
                              "they need the noise sized while writing (offset_online)")
         if fb_mode and any(lp.offset_traj is not None for lp in plan.layer_plans.values()):
@@ -1310,7 +1313,7 @@ class EGRA:
 
             # The generation's own cache, for replaying the current step with a
             # gradient when the guard corrects the noise's direction.
-            if guard_fix:
+            if guard_fix or debt_eta > 0:
                 def grab_cache(module, args, kwargs):
                     if not shared.get("replay"):
                         cache_box["pkv"] = kwargs.get("past_key_values")
@@ -1389,6 +1392,29 @@ class EGRA:
 
                     guard = CleanGuard(guard_alpha, on_violation)
                     processors = LogitsProcessorList([sizer, guard, *list(processors)[1:]])
+                if debt_eta > 0:
+                    # After the controller (raw scores); it only reads them.
+                    from .dynamic_noise import RuleDebt, correct_offsets, debt_token_sets, prefix_cache
+                    if getattr(self, "_debt_sets", None) is None:
+                        self._debt_sets = debt_token_sets(self.tokenizer)
+
+                    def on_suppressed(ids, tokens):
+                        if cache_box.get("pkv") is None or shared["is_prefill"]:
+                            return False
+                        grads = self._token_gradients(
+                            plan, blocks, normalized_layers, shared, cache_box["pkv"],
+                            ids, tokens, prefix_cache)
+                        if grads is None:
+                            return False
+                        # Remove the part of the noise that lowers the owed words.
+                        return correct_offsets(
+                            plan, {l: (None if g is None else -g) for l, g in grads.items()},
+                            debt_eta, shared["cur_t"])
+
+                    debt = RuleDebt(self.tokenizer, self._debt_sets,
+                                    float(getattr(plan, "debt_tau", 0.3)), on_suppressed,
+                                    active=lambda: plan.envelope_at(shared["cur_t"]) > 0.05)
+                    processors = LogitsProcessorList([sizer, debt, *list(processors)[1:]])
                 if float(getattr(plan, "anchor_p1", 0.0) or 0.0) > 0:
                     # After the controller (raw scores) and before any cut-off.
                     from .dynamic_noise import ConfidentAnchor
@@ -1516,6 +1542,16 @@ class EGRA:
             print(f"  [guard] the noise pushed a token the clean model rules out at "
                   f"{int(got['violations'])} of {int(got['steps'])} steps; corrected the "
                   f"direction {int(got['corrections'])} times", flush=True)
+        if debt is not None:
+            got = debt.summary()
+            if getattr(plan, "debt_log", None) is None:
+                plan.debt_log = []
+            plan.debt_log.append(got)
+            trig = ", ".join(f"{k[5:]} {int(v)}" for k, v in got.items() if k.startswith("trig_"))
+            print(f"  [debt] the noise lowered an owed rule's words at "
+                  f"{int(sum(v for k, v in got.items() if k.startswith('trig_')))} of "
+                  f"{int(got['steps'])} noisy steps ({trig or 'none'}); corrected "
+                  f"{int(got['corrections'])} times", flush=True)
         if fb_mode:
             turned = []
             for l, u0 in start_dirs.items():
@@ -1586,7 +1622,12 @@ class EGRA:
             with torch.enable_grad():
                 out = self.model(input_ids=input_ids[:1, -1:], past_key_values=ctx,
                                  use_cache=True)
-                lp = torch.log_softmax(out.logits[0, -1].float(), dim=-1)[int(token)]
+                ls = torch.log_softmax(out.logits[0, -1].float(), dim=-1)
+                if isinstance(token, (list, tuple)):
+                    # A set of words: the log of their total probability.
+                    lp = torch.logsumexp(ls[torch.tensor(token, device=ls.device)], dim=0)
+                else:
+                    lp = ls[int(token)]
                 # Kept so a test can check the replay reproduced the step.
                 self._last_replay_logprob = float(lp)
                 grads = torch.autograd.grad(lp, [es[l] for l in layers], allow_unused=True)

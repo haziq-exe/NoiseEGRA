@@ -351,6 +351,8 @@ def _ortho_tag_once(model_name: str, spec: ExperimentSpec, *, compress: bool) ->
         parts.append("__senv")
     if float(getattr(plan, "anchor_p1", 0.0) or 0.0) > 0:
         parts.append(f"__anchor{_float_tag(plan.anchor_p1)}")
+    if float(getattr(plan, "debt_eta", 0.0) or 0.0) > 0:
+        parts.append(f"__debt{_float_tag(plan.debt_eta)}t{_float_tag(getattr(plan, 'debt_tau', 0.3))}")
     if float(getattr(plan, "btrans_sigma", 0.0) or 0.0) > 0:
         parts.append(f"__btrans{_float_tag(plan.btrans_sigma)}")
     if getattr(plan, "offset_measured", False):
