@@ -2199,3 +2199,37 @@ within the same raters.
 - The steering-follows-noise arm keeps every part of the method (per-story noise
   sized while writing against the noise-free shadow, rule steering) and adds one
   shared envelope; it costs no more compute. Being extended to 200 stories.
+
+#### Steering that follows the front-loaded noise, 200 stories (run r186)
+
+Stories 20-199 rated by nine Sonnet raters (quick answer), each 20 of these
+stories shuffled with 10 untouched and 10 of ours (seeds 20-199); stories 0-19
+from the pilot's two raters. Gap = arm minus untouched within the same rater.
+
+| Rater | Untouched | Steering follows the noise | Our method |
+|---|---|---|---|
+| 1-9 (each) | 3.9-5.0 | gap -0.75 to +0.75 | gap -1.90 to -0.20 |
+| Mean within-rater gap | | **-0.01 [-0.26, +0.26]** | -1.40 |
+
+Closer to the untouched model than ours in 9 of 9 raters; better than ours by
++1.39 [+1.11, +1.66] (bootstrap over raters). Mean rating over all 200: 4.54.
+
+| 200 stories | Coherent | Slip openings | Lowercase drift | Rules broken | Same-story | Distinct of 10 |
+|---|---|---|---|---|---|---|
+| Untouched | 199 | 0 | 0 | 2.71 | 99.0% | 1.06 |
+| Top-p 0.95, T=1.8 | 200 | 0 | 0 | 2.50 | 94.8% | 1.29 |
+| Rule steering only | 200 | 0 | 9 | 1.57 | 76.9% | 2.38 |
+| Ours | 194 | 35 | 39 | 2.45 | 24.5% | 6.48 |
+| **Steering follows the noise** | 187 | 50 | **1** | 2.52 | 27.8% | 6.05 |
+
+- **Quality equals the untouched model's** while variety stays near ours (6.05
+  against 6.48 distinct; the untouched model writes about one story) and rules
+  match ours (2.52 against 2.45; the untouched model 2.71).
+- The noise and the steering act fully while the story's course is set (the
+  prompt and the first 32 tokens) and let go over the next 32; lowercase drift
+  all but disappears (39 -> 1).
+- **Remaining weakness: slip openings from the prompt's noise** (36 title
+  layouts, 26 preambles, 8 instruction echoes; 13 of 200 fail the coherence
+  checks, 10 as not-a-story). Stories with a slip are rated 3.8 against 4.8.
+- Cost: the same shadow-row controller as the method; no steering or noise
+  arithmetic after 64 tokens.
