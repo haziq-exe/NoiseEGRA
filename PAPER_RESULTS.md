@@ -2260,3 +2260,23 @@ are the same prompt and seeds.
   4.78 and 6.15), at 0.6-0.9 distinct below the full-length noise.
 - Granite's lowercase drift falls from 35 to 9 stories. Llama had little to fix.
 - Quality not yet rated on these models.
+
+#### Quality on Granite and Llama (blind Sonnet ratings, 2026-09-28)
+
+Per model: all 200 front-loaded stories, 100 untouched and 100 of ours (prompt
+1.0x), same prompt and seeds; ten raters, each 20 front-loaded + 10 untouched +
+10 ours, shuffled and anonymised. Gap = arm minus untouched within each rater;
+intervals by bootstrap over raters.
+
+| | Untouched (mean) | Front-loaded + steering: gap | Ours: gap | Front-loaded minus ours | Closer than ours |
+|---|---|---|---|---|---|
+| Qwen3-1.7B (above) | 4.5 | -0.01 [-0.26, +0.26] | -1.40 | +1.39 [+1.11, +1.66] | 9 of 9 raters |
+| Granite 4.0 1B | 5.09 | -1.08 [-1.29, -0.85] | -1.95 [-2.30, -1.62] | +0.87 [+0.56, +1.19] | 10 of 10 |
+| Llama-3.2-3B | 5.68 | -0.42 [-0.60, -0.24] | -1.48 [-1.77, -1.19] | +1.06 [+0.88, +1.25] | 10 of 10 |
+
+- On every model the front-loaded method is rated well above the method it
+  replaces (+0.9 to +1.4 points, every rater agreeing).
+- It reaches the untouched model's quality on Qwen only; Llama is 0.4 below and
+  Granite 1.1 below. Granite, the smallest and the one run at full precision
+  with the most literal rule-following ("He and she stood..."), keeps the
+  largest gap.
