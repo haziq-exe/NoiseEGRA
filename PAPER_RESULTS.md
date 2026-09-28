@@ -2233,3 +2233,30 @@ Closer to the untouched model than ours in 9 of 9 raters; better than ours by
   checks, 10 as not-a-story). Stories with a slip are rated 3.8 against 4.8.
 - Cost: the same shadow-row controller as the method; no steering or noise
   arithmetic after 64 tokens.
+
+#### The front-loaded method on Granite 4.0 1B and Llama-3.2-3B, 200 stories (runs r187, r188)
+
+Same settings as each model's earlier runs (prompt noise 1.0x, the rule target
+and measured start), plus --noise-plateau 32 --writing-steer follow. References
+are the same prompt and seeds.
+
+| Granite 4.0 1B | Coherent | Slips | Lowercase | Rules broken | Same-story | Distinct of 10 |
+|---|---|---|---|---|---|---|
+| Untouched | 200 | 0 | 0 | 2.21 | 64.2% | 3.12 |
+| Top-p 0.95, T=1.8 | 194 | 0 | 4 | 2.40 | 35.6% | 5.26 |
+| Ours, prompt 1.0x | 191 | 3 | 35 | 2.15 | 20.9% | 6.60 |
+| **Front-loaded + steering** | 190 | 3 | 9 | **2.03** | 30.7% | 5.67 |
+
+| Llama-3.2-3B | Coherent | Slips | Lowercase | Rules broken | Same-story | Distinct of 10 |
+|---|---|---|---|---|---|---|
+| Untouched | 200 | 0 | 0 | 1.77 | 42.5% | 4.78 |
+| Top-p 0.95, T=1.8 | 195 | 0 | 1 | 2.01 | 28.0% | 6.15 |
+| Ours, prompt 1.0x | 200 | 1 | 2 | 1.48 | 28.0% | 6.13 |
+| **Front-loaded + steering** | 200 | 0 | 2 | **1.52** | 32.6% | 5.56 |
+
+- On both models the front-loaded method keeps the rule gains (Granite the fewest
+  rules broken of any arm; Llama level with ours) and most of the variety
+  (Granite 5.67 against the untouched 3.12 and top-p 5.26; Llama 5.56 against
+  4.78 and 6.15), at 0.6-0.9 distinct below the full-length noise.
+- Granite's lowercase drift falls from 35 to 9 stories. Llama had little to fix.
+- Quality not yet rated on these models.
