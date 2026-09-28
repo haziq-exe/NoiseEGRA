@@ -732,6 +732,9 @@ def main() -> None:
     ap.add_argument("--online-min-gain", type=float, default=0.25,
                     help="the controller's floor, as a multiple of the starting length "
                          "(0.25 by default; the noise-free prompt needs less while writing)")
+    ap.add_argument("--writing-steer", choices=["full", "off", "follow"], default="full",
+                    help="suite 'headline': rule steering while writing -- at full strength "
+                         "(the method), off (prompt only), or following the noise's envelope")
     ap.add_argument("--noise-plateau", type=int, nargs="+", default=None,
                     help="suite 'headline': the writing noise at full size for this many "
                          "tokens, then faded to nothing over as many (the controller's "

@@ -420,6 +420,19 @@ check("one arm per plateau length, in the plan and the id",
       [it["plan"].offset_envelope_steps for it in pi_] == [32, 64] and len(set(pids)) == 2
       and all("__envplateau" in i for i in pids))
 
+sp = plan(); sp.offset_envelope, sp.offset_envelope_steps = "plateau", 10
+torch.manual_seed(1); sp.resample_offset()
+st0 = sp.delta_for(LAYERS[0], 3, with_offset=False)
+sp.steer_envelope = True
+check("steering that follows the envelope is full early", torch.allclose(sp.delta_for(LAYERS[0], 3, with_offset=False), st0))
+check("and gone once the envelope is", sp.delta_for(LAYERS[0], 25, with_offset=False) is None
+      or float(sp.delta_for(LAYERS[0], 25, with_offset=False).abs().max()) < 1e-9)
+for ws, tagc in (("off", "__sdec0"), ("follow", "__senv")):
+    wz = types.SimpleNamespace(**{**vars(args), "headline_arms": ["while"], "noise_plateau": [32], "writing_steer": ws})
+    wi, _ = build_suite("headline", SV, LAYERS, list(NAMES), 1.5, wz)
+    wid = _spec_to_run_id("M", make_specs(*wi)[0])
+    check(f"writing steer '{ws}' reaches the plan and the id", tagc in wid, wid[-70:])
+
 print()
 if FAILURES:
     print(f"{len(FAILURES)} FAILED: {FAILURES}")

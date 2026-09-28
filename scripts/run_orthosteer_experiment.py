@@ -138,6 +138,7 @@ def make_plan(
     feedback_layer=20,
     btrans_sigma=0.0,
     anchor_p1=0.0,
+    steer_envelope=False,
     output_tilt=0.0,
     offset_secured_boost=0.0,
     steer_split_concentration=0.0,
@@ -263,6 +264,7 @@ def make_plan(
         feedback_layer=feedback_layer,
         btrans_sigma=btrans_sigma,
         anchor_p1=anchor_p1,
+        steer_envelope=steer_envelope,
         output_tilt=output_tilt,
         output_profile=output_profile,
         offset_secured_boost=offset_secured_boost,
@@ -2730,6 +2732,13 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
             if getattr(args, "no_prompt_noise", False) and sizing != "btrans":
                 # The noise only while the story is written: none on the prompt.
                 kw["offset_prefill"] = False
+            ws = str(getattr(args, "writing_steer", None) or "full")
+            if ws == "off" and sizing == "while":
+                # Rule steering on the prompt only, none while writing.
+                kw["steer_decode"] = False
+            elif ws == "follow" and sizing == "while":
+                # Rule steering while writing follows the noise's envelope.
+                kw["steer_envelope"] = True
             if plateau > 0 and sizing == "while":
                 # Full writing noise for `plateau` tokens, then faded out over
                 # as many; the controller's target follows the fade.

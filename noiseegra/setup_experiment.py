@@ -347,6 +347,8 @@ def _ortho_tag_once(model_name: str, spec: ExperimentSpec, *, compress: bool) ->
     if getattr(plan, "feedback_mode", "") and float(getattr(plan, "feedback_eta", 0.0) or 0.0) > 0:
         parts.append(f"__fb{plan.feedback_mode}{_float_tag(plan.feedback_eta)}"
                      f"L{int(getattr(plan, 'feedback_layer', 20))}")
+    if getattr(plan, "steer_envelope", False):
+        parts.append("__senv")
     if float(getattr(plan, "anchor_p1", 0.0) or 0.0) > 0:
         parts.append(f"__anchor{_float_tag(plan.anchor_p1)}")
     if float(getattr(plan, "btrans_sigma", 0.0) or 0.0) > 0:

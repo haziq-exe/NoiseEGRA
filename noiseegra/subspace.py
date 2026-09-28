@@ -591,6 +591,9 @@ class SteeringPlan:
     # Take the noise-free shadow's scores at steps where it is at least this
     # sure of its top token (0 is off). Needs the shadow row.
     anchor_p1: float = 0.0
+    # Scale the rule steering while writing by the offset's envelope, so a
+    # front-loaded (plateau) plan steers hard early and lets go later.
+    steer_envelope: bool = False
     # Tilt the story's next-token distribution toward the tokens the rules make
     # likelier (the constraints' output profiles, from the same forward passes
     # as the steering directions). The value is the tilt's size at every step as
@@ -1046,6 +1049,7 @@ class SteeringPlan:
         feedback_layer: int = 20,
         btrans_sigma: float = 0.0,
         anchor_p1: float = 0.0,
+        steer_envelope: bool = False,
         output_tilt: float = 0.0,
         output_profile: Optional[torch.Tensor] = None,
         shadow_protect: bool = False,
@@ -1280,6 +1284,7 @@ class SteeringPlan:
             feedback_layer=int(feedback_layer),
             btrans_sigma=float(btrans_sigma or 0.0),
             anchor_p1=float(anchor_p1 or 0.0),
+            steer_envelope=bool(steer_envelope),
             output_tilt=float(output_tilt or 0.0),
             output_profile=(None if not output_tilt or output_profile is None
                             else output_profile.detach().float().cpu()),
@@ -1800,6 +1805,8 @@ class SteeringPlan:
                 layer, lp.steering_delta(t, h, self.specs, self.rms_scale,
                                          gains=self.gains, budget=self.steer_budget)
             )
+            if delta is not None and getattr(self, "steer_envelope", False):
+                delta = delta * self.envelope_at(t)
 
         # The per-story offset is a perturbation, so it is gated with the noise
         # rather than with the steering: an entropy gate closes on both together.
@@ -2075,6 +2082,7 @@ class SteeringPlan:
             "feedback_layer": self.feedback_layer,
             "btrans_sigma": self.btrans_sigma,
             "anchor_p1": self.anchor_p1,
+            "steer_envelope": self.steer_envelope,
             "output_tilt": self.output_tilt,
             "offset_decode": self.offset_decode,
             "amplify_lambda": self.amplify_lambda,
