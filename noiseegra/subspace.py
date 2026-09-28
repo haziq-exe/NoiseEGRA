@@ -607,6 +607,9 @@ class SteeringPlan:
     # 1/4 and none of its size, and the first that passes is kept. 0 is off.
     prompt_fit_tau: float = 0.0
     prompt_fit_floor: float = 0.05
+    # "shrink" steps the prompt's noise down; "redraw" keeps its size and draws
+    # a fresh random direction (up to 8 times) before stepping down.
+    prompt_fit_mode: str = "shrink"
     # Scale the rule steering while writing by the offset's envelope, so a
     # front-loaded (plateau) plan steers hard early and lets go later.
     steer_envelope: bool = False
@@ -1082,6 +1085,7 @@ class SteeringPlan:
         debt_tau: float = 0.3,
         prompt_fit_tau: float = 0.0,
         prompt_fit_floor: float = 0.05,
+        prompt_fit_mode: str = "shrink",
         steer_envelope: bool = False,
         output_tilt: float = 0.0,
         output_profile: Optional[torch.Tensor] = None,
@@ -1322,6 +1326,7 @@ class SteeringPlan:
             debt_tau=float(debt_tau),
             prompt_fit_tau=float(prompt_fit_tau or 0.0),
             prompt_fit_floor=float(prompt_fit_floor),
+            prompt_fit_mode=str(prompt_fit_mode or "shrink"),
             steer_envelope=bool(steer_envelope),
             output_tilt=float(output_tilt or 0.0),
             output_profile=(None if not output_tilt or output_profile is None
@@ -2132,6 +2137,7 @@ class SteeringPlan:
             "debt_tau": self.debt_tau,
             "prompt_fit_tau": self.prompt_fit_tau,
             "prompt_fit_floor": self.prompt_fit_floor,
+            "prompt_fit_mode": self.prompt_fit_mode,
             "steer_envelope": self.steer_envelope,
             "output_tilt": self.output_tilt,
             "offset_decode": self.offset_decode,

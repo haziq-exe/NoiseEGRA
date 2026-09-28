@@ -1614,8 +1614,15 @@ class EGRA:
         ids = torch.tensor(self._slip_ids, dtype=torch.long)
         tau = float(plan.prompt_fit_tau)
         floor = float(getattr(plan, "prompt_fit_floor", 0.05))
-        tried = []
-        for m in (1.0, 0.75, 0.5, 0.25, 0.0):
+        redraw = str(getattr(plan, "prompt_fit_mode", "shrink")) == "redraw"
+        # Full size with up to 8 fresh directions first when redrawing; then
+        # the size steps down with whatever direction was drawn last.
+        ladder = ([1.0] * 8 if redraw else [1.0]) + [0.75, 0.5, 0.25, 0.0]
+        tried, draws = [], 1
+        for i, m in enumerate(ladder):
+            if redraw and 0 < i < 8:
+                plan.resample_offset()
+                draws += 1
             plan.offset_prefill_gain = base * m
             shared.update(forward_calls=0, t=0, cur_t=0, is_prefill=True)
             logits = self.model(**inputs, use_cache=False).logits[:2, -1].float()
@@ -1626,12 +1633,14 @@ class EGRA:
                 break
         shared.update(forward_calls=0, t=0, cur_t=0, is_prefill=True)
         got = {"gain": m, "first": tried[0][1], "kept": story, "shadow": clean,
-               "reads": float(len(tried))}
+               "reads": float(len(tried)), "draws": float(draws)}
         if getattr(plan, "fit_log", None) is None:
             plan.fit_log = []
         plan.fit_log.append(got)
-        print(f"  [fit] prompt noise at {m:.2f}x of its size: chance of a non-story "
-              f"opening {tried[0][1]:.3f} -> {story:.3f} (noise-free {clean:.3f})", flush=True)
+        print(f"  [fit] prompt noise at {m:.2f}x of its size"
+              + (f", direction {draws} of those drawn" if redraw else "")
+              + f": chance of a non-story opening {tried[0][1]:.3f} -> {story:.3f} "
+              f"(noise-free {clean:.3f})", flush=True)
         return m
 
     def _token_gradients(self, plan, blocks, layers, shared, cache, input_ids, token,

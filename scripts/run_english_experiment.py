@@ -751,6 +751,9 @@ def main() -> None:
                          "likelier than the noise-free shadow by more than this many nats "
                          "(and above 0.05), read the prompt again at 3/4, 1/2, 1/4, 0 of its "
                          "noise and keep the first that passes")
+    ap.add_argument("--prompt-fit-mode", choices=["shrink", "redraw"], default=None,
+                    help="with --prompt-fit-tau: step the prompt's noise down (shrink, default) "
+                         "or keep its size and draw a fresh direction up to 8 times first (redraw)")
     ap.add_argument("--debt-eta", type=float, default=None,
                     help="suite 'headline': while the noise is on, where it lowers the story's "
                          "probability of the words of a content rule the text still owes "

@@ -567,12 +567,28 @@ lp_ = plan(prompt_fit_tau=50.0)
 egra.generate_with_orthogonal_steering(PROMPT, lp_, max_new_tokens=6, seed=1)
 check("a loose tolerance keeps the full size after one read",
       lp_.fit_log[-1]["gain"] == 1.0 and lp_.fit_log[-1]["reads"] == 1.0)
+rp = plan(prompt_fit_tau=1e-6, prompt_fit_mode="redraw")
+rp.prompt_fit_floor = 0.0
+for s_ in range(6):
+    egra.generate_with_orthogonal_steering(PROMPT, rp, max_new_tokens=8, seed=s_)
+rl = rp.fit_log
+check("redraw: a failing direction is replaced by fresh ones at full size",
+      any(x["draws"] > 1 for x in rl) and all(x["gain"] == 1.0 or x["draws"] == 8 for x in rl),
+      str([(x["draws"], x["gain"]) for x in rl]))
+check("redraw: the size is only cut after eight directions fail",
+      all(x["gain"] == 1.0 for x in rl if x["draws"] < 8))
 egra._slip_ids = None
 fz = types.SimpleNamespace(**{**vars(args), "headline_arms": ["while"], "prompt_fit_tau": 0.5})
 fi, _ = build_suite("headline", SV, LAYERS, list(NAMES), 1.5, fz)
 fid = _spec_to_run_id("M", make_specs(*fi)[0])
 check("the fit reaches the plan and the id", fi[0]["plan"].prompt_fit_tau == 0.5 and "__fit0p5" in fid,
       fid[-60:])
+fr = types.SimpleNamespace(**{**vars(args), "headline_arms": ["while"], "prompt_fit_tau": 0.5,
+                              "prompt_fit_mode": "redraw"})
+fri, _ = build_suite("headline", SV, LAYERS, list(NAMES), 1.5, fr)
+frid = _spec_to_run_id("M", make_specs(*fri)[0])
+check("the redraw mode reaches the plan and the id",
+      fri[0]["plan"].prompt_fit_mode == "redraw" and "__fit0p5r" in frid, frid[-60:])
 
 print()
 if FAILURES:

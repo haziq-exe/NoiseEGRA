@@ -141,6 +141,7 @@ def make_plan(
     debt_eta=0.0,
     debt_tau=0.3,
     prompt_fit_tau=0.0,
+    prompt_fit_mode="shrink",
     steer_envelope=False,
     output_tilt=0.0,
     offset_secured_boost=0.0,
@@ -271,6 +272,7 @@ def make_plan(
         debt_eta=debt_eta,
         debt_tau=debt_tau,
         prompt_fit_tau=prompt_fit_tau,
+        prompt_fit_mode=prompt_fit_mode,
         steer_envelope=steer_envelope,
         output_tilt=output_tilt,
         output_profile=output_profile,
@@ -2776,6 +2778,7 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                 # Each story's prompt noise sized at the first word so it does
                 # not make a non-story opening likelier than the shadow does.
                 kw["prompt_fit_tau"] = fit_tau
+                kw["prompt_fit_mode"] = str(getattr(args, "prompt_fit_mode", None) or "shrink")
             debt_eta = float(getattr(args, "debt_eta", None) or 0.0)
             if debt_eta > 0 and sizing == "while":
                 # Keep the noise off the words of the rules the story still owes.
