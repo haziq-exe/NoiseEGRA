@@ -160,6 +160,7 @@ def make_plan(
     noise_beta=None,
     noise_fmin_cycles=None,
     offset_envelope=None,
+    offset_change_budget=0.0,
     beta_weights=None,
     offset_basis_kind="step",
     offset_draw="iid",
@@ -291,6 +292,7 @@ def make_plan(
         noise_beta=noise_beta,
         noise_fmin_cycles=noise_fmin_cycles,
         offset_envelope=offset_envelope,
+        offset_change_budget=offset_change_budget,
         offset_basis_kind=offset_basis_kind,
         offset_draw=offset_draw,
         offset_prefill=offset_prefill,
@@ -2639,6 +2641,18 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                 out_items += its
             return out_items, desc
         plateau = int(plateaus[0] or 0)
+        # Several change budgets for the writing noise: one set each.
+        cbs = getattr(args, "noise_budget", None) or [0.0]
+        cbs = list(cbs) if isinstance(cbs, (list, tuple)) else [cbs]
+        if len(cbs) > 1:
+            out_items, desc = [], ""
+            for cb in cbs:
+                sub = copy.copy(args)
+                sub.noise_budget = [cb]
+                its, desc = build_suite("headline", vectors, layers, names, rms_scale, sub)
+                out_items += its
+            return out_items, desc
+        change_budget = float(cbs[0] or 0.0)
         # Choosing the headline method: two ways to size the noise with no
         # calibration phase before each story, against the method they would
         # replace, all with the prompt's noise raised where that helped.
@@ -2747,6 +2761,12 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                 # Full writing noise for `plateau` tokens, then faded out over
                 # as many; the controller's target follows the fade.
                 kw.update(offset_envelope="plateau", offset_envelope_steps=plateau)
+            if change_budget > 0 and sizing == "while":
+                # Full writing noise until it has changed `change_budget` of
+                # the story's words in expectation, then faded out over the
+                # plateau length (32 if none is given).
+                kw.update(offset_envelope="budget", offset_envelope_steps=plateau or 32,
+                          offset_change_budget=change_budget)
             if anchor_p1 > 0 and sizing == "while":
                 kw["anchor_p1"] = anchor_p1
             debt_eta = float(getattr(args, "debt_eta", None) or 0.0)

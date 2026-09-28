@@ -111,6 +111,12 @@ class OnlineSizer(LogitsProcessor):
             moved = float(fisher_rao_distance(clean, story))
             decoder = sampler_probs(scores[1:2], self.temperature, self.top_p)[0]
             budget = float(fisher_rao_distance(clean, decoder))
+        mode = str(getattr(self.plan, "offset_envelope", "flat"))
+        if mode == "budget" and self.plan.change_end is None:
+            # The chance the noise changed this step's word.
+            self.plan.change_spent += 0.5 * float((story - clean).abs().sum())
+            if self.plan.change_spent >= float(self.plan.offset_change_budget):
+                self.plan.change_end = len(self.history) + 1
         if len(self.history) < self.hold:
             self.history.append((moved, budget, float(self.plan.online_gain)))
             return scores
@@ -124,7 +130,7 @@ class OnlineSizer(LogitsProcessor):
         # follows the fade instead of winding the size up against it; where
         # the envelope is nearly off it holds still.
         env = 1.0
-        if str(getattr(self.plan, "offset_envelope", "flat")) == "plateau":
+        if mode in ("plateau", "budget"):
             env = float(self.plan.envelope_at(len(self.history)))
         if (len(self.history) - self.hold + 1 > self.warmup and self.moved > 1e-12
                 and env > 0.05):

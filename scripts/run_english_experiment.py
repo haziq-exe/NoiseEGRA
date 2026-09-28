@@ -735,6 +735,12 @@ def main() -> None:
     ap.add_argument("--writing-steer", choices=["full", "off", "follow"], default="full",
                     help="suite 'headline': rule steering while writing -- at full strength "
                          "(the method), off (prompt only), or following the noise's envelope")
+    ap.add_argument("--noise-budget", type=float, nargs="+", default=None,
+                    help="suite 'headline': keep the writing noise at full size until it has "
+                         "changed this many of the story's words in expectation (the running "
+                         "sum of the total-variation distance between the story's and its "
+                         "shadow's next-word distributions), then fade it over the plateau "
+                         "length; several values run one set of arms each")
     ap.add_argument("--noise-plateau", type=int, nargs="+", default=None,
                     help="suite 'headline': the writing noise at full size for this many "
                          "tokens, then faded to nothing over as many (the controller's "

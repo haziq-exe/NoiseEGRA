@@ -1527,6 +1527,13 @@ class EGRA:
                       f"{got['achieved']:.2f} nucleus-units over the story "
                       f"(asked {float(plan.offset_online):.2f}); per step, top-p moves "
                       f"{got['budget']:.4f} and the noise {got['moved']:.4f}", flush=True)
+                if str(getattr(plan, "offset_envelope", "")) == "budget":
+                    end = plan.change_end
+                    got["change_end"] = -1 if end is None else int(end)
+                    got["change_spent"] = float(plan.change_spent)
+                    print(f"  [budget] the noise changed {plan.change_spent:.2f} words in "
+                          f"expectation and began to fade at step "
+                          f"{'never' if end is None else int(end)}", flush=True)
         if anchor is not None:
             got = anchor.summary()
             if getattr(plan, "anchor_log", None) is None:

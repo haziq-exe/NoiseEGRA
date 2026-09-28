@@ -503,6 +503,35 @@ did = _spec_to_run_id("M", make_specs(*di)[0])
 check("the debt option reaches the plan and the id",
       di[0]["plan"].debt_eta == 0.5 and "__debt0p5t0p3" in did, did[-60:])
 
+print("\n== change budget ==")
+cb = plan(); cb.offset_envelope, cb.offset_envelope_steps, cb.offset_change_budget = "budget", 4, 1.0
+torch.manual_seed(1); cb.resample_offset()
+check("full until the budget is spent", cb.envelope_at(0) == 1.0 and cb.envelope_at(15) == 1.0)
+cb.change_end = 6
+check("then faded over the span", cb.envelope_at(6) == 1.0 and 0 < cb.envelope_at(8) < 1
+      and cb.envelope_at(10) == 0.0)
+cb.resample_offset()
+check("each story starts with nothing spent", cb.change_spent == 0.0 and cb.change_end is None)
+cb.change_end = None
+check("a story that never spends it fades from four spans", cb.envelope_at(16) == 1.0
+      and cb.envelope_at(20) == 0.0)
+spent = []
+for bud in (0.5, 4.0):
+    pb_ = plan(); pb_.offset_envelope, pb_.offset_envelope_steps, pb_.offset_change_budget = "budget", 4, bud
+    egra.generate_with_orthogonal_steering(PROMPT, pb_, max_new_tokens=24, seed=1)
+    spent.append((pb_.change_end, pb_.change_spent))
+check("the controller counts the changed words and ends the noise when they reach the budget",
+      spent[0][0] is not None and spent[0][1] >= 0.5
+      and (spent[1][0] is None or spent[1][0] > spent[0][0]), str(spent))
+bz = types.SimpleNamespace(**{**vars(args), "headline_arms": ["while"], "noise_plateau": [32],
+                              "noise_budget": [3.0, 6.0]})
+bi, _ = build_suite("headline", SV, LAYERS, list(NAMES), 1.5, bz)
+bids = [_spec_to_run_id("M", s_) for s_ in make_specs(*bi)]
+check("one arm per budget, in the plan and the id",
+      [it["plan"].offset_change_budget for it in bi] == [3.0, 6.0]
+      and all(it["plan"].offset_envelope == "budget" for it in bi)
+      and "__envbudget32w3" in bids[0] and "__envbudget32w6" in bids[1], bids[0][-50:])
+
 print()
 if FAILURES:
     print(f"{len(FAILURES)} FAILED: {FAILURES}")

@@ -380,6 +380,8 @@ def _ortho_tag_once(model_name: str, spec: ExperimentSpec, *, compress: bool) ->
         parts.append(f"__env{plan.offset_envelope}")
         if int(getattr(plan, "offset_envelope_steps", 0) or 0) > 0:
             parts.append(f"{int(plan.offset_envelope_steps)}")
+        if plan.offset_envelope == "budget":
+            parts.append(f"w{_float_tag(getattr(plan, 'offset_change_budget', 0.0))}")
         if float(getattr(plan, "offset_secured_boost", 0.0) or 0.0) > 0:
             parts.append(f"{_float_tag(plan.offset_secured_boost)}")
         if float(getattr(plan, "offset_front_gain", 1.0) or 1.0) != 1.0:

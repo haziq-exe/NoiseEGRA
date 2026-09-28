@@ -616,6 +616,18 @@ class SteeringPlan:
     # where the model decides whether it is answering the reader or telling a
     # story, so a rising envelope is the one with a reason behind it.
     offset_envelope: str = "flat"
+    # With the "budget" envelope: the noise stays at full size until it has
+    # changed this many of the story's words in expectation -- the running sum,
+    # over the steps written, of the total-variation distance between the
+    # story's next-word distribution and its noise-free shadow's, which is the
+    # chance the noise changed that step's word -- and then fades out over
+    # offset_envelope_steps. Measured while the story is written (by the
+    # controller), so each story gets the same amount of change rather than
+    # the same number of steps.
+    offset_change_budget: float = 0.0
+    # This story's running total, and the step at which it reached the budget.
+    change_spent: float = 0.0
+    change_end: Optional[int] = None
     # Which set of directions the offset was drawn from, kept so two conditions
     # that differ only in that cannot collide on disk. "step" is the principal
     # components of individual decode-step activations, "story" the components of
@@ -1006,6 +1018,7 @@ class SteeringPlan:
         offset_front_gain: float = 1.0,
         offset_prefill_gain: float = 1.0,
         offset_envelope: str = "flat",
+        offset_change_budget: float = 0.0,
         offset_basis_kind: str = "step",
         offset_draw: str = "iid",
         offset_prefill: bool = False,
@@ -1248,6 +1261,7 @@ class SteeringPlan:
             offset_front_gain=float(offset_front_gain or 1.0),
             offset_prefill_gain=float(offset_prefill_gain or 1.0),
             offset_envelope=str(offset_envelope),
+            offset_change_budget=float(offset_change_budget or 0.0),
             offset_decode=bool(offset_decode),
             amplify_lambda=float(amplify_lambda),
             amplify_prefill=bool(amplify_prefill),
@@ -1574,12 +1588,19 @@ class SteeringPlan:
             return float(1.0 + extra * 0.5 * (1.0 + math.cos(math.pi * frac)))
         if mode == "rise":
             return float(0.5 * (1.0 - math.cos(math.pi * frac)))
+        if mode == "budget":
+            # Full until the story has spent its budget of changed words, then
+            # down to nothing over `span` steps. A story that never spends it
+            # starts the fade at four spans.
+            end = self.change_end if self.change_end is not None else 4 * span
+            late = min(max((float(t) - end) / span, 0.0), 1.0)
+            return float(0.5 * (1.0 + math.cos(math.pi * late)))
         if mode == "plateau":
             # Full for the first `span` steps, where the story's course is
             # set, then down to nothing over the next `span` on a cosine.
             late = min(max((float(t) - span) / span, 0.0), 1.0)
             return float(0.5 * (1.0 + math.cos(math.pi * late)))
-        raise ValueError("offset_envelope must be flat, decay, rise, plateau, front or secured; "
+        raise ValueError("offset_envelope must be flat, decay, rise, plateau, budget, front or secured; "
                          f"got {self.offset_envelope!r}")
 
     def resample_offset(self, story_index: Optional[int] = None) -> None:
@@ -1592,6 +1613,7 @@ class SteeringPlan:
         constraint direction biases that constraint for the entire story.
         """
         self.resample_jitter()
+        self.change_spent, self.change_end = 0.0, None
         if float(getattr(self, "steer_split_concentration", 0.0) or 0.0) > 0:
             # This story's share of the push for each rule. Drawn before any
             # early return, so a plan with no offset still gets one.
