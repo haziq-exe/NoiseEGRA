@@ -355,6 +355,8 @@ def _ortho_tag_once(model_name: str, spec: ExperimentSpec, *, compress: bool) ->
         parts.append(f"__fit{_float_tag(plan.prompt_fit_tau)}")
         if getattr(plan, "prompt_fit_mode", "shrink") == "redraw":
             parts.append("r")
+    if float(getattr(plan, "avoid_eta", 0.0) or 0.0) > 0:
+        parts.append(f"__avoid{_float_tag(plan.avoid_eta)}p{_float_tag(getattr(plan, 'avoid_p1', 0.6))}")
     if float(getattr(plan, "debt_eta", 0.0) or 0.0) > 0:
         parts.append(f"__debt{_float_tag(plan.debt_eta)}t{_float_tag(getattr(plan, 'debt_tau', 0.3))}")
     if float(getattr(plan, "btrans_sigma", 0.0) or 0.0) > 0:

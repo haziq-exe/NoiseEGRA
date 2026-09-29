@@ -1028,11 +1028,19 @@ class EGRA:
         cache_box = {}
         debt_eta = float(getattr(plan, "debt_eta", 0.0) or 0.0)
         debt = None
+        avoid_eta = float(getattr(plan, "avoid_eta", 0.0) or 0.0)
+        avoid = None
+        avoid_start = ({l: lp.offset.detach().float().clone()
+                        for l, lp in plan.layer_plans.items() if lp.offset is not None}
+                       if avoid_eta > 0 else {})
         fit_base = None
-        if (fb_mode or guard_alpha > 0 or debt_eta > 0
+        if (fb_mode or guard_alpha > 0 or debt_eta > 0 or avoid_eta > 0
                 or float(getattr(plan, "anchor_p1", 0.0) or 0.0) > 0) and not shadow:
             raise ValueError("the guard and the feedback read the noise-free shadow row; "
                              "they need the noise sized while writing (offset_online)")
+        if avoid_eta > 0 and any(lp.offset_traj is not None for lp in plan.layer_plans.values()):
+            raise ValueError("turning away from the default turns a constant per-story "
+                             "direction; run it with no drift (noise_beta None)")
         if fb_mode and any(lp.offset_traj is not None for lp in plan.layer_plans.values()):
             raise ValueError("feedback turns a constant per-story direction; "
                              "run it with no drift (noise_beta None)")
@@ -1315,7 +1323,7 @@ class EGRA:
 
             # The generation's own cache, for replaying the current step with a
             # gradient when the guard corrects the noise's direction.
-            if guard_fix or debt_eta > 0:
+            if guard_fix or debt_eta > 0 or avoid_eta > 0:
                 def grab_cache(module, args, kwargs):
                     if not shared.get("replay"):
                         cache_box["pkv"] = kwargs.get("past_key_values")
@@ -1417,6 +1425,23 @@ class EGRA:
                                     float(getattr(plan, "debt_tau", 0.3)), on_suppressed,
                                     active=lambda: plan.envelope_at(shared["cur_t"]) > 0.05)
                     processors = LogitsProcessorList([sizer, debt, *list(processors)[1:]])
+                if avoid_eta > 0:
+                    # After the controller (raw scores); it only reads them.
+                    from .dynamic_noise import DefaultAvoid, prefix_cache, rotate_away
+
+                    def on_avoid(ids, token):
+                        if cache_box.get("pkv") is None or shared["is_prefill"]:
+                            return None
+                        grads = self._token_gradients(
+                            plan, blocks, normalized_layers, shared, cache_box["pkv"],
+                            ids, token, prefix_cache)
+                        if grads is None:
+                            return None
+                        return rotate_away(plan, grads, avoid_eta)
+
+                    avoid = DefaultAvoid(float(getattr(plan, "avoid_p1", 0.6)), on_avoid,
+                                         active=lambda: plan.envelope_at(shared["cur_t"]) > 0.05)
+                    processors = LogitsProcessorList([sizer, avoid, *list(processors)[1:]])
                 if float(getattr(plan, "anchor_p1", 0.0) or 0.0) > 0:
                     # After the controller (raw scores) and before any cut-off.
                     from .dynamic_noise import ConfidentAnchor
@@ -1556,6 +1581,22 @@ class EGRA:
             print(f"  [guard] the noise pushed a token the clean model rules out at "
                   f"{int(got['violations'])} of {int(got['steps'])} steps; corrected the "
                   f"direction {int(got['corrections'])} times", flush=True)
+        if avoid is not None:
+            got = avoid.summary()
+            ends = []
+            for l, u0 in avoid_start.items():
+                lp = plan.layer_plans[l]
+                if lp.offset is not None:
+                    a, b = u0.to(lp.offset.device), lp.offset.float()
+                    ends.append(float((a @ b) / (a.norm() * b.norm()).clamp_min(1e-12)))
+            got["start_end_cos"] = sum(ends) / len(ends) if ends else math.nan
+            if getattr(plan, "avoid_log", None) is None:
+                plan.avoid_log = []
+            plan.avoid_log.append(got)
+            print(f"  [avoid] turned the noise away from the default word at "
+                  f"{int(got['turns'])} of {int(got['steps'])} noisy steps (mean cosine "
+                  f"{got['step_cos']:.4f} per turn); the direction ends at cosine "
+                  f"{got['start_end_cos']:.3f} with where it started", flush=True)
         if debt is not None:
             got = debt.summary()
             if getattr(plan, "debt_log", None) is None:

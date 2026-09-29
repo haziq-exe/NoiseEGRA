@@ -599,6 +599,12 @@ class SteeringPlan:
     # component along the gradient that lowers them is removed. 0 is off.
     debt_eta: float = 0.0
     debt_tau: float = 0.3
+    # Turn the noise away from the model's default while writing: at steps
+    # where the noise-free shadow's top word has probability below avoid_p1,
+    # each layer's direction turns avoid_eta radians away from the gradient
+    # that would make the story write that word (length kept). 0 is off.
+    avoid_eta: float = 0.0
+    avoid_p1: float = 0.6
     # Size the prompt's noise per story at the first word: before the first
     # word is sampled, if the noise has made a non-story opening (a heading, a
     # title, "Sure", "Here is") likelier for the story than for its shadow --
@@ -1083,6 +1089,8 @@ class SteeringPlan:
         anchor_p1: float = 0.0,
         debt_eta: float = 0.0,
         debt_tau: float = 0.3,
+        avoid_eta: float = 0.0,
+        avoid_p1: float = 0.6,
         prompt_fit_tau: float = 0.0,
         prompt_fit_floor: float = 0.05,
         prompt_fit_mode: str = "shrink",
@@ -1324,6 +1332,8 @@ class SteeringPlan:
             anchor_p1=float(anchor_p1 or 0.0),
             debt_eta=float(debt_eta or 0.0),
             debt_tau=float(debt_tau),
+            avoid_eta=float(avoid_eta or 0.0),
+            avoid_p1=float(avoid_p1),
             prompt_fit_tau=float(prompt_fit_tau or 0.0),
             prompt_fit_floor=float(prompt_fit_floor),
             prompt_fit_mode=str(prompt_fit_mode or "shrink"),
@@ -2135,6 +2145,8 @@ class SteeringPlan:
             "anchor_p1": self.anchor_p1,
             "debt_eta": self.debt_eta,
             "debt_tau": self.debt_tau,
+            "avoid_eta": self.avoid_eta,
+            "avoid_p1": self.avoid_p1,
             "prompt_fit_tau": self.prompt_fit_tau,
             "prompt_fit_floor": self.prompt_fit_floor,
             "prompt_fit_mode": self.prompt_fit_mode,

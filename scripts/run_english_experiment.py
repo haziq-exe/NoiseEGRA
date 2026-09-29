@@ -754,6 +754,13 @@ def main() -> None:
     ap.add_argument("--prompt-fit-mode", choices=["shrink", "redraw"], default=None,
                     help="with --prompt-fit-tau: step the prompt's noise down (shrink, default) "
                          "or keep its size and draw a fresh direction up to 8 times first (redraw)")
+    ap.add_argument("--avoid-eta", type=float, default=None,
+                    help="arm 'whileavoid': radians each layer's noise direction turns, per step, "
+                         "away from the gradient that would make the story write the noise-free "
+                         "shadow's top word (default 0.05)")
+    ap.add_argument("--avoid-p1", type=float, default=None,
+                    help="arm 'whileavoid': turn only at steps where the shadow's top word has "
+                         "probability below this (default 0.6)")
     ap.add_argument("--debt-eta", type=float, default=None,
                     help="suite 'headline': while the noise is on, where it lowers the story's "
                          "probability of the words of a content rule the text still owes "
@@ -829,7 +836,7 @@ def main() -> None:
                     choices=["while", "whilecarry", "whilenosteer", "before", "fixed", "fixedprompt",
                              "fixedfront", "fixednoise", "simple", "promptonly",
                              "whilenodrift", "whilenoproj", "whilefixed", "whileguard",
-                             "whilefix", "whileminp", "whiletoward", "whileaway",
+                             "whilefix", "whileminp", "whiletoward", "whileaway", "whileavoid",
                              "whilecancel", "btrans"],
                     default=["while", "before", "fixed", "fixedprompt", "fixedfront"],
                     help="suite 'headline': which of its arms to run -- sized while "

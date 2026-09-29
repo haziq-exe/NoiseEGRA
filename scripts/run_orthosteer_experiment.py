@@ -140,6 +140,8 @@ def make_plan(
     anchor_p1=0.0,
     debt_eta=0.0,
     debt_tau=0.3,
+    avoid_eta=0.0,
+    avoid_p1=0.6,
     prompt_fit_tau=0.0,
     prompt_fit_mode="shrink",
     steer_envelope=False,
@@ -271,6 +273,8 @@ def make_plan(
         anchor_p1=anchor_p1,
         debt_eta=debt_eta,
         debt_tau=debt_tau,
+        avoid_eta=avoid_eta,
+        avoid_p1=avoid_p1,
         prompt_fit_tau=prompt_fit_tau,
         prompt_fit_mode=prompt_fit_mode,
         steer_envelope=steer_envelope,
@@ -2852,6 +2856,9 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                                                    feedback_eta=fe, feedback_layer=fl)),
                     "whileaway": dict(extra=dict(noise_beta=None, feedback_mode="away",
                                                  feedback_eta=fe, feedback_layer=fl)),
+                    "whileavoid": dict(extra=dict(noise_beta=None, avoid_eta=float(
+                        getattr(args, "avoid_eta", None) or 0.05), avoid_p1=float(
+                        getattr(args, "avoid_p1", None) or 0.6))),
                     "whilecancel": dict(extra=dict(noise_beta=None, feedback_mode="cancel",
                                                    feedback_eta=float(getattr(
                                                        args, "feedback_cancel_eta", None) or 1.0),

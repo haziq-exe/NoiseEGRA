@@ -24,6 +24,14 @@ Three things, all used by ``EGRA.generate_with_orthogonal_steering``:
     gradient that lowers them. The directions the noise is kept clear of change
     as the story pays its rules.
 
+``DefaultAvoid`` / ``rotate_away``
+    At each step where the noise-free shadow is choosing (its top word below
+    a probability), the step is replayed with a gradient and each layer's
+    noise direction is turned a fixed angle away from the direction that
+    would make the story write the shadow's top word: the noise learns,
+    while the story is written, which way leads off the model's default.
+    Only the direction changes; the length is kept.
+
 ``feedback_update``
     Turns each layer's per-story noise by the displacement it caused downstream
     (the story's state minus its shadow's at a later layer): toward the part of
@@ -325,6 +333,80 @@ def correct_offsets(plan, grads: Dict[int, Optional[torch.Tensor]], eta: float, 
             lp.offset = (nv * (length / float(nv.norm().clamp_min(1e-12)))).to(lp.offset.dtype)
         changed = True
     return changed
+
+
+def rotate_away(plan, grads: Dict[int, Optional[torch.Tensor]], eta: float) -> float:
+    """Turn each layer's noise ``eta`` radians toward ``-grads[layer]``.
+
+    The turn is toward the part of ``-g`` orthogonal to the current direction,
+    projected off the protected subspace for an ``orth`` plan; the length is
+    kept. Returns the mean cosine between each layer's old and new direction.
+    """
+    orth = getattr(plan, "offset_mode", "orth") == "orth"
+    cosines = []
+    for layer, g in grads.items():
+        lp = plan.layer_plans.get(layer)
+        if lp is None or lp.offset is None or g is None:
+            continue
+        v = lp.offset.float()
+        length = float(v.norm())
+        if length <= 1e-12:
+            continue
+        u = v / length
+        d = -g.to(device=u.device, dtype=torch.float32)
+        if orth:
+            d = _off_protected(d, lp.protect)
+        r = d - (d @ u) * u
+        rn = float(r.norm())
+        if not math.isfinite(rn) or rn <= 1e-12:
+            continue
+        new = math.cos(eta) * u + math.sin(eta) * (r / rn)
+        if orth:
+            new = _off_protected(new, lp.protect)
+        new = new / new.norm().clamp_min(1e-12)
+        cosines.append(float(new @ u))
+        lp.offset = (new * length).to(lp.offset.dtype)
+    return sum(cosines) / len(cosines) if cosines else 1.0
+
+
+class DefaultAvoid(LogitsProcessor):
+    """Where the shadow is choosing, turn the noise away from its default word.
+
+    At a step with ``active()`` true whose shadow (row 1) gives its top word
+    less than ``p1_max``, ``on_step(input_ids, token)`` is called with that
+    word; it returns the mean cosine of the turn, or None if it did not turn.
+    Scores pass through unchanged.
+    """
+
+    def __init__(self, p1_max: float, on_step: Callable[[torch.Tensor, int], Optional[float]],
+                 active: Optional[Callable[[], bool]] = None):
+        self.p1_max = float(p1_max)
+        self.on_step = on_step
+        self.active = active
+        self.steps = 0
+        self.turns = 0
+        self.cos_sum = 0.0
+
+    def __call__(self, input_ids, scores):
+        if scores.dim() != 2 or scores.shape[0] < 2:
+            return scores
+        if self.active is not None and not self.active():
+            return scores
+        self.steps += 1
+        with torch.no_grad():
+            p = torch.softmax(scores[1].float(), dim=-1)
+            p1, top = p.max(dim=-1)
+        if float(p1) >= self.p1_max:
+            return scores
+        cos = self.on_step(input_ids, int(top))
+        if cos is not None:
+            self.turns += 1
+            self.cos_sum += float(cos)
+        return scores
+
+    def summary(self) -> Dict[str, float]:
+        return {"steps": float(self.steps), "turns": float(self.turns),
+                "step_cos": self.cos_sum / max(self.turns, 1)}
 
 
 def feedback_update(plan, delta: torch.Tensor, mode: str, eta: float) -> float:

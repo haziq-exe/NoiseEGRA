@@ -590,6 +590,45 @@ frid = _spec_to_run_id("M", make_specs(*fri)[0])
 check("the redraw mode reaches the plan and the id",
       fri[0]["plan"].prompt_fit_mode == "redraw" and "__fit0p5r" in frid, frid[-60:])
 
+print("\n== turning away from the default ==")
+from noiseegra.dynamic_noise import rotate_away  # noqa: E402
+ra = plan()
+torch.manual_seed(5); ra.resample_offset()
+la = ra.layer_plans[LAYERS[0]]
+u0 = la.offset / la.offset.norm()
+g = torch.randn(DIM)
+cos = rotate_away(ra, {LAYERS[0]: g}, 0.1)
+un = la.offset / la.offset.norm()
+gp = g - la.protect @ (la.protect.t() @ g)
+check("the direction turns away from the gradient", float(un @ gp) < float(u0 @ gp),
+      f"{float(u0 @ gp):+.3f} -> {float(un @ gp):+.3f}")
+check("by about the angle asked, length kept",
+      abs(cos - math.cos(0.1)) < 0.02 and abs(float(la.offset.norm()) - 0.4 * 8) < 1e-3, f"cos {cos:.4f}")
+check("and stays off the protected directions", float((la.protect.t() @ un).abs().max()) < 1e-5)
+av = plan(avoid_eta=0.05, avoid_p1=1.01)
+aouts = [egra.generate_with_orthogonal_steering(PROMPT, av, max_new_tokens=16, seed=s_) for s_ in range(2)]
+al = av.avoid_log
+check("avoiding stories generate and turn at every noisy step while writing",
+      all(isinstance(o, str) for o in aouts) and all(x["turns"] >= 10 for x in al)
+      and all(x["start_end_cos"] < 0.999 for x in al), str(al[0]))
+check("the replays leave the story and its copy in step", av.shadow_drift == 0)
+nv = plan(avoid_eta=0.05, avoid_p1=0.0)
+egra.generate_with_orthogonal_steering(PROMPT, nv, max_new_tokens=8, seed=1)
+check("no turns where the shadow is sure", nv.avoid_log[-1]["turns"] == 0)
+try:
+    egra.generate_with_orthogonal_steering(PROMPT, plan(beta=2.0, avoid_eta=0.05), max_new_tokens=4, seed=1)
+    check("avoiding with a drifting direction is refused", False)
+except ValueError:
+    check("avoiding with a drifting direction is refused", True)
+az = types.SimpleNamespace(**{**vars(args), "headline_arms": ["whileavoid", "whilenodrift"],
+                              "avoid_eta": 0.05, "avoid_p1": 0.6})
+ai, _ = build_suite("headline", SV, LAYERS, list(NAMES), 1.5, az)
+aids = [_spec_to_run_id("M", s_) for s_ in make_specs(*ai)]
+k_ = next(i for i, it in enumerate(ai) if it["plan"].avoid_eta > 0)
+check("the avoid arm has no drift, its settings and its own id",
+      ai[k_]["plan"].noise_beta is None and "__avoid0p05p0p6" in aids[k_]
+      and len(set(aids)) == 2 and all(it["plan"].noise_beta is None for it in ai), aids[k_][-60:])
+
 print()
 if FAILURES:
     print(f"{len(FAILURES)} FAILED: {FAILURES}")
