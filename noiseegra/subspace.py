@@ -621,6 +621,12 @@ class SteeringPlan:
     # whole context so far again with it (as the prompt is read at the start)
     # and restart the writing noise's envelope from there. 0 is one segment.
     pulse_every: int = 0
+    # How a segment reads the context again: "context" reads prompt and story
+    # with the new direction at the prompt's size; "story" keeps the prompt as
+    # first read and reads only the story so far, at pulse_gain times the
+    # starting length.
+    pulse_reread: str = "context"
+    pulse_gain: float = 1.0
     # The step at which the current segment began (reset per story).
     pulse_start: int = 0
     # Size the prompt's noise per story at the first word: before the first
@@ -1114,6 +1120,8 @@ class SteeringPlan:
         avoid_mode: str = "avoid",
         cohere_alpha: float = 0.05,
         pulse_every: int = 0,
+        pulse_reread: str = "context",
+        pulse_gain: float = 1.0,
         prompt_fit_tau: float = 0.0,
         prompt_fit_floor: float = 0.05,
         prompt_fit_mode: str = "shrink",
@@ -1362,6 +1370,8 @@ class SteeringPlan:
             avoid_mode=str(avoid_mode or "avoid"),
             cohere_alpha=float(cohere_alpha),
             pulse_every=int(pulse_every or 0),
+            pulse_reread=str(pulse_reread or "context"),
+            pulse_gain=float(pulse_gain if pulse_gain is not None else 1.0),
             prompt_fit_tau=float(prompt_fit_tau or 0.0),
             prompt_fit_floor=float(prompt_fit_floor),
             prompt_fit_mode=str(prompt_fit_mode or "shrink"),
@@ -2184,6 +2194,8 @@ class SteeringPlan:
             "avoid_mode": self.avoid_mode,
             "cohere_alpha": self.cohere_alpha,
             "pulse_every": self.pulse_every,
+            "pulse_reread": self.pulse_reread,
+            "pulse_gain": self.pulse_gain,
             "prompt_fit_tau": self.prompt_fit_tau,
             "prompt_fit_floor": self.prompt_fit_floor,
             "prompt_fit_mode": self.prompt_fit_mode,

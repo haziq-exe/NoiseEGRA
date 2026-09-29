@@ -357,6 +357,8 @@ def _ortho_tag_once(model_name: str, spec: ExperimentSpec, *, compress: bool) ->
             parts.append("r")
     if int(getattr(plan, "pulse_every", 0) or 0) > 0:
         parts.append(f"__pulse{int(plan.pulse_every)}")
+        if getattr(plan, "pulse_reread", "context") == "story":
+            parts.append(f"s{_float_tag(getattr(plan, 'pulse_gain', 1.0))}")
     if float(getattr(plan, "avoid_eta", 0.0) or 0.0) > 0:
         if getattr(plan, "avoid_mode", "avoid") == "cohere":
             parts.append(f"__cohere{_float_tag(plan.avoid_eta)}a{_float_tag(getattr(plan, 'cohere_alpha', 0.05))}")

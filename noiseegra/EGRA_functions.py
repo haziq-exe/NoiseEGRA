@@ -1440,7 +1440,13 @@ class EGRA:
                         finally:
                             plan._in_pulse = False
                         plan.pulse_start = int(shared["cur_t"]) + 1
-                        if cache_box.get("pkv") is not None:
+                        if cache_box.get("pkv") is None:
+                            return
+                        if str(getattr(plan, "pulse_reread", "context")) == "story":
+                            self._reread_story(ids, int(inputs["input_ids"].shape[-1]),
+                                               float(getattr(plan, "pulse_gain", 1.0)),
+                                               plan, shared, cache_box)
+                        else:
                             self._reread_prompt(
                                 {"input_ids": ids, "attention_mask": torch.ones_like(ids)},
                                 shared, cache_box)
@@ -1742,6 +1748,45 @@ class EGRA:
         for (ok, ov), (fk, fv) in zip(kv(pkv), kv(fresh)):
             ok[:, :, :n].copy_(fk[:, :, :n].to(ok.dtype))
             ov[:, :, :n].copy_(fv[:, :, :n].to(ov.dtype))
+
+    @torch.no_grad()
+    def _reread_story(self, ids, prompt_len: int, gain: float, plan, shared, cache_box) -> None:
+        """Read the story written so far again, the prompt's reading kept.
+
+        The story's positions (after ``prompt_len``) are read on top of the
+        prompt's cached keys and values, with the hooks attached as at the
+        prompt's read, so the story row gets the noise in its current direction
+        at ``gain`` times the starting length (the shadow gets the steering
+        only); their keys and values replace the story's part of the cache.
+        """
+        from transformers import DynamicCache
+        pkv = cache_box["pkv"]
+
+        def kv(cache):
+            if getattr(cache, "layers", None) is not None:
+                return [(l.keys, l.values) for l in cache.layers]
+            if hasattr(cache, "key_cache"):
+                return list(zip(cache.key_cache, cache.value_cache))
+            return [(k, v) for k, v in cache]
+
+        n = int(ids.shape[-1])
+        ctx = DynamicCache()
+        for i, (k, v) in enumerate(kv(pkv)):
+            ctx.update(k[:, :, :prompt_len].clone(), v[:, :, :prompt_len].clone(), i)
+        saved = {k: shared[k] for k in ("forward_calls", "t", "cur_t", "is_prefill")}
+        saved_gain = plan.offset_prefill_gain
+        shared.update(forward_calls=0, t=0, cur_t=0, is_prefill=True)
+        plan.offset_prefill_gain = float(gain)
+        try:
+            fresh = self.model(input_ids=ids[:, prompt_len:], past_key_values=ctx,
+                               use_cache=True).past_key_values
+        finally:
+            shared.update(saved)
+            plan.offset_prefill_gain = saved_gain
+            cache_box["pkv"] = pkv
+        for (ok, ov), (fk, fv) in zip(kv(pkv), kv(fresh)):
+            ok[:, :, prompt_len:n].copy_(fk[:, :, prompt_len:n].to(ok.dtype))
+            ov[:, :, prompt_len:n].copy_(fv[:, :, prompt_len:n].to(ov.dtype))
 
     @torch.no_grad()
     def _fit_prompt_noise(self, plan, inputs, shared, base: float) -> float:

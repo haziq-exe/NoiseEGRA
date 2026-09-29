@@ -147,6 +147,8 @@ def make_plan(
     avoid_mode="avoid",
     cohere_alpha=0.05,
     pulse_every=0,
+    pulse_reread="context",
+    pulse_gain=1.0,
     prompt_fit_tau=0.0,
     prompt_fit_mode="shrink",
     steer_envelope=False,
@@ -285,6 +287,8 @@ def make_plan(
         avoid_mode=avoid_mode,
         cohere_alpha=cohere_alpha,
         pulse_every=pulse_every,
+        pulse_reread=pulse_reread,
+        pulse_gain=pulse_gain,
         prompt_fit_tau=prompt_fit_tau,
         prompt_fit_mode=prompt_fit_mode,
         steer_envelope=steer_envelope,
@@ -2790,6 +2794,8 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                 # A new segment of noise, in a fresh direction with the
                 # context read again, every `pulse_every` steps (at a sentence end).
                 kw["pulse_every"] = pulse_every
+                kw["pulse_reread"] = str(getattr(args, "pulse_reread", None) or "context")
+                kw["pulse_gain"] = float(getattr(args, "pulse_gain", None) or 1.0)
             if anchor_p1 > 0 and sizing == "while":
                 kw["anchor_p1"] = anchor_p1
             fit_tau = float(getattr(args, "prompt_fit_tau", None) or 0.0)

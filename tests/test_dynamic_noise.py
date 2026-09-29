@@ -738,12 +738,52 @@ check("each segment has a fresh direction of the same length",
       and abs(float(dirs[0][0].norm() - dirs[1][0].norm())) < 1e-3)
 check("the story and its copy stay in step, and the next story starts afresh",
       pu.shadow_drift == 0 and pu.pulse_start == 0)
+ch = []
+_orig_rs = type(egra)._reread_story
+
+
+def _spy_rs(self, ids, prompt_len, gain, plan_, shared, cache_box):
+    pkv = cache_box["pkv"]
+    k = (pkv.layers[-1].keys if getattr(pkv, "layers", None) is not None
+         else (pkv.key_cache[-1] if hasattr(pkv, "key_cache") else pkv[-1][0]))
+    n = int(ids.shape[-1])
+    before = k[:, :, :n].clone()
+    _orig_rs(self, ids, prompt_len, gain, plan_, shared, cache_box)
+    ch.append((float((k[:, :, :prompt_len] - before[:, :, :prompt_len]).abs().max()),
+               float((k[0, :, prompt_len:n] - before[0, :, prompt_len:n]).abs().max()),
+               k[1, :, prompt_len:n].clone(), gain))
+
+
+type(egra)._reread_story = _spy_rs
+sr = plan(pulse_every=5, pulse_reread="story", pulse_gain=1.0)
+sr.offset_envelope, sr.offset_envelope_steps = "plateau", 2
+egra.generate_with_orthogonal_steering(PROMPT, sr, max_new_tokens=16, seed=4)
+type(egra)._reread_story = _orig_rs
+check("story re-read: the prompt's reading is kept, the story's is read again",
+      len(ch) >= 2 and all(c[0] == 0.0 and c[1] > 1e-6 for c in ch), str([c[:2] for c in ch[:2]]))
+ch_full = list(ch); ch.clear()
+type(egra)._reread_story = _spy_rs
+sz = plan(pulse_every=5, pulse_reread="story", pulse_gain=1e-9)
+sz.offset_envelope, sz.offset_envelope_steps = "plateau", 2
+egra.generate_with_orthogonal_steering(PROMPT, sz, max_new_tokens=16, seed=4)
+type(egra)._reread_story = _orig_rs
+# At the first segment both runs have written the same words (the noise sizes
+# differ only from there on), so the shadow's re-read must match exactly.
+gap = float((ch_full[0][2] - ch[0][2]).abs().max())
+check("story re-read: the shadow reads the same whatever the new noise's size (steering only)",
+      len(ch) >= 2 and gap < 1e-4, f"{gap:.2g}")
+check("story re-read: the prompt's size is restored after it", sr.offset_prefill_gain == 1.5)
 pz = types.SimpleNamespace(**{**vars(args), "headline_arms": ["while"], "noise_plateau": [32],
                               "pulse_every": 96})
 pzi, _ = build_suite("headline", SV, LAYERS, list(NAMES), 1.5, pz)
 pzid = _spec_to_run_id("M", make_specs(*pzi)[0])
 check("the segment length reaches the plan and the id",
       pzi[0]["plan"].pulse_every == 96 and "__pulse96" in pzid, pzid[-60:])
+ps2 = types.SimpleNamespace(**{**vars(pz), "pulse_reread": "story", "pulse_gain": 1.0})
+psi, _ = build_suite("headline", SV, LAYERS, list(NAMES), 1.5, ps2)
+psid = _spec_to_run_id("M", make_specs(*psi)[0])
+check("the story re-read reaches the plan and the id",
+      psi[0]["plan"].pulse_reread == "story" and "__pulse96s1" in psid, psid[-60:])
 
 print()
 if FAILURES:

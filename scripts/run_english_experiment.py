@@ -776,6 +776,13 @@ def main() -> None:
                          "after the current noise segment began, draw a fresh direction, read the "
                          "whole context again with it, and restart the noise's envelope (with "
                          "--noise-plateau); 0 or unset is one segment")
+    ap.add_argument("--pulse-reread", choices=["context", "story"], default=None,
+                    help="with --pulse-every: read prompt and story again with the new direction "
+                         "(context, default), or keep the prompt's reading and read only the story "
+                         "so far (story)")
+    ap.add_argument("--pulse-gain", type=float, default=None,
+                    help="with --pulse-reread story: the new direction's size on the story's "
+                         "re-read, in starting lengths (default 1.0)")
     ap.add_argument("--debt-eta", type=float, default=None,
                     help="suite 'headline': while the noise is on, where it lowers the story's "
                          "probability of the words of a content rule the text still owes "
