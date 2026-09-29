@@ -2497,3 +2497,41 @@ their start. Same seeds as r204 (which reproduces exactly), openings removed.
   fixed direction's (-0.45 on average; 10 stories per arm per rater). The
   coherence gain does not show as better stories; at 50 stories and two
   raters neither difference is established.
+
+### Variety at the opening, middle and ending (run r206, scripts/segment_novelty.py, 2026-09-29)
+
+The judge had only ever read the first 128 tokens, about the first half of a
+story. Each coherent story (opening heading removed) was cut into thirds of its
+words and each third judged separately, comparing stories within fixed groups
+of ten consecutive coherent stories (one distinct-of-10 draw per group);
+"whole" is the old measure on the same groups. Intervals: bootstrap over groups.
+
+| Distinct of 10 | Whole | Opening | Middle | Ending |
+|---|---|---|---|---|
+| Qwen untouched | 1.09 | 1.36 | 1.47 | 1.77 |
+| Qwen top-p | 1.32 | 1.70 | 1.81 | 2.05 |
+| Qwen full-length noise | 5.61 | 5.23 | 2.54 | 4.12 |
+| Qwen front-loaded | 5.05 | 5.32 | 2.24 | 3.39 |
+| Qwen + resonance | 6.00 | 6.04 | 2.75 | 3.99 |
+| Qwen + anti-resonance | 4.99 | 5.68 | 2.23 | 3.19 |
+| Granite untouched / top-p | 2.93 / 5.19 | 3.71 / 4.65 | 2.37 / 2.87 | 3.49 / 4.07 |
+| Granite full-length / front-loaded / + resonance | 6.66 / 5.66 / 5.55 | 5.27 / 5.15 / 5.01 | 4.37 / 3.95 / 3.39 | 5.58 / 4.35 / 5.49 |
+| Llama untouched / top-p | 4.48 / 5.75 | 5.08 / 5.94 | 2.21 / 3.71 | 2.93 / 5.29 |
+| Llama full-length / front-loaded / + resonance | 5.96 / 5.85 / 5.46 | 5.05 / 5.71 / 4.91 | 2.59 / 2.95 / 2.69 | 3.70 / 2.98 / 3.18 |
+
+Differences (arm minus reference):
+
+- Writing noise adds variety at the ending on every model: full-length minus
+  front-loaded, ending +0.73 [+0.02, +1.45] Qwen, +1.23 [+0.33, +2.14] Granite,
+  +0.72 [+0.11, +1.30] Llama. Front-loading gave this up unseen.
+- Direction changes add late variety the old measure could not see: resonance
+  minus front-loaded, ending +1.14 [+0.19, +2.13] on Granite, +0.60 [-0.04,
+  +1.25] and middle +0.51 [-0.04, +1.06] on Qwen, +0.20 n.s. on Llama.
+  50-story pilots (4 groups each): default-avoiding turn at 1.5x ending +1.96
+  [+0.75, +3.12]; coherence turn at 1.5x ending +1.30 [+0.20, +2.40].
+- On Llama the method varies only openings: against top-p it is -0.76
+  [-1.34, -0.19] in the middle and -2.31 [-3.10, -1.52] at the ending (its
+  endings are as alike as the untouched model's). On Qwen it beats top-p in
+  every third (middle +0.44 [+0.11, +0.77], ending +1.33 [+0.81, +1.87]); on
+  Granite in the middle (+1.08 [+0.41, +1.75]).
+- Middles are the least varied third under every method.
