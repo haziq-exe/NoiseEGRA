@@ -2535,3 +2535,31 @@ Differences (arm minus reference):
   every third (middle +0.44 [+0.11, +0.77], ending +1.33 [+0.81, +1.87]); on
   Granite in the middle (+1.08 [+0.41, +1.75]).
 - Middles are the least varied third under every method.
+
+### Segments of noise: a fresh direction at sentence ends (runs r207-r209, 2026-09-29)
+
+--pulse-every 96: at the first sentence end at least 96 steps into the current
+segment, a fresh per-story direction (same length) is drawn, the context is read
+again with it, and the writing noise's and steering's envelope (full 32 steps,
+faded over 32) restarts; 1-2 new segments per story (steps ~100-120 and
+~200-230). Two ways of reading again: the whole context at the prompt's size
+(r207), or only the story written so far at the starting length, the prompt's
+cached reading kept (r208, --pulse-reread story). 50 Qwen stories, seeds 0-49;
+control = the front-loaded method's first 50 (r186, reproduces exactly).
+Thirds judged within groups of 10 (4 groups each); quality from 2 Sonnet
+raters, 10 stories of each arm and 10 untouched each.
+
+| 50 Qwen stories | Coherent | Rules | Opening | Middle | Ending | Quality gap |
+|---|---|---|---|---|---|---|
+| Front-loaded (control) | 48 | 2.48 | 5.55 | 2.16 | 3.51 | -0.75 |
+| Segments, context read again | 46 | 2.37 | +0.15 | +0.98 [+0.17, +1.77] | +1.96 [+0.30, +3.55] | -1.55 |
+| Segments, story read again | 46 | 2.26 | -0.38 | -0.02 | +1.11 [-0.44, +2.75] | -1.00 |
+
+- Reading the whole context again (instruction included) made the model start
+  a new story mid-way ("The story begins with a heartbeat, not a word..."): its
+  late variety is partly a broken narrative, and it costs 0.8 of quality.
+- Reading only the story again keeps the narrative going (a lowercase letter
+  sometimes follows the boundary); rules slightly better, quality -0.25 against
+  the control, ending variety +1.1 (not established at 4 groups).
+- Being confirmed at 200 stories (r210 fixed direction, r211 coherence turn,
+  r212 story-only segments).
