@@ -2374,3 +2374,80 @@ removed. On Qwen it fired at 3-5 of about 61 noisy steps, and the first stories
 were word for word those of the front-loaded method on the same seeds: removing
 one gradient direction from a random direction in a 2048-dimensional stream
 barely changes it. Stopped after 2 stories.
+
+### Headings inflated the variety measure (run r201, 2026-09-29)
+
+The NoveltyBench judge reads the first 128 tokens of each story. A story that
+opens with a heading ("**The Bridge**") or a reply to the reader ("Sure! Here
+is...") keeps it through the coherence filter, and two stories with different
+titles were called different stories whatever their plots. On the front-loaded
+method's 200 Qwen stories, same-story pairs were 45% when neither story had
+such an opening and 3% when both did. Re-judged with the opening removed (a
+heading or title line, or a reply ending in a colon or line break; nothing
+else touched):
+
+| Qwen3-1.7B, 200 stories | Distinct of 10, as judged | Openings removed | vs front-loaded (removed) |
+|---|---|---|---|
+| Untouched | 1.06 | 1.06 | -3.83 [-4.46, -3.06] |
+| Top-p 0.95, T=1.8 | 1.29 | 1.29 | -3.60 [-4.26, -2.80] |
+| Full-length noise (r138) | 6.48 | 5.91 | +1.02 [-0.00, +1.96] |
+| Front-loaded + steering (r186) | 6.05 | **4.89** | |
+| + resonance (r193) | 6.78 | 5.77 | +0.88 [-0.06, +2.02]; same-story -10.2% [-20.2%, -0.5%] |
+| + anti-resonance (r196) | 6.80 | 5.39 | +0.50 [-0.64, +1.44] |
+
+- The arms with no such openings (untouched, top-p, and the 50-story prompt-fit
+  pilots) score exactly as before, so the drop is the openings, not the judge.
+- The inflation was 0.6-1.4 of distinct-of-10, largest for the front-loaded
+  method: front-loading cost about 1.0 of real variety (5.91 -> 4.89), which the
+  headings hid. The method still writes about 4.6 times as many different
+  stories as the untouched model.
+- Granite and Llama have few such openings (3 and 0-1 of 200) and should move
+  little; not yet re-judged.
+- scripts/score_novelty.py now removes these openings before judging by default
+  (--keep-openings for the old scoring; novelty.json records which).
+
+### Anti-resonance on the front-loaded method, Qwen, 200 stories (run r196)
+
+| | Coherent | Slips | Rules broken | Distinct of 10 (as judged) | Quality gap to untouched |
+|---|---|---|---|---|---|
+| Front-loaded | 187 | 50 | 2.52 | 6.05 | -0.50 [-0.89, -0.12] (same raters) |
+| + anti-resonance | 187 | 61 | 2.72 | 6.80 | -0.44 [-0.65, -0.24] |
+
+Anti-resonance minus front-loaded: rules +0.19 [-0.06, +0.45], distinct +0.75
+[-0.48, +1.70] (+0.50 [-0.64, +1.44] with openings removed), quality +0.06
+[-0.39, +0.53] (4 of 10 raters). No measurable gain; not taken to Granite or
+Llama. The front-loaded method's own gap to the untouched model has come out at
+-0.01, +0.08 and -0.50 in three rating rounds: one round moves by about 0.5, so
+only within-round comparisons are meaningful.
+
+### Pilots, 50 Qwen stories on seeds 0-49 (runs r198-r200, r202)
+
+| Seeds 0-49 | Coherent | Slips | Headings | Rules broken | Distinct of 10 (as judged) |
+|---|---|---|---|---|---|
+| Front-loaded (r186) | 48 | 13 | 11 | 2.48 | 6.99 |
+| Noise ended after 3 changed words (r198) | 48 | 13 | 11 | 2.73 | 6.59 |
+| Noise ended after 6 changed words (r198) | 48 | 13 | 11 | 2.67 | 6.86 |
+| Prompt noise shrunk per story at the first word (r199) | 50 | 2 | 0 | 1.98 | 4.37 |
+| Prompt noise redrawn per story at the first word (r200) | 48 | 3 | 0 | 2.00 | 4.77 |
+| Fixed direction, no drift (r202 control) | 48 | 14 | 13 | 2.75 | 7.29 |
+| Direction turned away from the default word (r202) | 45 | 14 | 13 | 2.91 | 7.97 |
+
+- Change budget (--noise-budget): the writing noise stays on until it has
+  changed N words in expectation (running sum of the total-variation distance
+  between story and shadow). The prompt's share alone spends most of it
+  (budgets ran out at steps 6-33); openings are identical to the front-loaded
+  method's, rules slightly worse, variety within noise. No gain.
+- Prompt fit (--prompt-fit-tau): headings and preambles gone and rules better,
+  but it changes the noise's size (or reselects its direction) around one
+  failure found on Qwen with a list of opening words; set aside as neither
+  general nor a direction-change method. Its variety loss is mostly the
+  heading inflation above: its 4.4-4.8 compares with 4.89 for the front-loaded
+  method once openings are removed.
+- Default-avoiding turn (arm whileavoid, --avoid-eta 0.05 --avoid-p1 0.6): at
+  steps where the shadow's top word is below 0.6, the step is replayed with a
+  gradient and each layer's direction turns 0.05 rad away from the direction
+  that would make the story write that word (length kept). It turned at 14-23
+  of 61 noisy steps but ended only ~14 degrees from its start (each step's
+  gradient points elsewhere). Against its own fixed-direction control: distinct
+  +0.68 [-1.22, +2.40], rules +0.16, 3 fewer coherent. No clear gain; the
+  averaged-turn and prompt re-read version is in r203.
