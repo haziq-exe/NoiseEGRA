@@ -1028,6 +1028,8 @@ class EGRA:
         cache_box = {}
         debt_eta = float(getattr(plan, "debt_eta", 0.0) or 0.0)
         debt = None
+        pulse_every = int(getattr(plan, "pulse_every", 0) or 0)
+        pulser = None
         avoid_eta = float(getattr(plan, "avoid_eta", 0.0) or 0.0)
         avoid = None
         avoid_start = ({l: lp.offset.detach().float().clone()
@@ -1323,7 +1325,7 @@ class EGRA:
 
             # The generation's own cache, for replaying the current step with a
             # gradient when the guard corrects the noise's direction.
-            if guard_fix or debt_eta > 0 or avoid_eta > 0:
+            if guard_fix or debt_eta > 0 or avoid_eta > 0 or pulse_every > 0:
                 def grab_cache(module, args, kwargs):
                     if not shared.get("replay"):
                         cache_box["pkv"] = kwargs.get("past_key_values")
@@ -1425,6 +1427,28 @@ class EGRA:
                                     float(getattr(plan, "debt_tau", 0.3)), on_suppressed,
                                     active=lambda: plan.envelope_at(shared["cur_t"]) > 0.05)
                     processors = LogitsProcessorList([sizer, debt, *list(processors)[1:]])
+                if pulse_every > 0:
+                    # A new segment: a fresh direction, the context read again
+                    # with it, the envelope restarted. Last, after everything
+                    # that reads this step's scores.
+                    from .dynamic_noise import PulseTrigger
+
+                    def on_pulse(ids):
+                        plan._in_pulse = True
+                        try:
+                            plan.resample_offset()
+                        finally:
+                            plan._in_pulse = False
+                        plan.pulse_start = int(shared["cur_t"]) + 1
+                        if cache_box.get("pkv") is not None:
+                            self._reread_prompt(
+                                {"input_ids": ids, "attention_mask": torch.ones_like(ids)},
+                                shared, cache_box)
+
+                    pulser = PulseTrigger(self.tokenizer, pulse_every, on_pulse,
+                                          start=lambda: plan.pulse_start,
+                                          step=lambda: shared["cur_t"])
+                    processors = LogitsProcessorList([*list(processors), pulser])
                 if avoid_eta > 0:
                     # After the controller (raw scores); it only reads them.
                     from .dynamic_noise import DefaultAvoid, prefix_cache, rotate_away
@@ -1616,6 +1640,14 @@ class EGRA:
             print(f"  [guard] the noise pushed a token the clean model rules out at "
                   f"{int(got['violations'])} of {int(got['steps'])} steps; corrected the "
                   f"direction {int(got['corrections'])} times", flush=True)
+        if pulser is not None:
+            got = pulser.summary()
+            if getattr(plan, "pulse_log", None) is None:
+                plan.pulse_log = []
+            plan.pulse_log.append(got)
+            print(f"  [pulse] {int(got['pulses'])} new segments, at steps {got['at']}: a fresh "
+                  f"direction each, the context read again with it", flush=True)
+            plan.pulse_start = 0
         if avoid is not None:
             got = avoid.summary()
             ends = []

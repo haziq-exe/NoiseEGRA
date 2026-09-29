@@ -684,6 +684,67 @@ check("the avoid arm has no drift, its settings and its own id",
       ai[k_]["plan"].noise_beta is None and "__avoid0p05p0p6m0p9rr8" in aids[k_]
       and len(set(aids)) == 2 and all(it["plan"].noise_beta is None for it in ai), aids[k_][-60:])
 
+print("\n== segments of noise ==")
+import noiseegra.dynamic_noise as DN  # noqa: E402
+from noiseegra.dynamic_noise import PulseTrigger  # noqa: E402
+
+
+class _Tok3:
+    def decode(self, ids, skip_special_tokens=True):
+        return {1: " cat", 2: " sat.", 3: ' "Hi!"'}.get(int(ids[-1]), " x")
+
+
+fired, clock = [], {"t": 0, "start": 0}
+pt = PulseTrigger(_Tok3(), 4, lambda ids: fired.append(clock["t"]),
+                  start=lambda: clock["start"], step=lambda: clock["t"])
+for t, tok in enumerate([2, 1, 1, 1, 1, 2, 1, 3, 2]):
+    clock["t"] = t
+    pt(torch.tensor([[0, tok]]), torch.zeros(1, 5))
+    if fired and fired[-1] == t:
+        clock["start"] = t + 1
+check("a segment starts only at a sentence end at least N steps into the current one",
+      fired == [5], str(fired))
+
+ps = plan(); ps.offset_envelope, ps.offset_envelope_steps = "plateau", 2
+torch.manual_seed(1); ps.resample_offset()
+ps.pulse_start = 10
+check("the envelope runs from the segment's start",
+      ps.envelope_at(11) == 1.0 and ps.envelope_at(15) < 0.05 and ps.envelope_at(3) == 1.0)
+ps.resample_offset()
+check("each story starts in its first segment", ps.pulse_start == 0)
+
+# The tiny model's decoder returns a sentence ending in a full stop, so every
+# step ends a sentence and a segment begins as soon as N steps have passed.
+pu = plan(pulse_every=5); pu.offset_envelope, pu.offset_envelope_steps = "plateau", 2
+dirs = []
+_orig_rr = type(egra)._reread_prompt
+
+
+def _spy_rr(self, inputs, shared, cache_box):
+    dirs.append((pu.layer_plans[LAYERS[0]].offset.clone(), int(inputs["input_ids"].shape[-1])))
+    return _orig_rr(self, inputs, shared, cache_box)
+
+
+type(egra)._reread_prompt = _spy_rr
+start_dir = None
+_orig_res = pu.resample_offset
+egra.generate_with_orthogonal_steering(PROMPT, pu, max_new_tokens=20, seed=4)
+type(egra)._reread_prompt = _orig_rr
+pl = pu.pulse_log[-1]
+check("segments begin every N steps, each reading the whole context so far",
+      pl["pulses"] >= 2 and len(dirs) == pl["pulses"] and dirs[1][1] > dirs[0][1] > 20, str(pl))
+check("each segment has a fresh direction of the same length",
+      abs(float(dirs[0][0] @ dirs[1][0]) / float(dirs[0][0].norm() * dirs[1][0].norm())) < 0.9
+      and abs(float(dirs[0][0].norm() - dirs[1][0].norm())) < 1e-3)
+check("the story and its copy stay in step, and the next story starts afresh",
+      pu.shadow_drift == 0 and pu.pulse_start == 0)
+pz = types.SimpleNamespace(**{**vars(args), "headline_arms": ["while"], "noise_plateau": [32],
+                              "pulse_every": 96})
+pzi, _ = build_suite("headline", SV, LAYERS, list(NAMES), 1.5, pz)
+pzid = _spec_to_run_id("M", make_specs(*pzi)[0])
+check("the segment length reaches the plan and the id",
+      pzi[0]["plan"].pulse_every == 96 and "__pulse96" in pzid, pzid[-60:])
+
 print()
 if FAILURES:
     print(f"{len(FAILURES)} FAILED: {FAILURES}")

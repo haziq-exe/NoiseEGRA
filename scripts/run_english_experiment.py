@@ -771,6 +771,11 @@ def main() -> None:
                     help="arm 'whilecohere': turn the noise toward the shadow's top word at steps where "
                          "the story's own top word gets less than this share of the shadow's top "
                          "probability (default 0.05); uses --avoid-eta/--avoid-momentum/--avoid-reread")
+    ap.add_argument("--pulse-every", type=int, default=None,
+                    help="suite 'headline': at the first sentence end at least this many steps "
+                         "after the current noise segment began, draw a fresh direction, read the "
+                         "whole context again with it, and restart the noise's envelope (with "
+                         "--noise-plateau); 0 or unset is one segment")
     ap.add_argument("--debt-eta", type=float, default=None,
                     help="suite 'headline': while the noise is on, where it lowers the story's "
                          "probability of the words of a content rule the text still owes "

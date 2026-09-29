@@ -423,6 +423,45 @@ class DefaultAvoid(LogitsProcessor):
                 "step_cos": self.cos_sum / max(self.turns, 1)}
 
 
+_SENTENCE_END = (".", "!", "?", "\n", ".\"", "!\"", "?\"", ".\u201d", "!\u201d", "?\u201d")
+
+
+class PulseTrigger(LogitsProcessor):
+    """Start a new segment of noise at the first sentence end after ``every`` steps.
+
+    At each step it checks whether at least ``every`` steps have passed since the
+    current segment began and the story's last word ends a sentence; if so it
+    calls ``on_pulse(input_ids)`` (which draws a new direction and reads the
+    context again) and returns. Scores pass through unchanged.
+    """
+
+    def __init__(self, tokenizer, every: int, on_pulse: Callable[[torch.Tensor], None],
+                 start: Callable[[], int], step: Callable[[], int], max_pulses: int = 8):
+        self.tokenizer = tokenizer
+        self.every = int(every)
+        self.on_pulse = on_pulse
+        self.start = start
+        self.step = step
+        self.max_pulses = int(max_pulses)
+        self.pulses = 0
+        self.at: List[int] = []
+
+    def __call__(self, input_ids, scores):
+        t = int(self.step())
+        if self.pulses >= self.max_pulses or t - int(self.start()) < self.every:
+            return scores
+        last = self.tokenizer.decode(input_ids[0, -1:], skip_special_tokens=True).rstrip(" ")
+        if not last.endswith(_SENTENCE_END):
+            return scores
+        self.on_pulse(input_ids)
+        self.pulses += 1
+        self.at.append(t)
+        return scores
+
+    def summary(self) -> Dict[str, float]:
+        return {"pulses": float(self.pulses), "at": list(self.at)}
+
+
 def feedback_update(plan, delta: torch.Tensor, mode: str, eta: float) -> float:
     """Turn every layer's per-story noise by the downstream displacement ``delta``.
 

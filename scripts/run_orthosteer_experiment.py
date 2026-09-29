@@ -146,6 +146,7 @@ def make_plan(
     avoid_reread=0,
     avoid_mode="avoid",
     cohere_alpha=0.05,
+    pulse_every=0,
     prompt_fit_tau=0.0,
     prompt_fit_mode="shrink",
     steer_envelope=False,
@@ -283,6 +284,7 @@ def make_plan(
         avoid_reread=avoid_reread,
         avoid_mode=avoid_mode,
         cohere_alpha=cohere_alpha,
+        pulse_every=pulse_every,
         prompt_fit_tau=prompt_fit_tau,
         prompt_fit_mode=prompt_fit_mode,
         steer_envelope=steer_envelope,
@@ -2783,6 +2785,11 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                 # plateau length (32 if none is given).
                 kw.update(offset_envelope="budget", offset_envelope_steps=plateau or 32,
                           offset_change_budget=change_budget)
+            pulse_every = int(getattr(args, "pulse_every", None) or 0)
+            if pulse_every > 0 and sizing == "while":
+                # A new segment of noise, in a fresh direction with the
+                # context read again, every `pulse_every` steps (at a sentence end).
+                kw["pulse_every"] = pulse_every
             if anchor_p1 > 0 and sizing == "while":
                 kw["anchor_p1"] = anchor_p1
             fit_tau = float(getattr(args, "prompt_fit_tau", None) or 0.0)

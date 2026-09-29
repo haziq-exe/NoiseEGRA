@@ -616,6 +616,13 @@ class SteeringPlan:
     # gives less than cohere_alpha of its top word's probability.
     avoid_mode: str = "avoid"
     cohere_alpha: float = 0.05
+    # Segments of noise: at the first sentence end at least pulse_every steps
+    # after the current segment began, draw a new per-story direction, read the
+    # whole context so far again with it (as the prompt is read at the start)
+    # and restart the writing noise's envelope from there. 0 is one segment.
+    pulse_every: int = 0
+    # The step at which the current segment began (reset per story).
+    pulse_start: int = 0
     # Size the prompt's noise per story at the first word: before the first
     # word is sampled, if the noise has made a non-story opening (a heading, a
     # title, "Sure", "Here is") likelier for the story than for its shadow --
@@ -1106,6 +1113,7 @@ class SteeringPlan:
         avoid_reread: int = 0,
         avoid_mode: str = "avoid",
         cohere_alpha: float = 0.05,
+        pulse_every: int = 0,
         prompt_fit_tau: float = 0.0,
         prompt_fit_floor: float = 0.05,
         prompt_fit_mode: str = "shrink",
@@ -1353,6 +1361,7 @@ class SteeringPlan:
             avoid_reread=int(avoid_reread or 0),
             avoid_mode=str(avoid_mode or "avoid"),
             cohere_alpha=float(cohere_alpha),
+            pulse_every=int(pulse_every or 0),
             prompt_fit_tau=float(prompt_fit_tau or 0.0),
             prompt_fit_floor=float(prompt_fit_floor),
             prompt_fit_mode=str(prompt_fit_mode or "shrink"),
@@ -1626,6 +1635,8 @@ class SteeringPlan:
             got = float(((self.control_state or {}).get("secured", 0.0)) or 0.0)
             return 1.0 + float(self.offset_secured_boost) * got
         span = max(1, int(self.offset_envelope_steps or self.noise_traj_steps))
+        # With segments, every envelope runs from the current segment's start.
+        t = float(t) - float(getattr(self, "pulse_start", 0) or 0)
         frac = min(max(float(t) / span, 0.0), 1.0)
         if mode == "decay":
             return float(0.5 * (1.0 + math.cos(math.pi * frac)))
@@ -1660,6 +1671,8 @@ class SteeringPlan:
         """
         self.resample_jitter()
         self.change_spent, self.change_end = 0.0, None
+        if not getattr(self, "_in_pulse", False):
+            self.pulse_start = 0
         if float(getattr(self, "steer_split_concentration", 0.0) or 0.0) > 0:
             # This story's share of the push for each rule. Drawn before any
             # early return, so a plan with no offset still gets one.
@@ -2170,6 +2183,7 @@ class SteeringPlan:
             "avoid_reread": self.avoid_reread,
             "avoid_mode": self.avoid_mode,
             "cohere_alpha": self.cohere_alpha,
+            "pulse_every": self.pulse_every,
             "prompt_fit_tau": self.prompt_fit_tau,
             "prompt_fit_floor": self.prompt_fit_floor,
             "prompt_fit_mode": self.prompt_fit_mode,
