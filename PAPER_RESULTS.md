@@ -2451,3 +2451,27 @@ only within-round comparisons are meaningful.
   gradient points elsewhere). Against its own fixed-direction control: distinct
   +0.68 [-1.22, +2.40], rules +0.16, 3 fewer coherent. No clear gain; the
   averaged-turn and prompt re-read version is in r203.
+
+### The default-avoiding turn against a stronger fixed noise (runs r203, r204, 2026-09-29)
+
+Averaged turns (--avoid-momentum 0.9) and the prompt re-read every 8 steps with
+the turned direction (--avoid-reread 8): the direction now ends 50-57 degrees
+from its start and the prompt is read again 6-7 times per story. Same 50 seeds,
+openings removed before judging; both prompt sizes in one run; quality from two
+Sonnet raters each rating 10 stories of every arm and 10 untouched, shuffled
+(gap = arm minus untouched within the rater, mean of the two).
+
+| 50 Qwen stories | Coherent | Rules broken | Same-story | Distinct of 10 | Quality gap |
+|---|---|---|---|---|---|
+| Fixed direction, prompt 1.5x | 48 | 2.75 | 30.9% | 5.73 | -0.70 |
+| Turning away from the default, 1.5x | 45 | 3.20 | 16.7% | 7.02 | -1.00 |
+| Fixed direction, prompt 2.0x | 40 | 3.20 | 3.6% | 9.08 | -1.20 |
+| Turning away from the default, 2.0x | 39 | 3.41 | 5.1% | 8.86 | -1.90 |
+
+- Turning buys variety less cheaply than a larger fixed noise: at its variety
+  (7.02) the line between the two fixed arms gives about 2.92 rules, 45
+  coherent and -0.89 quality, against its 3.20, 45 and -1.00. At 2.0x it is
+  worse on everything. The default-avoiding turn is not a gain.
+- The larger fixed prompt noise itself is an efficient knob: +3.35 distinct for
+  -0.5 quality and +0.45 rules; what it costs is coherence (48 -> 40 of 50).
+- r203 and r204 reproduce each other's 1.5x arms exactly (same seeds).
