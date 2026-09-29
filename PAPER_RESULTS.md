@@ -2589,3 +2589,56 @@ intervals by bootstrap over raters).
   opening variety: a direction that wanders pushes the story less far.
 - Lesson on method: segment effects need 200 stories (18 groups); 50-story
   pilots (4 groups) overstated every late-variety gain.
+
+### Turn objectives with front-loaded noise and rule steering kept on throughout (runs r214-r219, 2026-09-29)
+
+Noise full for 32 steps and faded over 32 (--noise-plateau 32); rule steering at
+full strength for the whole story (--writing-steer full). Turn arms use a fixed
+direction that turns 0.05 rad per trigger, averaged (--avoid-momentum 0.9), with
+the prompt read again every 8 steps while the noise is on:
+
+- Coherence turn (whilecohere): where the story's top word gets < 0.05 of the
+  shadow's top probability, toward the shadow's top word.
+- Explore-and-cohere (whileboth): the same, and elsewhere where the shadow's
+  top word is below 0.6, away from it.
+- Confidence-matching (whileentropy): where the story's next-word entropy
+  differs from the shadow's by > 0.5 nats, along the exact entropy gradient
+  toward the shadow's entropy.
+- Resonance (whiletoward): toward the downstream displacement, as before.
+- Controls: fixed direction (whilenodrift); drifting direction (while).
+
+50 stories, seeds 0-49. Thirds judged over every pair (openings removed);
+intervals from half-size draws against the fixed direction. Quality: 2 Sonnet
+raters, 10 stories of each arm and 10 untouched each (gap within rater, mean).
+Granite 4.0 is a hybrid state-space model: the one-step replay and prompt
+re-read cannot cut its recurrent state, so the three gradient turns crashed
+there; Llama-3.2-3B was run instead.
+
+| Qwen3-1.7B | Coherent | Rules | Opening | Middle | Ending | Quality gap |
+|---|---|---|---|---|---|---|
+| Fixed direction | 48 | 2.50 | 5.90 | 2.69 | 3.90 | -1.65 |
+| Drifting direction | 47 | 2.74 | -0.16 | -0.31 | -0.15 | -1.20 |
+| Resonance | 48 | 2.77 | +0.22 | -0.13 | +0.61 | -1.55 |
+| Coherence turn | 48 | 2.67 | -0.32 | -0.21 | +0.26 | -1.60 |
+| Explore-and-cohere | 47 | 3.02 | +0.35 | **+1.78 [+0.32, +3.54]** | **+1.77 [+0.16, +3.80]** | -1.75 |
+| Confidence-matching | 46 | 2.91 | +0.87 | +0.67 | +0.56 | -2.30 |
+
+| Llama-3.2-3B | Coherent | Rules | Opening | Middle | Ending | Quality gap |
+|---|---|---|---|---|---|---|
+| Fixed direction | 50 | 1.68 | 5.18 | 2.65 | 3.41 | -0.70 |
+| Drifting direction | 50 | 1.46 | +0.60 | +0.11 | -0.09 | -0.35 |
+| Resonance | 50 | 1.58 | -0.20 | -0.07 | -0.11 | -0.65 |
+| Coherence turn | 50 | 1.62 | +0.43 | -0.13 | -0.30 | -0.60 |
+| Explore-and-cohere | 49 | 2.43 | +0.13 | +0.79 [-0.02, +2.38] | -0.86 | -0.90 |
+| Confidence-matching | 50 | 2.06 | +0.25 | +0.21 | -0.12 | -0.50 |
+
+(Differences from the fixed direction except the fixed row.)
+
+- Rule steering kept on while writing costs quality: on Qwen every arm is 1.2-2.3
+  below the untouched model (against -0.2 to -0.5 with steering fading with the
+  noise); Llama tolerates it better (-0.35 to -0.9).
+- Explore-and-cohere is the only turn with established late-story variety: on
+  Qwen middle +1.78 and ending +1.77 over the fixed direction at about the same
+  quality (-0.10) but +0.5 rules broken. On Llama its middle rises (+0.79,
+  borderline) and its ending does not.
+- Being repeated with the steering fading with the noise (r220-r222).
