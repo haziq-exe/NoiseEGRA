@@ -2475,3 +2475,25 @@ Sonnet raters each rating 10 stories of every arm and 10 untouched, shuffled
 - The larger fixed prompt noise itself is an efficient knob: +3.35 distinct for
   -0.5 quality and +0.45 rules; what it costs is coherence (48 -> 40 of 50).
 - r203 and r204 reproduce each other's 1.5x arms exactly (same seeds).
+
+### Turning the noise toward the clean model where the story breaks (run r205, 2026-09-29)
+
+Arm whilecohere: the default-avoiding machinery with the objective reversed. At
+steps where the story's own top word gets less than 0.05 of the shadow's top
+probability, each layer's direction turns 0.05 rad toward the gradient raising
+the shadow's top word (averaged turns, prompt re-read every 8 steps, length
+kept). It fired at 3-7 of 61 noisy steps; directions ended 6-20 degrees from
+their start. Same seeds as r204 (which reproduces exactly), openings removed.
+
+| 50 Qwen stories | Coherent | Rules broken | Distinct of 10 | Quality gap (seeds 20-39, 2 raters) |
+|---|---|---|---|---|
+| Fixed direction, 1.5x | 48 | 2.75 | 5.73 | +0.15 |
+| Coherence turn, 1.5x | 47 | 2.87 | 5.14 | +0.05 |
+| Fixed direction, 2.0x | 40 | 3.20 | 9.08 | -0.50 |
+| Coherence turn, 2.0x | 45 | 3.31 | 9.06 | -0.95 |
+
+- At 2.0x the turn keeps the variety (9.06 vs 9.08) and 5 more of 50 stories
+  pass the coherence checks, but both raters rate its stories lower than the
+  fixed direction's (-0.45 on average; 10 stories per arm per rater). The
+  coherence gain does not show as better stories; at 50 stories and two
+  raters neither difference is established.
