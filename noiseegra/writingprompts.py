@@ -243,8 +243,10 @@ MIDDLE_SYSTEM = (
     "You write short stories for readers in middle school and early high school."
 )
 
+MIDDLE_OPENING = "Write one short story for a middle-school reader."
+
 MIDDLE_INSTRUCTION = (
-    "Write one short story for a middle-school reader.\n\n"
+    "{opening}\n\n"
     "Aim for roughly {target} words -- long enough for something to happen in "
     "it.\n\n"
     "The story must satisfy every one of these requirements:\n"
@@ -253,17 +255,46 @@ MIDDLE_INSTRUCTION = (
 )
 
 
+# Other story tasks with the same whole-story rules: a different reader and a
+# description of the story wanted, and nothing else changed -- the word target,
+# the requirement list and the closing line are the middle-school instruction's.
+# Each describes a story in which every rule is natural to meet: two characters
+# (one named, a he and a she), room for speech and for a comparison, and nothing
+# that pulls the tense into the past.
+STORY_BRIEFS: Dict[str, tuple] = {
+    "middle": (MIDDLE_SYSTEM, MIDDLE_OPENING),
+    "fable": (
+        "You write short stories for children aged seven to nine who are reading "
+        "on their own.",
+        "Write one short fable for a child aged seven to nine: two animals, a small "
+        "problem between them, and a lesson that the story shows rather than "
+        "states."),
+    "mystery": (
+        "You write short stories for teenage readers.",
+        "Write one short mystery story for a teenage reader: something small goes "
+        "missing at a school, and the story follows how it is found. Give it a "
+        "clear ending."),
+    "scifi": (
+        "You write short literary fiction for adult readers.",
+        "Write one short science-fiction story for an adult reader, set in the "
+        "near future, about an ordinary person dealing with one small but strange "
+        "change in their day."),
+}
+
+
 def build_middle_messages(
     requirements: Dict[str, str],
     order: Sequence[str],
     *,
     target: int = 150,
-    system: str = MIDDLE_SYSTEM,
+    system: Optional[str] = None,
+    brief: str = "middle",
 ) -> List[Dict[str, str]]:
+    brief_system, opening = STORY_BRIEFS[brief]
     return [
-        {"role": "system", "content": system},
+        {"role": "system", "content": system or brief_system},
         {"role": "user", "content": MIDDLE_INSTRUCTION.format(
-            target=target,
+            opening=opening, target=target,
             constraints=requirement_block(requirements, order))},
     ]
 

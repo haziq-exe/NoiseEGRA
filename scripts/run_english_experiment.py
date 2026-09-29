@@ -620,12 +620,15 @@ def main() -> None:
     ap.add_argument("--present-ratio", type=float, default=DEFAULT_PRESENT_RATIO,
                     help="share of finite verbs that must be in the present tense "
                          "for the tense requirement to count as met")
-    ap.add_argument("--whole-prompt", choices=["middle", "young"], default="middle",
+    ap.add_argument("--whole-prompt", choices=["middle", "young", "fable", "mystery", "scifi"],
+                    default="middle",
                     help="the instruction the whole-story rules are asked in: 'middle' "
                          "(a middle-school reader) or 'young' (a young child to read, "
                          "with the children's pairs) -- what every whole-story run "
                          "before commit 413ebe0 used, so new arms can be set beside "
-                         "those runs' stories")
+                         "those runs' stories. 'fable', 'mystery' and 'scifi' are the "
+                         "middle-school instruction with another reader and story "
+                         "description (noiseegra.writingprompts.STORY_BRIEFS)")
     ap.add_argument("--pairs", default="children", choices=sorted(PAIR_SETS),
                     help="which contrast-pair file the steering directions are "
                          "extracted from. 'children' is the original set, whose "
@@ -1149,7 +1152,7 @@ def main() -> None:
             args.present_ratio = EN_MIDDLE_PRESENT_RATIO
         # The young-child instruction keeps the children's pairs, as every
         # whole-story run before the middle-school instruction had them.
-        if args.pairs == "children" and args.whole_prompt == "middle":
+        if args.pairs == "children" and args.whole_prompt != "young":
             args.pairs = "middle_whole"
 
     if args.constraint_set == "middle":
@@ -1441,12 +1444,14 @@ def main() -> None:
         prompts = ["<generic instruction>"]
         messages = [
             wp.build_middle_messages(checker.requirements(), args.constraints,
-                                     target=args.story_target)
+                                     target=args.story_target,
+                                     brief=(args.whole_prompt if args.constraint_set == "whole"
+                                            else "middle"))
             # The whole-story rules are the middle-school task's too. They were
             # once given the children's instruction by falling through to it:
             # every story asked for "a young child to read".
             if args.constraint_set == "middle"
-            or (args.constraint_set == "whole" and args.whole_prompt == "middle") else
+            or (args.constraint_set == "whole" and args.whole_prompt != "young") else
             wp.build_generic_messages(checker.requirements(), args.constraints)]
         stories_per_prompt = args.stories
         print(f"task: one generic instruction, {len(args.constraints)} requirements, "
@@ -1559,7 +1564,12 @@ def main() -> None:
                                              if n not in args.steer_vectors]
         shield_tag = "" if not args.shield_vectors else "_sh" + "-".join(
             n[:3] for n in sorted(args.shield_vectors))
-        vec_path = out / f"steering{ctx_tag}{win_tag}{pair_tag}{shield_tag}_{args.model}.pt"
+        # A story brief other than the middle-school one is a different task
+        # prompt, and with the task context the directions are read in it.
+        brief_tag = ("" if args.extraction_context == "generic"
+                     or getattr(args, "whole_prompt", "middle") in ("middle", "young")
+                     else f"_{args.whole_prompt}")
+        vec_path = out / f"steering{ctx_tag}{win_tag}{pair_tag}{brief_tag}{shield_tag}_{args.model}.pt"
         if vec_path.is_file():
             vectors = SteeringVectorSet.load(vec_path)
             print(f"steering vectors: loaded from {vec_path.name}")
