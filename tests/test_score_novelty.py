@@ -116,6 +116,16 @@ with tempfile.TemporaryDirectory() as d:
     check("the summary is saved next to the stories",
           set(saved["arms"]) == set(runs) and saved["threshold"] == 0.102)
 
+print("\n== openings stripped before judging ==")
+check("a bold title line is removed", S.strip_opening("**The Bridge**\nIt was late.") == "It was late.")
+check("a reply to the reader is removed",
+      S.strip_opening("Sure! Here is a story:\n\nMia runs.") == "Mia runs.")
+check("stacked headings are removed", S.strip_opening("# Title\n**Sub**\nText here.") == "Text here.")
+check("a story that starts with 'Here' is left alone",
+      S.strip_opening("Here in the valley, the wind blows.") == "Here in the valley, the wind blows.")
+check("emphasis inside a sentence is left alone",
+      S.strip_opening("The *old* door creaks.") == "The *old* door creaks.")
+
 print()
 if FAILURES:
     print(f"{len(FAILURES)} FAILED: {FAILURES}")

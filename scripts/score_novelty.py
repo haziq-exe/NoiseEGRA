@@ -38,6 +38,7 @@ import argparse
 import json
 import os
 import random
+import re
 import subprocess
 import sys
 import time
@@ -83,6 +84,26 @@ def arms(path: Path, extra: str = "") -> dict:
         for rid, texts in json.loads(Path(extra).read_text())["arms"].items():
             out.setdefault(rid, list(texts))
     return out
+
+
+# A heading or title line, or a reply to the reader ("Sure! Here's a story:"),
+# at the start of a story. The judge reads only the first 128 tokens, so two
+# stories with different titles were called different stories whatever their
+# plots: on Qwen3-1.7B this raised distinct-of-10 by 0.6-1.4 for the methods
+# whose prompt noise produces headings, and not at all for those without.
+_HEAD = re.compile(r"^\s*(\*\*[^\n]*?\*\*|#{1,6}[^\n]*|title\s*:[^\n]*|\*[^*\n]+\*)\s*(\n|$)", re.I)
+_PRE = re.compile(r"^\s*(sure|here'?s|here is|certainly|okay|of course|absolutely)\b[^\n]*?(:|\n)\s*", re.I)
+STRIP_OPENINGS = True
+
+
+def strip_opening(text: str) -> str:
+    """The story without a leading heading, title line or reply to the reader."""
+    for _ in range(4):
+        new = _PRE.sub("", _HEAD.sub("", text, count=1), count=1)
+        if new == text:
+            break
+        text = new
+    return text.strip()
 
 
 def coherent(texts: list) -> list:
@@ -243,6 +264,8 @@ def score(path: Path, rids: list, limit: int, subsets: int, device: str,
     for rid in rids:
         texts = stories[rid][:limit] if limit else stories[rid]
         kept = coherent(texts)
+        if STRIP_OPENINGS:
+            kept = [strip_opening(k) for k in kept]
         t0 = time.time()
         rep = {}
         same = same_matrix(kept, tok, model, torch, device, report=rep)
@@ -289,6 +312,7 @@ def summarise(path: Path, judged: dict) -> dict:
         rows[rid] = row
     (path if path.is_dir() else path.parent).joinpath("novelty.json").write_text(
         json.dumps({"judge": JUDGE, "threshold": THRESHOLD, "tokens": MAX_TOKENS,
+                    "openings_stripped": STRIP_OPENINGS,
                     "arms": rows, "pairs": {r: v["same"] for r, v in judged.items()}},
                    indent=1))
     ci = lambda x: f"{x[0]:+.1%} [{x[1]:+.1%}, {x[2]:+.1%}]"
@@ -314,9 +338,14 @@ def main() -> None:
     ap.add_argument("--subsets", type=int, default=500)
     ap.add_argument("--part", default="", help="i/n: judge every n-th arm from i (internal)")
     ap.add_argument("--device", default="")
+    ap.add_argument("--keep-openings", action="store_true",
+                    help="judge stories with their leading headings and replies to the reader "
+                         "(the scoring before 2026-09-29)")
     ap.add_argument("--extra", default="",
                     help="JSON of earlier arms to judge alongside: {\"arms\": {run id: [stories]}}")
     args = ap.parse_args()
+    global STRIP_OPENINGS
+    STRIP_OPENINGS = not args.keep_openings
     path = Path(args.path)
     if args.extra and not Path(args.extra).is_absolute():
         args.extra = str((ROOT / args.extra) if (ROOT / args.extra).is_file() else Path(args.extra))
@@ -338,7 +367,8 @@ def main() -> None:
         procs = [subprocess.Popen(
             [sys.executable, "-u", __file__, str(path), "--part", f"{i}/{gpus}",
              "--limit", str(args.limit), "--subsets", str(args.subsets),
-             *(["--extra", args.extra] if args.extra else [])],
+             *(["--extra", args.extra] if args.extra else []),
+             *(["--keep-openings"] if args.keep_openings else [])],
             env=dict(os.environ, CUDA_VISIBLE_DEVICES=str(i))) for i in range(gpus)]
         codes = [p.wait() for p in procs]
         judged = {}
