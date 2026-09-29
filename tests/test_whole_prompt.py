@@ -20,10 +20,11 @@ def check(name, cond, extra=""):
 
 
 check("the whole set takes the middle-school instruction by default",
-      'or (args.constraint_set == "whole" and args.whole_prompt == "middle") else' in src
-      and '"--whole-prompt", choices=["middle", "young"], default="middle"' in src)
+      'or (args.constraint_set == "whole" and args.whole_prompt != "young") else' in src
+      and '"--whole-prompt", choices=["middle", "young", "fable", "mystery", "scifi"],' in src
+      and 'default="middle",' in src)
 check("and the merged middle-school pairs with it",
-      'if args.pairs == "children" and args.whole_prompt == "middle":' in src
+      'if args.pairs == "children" and args.whole_prompt != "young":' in src
       and 'args.pairs = "middle_whole"' in src)
 check("the young-child instruction is there to be asked for, with the children's pairs",
       "wp.build_generic_messages(checker.requirements(), args.constraints)]" in src)
