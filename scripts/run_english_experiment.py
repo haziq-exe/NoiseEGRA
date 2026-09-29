@@ -761,6 +761,12 @@ def main() -> None:
     ap.add_argument("--avoid-p1", type=float, default=None,
                     help="arm 'whileavoid': turn only at steps where the shadow's top word has "
                          "probability below this (default 0.6)")
+    ap.add_argument("--avoid-momentum", type=float, default=None,
+                    help="arm 'whileavoid': turn toward the running average of the directions away "
+                         "from each step's default word, keeping this share of it each step")
+    ap.add_argument("--avoid-reread", type=int, default=None,
+                    help="arm 'whileavoid': every this many steps while the noise is on, read the "
+                         "prompt again with the turned direction (0 never)")
     ap.add_argument("--debt-eta", type=float, default=None,
                     help="suite 'headline': while the noise is on, where it lowers the story's "
                          "probability of the words of a content rule the text still owes "

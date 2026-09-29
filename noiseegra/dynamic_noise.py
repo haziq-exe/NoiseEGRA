@@ -379,10 +379,12 @@ class DefaultAvoid(LogitsProcessor):
     """
 
     def __init__(self, p1_max: float, on_step: Callable[[torch.Tensor, int], Optional[float]],
-                 active: Optional[Callable[[], bool]] = None):
+                 active: Optional[Callable[[], bool]] = None,
+                 after: Optional[Callable[[], None]] = None):
         self.p1_max = float(p1_max)
         self.on_step = on_step
         self.active = active
+        self.after = after
         self.steps = 0
         self.turns = 0
         self.cos_sum = 0.0
@@ -396,12 +398,13 @@ class DefaultAvoid(LogitsProcessor):
         with torch.no_grad():
             p = torch.softmax(scores[1].float(), dim=-1)
             p1, top = p.max(dim=-1)
-        if float(p1) >= self.p1_max:
-            return scores
-        cos = self.on_step(input_ids, int(top))
-        if cos is not None:
-            self.turns += 1
-            self.cos_sum += float(cos)
+        if float(p1) < self.p1_max:
+            cos = self.on_step(input_ids, int(top))
+            if cos is not None:
+                self.turns += 1
+                self.cos_sum += float(cos)
+        if self.after is not None:
+            self.after()
         return scores
 
     def summary(self) -> Dict[str, float]:

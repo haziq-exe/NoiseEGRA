@@ -605,6 +605,12 @@ class SteeringPlan:
     # that would make the story write that word (length kept). 0 is off.
     avoid_eta: float = 0.0
     avoid_p1: float = 0.6
+    # Average the directions turned away from over steps (this share of the
+    # running average is kept each step; 0 turns by each step's own gradient),
+    # and every avoid_reread steps while the noise is on read the prompt again
+    # with the turned direction, so the story's opening sees it (0 never).
+    avoid_momentum: float = 0.0
+    avoid_reread: int = 0
     # Size the prompt's noise per story at the first word: before the first
     # word is sampled, if the noise has made a non-story opening (a heading, a
     # title, "Sure", "Here is") likelier for the story than for its shadow --
@@ -1091,6 +1097,8 @@ class SteeringPlan:
         debt_tau: float = 0.3,
         avoid_eta: float = 0.0,
         avoid_p1: float = 0.6,
+        avoid_momentum: float = 0.0,
+        avoid_reread: int = 0,
         prompt_fit_tau: float = 0.0,
         prompt_fit_floor: float = 0.05,
         prompt_fit_mode: str = "shrink",
@@ -1334,6 +1342,8 @@ class SteeringPlan:
             debt_tau=float(debt_tau),
             avoid_eta=float(avoid_eta or 0.0),
             avoid_p1=float(avoid_p1),
+            avoid_momentum=float(avoid_momentum or 0.0),
+            avoid_reread=int(avoid_reread or 0),
             prompt_fit_tau=float(prompt_fit_tau or 0.0),
             prompt_fit_floor=float(prompt_fit_floor),
             prompt_fit_mode=str(prompt_fit_mode or "shrink"),
@@ -2147,6 +2157,8 @@ class SteeringPlan:
             "debt_tau": self.debt_tau,
             "avoid_eta": self.avoid_eta,
             "avoid_p1": self.avoid_p1,
+            "avoid_momentum": self.avoid_momentum,
+            "avoid_reread": self.avoid_reread,
             "prompt_fit_tau": self.prompt_fit_tau,
             "prompt_fit_floor": self.prompt_fit_floor,
             "prompt_fit_mode": self.prompt_fit_mode,

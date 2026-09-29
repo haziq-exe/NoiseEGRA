@@ -615,18 +615,59 @@ check("the replays leave the story and its copy in step", av.shadow_drift == 0)
 nv = plan(avoid_eta=0.05, avoid_p1=0.0)
 egra.generate_with_orthogonal_steering(PROMPT, nv, max_new_tokens=8, seed=1)
 check("no turns where the shadow is sure", nv.avoid_log[-1]["turns"] == 0)
+same = []
+for rr in (0, 4):
+    q_ = plan(avoid_eta=1e-9, avoid_p1=1.01, avoid_reread=rr)
+    same.append(egra.generate_with_orthogonal_steering(PROMPT, q_, max_new_tokens=16, seed=3))
+check("reading the prompt again with an unturned direction changes nothing", same[0] == same[1],
+      f"{q_.avoid_log[-1]['rereads']:.0f} rereads")
+diffs = []
+_orig_reread = type(egra)._reread_prompt
+
+
+def _spy_reread(self, inputs, shared, cache_box):
+    pkv = cache_box["pkv"]
+    first = (pkv.layers[-1].keys if getattr(pkv, "layers", None) is not None
+             else (pkv.key_cache[-1] if hasattr(pkv, "key_cache") else pkv[-1][0]))
+    n = int(inputs["input_ids"].shape[-1])
+    before, shadow_before = first[0, :, :n].clone(), first[1, :, :n].clone()
+    _orig_reread(self, inputs, shared, cache_box)
+    diffs.append((float((first[0, :, :n] - before).abs().max()),
+                  float((first[1, :, :n] - shadow_before).abs().max())))
+
+
+type(egra)._reread_prompt = _spy_reread
+rq = plan(avoid_eta=0.2, avoid_p1=1.01, avoid_reread=4)
+egra.generate_with_orthogonal_steering(PROMPT, rq, max_new_tokens=16, seed=3)
+type(egra)._reread_prompt = _orig_reread
+check("with a turned direction the prompt is read again and the story's cached prompt changes",
+      rq.avoid_log[-1]["rereads"] >= 2 and len(diffs) >= 2 and all(d[0] > 1e-6 for d in diffs)
+      and rq.shadow_drift == 0, f"{rq.avoid_log[-1]['rereads']:.0f} rereads, largest change "
+      f"{max(d[0] for d in diffs):.3g}")
+check("and the shadow's cached prompt is untouched", all(d[1] < 1e-5 for d in diffs),
+      f"{max(d[1] for d in diffs):.2g}")
+check("the controller still saw each step once", rq.online_log[-1]["steps"] <= 16,
+      str(rq.online_log[-1]["steps"]))
+ends = []
+for mb in (0.0, 0.9):
+    mq = plan(avoid_eta=0.05, avoid_p1=1.01, avoid_momentum=mb)
+    egra.generate_with_orthogonal_steering(PROMPT, mq, max_new_tokens=24, seed=2)
+    ends.append(mq.avoid_log[-1]["start_end_cos"])
+check("averaging the turns moves the direction further from where it started", ends[1] < ends[0],
+      f"end cosine {ends[0]:.3f} without, {ends[1]:.3f} with")
 try:
     egra.generate_with_orthogonal_steering(PROMPT, plan(beta=2.0, avoid_eta=0.05), max_new_tokens=4, seed=1)
     check("avoiding with a drifting direction is refused", False)
 except ValueError:
     check("avoiding with a drifting direction is refused", True)
 az = types.SimpleNamespace(**{**vars(args), "headline_arms": ["whileavoid", "whilenodrift"],
-                              "avoid_eta": 0.05, "avoid_p1": 0.6})
+                              "avoid_eta": 0.05, "avoid_p1": 0.6, "avoid_momentum": 0.9,
+                              "avoid_reread": 8})
 ai, _ = build_suite("headline", SV, LAYERS, list(NAMES), 1.5, az)
 aids = [_spec_to_run_id("M", s_) for s_ in make_specs(*ai)]
 k_ = next(i for i, it in enumerate(ai) if it["plan"].avoid_eta > 0)
 check("the avoid arm has no drift, its settings and its own id",
-      ai[k_]["plan"].noise_beta is None and "__avoid0p05p0p6" in aids[k_]
+      ai[k_]["plan"].noise_beta is None and "__avoid0p05p0p6m0p9rr8" in aids[k_]
       and len(set(aids)) == 2 and all(it["plan"].noise_beta is None for it in ai), aids[k_][-60:])
 
 print()

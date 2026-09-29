@@ -1429,6 +1429,11 @@ class EGRA:
                     # After the controller (raw scores); it only reads them.
                     from .dynamic_noise import DefaultAvoid, prefix_cache, rotate_away
 
+                    beta_m = float(getattr(plan, "avoid_momentum", 0.0) or 0.0)
+                    reread = int(getattr(plan, "avoid_reread", 0) or 0)
+                    avg = {}
+                    moved = {"since": False, "rereads": 0}
+
                     def on_avoid(ids, token):
                         if cache_box.get("pkv") is None or shared["is_prefill"]:
                             return None
@@ -1437,10 +1442,34 @@ class EGRA:
                             ids, token, prefix_cache)
                         if grads is None:
                             return None
-                        return rotate_away(plan, grads, avoid_eta)
+                        if beta_m > 0:
+                            # Turn toward the running average of the directions
+                            # away from each step's default word.
+                            for l, g in grads.items():
+                                if g is None:
+                                    continue
+                                g = g / g.norm().clamp_min(1e-12)
+                                avg[l] = g if l not in avg else beta_m * avg[l] + (1 - beta_m) * g
+                            grads = dict(avg)
+                        cos = rotate_away(plan, grads, avoid_eta)
+                        moved["since"] = True
+                        return cos
+
+                    def maybe_reread():
+                        # Read the prompt again with the turned direction, every
+                        # `reread` steps while the noise is on; the prompt's cache
+                        # is replaced in place, the words written so far kept.
+                        t_ = shared["cur_t"]
+                        if (reread <= 0 or not moved["since"] or t_ <= 0 or t_ % reread
+                                or cache_box.get("pkv") is None):
+                            return
+                        self._reread_prompt(inputs, shared, cache_box)
+                        moved["since"] = False
+                        moved["rereads"] += 1
 
                     avoid = DefaultAvoid(float(getattr(plan, "avoid_p1", 0.6)), on_avoid,
-                                         active=lambda: plan.envelope_at(shared["cur_t"]) > 0.05)
+                                         active=lambda: plan.envelope_at(shared["cur_t"]) > 0.05,
+                                         after=maybe_reread)
                     processors = LogitsProcessorList([sizer, avoid, *list(processors)[1:]])
                 if float(getattr(plan, "anchor_p1", 0.0) or 0.0) > 0:
                     # After the controller (raw scores) and before any cut-off.
@@ -1590,13 +1619,16 @@ class EGRA:
                     a, b = u0.to(lp.offset.device), lp.offset.float()
                     ends.append(float((a @ b) / (a.norm() * b.norm()).clamp_min(1e-12)))
             got["start_end_cos"] = sum(ends) / len(ends) if ends else math.nan
+            got["rereads"] = float(moved["rereads"])
             if getattr(plan, "avoid_log", None) is None:
                 plan.avoid_log = []
             plan.avoid_log.append(got)
             print(f"  [avoid] turned the noise away from the default word at "
                   f"{int(got['turns'])} of {int(got['steps'])} noisy steps (mean cosine "
                   f"{got['step_cos']:.4f} per turn); the direction ends at cosine "
-                  f"{got['start_end_cos']:.3f} with where it started", flush=True)
+                  f"{got['start_end_cos']:.3f} with where it started"
+                  + (f"; the prompt was read again {int(got['rereads'])} times"
+                     if got["rereads"] else ""), flush=True)
         if debt is not None:
             got = debt.summary()
             if getattr(plan, "debt_log", None) is None:
@@ -1637,6 +1669,38 @@ class EGRA:
         else:
             self.last_gate_rate = 1.0
         return text
+
+    @torch.no_grad()
+    def _reread_prompt(self, inputs, shared, cache_box) -> None:
+        """Replace the prompt's part of the generation cache by a fresh read.
+
+        The prompt (story and shadow rows) is read with the hooks attached, as
+        at the start, so the story row gets the prompt noise in its current
+        direction at its usual size; its keys and values overwrite the first
+        positions of every layer of the generation's cache. The words written
+        so far keep theirs. The step counters are left as they were.
+        """
+        saved = {k: shared[k] for k in ("forward_calls", "t", "cur_t", "is_prefill")}
+        pkv = cache_box["pkv"]
+        shared.update(forward_calls=0, t=0, cur_t=0, is_prefill=True)
+        try:
+            fresh = self.model(**inputs, use_cache=True).past_key_values
+        finally:
+            shared.update(saved)
+            cache_box["pkv"] = pkv
+        n = int(inputs["input_ids"].shape[-1])
+
+        def kv(cache):
+            # The layered cache, the older one with key/value lists, or tuples.
+            if getattr(cache, "layers", None) is not None:
+                return [(l.keys, l.values) for l in cache.layers]
+            if hasattr(cache, "key_cache"):
+                return list(zip(cache.key_cache, cache.value_cache))
+            return [(k, v) for k, v in cache]
+
+        for (ok, ov), (fk, fv) in zip(kv(pkv), kv(fresh)):
+            ok[:, :, :n].copy_(fk[:, :, :n].to(ok.dtype))
+            ov[:, :, :n].copy_(fv[:, :, :n].to(ov.dtype))
 
     @torch.no_grad()
     def _fit_prompt_noise(self, plan, inputs, shared, base: float) -> float:
