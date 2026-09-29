@@ -2563,3 +2563,29 @@ raters, 10 stories of each arm and 10 untouched each.
   the control, ending variety +1.1 (not established at 4 groups).
 - Being confirmed at 200 stories (r210 fixed direction, r211 coherence turn,
   r212 story-only segments).
+
+### 200-story confirmation of the coherence turn and the story-only segments (runs r210-r213, 2026-09-29)
+
+Qwen, 200 stories each, same prompt and seeds. Thirds judged within groups of
+10 (18 groups per arm); quality from 10 Sonnet raters, each rating 10 stories of
+every arm and 10 untouched on the same 100 seeds, shuffled (gap within rater;
+intervals by bootstrap over raters).
+
+| 200 Qwen stories | Coherent | Rules | Opening | Middle | Ending | Quality gap to untouched |
+|---|---|---|---|---|---|---|
+| Front-loaded, drifting direction (r186) | 187 | 2.52 | 5.32 | 2.24 | 3.39 | +0.07 [-0.39, +0.56] |
+| Fixed direction, no drift (r210) | 180 | 2.74 | 6.36 | 2.73 | 3.62 | -0.18 [-0.75, +0.35] |
+| Coherence turn (r211) | 181 | 2.83 | 6.00 | 2.87 | 4.00 | -0.16 [-0.65, +0.22] |
+| Story-only segments (r212) | 187 | 2.51 | 5.36 | 2.01 | 3.87 | -0.41 [-0.76, -0.08] |
+
+- Coherence turn minus fixed direction: middle +0.14 [-0.50, +0.74], ending
+  +0.39 [-0.48, +1.21], quality +0.02 [-0.29, +0.38]. Free in quality, but the
+  +1.30 ending gain of the 50-story pilot (4 groups) does not hold up.
+- Story-only segments minus front-loaded: ending +0.49 [-0.26, +1.23], middle
+  -0.23, quality -0.48 [-0.81, -0.21] (0 of 10 raters higher). A quality cost
+  for no established variety.
+- Fixed direction minus drifting direction: opening +1.04 [+0.08, +2.00],
+  quality -0.25 [-0.54, +0.05]. The random 1/f^2 drift of the direction lowers
+  opening variety: a direction that wanders pushes the story less far.
+- Lesson on method: segment effects need 200 stories (18 groups); 50-story
+  pilots (4 groups) overstated every late-variety gain.
