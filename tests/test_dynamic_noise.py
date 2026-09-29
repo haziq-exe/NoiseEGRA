@@ -655,6 +655,20 @@ for mb in (0.0, 0.9):
     ends.append(mq.avoid_log[-1]["start_end_cos"])
 check("averaging the turns moves the direction further from where it started", ends[1] < ends[0],
       f"end cosine {ends[0]:.3f} without, {ends[1]:.3f} with")
+co = plan(avoid_eta=0.05, avoid_mode="cohere", cohere_alpha=1.01)
+egra.generate_with_orthogonal_steering(PROMPT, co, max_new_tokens=16, seed=2)
+cl = co.avoid_log[-1]
+check("cohere: turns where the story's top word falls outside the shadow's support",
+      cl["turns"] >= 5 and cl["start_end_cos"] < 0.999, str(cl))
+co0 = plan(avoid_eta=0.05, avoid_mode="cohere", cohere_alpha=1e-9)
+egra.generate_with_orthogonal_steering(PROMPT, co0, max_new_tokens=8, seed=2)
+check("cohere: no turns while the story stays within it", co0.avoid_log[-1]["turns"] == 0)
+cz = types.SimpleNamespace(**{**vars(args), "headline_arms": ["whilecohere"], "avoid_eta": 0.05,
+                              "cohere_alpha": 0.05, "avoid_momentum": 0.9, "avoid_reread": 8})
+ci, _ = build_suite("headline", SV, LAYERS, list(NAMES), 1.5, cz)
+cid = _spec_to_run_id("M", make_specs(*ci)[0])
+check("the cohere arm reaches the plan and the id",
+      ci[0]["plan"].avoid_mode == "cohere" and "__cohere0p05a0p05m0p9rr8" in cid, cid[-60:])
 try:
     egra.generate_with_orthogonal_steering(PROMPT, plan(beta=2.0, avoid_eta=0.05), max_new_tokens=4, seed=1)
     check("avoiding with a drifting direction is refused", False)

@@ -356,7 +356,10 @@ def _ortho_tag_once(model_name: str, spec: ExperimentSpec, *, compress: bool) ->
         if getattr(plan, "prompt_fit_mode", "shrink") == "redraw":
             parts.append("r")
     if float(getattr(plan, "avoid_eta", 0.0) or 0.0) > 0:
-        parts.append(f"__avoid{_float_tag(plan.avoid_eta)}p{_float_tag(getattr(plan, 'avoid_p1', 0.6))}")
+        if getattr(plan, "avoid_mode", "avoid") == "cohere":
+            parts.append(f"__cohere{_float_tag(plan.avoid_eta)}a{_float_tag(getattr(plan, 'cohere_alpha', 0.05))}")
+        else:
+            parts.append(f"__avoid{_float_tag(plan.avoid_eta)}p{_float_tag(getattr(plan, 'avoid_p1', 0.6))}")
         if float(getattr(plan, "avoid_momentum", 0.0) or 0.0) > 0:
             parts.append(f"m{_float_tag(plan.avoid_momentum)}")
         if int(getattr(plan, "avoid_reread", 0) or 0) > 0:

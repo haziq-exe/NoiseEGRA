@@ -144,6 +144,8 @@ def make_plan(
     avoid_p1=0.6,
     avoid_momentum=0.0,
     avoid_reread=0,
+    avoid_mode="avoid",
+    cohere_alpha=0.05,
     prompt_fit_tau=0.0,
     prompt_fit_mode="shrink",
     steer_envelope=False,
@@ -279,6 +281,8 @@ def make_plan(
         avoid_p1=avoid_p1,
         avoid_momentum=avoid_momentum,
         avoid_reread=avoid_reread,
+        avoid_mode=avoid_mode,
+        cohere_alpha=cohere_alpha,
         prompt_fit_tau=prompt_fit_tau,
         prompt_fit_mode=prompt_fit_mode,
         steer_envelope=steer_envelope,
@@ -2865,6 +2869,11 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                         getattr(args, "avoid_p1", None) or 0.6), avoid_momentum=float(
                         getattr(args, "avoid_momentum", None) or 0.0), avoid_reread=int(
                         getattr(args, "avoid_reread", None) or 0))),
+                    "whilecohere": dict(extra=dict(noise_beta=None, avoid_mode="cohere",
+                        avoid_eta=float(getattr(args, "avoid_eta", None) or 0.05),
+                        cohere_alpha=float(getattr(args, "cohere_alpha", None) or 0.05),
+                        avoid_momentum=float(getattr(args, "avoid_momentum", None) or 0.0),
+                        avoid_reread=int(getattr(args, "avoid_reread", None) or 0))),
                     "whilecancel": dict(extra=dict(noise_beta=None, feedback_mode="cancel",
                                                    feedback_eta=float(getattr(
                                                        args, "feedback_cancel_eta", None) or 1.0),

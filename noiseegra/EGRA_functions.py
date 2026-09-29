@@ -1429,6 +1429,7 @@ class EGRA:
                     # After the controller (raw scores); it only reads them.
                     from .dynamic_noise import DefaultAvoid, prefix_cache, rotate_away
 
+                    cohere = str(getattr(plan, "avoid_mode", "avoid")) == "cohere"
                     beta_m = float(getattr(plan, "avoid_momentum", 0.0) or 0.0)
                     reread = int(getattr(plan, "avoid_reread", 0) or 0)
                     avg = {}
@@ -1451,6 +1452,9 @@ class EGRA:
                                 g = g / g.norm().clamp_min(1e-12)
                                 avg[l] = g if l not in avg else beta_m * avg[l] + (1 - beta_m) * g
                             grads = dict(avg)
+                        if cohere:
+                            # Toward the shadow's word: turn away from -g.
+                            grads = {l: (None if g is None else -g) for l, g in grads.items()}
                         cos = rotate_away(plan, grads, avoid_eta)
                         moved["since"] = True
                         return cos
@@ -1469,7 +1473,9 @@ class EGRA:
 
                     avoid = DefaultAvoid(float(getattr(plan, "avoid_p1", 0.6)), on_avoid,
                                          active=lambda: plan.envelope_at(shared["cur_t"]) > 0.05,
-                                         after=maybe_reread)
+                                         after=maybe_reread,
+                                         cohere_alpha=(float(getattr(plan, "cohere_alpha", 0.05))
+                                                       if cohere else 0.0))
                     processors = LogitsProcessorList([sizer, avoid, *list(processors)[1:]])
                 if float(getattr(plan, "anchor_p1", 0.0) or 0.0) > 0:
                     # After the controller (raw scores) and before any cut-off.
@@ -1623,7 +1629,10 @@ class EGRA:
             if getattr(plan, "avoid_log", None) is None:
                 plan.avoid_log = []
             plan.avoid_log.append(got)
-            print(f"  [avoid] turned the noise away from the default word at "
+            print(f"  [avoid] turned the noise "
+                  + ("toward the clean word where the story broke from it"
+                     if str(getattr(plan, "avoid_mode", "avoid")) == "cohere"
+                     else "away from the default word") + " at "
                   f"{int(got['turns'])} of {int(got['steps'])} noisy steps (mean cosine "
                   f"{got['step_cos']:.4f} per turn); the direction ends at cosine "
                   f"{got['start_end_cos']:.3f} with where it started"

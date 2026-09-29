@@ -380,7 +380,13 @@ class DefaultAvoid(LogitsProcessor):
 
     def __init__(self, p1_max: float, on_step: Callable[[torch.Tensor, int], Optional[float]],
                  active: Optional[Callable[[], bool]] = None,
-                 after: Optional[Callable[[], None]] = None):
+                 after: Optional[Callable[[], None]] = None,
+                 cohere_alpha: float = 0.0):
+        # With cohere_alpha > 0 the trigger is instead the story's own top word
+        # falling outside the shadow's support (shadow probability below alpha
+        # times the shadow's top): the story is breaking away from anything the
+        # clean model would write.
+        self.cohere_alpha = float(cohere_alpha)
         self.p1_max = float(p1_max)
         self.on_step = on_step
         self.active = active
@@ -398,7 +404,12 @@ class DefaultAvoid(LogitsProcessor):
         with torch.no_grad():
             p = torch.softmax(scores[1].float(), dim=-1)
             p1, top = p.max(dim=-1)
-        if float(p1) < self.p1_max:
+            if self.cohere_alpha > 0:
+                own = int(scores[0].argmax())
+                fire = float(p[own]) < self.cohere_alpha * float(p1)
+            else:
+                fire = float(p1) < self.p1_max
+        if fire:
             cos = self.on_step(input_ids, int(top))
             if cos is not None:
                 self.turns += 1

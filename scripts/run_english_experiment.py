@@ -767,6 +767,10 @@ def main() -> None:
     ap.add_argument("--avoid-reread", type=int, default=None,
                     help="arm 'whileavoid': every this many steps while the noise is on, read the "
                          "prompt again with the turned direction (0 never)")
+    ap.add_argument("--cohere-alpha", type=float, default=None,
+                    help="arm 'whilecohere': turn the noise toward the shadow's top word at steps where "
+                         "the story's own top word gets less than this share of the shadow's top "
+                         "probability (default 0.05); uses --avoid-eta/--avoid-momentum/--avoid-reread")
     ap.add_argument("--debt-eta", type=float, default=None,
                     help="suite 'headline': while the noise is on, where it lowers the story's "
                          "probability of the words of a content rule the text still owes "
@@ -842,7 +846,7 @@ def main() -> None:
                     choices=["while", "whilecarry", "whilenosteer", "before", "fixed", "fixedprompt",
                              "fixedfront", "fixednoise", "simple", "promptonly",
                              "whilenodrift", "whilenoproj", "whilefixed", "whileguard",
-                             "whilefix", "whileminp", "whiletoward", "whileaway", "whileavoid",
+                             "whilefix", "whileminp", "whiletoward", "whileaway", "whileavoid", "whilecohere",
                              "whilecancel", "btrans"],
                     default=["while", "before", "fixed", "fixedprompt", "fixedfront"],
                     help="suite 'headline': which of its arms to run -- sized while "

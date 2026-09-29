@@ -611,6 +611,11 @@ class SteeringPlan:
     # with the turned direction, so the story's opening sees it (0 never).
     avoid_momentum: float = 0.0
     avoid_reread: int = 0
+    # "avoid" turns away from the shadow's top word at branch points; "cohere"
+    # turns toward it at steps where the story's own top word is one the shadow
+    # gives less than cohere_alpha of its top word's probability.
+    avoid_mode: str = "avoid"
+    cohere_alpha: float = 0.05
     # Size the prompt's noise per story at the first word: before the first
     # word is sampled, if the noise has made a non-story opening (a heading, a
     # title, "Sure", "Here is") likelier for the story than for its shadow --
@@ -1099,6 +1104,8 @@ class SteeringPlan:
         avoid_p1: float = 0.6,
         avoid_momentum: float = 0.0,
         avoid_reread: int = 0,
+        avoid_mode: str = "avoid",
+        cohere_alpha: float = 0.05,
         prompt_fit_tau: float = 0.0,
         prompt_fit_floor: float = 0.05,
         prompt_fit_mode: str = "shrink",
@@ -1344,6 +1351,8 @@ class SteeringPlan:
             avoid_p1=float(avoid_p1),
             avoid_momentum=float(avoid_momentum or 0.0),
             avoid_reread=int(avoid_reread or 0),
+            avoid_mode=str(avoid_mode or "avoid"),
+            cohere_alpha=float(cohere_alpha),
             prompt_fit_tau=float(prompt_fit_tau or 0.0),
             prompt_fit_floor=float(prompt_fit_floor),
             prompt_fit_mode=str(prompt_fit_mode or "shrink"),
@@ -2159,6 +2168,8 @@ class SteeringPlan:
             "avoid_p1": self.avoid_p1,
             "avoid_momentum": self.avoid_momentum,
             "avoid_reread": self.avoid_reread,
+            "avoid_mode": self.avoid_mode,
+            "cohere_alpha": self.cohere_alpha,
             "prompt_fit_tau": self.prompt_fit_tau,
             "prompt_fit_floor": self.prompt_fit_floor,
             "prompt_fit_mode": self.prompt_fit_mode,
