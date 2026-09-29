@@ -1459,33 +1459,36 @@ class EGRA:
                     # After the controller (raw scores); it only reads them.
                     from .dynamic_noise import DefaultAvoid, prefix_cache, rotate_away
 
-                    cohere = str(getattr(plan, "avoid_mode", "avoid")) == "cohere"
+                    turn_mode = str(getattr(plan, "avoid_mode", "avoid") or "avoid")
                     beta_m = float(getattr(plan, "avoid_momentum", 0.0) or 0.0)
                     reread = int(getattr(plan, "avoid_reread", 0) or 0)
                     avg = {}
                     moved = {"since": False, "rereads": 0}
 
-                    def on_avoid(ids, token):
+                    def entropy_of(ls):
+                        return -(ls.exp() * ls).sum()
+
+                    def on_avoid(ids, target):
                         if cache_box.get("pkv") is None or shared["is_prefill"]:
                             return None
+                        kind, token, sign = target
                         grads = self._token_gradients(
                             plan, blocks, normalized_layers, shared, cache_box["pkv"],
-                            ids, token, prefix_cache)
+                            ids, entropy_of if kind == "entropy" else token, prefix_cache)
                         if grads is None:
                             return None
+                        # The direction wanted: along +g to raise the objective
+                        # (toward the word, or more entropy), -g to lower it.
+                        want = {l: (None if g is None else sign * g / g.norm().clamp_min(1e-12))
+                                for l, g in grads.items()}
                         if beta_m > 0:
-                            # Turn toward the running average of the directions
-                            # away from each step's default word.
-                            for l, g in grads.items():
-                                if g is None:
-                                    continue
-                                g = g / g.norm().clamp_min(1e-12)
-                                avg[l] = g if l not in avg else beta_m * avg[l] + (1 - beta_m) * g
-                            grads = dict(avg)
-                        if cohere:
-                            # Toward the shadow's word: turn away from -g.
-                            grads = {l: (None if g is None else -g) for l, g in grads.items()}
-                        cos = rotate_away(plan, grads, avoid_eta)
+                            # Toward the running average of the directions wanted.
+                            for l, d in want.items():
+                                if d is not None:
+                                    avg[l] = d if l not in avg else beta_m * avg[l] + (1 - beta_m) * d
+                            want = dict(avg)
+                        cos = rotate_away(plan, {l: (None if d is None else -d)
+                                                 for l, d in want.items()}, avoid_eta)
                         moved["since"] = True
                         return cos
 
@@ -1504,8 +1507,9 @@ class EGRA:
                     avoid = DefaultAvoid(float(getattr(plan, "avoid_p1", 0.6)), on_avoid,
                                          active=lambda: plan.envelope_at(shared["cur_t"]) > 0.05,
                                          after=maybe_reread,
-                                         cohere_alpha=(float(getattr(plan, "cohere_alpha", 0.05))
-                                                       if cohere else 0.0))
+                                         cohere_alpha=float(getattr(plan, "cohere_alpha", 0.05)),
+                                         mode=turn_mode,
+                                         entropy_tau=float(getattr(plan, "entropy_tau", 0.5)))
                     processors = LogitsProcessorList([sizer, avoid, *list(processors)[1:]])
                 if float(getattr(plan, "anchor_p1", 0.0) or 0.0) > 0:
                     # After the controller (raw scores) and before any cut-off.
@@ -1667,10 +1671,8 @@ class EGRA:
             if getattr(plan, "avoid_log", None) is None:
                 plan.avoid_log = []
             plan.avoid_log.append(got)
-            print(f"  [avoid] turned the noise "
-                  + ("toward the clean word where the story broke from it"
-                     if str(getattr(plan, "avoid_mode", "avoid")) == "cohere"
-                     else "away from the default word") + " at "
+            kinds = ", ".join(f"{k[5:]} {int(v)}" for k, v in got.items() if k.startswith("kind_"))
+            print(f"  [avoid] mode {getattr(plan, 'avoid_mode', 'avoid')}: turned the noise ({kinds or 'never'}) at "
                   f"{int(got['turns'])} of {int(got['steps'])} noisy steps (mean cosine "
                   f"{got['step_cos']:.4f} per turn); the direction ends at cosine "
                   f"{got['start_end_cos']:.3f} with where it started"
@@ -1874,7 +1876,10 @@ class EGRA:
                 out = self.model(input_ids=input_ids[:1, -1:], past_key_values=ctx,
                                  use_cache=True)
                 ls = torch.log_softmax(out.logits[0, -1].float(), dim=-1)
-                if isinstance(token, (list, tuple)):
+                if callable(token):
+                    # Any objective of the story's log-probabilities.
+                    lp = token(ls)
+                elif isinstance(token, (list, tuple)):
                     # A set of words: the log of their total probability.
                     lp = torch.logsumexp(ls[torch.tensor(token, device=ls.device)], dim=0)
                 else:

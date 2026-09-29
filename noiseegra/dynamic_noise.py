@@ -369,24 +369,39 @@ def rotate_away(plan, grads: Dict[int, Optional[torch.Tensor]], eta: float) -> f
     return sum(cosines) / len(cosines) if cosines else 1.0
 
 
-class DefaultAvoid(LogitsProcessor):
-    """Where the shadow is choosing, turn the noise away from its default word.
+def _entropy(scores_row: torch.Tensor) -> float:
+    lp = torch.log_softmax(scores_row.float(), dim=-1)
+    return float(-(lp.exp() * lp).sum())
 
-    At a step with ``active()`` true whose shadow (row 1) gives its top word
-    less than ``p1_max``, ``on_step(input_ids, token)`` is called with that
-    word; it returns the mean cosine of the turn, or None if it did not turn.
-    Scores pass through unchanged.
+
+class DefaultAvoid(LogitsProcessor):
+    """Decide, each noisy step, whether and which way to turn the noise's direction.
+
+    Modes, all read from the story's (row 0) and its noise-free shadow's (row 1)
+    scores:
+
+    ``avoid``    where the shadow is choosing (top word below ``p1_max``): away
+                 from the shadow's top word.
+    ``cohere``   where the story's own top word gets less than ``cohere_alpha``
+                 of the shadow's top probability: toward the shadow's top word.
+    ``both``     cohere where the story breaks from the shadow, otherwise avoid
+                 where the shadow is choosing.
+    ``entropy``  where the story's next-word entropy differs from the shadow's
+                 by more than ``entropy_tau`` nats: toward the entropy the
+                 shadow has (lower it when the story is more unsure, raise it
+                 when it is surer).
+
+    ``on_step(input_ids, target)`` gets ``("word", token, +1 toward / -1 away)``
+    or ``("entropy", None, +1 raise / -1 lower)`` and returns the mean cosine
+    of the turn, or None. Scores pass through unchanged.
     """
 
-    def __init__(self, p1_max: float, on_step: Callable[[torch.Tensor, int], Optional[float]],
-                 active: Optional[Callable[[], bool]] = None,
-                 after: Optional[Callable[[], None]] = None,
-                 cohere_alpha: float = 0.0):
-        # With cohere_alpha > 0 the trigger is instead the story's own top word
-        # falling outside the shadow's support (shadow probability below alpha
-        # times the shadow's top): the story is breaking away from anything the
-        # clean model would write.
-        self.cohere_alpha = float(cohere_alpha)
+    def __init__(self, p1_max: float, on_step: Callable, active: Optional[Callable[[], bool]] = None,
+                 after: Optional[Callable[[], None]] = None, cohere_alpha: float = 0.0,
+                 mode: Optional[str] = None, entropy_tau: float = 0.5):
+        self.mode = mode or ("cohere" if cohere_alpha > 0 else "avoid")
+        self.cohere_alpha = float(cohere_alpha) if cohere_alpha > 0 else 0.05
+        self.entropy_tau = float(entropy_tau)
         self.p1_max = float(p1_max)
         self.on_step = on_step
         self.active = active
@@ -394,6 +409,25 @@ class DefaultAvoid(LogitsProcessor):
         self.steps = 0
         self.turns = 0
         self.cos_sum = 0.0
+        self.kinds: Dict[str, int] = {}
+
+    def _target(self, scores):
+        p = torch.softmax(scores[1].float(), dim=-1)
+        p1, top = p.max(dim=-1)
+        if self.mode == "entropy":
+            gap = _entropy(scores[0]) - _entropy(scores[1])
+            if abs(gap) > self.entropy_tau:
+                return ("entropy", None, -1 if gap > 0 else +1)
+            return None
+        if self.mode in ("cohere", "both"):
+            own = int(scores[0].argmax())
+            if float(p[own]) < self.cohere_alpha * float(p1):
+                return ("word", int(top), +1)
+            if self.mode == "cohere":
+                return None
+        if float(p1) < self.p1_max:
+            return ("word", int(top), -1)
+        return None
 
     def __call__(self, input_ids, scores):
         if scores.dim() != 2 or scores.shape[0] < 2:
@@ -402,25 +436,23 @@ class DefaultAvoid(LogitsProcessor):
             return scores
         self.steps += 1
         with torch.no_grad():
-            p = torch.softmax(scores[1].float(), dim=-1)
-            p1, top = p.max(dim=-1)
-            if self.cohere_alpha > 0:
-                own = int(scores[0].argmax())
-                fire = float(p[own]) < self.cohere_alpha * float(p1)
-            else:
-                fire = float(p1) < self.p1_max
-        if fire:
-            cos = self.on_step(input_ids, int(top))
+            target = self._target(scores)
+        if target is not None:
+            cos = self.on_step(input_ids, target)
             if cos is not None:
                 self.turns += 1
                 self.cos_sum += float(cos)
+                k = f"{target[0]}{'+' if target[2] > 0 else '-'}"
+                self.kinds[k] = self.kinds.get(k, 0) + 1
         if self.after is not None:
             self.after()
         return scores
 
     def summary(self) -> Dict[str, float]:
-        return {"steps": float(self.steps), "turns": float(self.turns),
-                "step_cos": self.cos_sum / max(self.turns, 1)}
+        out = {"steps": float(self.steps), "turns": float(self.turns),
+               "step_cos": self.cos_sum / max(self.turns, 1)}
+        out.update({f"kind_{k}": float(v) for k, v in self.kinds.items()})
+        return out
 
 
 _SENTENCE_END = (".", "!", "?", "\n", ".\"", "!\"", "?\"", ".\u201d", "!\u201d", "?\u201d")

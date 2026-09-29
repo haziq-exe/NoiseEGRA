@@ -56,6 +56,14 @@ check("one opening told ten ways: one opening, ten middles, ten endings",
       r["opening"]["distinct"] == [1.0] and r["middle"]["distinct"] == [10.0]
       and r["ending"]["distinct"] == [10.0] and r["whole"]["distinct"] == [1.0], str(r))
 
+S.same_matrix = lambda texts, tok, model, torch, device, **k: __import__("numpy").array(
+    [[a.split()[0] == b.split()[0] for b in texts] for a in texts])
+S.distinct_k = lambda m, **k: float(len({tuple(r) for r in m.tolist()}))
+ra = G.score_arm(arm, 0, Tok(), None, None, "cpu")
+check("every pair when the group is 0: one opening, ten endings, matrices kept",
+      ra["opening"]["distinct10"] == 1.0 and ra["ending"]["distinct10"] == 10.0
+      and len(ra["ending"]["same"]) == 10, str({k: ra[k]["distinct10"] for k in G.SEGMENTS}))
+
 print()
 if FAILURES:
     print(f"{len(FAILURES)} FAILED: {FAILURES}")

@@ -83,6 +83,14 @@ def score_arm(texts: list, group: int, tok, model, torch, device: str) -> dict:
     segs = [segments(t) for t in kept]
     res = {"stories": len(texts), "coherent": len(kept)}
     rng = random.Random(0)
+    if group <= 0:
+        # Every pair, for small pilots: the whole matrix is kept so intervals
+        # can come from half-size draws, as score_novelty reports them.
+        for name in SEGMENTS:
+            m = S.same_matrix([s[name] for s in segs], tok, model, torch, device)
+            res[name] = {"distinct10": S.distinct_k(m), "same_share": S.share_same(m),
+                         "same": m.astype(int).tolist()}
+        return res
     for name in SEGMENTS:
         mats = grouped_same([s[name] for s in segs], group, tok, model, torch, device)
         # The class count depends a little on the order stories are taken in:
@@ -97,7 +105,8 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("path")
-    ap.add_argument("--group", type=int, default=10)
+    ap.add_argument("--group", type=int, default=10,
+                    help="stories per comparison group; 0 compares every pair (small pilots)")
     ap.add_argument("--part", default="", help="i/n: every n-th arm from i (internal)")
     args = ap.parse_args()
     path = Path(args.path)
@@ -130,7 +139,8 @@ def main() -> None:
         t0 = time.time()
         out[rid] = r = score_arm(arms[rid], args.group, tok, model, torch, device)
         print(f"  {rid[-50:]}: {r['coherent']} coherent | " + "  ".join(
-            f"{s} {np.mean(r[s]['distinct']):.2f}" for s in SEGMENTS)
+            f"{s} {np.mean(r[s]['distinct']) if 'distinct' in r[s] else r[s]['distinct10']:.2f}"
+            for s in SEGMENTS)
               + f"  ({time.time() - t0:.0f}s)", flush=True)
     name = f"segment_part{args.part.split('/')[0]}.json" if args.part else "segment_novelty.json"
     (where / name).write_text(json.dumps(out))

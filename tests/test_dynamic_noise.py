@@ -785,6 +785,44 @@ psid = _spec_to_run_id("M", make_specs(*psi)[0])
 check("the story re-read reaches the plan and the id",
       psi[0]["plan"].pulse_reread == "story" and "__pulse96s1" in psid, psid[-60:])
 
+print("\n== turn objectives ==")
+from noiseegra.dynamic_noise import DefaultAvoid as DA  # noqa: E402
+got_t = []
+da = DA(0.6, lambda ids, t: got_t.append(t) or 0.99, mode="both", cohere_alpha=0.05)
+sc = torch.full((2, 5), -9.0)
+sc[1, 2] = 5.0; sc[0, 4] = 5.0            # story's top word (4) outside the shadow's support
+da(torch.zeros(1, 1, dtype=torch.long), sc.clone())
+sc2 = torch.zeros(2, 5); sc2[:, 1] = 0.5   # shadow unsure, story agrees with it
+da(torch.zeros(1, 1, dtype=torch.long), sc2)
+check("both: toward the shadow's word where the story breaks, away where the shadow is choosing",
+      got_t == [("word", 2, +1), ("word", 1, -1)], str(got_t))
+got_e = []
+de = DA(0.6, lambda ids, t: got_e.append(t) or 0.99, mode="entropy", entropy_tau=0.5)
+flat = torch.zeros(2, 50); flat[1, 0] = 8.0     # story unsure, shadow sure
+de(torch.zeros(1, 1, dtype=torch.long), flat)
+sharp = torch.zeros(2, 50); sharp[0, 0] = 8.0   # story sure, shadow unsure
+de(torch.zeros(1, 1, dtype=torch.long), sharp)
+de(torch.zeros(1, 1, dtype=torch.long), torch.zeros(2, 50))  # same entropy: no turn
+check("entropy: lower the story's uncertainty when it is above the shadow's, raise it when below",
+      got_e == [("entropy", None, -1), ("entropy", None, +1)], str(got_e))
+for md in ("both", "entropy"):
+    tq = plan(avoid_eta=0.05, avoid_mode=md, avoid_p1=1.01, cohere_alpha=1.01, entropy_tau=0.0,
+              avoid_momentum=0.9, avoid_reread=4)
+    egra.generate_with_orthogonal_steering(PROMPT, tq, max_new_tokens=16, seed=2)
+    tl = tq.avoid_log[-1]
+    check(f"{md}: turns while writing, reads the prompt again, story and copy in step",
+          tl["turns"] >= 5 and tl["start_end_cos"] < 0.999 and tl["rereads"] >= 1
+          and tq.shadow_drift == 0, str(tl))
+ez = types.SimpleNamespace(**{**vars(args), "headline_arms": ["whileboth", "whileentropy"],
+                              "avoid_eta": 0.05, "avoid_p1": 0.6, "cohere_alpha": 0.05,
+                              "entropy_tau": 0.5, "avoid_momentum": 0.9, "avoid_reread": 8})
+ei, _ = build_suite("headline", SV, LAYERS, list(NAMES), 1.5, ez)
+eids = [_spec_to_run_id("M", s_) for s_ in make_specs(*ei)]
+check("the two new turns reach their plans and ids",
+      [it["plan"].avoid_mode for it in ei] == ["both", "entropy"]
+      and "__both0p05a0p05p0p6m0p9rr8" in eids[0] and "__entropy0p05t0p5m0p9rr8" in eids[1],
+      str([i[-50:] for i in eids]))
+
 print()
 if FAILURES:
     print(f"{len(FAILURES)} FAILED: {FAILURES}")

@@ -616,6 +616,9 @@ class SteeringPlan:
     # gives less than cohere_alpha of its top word's probability.
     avoid_mode: str = "avoid"
     cohere_alpha: float = 0.05
+    # Mode "entropy": turn where the story's next-word entropy differs from the
+    # shadow's by more than this many nats.
+    entropy_tau: float = 0.5
     # Segments of noise: at the first sentence end at least pulse_every steps
     # after the current segment began, draw a new per-story direction, read the
     # whole context so far again with it (as the prompt is read at the start)
@@ -1119,6 +1122,7 @@ class SteeringPlan:
         avoid_reread: int = 0,
         avoid_mode: str = "avoid",
         cohere_alpha: float = 0.05,
+        entropy_tau: float = 0.5,
         pulse_every: int = 0,
         pulse_reread: str = "context",
         pulse_gain: float = 1.0,
@@ -1369,6 +1373,7 @@ class SteeringPlan:
             avoid_reread=int(avoid_reread or 0),
             avoid_mode=str(avoid_mode or "avoid"),
             cohere_alpha=float(cohere_alpha),
+            entropy_tau=float(entropy_tau),
             pulse_every=int(pulse_every or 0),
             pulse_reread=str(pulse_reread or "context"),
             pulse_gain=float(pulse_gain if pulse_gain is not None else 1.0),
@@ -2193,6 +2198,7 @@ class SteeringPlan:
             "avoid_reread": self.avoid_reread,
             "avoid_mode": self.avoid_mode,
             "cohere_alpha": self.cohere_alpha,
+            "entropy_tau": self.entropy_tau,
             "pulse_every": self.pulse_every,
             "pulse_reread": self.pulse_reread,
             "pulse_gain": self.pulse_gain,

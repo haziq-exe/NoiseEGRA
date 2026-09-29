@@ -360,8 +360,14 @@ def _ortho_tag_once(model_name: str, spec: ExperimentSpec, *, compress: bool) ->
         if getattr(plan, "pulse_reread", "context") == "story":
             parts.append(f"s{_float_tag(getattr(plan, 'pulse_gain', 1.0))}")
     if float(getattr(plan, "avoid_eta", 0.0) or 0.0) > 0:
-        if getattr(plan, "avoid_mode", "avoid") == "cohere":
+        mode_ = getattr(plan, "avoid_mode", "avoid")
+        if mode_ == "cohere":
             parts.append(f"__cohere{_float_tag(plan.avoid_eta)}a{_float_tag(getattr(plan, 'cohere_alpha', 0.05))}")
+        elif mode_ == "both":
+            parts.append(f"__both{_float_tag(plan.avoid_eta)}a{_float_tag(getattr(plan, 'cohere_alpha', 0.05))}"
+                         f"p{_float_tag(getattr(plan, 'avoid_p1', 0.6))}")
+        elif mode_ == "entropy":
+            parts.append(f"__entropy{_float_tag(plan.avoid_eta)}t{_float_tag(getattr(plan, 'entropy_tau', 0.5))}")
         else:
             parts.append(f"__avoid{_float_tag(plan.avoid_eta)}p{_float_tag(getattr(plan, 'avoid_p1', 0.6))}")
         if float(getattr(plan, "avoid_momentum", 0.0) or 0.0) > 0:

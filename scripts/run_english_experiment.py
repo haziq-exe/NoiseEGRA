@@ -783,6 +783,9 @@ def main() -> None:
     ap.add_argument("--pulse-gain", type=float, default=None,
                     help="with --pulse-reread story: the new direction's size on the story's "
                          "re-read, in starting lengths (default 1.0)")
+    ap.add_argument("--entropy-tau", type=float, default=None,
+                    help="arm 'whileentropy': turn the noise where the story's next-word entropy "
+                         "differs from the shadow's by more than this many nats (default 0.5)")
     ap.add_argument("--debt-eta", type=float, default=None,
                     help="suite 'headline': while the noise is on, where it lowers the story's "
                          "probability of the words of a content rule the text still owes "
@@ -858,7 +861,7 @@ def main() -> None:
                     choices=["while", "whilecarry", "whilenosteer", "before", "fixed", "fixedprompt",
                              "fixedfront", "fixednoise", "simple", "promptonly",
                              "whilenodrift", "whilenoproj", "whilefixed", "whileguard",
-                             "whilefix", "whileminp", "whiletoward", "whileaway", "whileavoid", "whilecohere",
+                             "whilefix", "whileminp", "whiletoward", "whileaway", "whileavoid", "whilecohere", "whileboth", "whileentropy",
                              "whilecancel", "btrans"],
                     default=["while", "before", "fixed", "fixedprompt", "fixedfront"],
                     help="suite 'headline': which of its arms to run -- sized while "
