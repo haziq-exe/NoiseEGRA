@@ -610,7 +610,11 @@ def cmd_run(args) -> None:
     print(f"\npushing {kernel_id}")
     print(f"  commit  {commit[:8]} ({branch})")
     print(f"  command {command}")
-    api.kernels_push(str(exp / "kernel"))
+    reply = api.kernels_push(str(exp / "kernel"))
+    if getattr(reply, "error", None):
+        # Kaggle answers a refused push (e.g. weekly GPU quota spent) with an
+        # error field rather than an HTTP error, so the kernel never exists.
+        sys.exit(f"push refused: {reply.error}")
     if args.no_wait:
         print("pushed. Watch it with:\n"
               f"    python scripts/kaggle_harness.py follow --name {name}")
