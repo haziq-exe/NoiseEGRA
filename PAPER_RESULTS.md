@@ -2812,3 +2812,45 @@ fable -0.97 [-1.10, -0.83] / -0.98 [-1.12, -0.85], Llama mystery -0.35
   and 2.8 above top-p, variety level with untouched and 1.3 below top-p.
 - Qwen mystery not run: all three Kaggle accounts reached their 30-hour weekly
   GPU limit on 2026-09-30.
+
+### Qwen3-8B on the middle-school prompt, 200 stories per arm (run r230-qwen8b-middle, 2026-09-30)
+
+The headline method on a larger model: the original middle-school instruction
+and its 8 whole-story rules, untouched / top-p 0.95 at T=1.8 / rule steering
+only / method. Layers 8 and 18 of 36 (the same depth as 6 and 14 of 28 on
+Qwen3-1.7B), prompt noise 1.0x (the Llama and Granite setting), everything else
+as the headline flags; one process across both T4s (4 hours for 800 stories).
+Variety: NoveltyBench judge, openings removed, every pair (scored on Kaggle).
+Quality: 3 Sonnet raters, 15 seeds x 4 arms each (45 per arm); one rater gave 54
+of 60 stories a 6 and was replaced by a fresh rater with the same prompt.
+
+| Qwen3-8B | Coherent | Slips | Rules broken (of 8) | Same-story | Distinct of 10 | Quality |
+|---|---|---|---|---|---|---|
+| Untouched | 200 | 0 | 1.88 | 99.6% | 1.02 | 5.84 |
+| Top-p 0.95, T=1.8 | 200 | 0 | 1.70 | 98.6% | 1.08 | 6.09 |
+| Rule steering only | 200 | 0 | 1.62 | 98.0% | 1.13 | 5.67 |
+| Method | 197 | 0 | 2.08 | 73.9% | 2.54 | 5.80 |
+
+Method against untouched / top-p / steering only: rules +0.20 [+0.02, +0.38] /
++0.38 [+0.19, +0.56] / +0.46 [+0.26, +0.64]; distinct +1.52 [+0.96, +2.08] /
++1.46 [+0.90, +2.04] / +1.41 [+0.84, +1.98]; quality -0.04 [-0.36, +0.24]
+against untouched, -0.29 [-0.60, +0.02] against top-p.
+
+Failing %: present tense 73 / 57 / 27 / 41; reading level (grade 3 floor) 7 / 6
+/ 23 / 48; speech 0 / 0 / 0 / 1; one named character 98 / 88 / 91 / 70; a he
+and a she 4 / 12 / 4 / 31; simile 4 / 7 / 14 / 14; no repeated sentence 0 / 0 /
+2 / 2; no title or preamble 0 / 0 / 0 / 1 (untouched / top-p / steering / method).
+
+- Qwen3-8B writes the same story almost every time: 99.6% of untouched pairs are
+  judged the same story, and neither top-p at T=1.8 (1.08) nor steering (1.13)
+  changes that. The method is the only arm that varies the story, at the
+  untouched model's quality, but by less than on Qwen3-1.7B (2.54 distinct
+  against 4.89 there; 74% of pairs still the same story).
+- The method breaks more rules than every other arm (+0.20 against untouched),
+  unlike on the three smaller models. The loss is reading level (48% below the
+  grade-3 floor against 7% untouched) and a he and a she (31% against 4%);
+  the method does better on the named character (70% against 98%). Steering
+  alone already lowers the reading level (23%); the noise lowers it further.
+- No slips: prompt noise at 1.0x gave no headings or preambles on the 8B.
+- Top-p does not cost the 8B any quality (6.09 against 5.84 untouched), unlike
+  Llama; ratings on this model are compressed (almost all 5-7).
