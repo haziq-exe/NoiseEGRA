@@ -2782,8 +2782,9 @@ fable -0.97 [-1.10, -0.83] / -0.98 [-1.12, -0.85], Granite mystery +0.14
 -0.07 (n.s.).
 
 - Dropping the two rules turns the fable around on rules: the method now
-  breaks fewer than untouched and top-p on all three models (it broke more on
-  Qwen with seven rules). Steering alone breaks the fewest.
+  breaks fewer than top-p on all three models and fewer than untouched on Qwen
+  and Granite, level on Llama (with seven rules it broke more than both on
+  Qwen). Steering alone breaks the fewest.
 - Qwen fable: the most variety (7.39 against 6.05 top-p), fewest rules of the
   sampling arms, quality 1.0 below both baselines. 22% of its fables still open
   with a heading or preamble (0% for every other arm).
@@ -2798,9 +2799,10 @@ fable -0.97 [-1.10, -0.83] / -0.98 [-1.12, -0.85], Granite mystery +0.14
   mid-story ("in the hall, a familiar voice echoes ... my heart stutters"),
   and 37% have no speech (untouched 9%). Steered stories are 64-71 words against
   109. The method inherits this (rules +0.14 against untouched) and has no
-  variety gain. The seven-rule Granite mystery did not show it (rules -0.36
-  against top-p), so the capitals loss comes from steering the five-rule set on
-  this model, not from the noise.
+  variety gain. With seven rules, steering on the Granite mystery did cut
+  broken rules (0.85 against 1.57 untouched); why the five-rule steering loses
+  capitals on Granite is not yet known. It is the steering, not the noise:
+  steering alone shows it most.
 - Llama and Qwen mystery pending. The first and third Kaggle accounts ran out of
   their 30-hour weekly GPU limit; Qwen mystery goes to the second account after
   Llama's run.
