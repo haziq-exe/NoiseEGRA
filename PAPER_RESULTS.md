@@ -2724,3 +2724,32 @@ fable, -0.82 Granite mystery, -0.29 Qwen mystery, -1.31 Qwen fable.
   fables stop almost at once (too short).
 - Science fiction pending (runs launched after the chain waiting on the
   mysteries was killed mid-pull).
+
+### Science-fiction results, 200 stories per arm (runs r228-*-scifi, seven rules)
+
+Same measures as the fable and mystery table above.
+
+| Run | Coherent (method) | Rules: untouched / top-p / steer / method | Distinct: untouched / top-p / steer / method | Quality: untouched / top-p / steer / method |
+|---|---|---|---|---|
+| Qwen scifi | 198 | 2.15 / 2.06 / 1.35 / 2.04 | 1.23 / 1.56 / 1.52 / 2.78 | 5.11 / 4.98 / 3.96 / 5.00 |
+| Llama scifi | 199 | 1.10 / 1.58 / 0.34 / 0.68 | 3.24 / 5.45 / 4.28 / 4.73 | 4.51 / 2.98 / 4.71 / 4.69 |
+| Granite scifi | 171 | 1.45 / 1.73 / 0.81 / 1.18 | 2.34 / 3.55 / 3.16 / 3.81 | 4.82 / 3.76 / 3.82 / 3.51 |
+
+Method against untouched / top-p: rules Qwen -0.11 / -0.02, Llama -0.42
+[-0.55, -0.28] / -0.90 [-1.05, -0.74], Granite -0.27 / -0.56; distinct Qwen
++1.55 [+1.00, +2.12] / +1.22 [+0.60, +1.84], Llama +1.48 / -0.72 (n.s.),
+Granite +1.47 / +0.26 (n.s.); quality Qwen -0.11 [-0.49, +0.27] / +0.02, Llama
++0.18 [-0.22, +0.58] / +1.71 [+1.24, +2.16], Granite -1.31 [-1.80, -0.82] /
+-0.24 (n.s.).
+
+- Qwen: the most variety of any arm (+1.22 over top-p) at the untouched model's
+  quality and rules.
+- Llama: fewer rules broken than untouched and top-p, the untouched model's
+  quality, top-p 1.7 points worse; top-p's extra variety is not significant.
+- Granite: fewer rules than both, variety above untouched and level with top-p,
+  quality 1.3 below untouched and level with top-p (steering alone costs 1.0).
+- He/she and simile: unlike the fable, rule steering does not make them worse
+  on science fiction (steering alone: he/she 4% -> 1% Granite, 45% -> 16% Qwen
+  calibration; similes within 1-4 points of untouched). The method raises their
+  failures somewhat through its variety (Granite similes 3% -> 19%), as top-p
+  does (18%), so science fiction keeps all seven rules.
