@@ -65,6 +65,10 @@ SCHEDULES = ("constant", "cosine_decay", "ramp", "linear_decay", "prefix", "tail
 #  Scalar schedules                                                            #
 # --------------------------------------------------------------------------- #
 
+# Schedules that time a direction themselves; an envelope does not scale them.
+TIMED_SCHEDULES = frozenset({"ramp", "tail"})
+
+
 def schedule_factor(kind: str, t: int, horizon: int) -> float:
     """Multiplier in [0, 1] applied to a steering/noise magnitude at decode step ``t``.
 
@@ -406,8 +410,14 @@ class LayerPlan:
         rms_scale: float,
         gains: Optional[Sequence[float]] = None,
         budget: Optional[float] = None,
+        hold: float = 1.0,
     ) -> Optional[torch.Tensor]:
         """Sum_c beta_c * g_c * f_c(t) * rms_scale * s_c  ->  a single (dim,) vector.
+
+        ``hold`` scales the directions on a flat schedule and leaves those on a
+        schedule of their own ("ramp", "tail") alone: an envelope that fades the
+        rule steering with the noise must not also silence a direction timed to
+        act late, such as closure.
 
         ``gains`` are this generation's per-constraint multipliers, 1.0 each unless
         the plan is reallocating the mix per story.
@@ -436,6 +446,7 @@ class LayerPlan:
         coeffs = torch.tensor(
             [
                 w * schedule_factor(spec.schedule, t, horizon) * rms_scale
+                * (1.0 if spec.schedule in TIMED_SCHEDULES else float(hold))
                 for w, spec in zip(weights, specs)
             ],
             dtype=self.basis.dtype,
@@ -1919,12 +1930,13 @@ class SteeringPlan:
         delta = None
         if (self.steer_decode and self.steer_mode not in ("feedback", "error")
                 and (not self.push_layers or layer in self.push_layers)):
+            hold = (self.envelope_at(t) if getattr(self, "steer_envelope", False)
+                    else 1.0)
             delta = self.jitter_steering(
                 layer, lp.steering_delta(t, h, self.specs, self.rms_scale,
-                                         gains=self.gains, budget=self.steer_budget)
+                                         gains=self.gains, budget=self.steer_budget,
+                                         hold=hold)
             )
-            if delta is not None and getattr(self, "steer_envelope", False):
-                delta = delta * self.envelope_at(t)
 
         # The per-story offset is a perturbation, so it is gated with the noise
         # rather than with the steering: an entropy gate closes on both together.

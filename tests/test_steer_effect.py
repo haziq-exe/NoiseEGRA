@@ -95,6 +95,25 @@ check("no noise, the text never departs", dv["departed"] == 0.0 and dv["first"] 
 big = noise_divergence(egra, pd, ids, ref[0], 50.0)
 check("a large noise departs early", big["first"] < dv["first"], str(big))
 
+print("\n== a timed direction is not faded with the rest ==")
+from noiseegra.subspace import ConstraintSpec as CS  # noqa: E402
+lp = SteeringPlan.build(V, [2, 3], [CS("a", beta=1.0), CS("b", beta=1.0, schedule="ramp")],
+                        rms_scale=1.0, noise_mode="none", noise_alpha=0.0, steer_budget=1.0,
+                        horizon=10).layer_plans[2]
+specs = [CS("a", beta=1.0), CS("b", beta=1.0, schedule="ramp")]
+full = lp.steering_delta(20, 10, specs, 1.0, budget=1.0)
+held = lp.steering_delta(20, 10, specs, 1.0, budget=1.0, hold=0.0)
+only_b = lp.steering_delta(20, 10, [CS("a", beta=0.0), CS("b", beta=1.0, schedule="ramp")], 1.0,
+                           budget=None)
+check("with the flat direction held at zero, the ramp direction is left",
+      held is not None and torch.allclose(held, only_b * (1.0 / 2 ** 0.5), atol=1e-5))
+check("and at hold 1 nothing changes", torch.allclose(
+      lp.steering_delta(20, 10, specs, 1.0, budget=1.0, hold=1.0), full))
+flat = [CS("a", beta=1.0), CS("b", beta=1.0)]
+check("a flat set scales with hold exactly as the old envelope did", torch.allclose(
+      lp.steering_delta(5, 10, flat, 1.0, budget=1.0, hold=0.3),
+      0.3 * lp.steering_delta(5, 10, flat, 1.0, budget=1.0), atol=1e-6))
+
 print()
 print("all passed" if not FAILURES else f"FAILED: {FAILURES}")
 sys.exit(1 if FAILURES else 0)
