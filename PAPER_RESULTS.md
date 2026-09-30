@@ -2685,3 +2685,42 @@ fails 0% -> 97%) and the prose telegraphic (grade 0.4).
 
 Full runs: 200 stories per arm (untouched, top-p 0.95 at T=1.8, rule steering
 only, headline method), 3 briefs x 3 models (runs r228-*).
+
+### Fable and mystery results, 200 stories per arm (runs r228-*, 2026-09-30)
+
+Variety: NoveltyBench judge, openings removed, every pair. Rules: of 7. Method
+differences with 95% intervals (bootstrap for rules, half-size draws for
+distinct). Quality: 3 Sonnet raters per run, each rating 15 seeds in all four
+arms, shuffled (45 seeds per arm, paired by seed).
+
+| Run | Coherent (method) | Rules: untouched / top-p / steer / method | Distinct: untouched / top-p / steer / method | Quality: untouched / top-p / steer / method |
+|---|---|---|---|---|
+| Qwen fable | 172 | 1.62 / 1.69 / 1.71 / 2.60 | 2.21 / 3.41 / 4.20 / 7.77 | 4.02 / 4.47 / 4.07 / 3.16 |
+| Qwen mystery | 197 | 2.46 / 2.29 / 1.52 / 2.27 | 1.29 / 1.42 / 1.26 / 2.15 | 4.40 / 4.71 / 3.36 / 4.42 |
+| Llama fable | 200 | 1.02 / 2.05 / 0.66 / 1.02 | 6.09 / 7.77 / 5.50 / 5.74 | 6.24 / 2.40 / 5.73 / 5.62 |
+| Llama mystery | 200 | 1.46 / 1.74 / 0.87 / 1.21 | 2.93 / 6.24 / 3.51 / 4.33 | 5.89 / 2.53 / 5.53 / 5.38 |
+| Granite fable | 174 | 2.46 / 2.82 / 1.07 / 2.19 | 9.02 / 9.61 / 9.57 / 9.60 | 4.80 / 3.13 / 3.22 / 3.24 |
+| Granite mystery | 188 | 1.57 / 1.67 / 0.85 / 1.31 | 5.90 / 6.54 / 3.16 / 5.05 | 4.04 / 3.27 / 2.49 / 2.44 |
+
+Method against top-p: rules -1.03 [-1.21, -0.85] Llama fable, -0.53 Llama
+mystery, -0.63 Granite fable, -0.36 Granite mystery, -0.02 Qwen mystery, +0.91
+Qwen fable; distinct +4.36 [+3.30, +5.44] Qwen fable, +0.72 Qwen mystery, -2.02
+Llama fable, -1.91 Llama mystery, -0.01 Granite fable, -1.49 Granite mystery;
+quality +3.22 [+2.82, +3.60] Llama fable, +2.84 Llama mystery, +0.11 Granite
+fable, -0.82 Granite mystery, -0.29 Qwen mystery, -1.31 Qwen fable.
+
+- Top-p at T=1.8 wrecks Llama's quality (2.4-2.5 against 5.9-6.2 untouched): its
+  variety lead on Llama is variety bought by garbling. The method keeps Llama
+  within 0.5-0.6 of the untouched model, breaks fewer rules than top-p, and
+  beats it on quality by about 3 points.
+- On Qwen, which stays fluent at high temperature, the method gives by far the
+  most variety (fable 7.77 against 3.41; mystery 2.15 against 1.42) and matches
+  the untouched model's quality on the mystery (+0.02); on the fable it loses
+  0.9 of quality and breaks more rules (both animals "he" under steering; 44%
+  of stories open with a heading or preamble from the prompt noise).
+- On Granite the quality cost is the rule steering's: steering alone rates the
+  same as the method (3.22 vs 3.24; 2.49 vs 2.44), both ~1.5 below untouched;
+  steering shortens Granite's stories to 60-75 words. 26 of Granite's method
+  fables stop almost at once (too short).
+- Science fiction pending (runs launched after the chain waiting on the
+  mysteries was killed mid-pull).
