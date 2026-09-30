@@ -2642,3 +2642,46 @@ there; Llama-3.2-3B was run instead.
   quality (-0.10) but +0.5 rules broken. On Llama its middle rises (+0.79,
   borderline) and its ending does not.
 - Being repeated with the steering fading with the noise (r220-r222).
+
+## Three more story tasks (2026-09-30)
+
+The headline method (drifting noise + fading steering) on three new story briefs.
+Each keeps the middle-school instruction's structure -- about 150 words, a
+requirement list, "write only the story itself" -- and changes the reader (system
+line) and one sentence describing the story (noiseegra/writingprompts.py
+STORY_BRIEFS, --whole-prompt):
+
+- **Fable** (children aged 7-9): "two animals, a small problem between them, and a
+  lesson that the story shows rather than states."
+- **Mystery** (teenagers): "something small goes missing at a school, and the
+  story follows how it is found. Give it a clear ending."
+- **Science fiction** (adults): "set in the near future, about an ordinary person
+  dealing with one small but strange change in their day."
+
+**Rules.** The whole-story rules and their steering pairs, with two changes set
+from a 50-story calibration of each brief on all three models (untouched, top-p,
+steering only, method; runs r226-*-cal, then r227 for the fable ceiling):
+
+- *Exactly one named character* is dropped: steering did not move it on any
+  model or brief (failing 48-90% untouched and 62-84% steered; it also failed
+  58-68% steered on the middle-school task).
+- *Reading level* is set by the reader, one threshold per brief (it is written
+  into the prompt): the fable gets a ceiling, "simple enough for a grade-4
+  reader (Flesch-Kincaid at most 4)", steered by the children's plain-words
+  pairs (pair set fable_whole); the mystery a floor of grade 4; the science
+  fiction a floor of grade 5. The models write at very different levels
+  (untouched median grade: Qwen 2.0-3.4, Llama 5.6-7.4, Granite 6.6-7.6), so no
+  single threshold is moderately hard for all three: the floors are hard for
+  Qwen and easy for Llama and Granite, the ceiling the reverse.
+- Kept: present tense (the rule steering moves most: 66-100% failing untouched,
+  13-52% steered), speech in quotation marks, a he and a she, a simile, no
+  sentence written twice, no title or preamble.
+
+Fable ceiling check (30 stories, r227): steering takes Granite from 90% failing
+the ceiling to 0% (present tense 100% -> 0%); Llama's instruction alone brings
+most stories under grade 4 (20% failing, 7% steered); Qwen already writes at
+grade ~1. On Qwen's fables steering makes both animals "he" (a he and a she
+fails 0% -> 97%) and the prose telegraphic (grade 0.4).
+
+Full runs: 200 stories per arm (untouched, top-p 0.95 at T=1.8, rule steering
+only, headline method), 3 briefs x 3 models (runs r228-*).
