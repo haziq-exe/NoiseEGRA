@@ -100,6 +100,9 @@ PAIR_SETS = {
     # The whole-story rules on the middle-school task: the middle-school pairs
     # where they exist, the children's for the rest. See the file's readme.
     "middle_whole": _DATA / "steering_pairs_en_middle_whole.json",
+    # The fable brief: the same, plus the children's plain-words direction for
+    # its reading-level ceiling.
+    "fable_whole": _DATA / "steering_pairs_en_fable_whole.json",
 }
 
 # Any suite that can draw a per-story offset from an estimated basis must be
