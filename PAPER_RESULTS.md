@@ -2753,3 +2753,54 @@ Granite +1.47 / +0.26 (n.s.); quality Qwen -0.11 [-0.49, +0.27] / +0.02, Llama
   calibration; similes within 1-4 points of untouched). The method raises their
   failures somewhat through its variety (Granite similes 3% -> 19%), as top-p
   does (18%), so science fiction keeps all seven rules.
+
+### Fable and mystery with five rules, 200 stories per arm (runs r229-*-fable5, r229-*-mystery5, 2026-09-30)
+
+Rerun of the fable and the mystery without the simile and he/she rules
+(steering made both worse on fables, and neither is needed by a fable about
+two animals). Five rules: present tense, reading level (fable at or below
+grade 4, mystery at or above grade 4), speech, no repeated sentence, no title
+or preamble. Same arms, seeds, measures and blind Sonnet quality ratings (45
+seeds x 4 arms per run) as the tables above.
+
+| Run | Coherent (method) | Rules: untouched / top-p / steer / method | Distinct: untouched / top-p / steer / method | Quality: untouched / top-p / steer / method |
+|---|---|---|---|---|
+| Qwen fable | 179 | 1.17 / 1.14 / 0.10 / 0.58 | 3.76 / 6.05 / 3.26 / 7.39 | 5.24 / 5.18 / 4.24 / 4.18 |
+| Llama fable | 199 | 0.47 / 1.44 / 0.24 / 0.42 | 8.47 / 8.77 / 6.80 / 7.19 | 6.16 / 2.56 / 5.91 / 5.84 |
+| Granite fable | 191 | 1.85 / 1.86 / 0.25 / 0.88 | 9.14 / 9.80 / 8.72 / 9.41 | 4.96 / 3.76 / 4.13 / 3.80 |
+| Granite mystery | 179 | 1.04 / 1.02 / 1.22 / 1.18 | 5.18 / 5.15 / 3.92 / 4.95 | 3.76 / 2.71 / 2.11 / 2.64 |
+
+Method against untouched / top-p: rules Qwen fable -0.59 [-0.71, -0.48] /
+-0.56 [-0.67, -0.44], Llama fable -0.05 (n.s.) / -1.02 [-1.14, -0.89], Granite
+fable -0.97 [-1.10, -0.83] / -0.98 [-1.12, -0.85], Granite mystery +0.14
+[+0.01, +0.27] / +0.16 [+0.03, +0.29]; distinct Qwen fable +3.63 [+2.64, +4.66]
+/ +1.34 [+0.24, +2.62], Llama fable -1.27 [-2.10, -0.20] / -1.58 [-2.60,
+-0.64], Granite fable +0.27 (n.s.) / -0.39 (n.s.), Granite mystery -0.23 (n.s.)
+/ -0.20 (n.s.); quality Qwen fable -1.07 [-1.67, -0.47] / -1.00 [-1.56,
+-0.44], Llama fable -0.31 [-0.64, +0.02] / +3.29 [+2.96, +3.62], Granite fable
+-1.16 [-1.80, -0.49] / +0.04 (n.s.), Granite mystery -1.11 [-1.82, -0.38] /
+-0.07 (n.s.).
+
+- Dropping the two rules turns the fable around on rules: the method now
+  breaks fewer than untouched and top-p on all three models (it broke more on
+  Qwen with seven rules). Steering alone breaks the fewest.
+- Qwen fable: the most variety (7.39 against 6.05 top-p), fewest rules of the
+  sampling arms, quality 1.0 below both baselines. 22% of its fables still open
+  with a heading or preamble (0% for every other arm).
+- Llama fable: the untouched model is already very varied (8.47), and steering
+  narrows it (6.80); the method recovers part of that (7.19). Quality stays
+  within 0.3 of untouched; top-p is 3.6 points worse.
+- Granite fable: fewer rules than both baselines, variety level with both,
+  quality 1.2 below untouched and level with top-p; steering alone costs 0.8.
+- Granite mystery: steering does not work here. Steering alone breaks MORE
+  rules than untouched (1.22 against 1.04): 43% of its stories fail "no title or
+  preamble" (untouched 0%) because the steered text drops its capitals
+  mid-story ("in the hall, a familiar voice echoes ... my heart stutters"),
+  and 37% have no speech (untouched 9%). Steered stories are 64-71 words against
+  109. The method inherits this (rules +0.14 against untouched) and has no
+  variety gain. The seven-rule Granite mystery did not show it (rules -0.36
+  against top-p), so the capitals loss comes from steering the five-rule set on
+  this model, not from the noise.
+- Llama and Qwen mystery pending. The first and third Kaggle accounts ran out of
+  their 30-hour weekly GPU limit; Qwen mystery goes to the second account after
+  Llama's run.
