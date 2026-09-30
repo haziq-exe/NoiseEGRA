@@ -405,3 +405,102 @@ def start_for_target(egra, plan, prompt_ids, target: float, unit: float, *,
         lo, hi = (mid, hi) if d < goal else (lo, mid)
     return {"start": best[0], "fraction": best[0] / norm, "moves": best[1] / unit,
             "reached": 1.0}
+
+
+# --------------------------------------------------------------------------- #
+#  Sizing the rule steering by its effect                                      #
+# --------------------------------------------------------------------------- #
+
+def _with_budget(plan, budget: float):
+    """Context: the plan's steering at ``budget`` (0 turns it off), put back after."""
+    class _Ctx:
+        def __enter__(self):
+            self.saved = plan.steer_budget
+            plan.steer_budget = float(budget)
+        def __exit__(self, *exc):
+            plan.steer_budget = self.saved
+    return _Ctx()
+
+
+def budget_for_effect(egra, plan, prompt_ids, effect: Optional[float] = None, *,
+                      n_tokens: int = 48, iters: int = 12) -> Dict[str, float]:
+    """The steering budget at which the push moves the predictions by ``effect``.
+
+    A budget is a length in units of the per-coordinate activation scale, so the
+    same budget is a smaller push relative to a wider model's residual stream
+    (whose norm grows with sqrt(dim)), and models differ in how far a push of a
+    given relative size moves their words. Sized by effect instead -- the mean
+    Fisher-Rao distance between the steered and unsteered next-word
+    distributions -- the push means the same thing on every model, in the same
+    currency the noise is sized in.
+
+    Measured once per prompt along the model's greedy continuation with the
+    steering off, so nothing is sampled. The distance rises with the budget, so
+    the budget is found by bisection on a log scale around the given one. With
+    ``effect`` None only the given budget's effect is measured.
+    """
+    from .fisher_calibration import _logits, _probs, reference_passage
+
+    n_prompt = int(prompt_ids.shape[-1])
+    given = float(plan.steer_budget or 0.0)
+    with _with_budget(plan, 0.0):
+        passage = reference_passage(egra, plan, prompt_ids, n_tokens)
+        base = _probs(_logits(egra, plan, passage, n_prompt, with_offset=False), n_prompt)
+
+    def moved(budget: float) -> float:
+        with _with_budget(plan, budget):
+            p = _probs(_logits(egra, plan, passage, n_prompt, with_offset=False), n_prompt)
+        return float(fisher_rao_distance(base, p).mean())
+
+    at_given = moved(given) if given > 0 else 0.0
+    out = {"given": given, "at_given": at_given, "budget": given, "moves": at_given,
+           "reached": 1.0}
+    if effect is None or given <= 0:
+        return out
+    lo, hi = math.log(given / 20.0), math.log(given * 20.0)
+    best = (given, at_given)
+    for _ in range(int(iters)):
+        mid = 0.5 * (lo + hi)
+        d = moved(math.exp(mid))
+        if abs(d - effect) < abs(best[1] - effect):
+            best = (math.exp(mid), d)
+        lo, hi = (mid, hi) if d < float(effect) else (lo, mid)
+    out.update(budget=best[0], moves=best[1],
+               reached=float(abs(best[1] - effect) <= 0.05 * float(effect)))
+    return out
+
+
+def noise_divergence(egra, plan, prompt_ids, passage, length: float, *,
+                     seeds=(0, 1, 2, 3)) -> Dict[str, float]:
+    """How far random draws of the noise at ``length`` change what is written.
+
+    The per-step shift the noise is sized by says how much each next-word
+    distribution moves; this says whether the words chosen change: the greedy
+    continuation with each draw against the one without, token by token, over
+    the reference passage's length: where each draw first writes a different
+    word (median over draws; the passage length if it never does). Only the
+    first departure is counted -- after it the two texts are no longer aligned.
+    A diagnostic, printed before the stories.
+    Changes the plan's noise draw and the torch random state, like
+    start_for_target.
+    """
+    from .fisher_calibration import _logits
+
+    n_prompt = int(prompt_ids.shape[-1])
+    n = int(passage.shape[-1]) - n_prompt
+    clean = passage[0, n_prompt:].tolist()
+    firsts = []
+    for s in seeds:
+        torch.manual_seed(1_000_003 + int(s))
+        plan.resample_offset(story_index=0)
+        scale_offsets(plan, length)
+        ids = prompt_ids
+        for _ in range(n):
+            logits = _logits(egra, plan, ids, n_prompt, with_offset=True)
+            ids = torch.cat([ids, logits[-1].argmax().view(1, 1).to(ids.device)], dim=-1)
+        got = ids[0, n_prompt:].tolist()
+        diff = [a != b for a, b in zip(got, clean)]
+        firsts.append(diff.index(True) if any(diff) else n)
+    firsts.sort()
+    return {"first": float(firsts[len(firsts) // 2]),
+            "departed": sum(f < n for f in firsts) / len(firsts), "tokens": float(n)}

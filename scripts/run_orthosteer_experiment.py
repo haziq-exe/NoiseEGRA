@@ -131,6 +131,7 @@ def make_plan(
     online_rule_start=False,
     offset_measured=False,
     online_absolute=False,
+    steer_effect=0.0,
     guard_alpha=0.0,
     correct_eta=0.0,
     feedback_mode="",
@@ -272,6 +273,7 @@ def make_plan(
         online_rule_start=online_rule_start,
         offset_measured=offset_measured,
         online_absolute=online_absolute,
+        steer_effect=steer_effect,
         guard_alpha=guard_alpha,
         correct_eta=correct_eta,
         feedback_mode=feedback_mode,
@@ -2727,7 +2729,9 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                       offset_random_rank=rank, steer_prefill=steer,
                       prompt_tail_clear=keep, offset_draw_shape="sphere",
                       offset_prefill=True, offset_decode=True, noise_beta=cn,
-                      offset_prefill_gain=prompt_gain)
+                      offset_prefill_gain=prompt_gain,
+                      steer_effect=(float(getattr(args, "steer_effect", 0.0) or 0.0)
+                                    if steer else 0.0))
             if front != 1.0:
                 kw.update(offset_envelope="front", offset_envelope_steps=span,
                           offset_front_gain=front)

@@ -280,6 +280,17 @@ WHOLE_STORY_CONSTRAINTS = (
     "story_format",
 )
 
+# The whole-story rules that are scored and steered. "A he and a she" and
+# "simile" stay in the instruction -- the prompt is unchanged, so earlier
+# baselines remain comparable -- but are neither steered nor counted (dropped
+# 2026-09-30). Their steering directions did not encode the rule on any model:
+# the he/she direction favours "they", "them", "both" and disfavours "boy",
+# "brother"; the simile direction favours the things compared ("mirror",
+# "cage") rather than "like" or "as". Steered, both got worse: he/she failing
+# 6% -> 58% and simile 11% -> 36% on Qwen3-1.7B, simile 4% -> 14% on Qwen3-8B.
+WHOLE_STORY_SCORED = tuple(c for c in WHOLE_STORY_CONSTRAINTS
+                           if c not in ("both_genders", "simile"))
+
 
 MIDDLE_CONSTRAINTS = (
     "present_tense", "mature_register", "dialogue_min", "varied_openers",

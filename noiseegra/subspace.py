@@ -566,6 +566,14 @@ class SteeringPlan:
     # With the rule: hold the noise's per-step effect at the rule's absolute
     # distance 2*asin(k*p1) rather than at target x the decoder's shift.
     online_absolute: bool = False
+    # Size the rule steering by its effect instead of its length: before any
+    # story, the budget is set so the push moves the next-word predictions by
+    # this mean Fisher-Rao distance per step, against the same model unsteered
+    # (see online_calibration.budget_for_effect). A length in units of the
+    # activation scale is a smaller push on a wider model (the stream's norm
+    # grows with sqrt(dim)) and moves each model's words by a different amount.
+    # 0 keeps steer_budget as given.
+    steer_effect: float = 0.0
     # A guard on the story's next token from its noise-free shadow: the story
     # samples only among tokens the shadow gives at least this share of its top
     # token's probability (0 is off). Needs the shadow row, i.e. offset_online.
@@ -1107,6 +1115,7 @@ class SteeringPlan:
         online_rule_start: bool = False,
         offset_measured: bool = False,
         online_absolute: bool = False,
+        steer_effect: float = 0.0,
         guard_alpha: float = 0.0,
         correct_eta: float = 0.0,
         feedback_mode: str = "",
@@ -1358,6 +1367,7 @@ class SteeringPlan:
             online_rule_start=bool(online_rule_start),
             offset_measured=bool(offset_measured),
             online_absolute=bool(online_absolute),
+            steer_effect=float(steer_effect or 0.0),
             guard_alpha=float(guard_alpha or 0.0),
             correct_eta=float(correct_eta or 0.0),
             feedback_mode=str(feedback_mode or ""),
@@ -2183,6 +2193,7 @@ class SteeringPlan:
             "online_rule_start": self.online_rule_start,
             "offset_measured": self.offset_measured,
             "online_absolute": self.online_absolute,
+            "steer_effect": self.steer_effect,
             "guard_alpha": self.guard_alpha,
             "correct_eta": self.correct_eta,
             "feedback_mode": self.feedback_mode,

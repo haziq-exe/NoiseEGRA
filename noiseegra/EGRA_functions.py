@@ -824,6 +824,21 @@ class EGRA:
                                  return_tensors="pt")["input_ids"].to(self._input_device())
             key = tuple(int(i) for i in ids.view(-1).tolist())
             if key not in cache:
+                # The rule steering's own effect first: the noise's target and
+                # start are measured along the steered passage, so the steering
+                # has to be at its final strength before they are.
+                if float(getattr(plan, "steer_budget", 0.0) or 0.0) > 0:
+                    from .online_calibration import budget_for_effect
+                    want = float(getattr(plan, "steer_effect", 0.0) or 0.0)
+                    sz = budget_for_effect(self, plan, ids, want if want > 0 else None)
+                    smsg = (f"  [steer] budget {sz['given']:g} moves the predictions "
+                            f"{sz['at_given']:.4f} per step")
+                    if want > 0:
+                        plan.steer_budget = sz["budget"]
+                        smsg += (f"; sized to {want:g}: budget {sz['budget']:.3f} "
+                                 f"moves them {sz['moves']:.4f}"
+                                 + ("" if sz["reached"] else "  -- NOT REACHED"))
+                    print(smsg, flush=True)
                 ref = _reference(self, plan, ids, 48)
                 m = measure_for_rule(self, plan, ids, reference=ref)
                 m["target"] = target_from_top_share(m["unit"], m["top_prob"],
@@ -852,6 +867,11 @@ class EGRA:
                         plan.offset_decode, plan.offset_prefill = decode, prefill
                         plan.offset_taper = taper
                     m.update(st)
+                    from .online_calibration import noise_divergence
+                    dv = noise_divergence(self, plan, ids, ref[0], st["start"])
+                    msg += (f"; greedy text departs at token {dv['first']:.0f} of "
+                            f"{dv['tokens']:.0f} (median of 4 draws, "
+                            f"{dv['departed']:.0%} depart)")
                     msg += (f"; starting length {st['start']:.2f} "
                             f"({st['fraction']:.3f} of the norm) moves it "
                             f"{st['moves']:.3f}"

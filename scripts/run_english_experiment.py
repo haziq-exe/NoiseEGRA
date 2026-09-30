@@ -980,6 +980,14 @@ def main() -> None:
                          "beta*sqrt(k)*rms, so adding a constraint raises the dose "
                          "as a side effect and the number of constraints and the "
                          "strength of the intervention are the same knob")
+    ap.add_argument("--steer-effect", type=float, default=0.0,
+                    help="suite 'headline': size the rule steering by its effect "
+                         "instead of --steer-budget's length. Before any story the "
+                         "budget is set so the push moves the next-word predictions by "
+                         "this mean Fisher-Rao distance per step against the model "
+                         "unsteered, the same currency the noise is sized in. The run "
+                         "log prints the effect of --steer-budget's length either way. "
+                         "0 keeps --steer-budget as given")
     ap.add_argument("--budget-sweep", nargs="*", type=float, default=[2.0, 3.0, 4.5],
                     help="budgets --suite budget tries")
     ap.add_argument("--realloc-kappa", type=float, default=0.6,
@@ -1136,11 +1144,12 @@ def main() -> None:
         if list(args.constraints) == list(EN_TASK_CONSTRAINTS):
             args.constraints = list(WHOLE_STORY_CONSTRAINTS)
         if list(args.steer_vectors) == list(EN_STEER_VECTORS):
-            # One direction per rule that has one. `dialogue` serves speech,
+            # One direction per scored rule. `dialogue` serves speech,
             # `named_character` serves naming, `no_heading` serves the format.
+            # No direction for "a he and a she" or "simile": they stay in the
+            # instruction but are not steered or scored (WHOLE_STORY_SCORED).
             args.steer_vectors = ["present_tense", "mature_register", "dialogue",
-                                  "named_character", "both_genders", "simile",
-                                  "distinct_sentences", "no_heading"]
+                                  "named_character", "distinct_sentences", "no_heading"]
         args.max_opener_uses = EN_MIDDLE_MAX_OPENER_USES
         # The same settings the middle-school set has to move together with, for
         # the same reason: the story length the model is allowed and the point an
