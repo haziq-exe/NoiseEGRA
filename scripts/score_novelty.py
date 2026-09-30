@@ -159,9 +159,12 @@ def _pair_probs(pairs, enc, tok, model, torch, device, batch: int, half: bool) -
 # precision moves the probability by about 1e-3; the margin is thirty times that.
 MARGIN = 0.03
 CHECK_PAIRS = 400
+# Pairs judged at once. 64 suits a T4 in half precision; a laptop GPU judging
+# in full precision runs out of memory there (--batch 16 fits a 16 GB Mac).
+BATCH = 64
 
 
-def same_matrix(texts: list, tok, model, torch, device: str, batch: int = 64,
+def same_matrix(texts: list, tok, model, torch, device: str, batch: int = 0,
                 report: dict = None) -> np.ndarray:
     """n x n: whether the judge calls stories i and j the same story.
 
@@ -172,6 +175,7 @@ def same_matrix(texts: list, tok, model, torch, device: str, batch: int = 64,
     half precision alone would have got wrong -- the evidence that it did not
     matter, measured on these stories.
     """
+    batch = batch or BATCH
     enc = [tok.encode(t, truncation=True, max_length=MAX_TOKENS, add_special_tokens=False)
            for t in texts]
     n = len(texts)
@@ -331,6 +335,7 @@ def summarise(path: Path, judged: dict) -> dict:
 
 
 def main() -> None:
+    global STRIP_OPENINGS, BATCH
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("path")
@@ -338,14 +343,15 @@ def main() -> None:
     ap.add_argument("--subsets", type=int, default=500)
     ap.add_argument("--part", default="", help="i/n: judge every n-th arm from i (internal)")
     ap.add_argument("--device", default="")
+    ap.add_argument("--batch", type=int, default=BATCH, help="pairs judged at once")
     ap.add_argument("--keep-openings", action="store_true",
                     help="judge stories with their leading headings and replies to the reader "
                          "(the scoring before 2026-09-29)")
     ap.add_argument("--extra", default="",
                     help="JSON of earlier arms to judge alongside: {\"arms\": {run id: [stories]}}")
     args = ap.parse_args()
-    global STRIP_OPENINGS
     STRIP_OPENINGS = not args.keep_openings
+    BATCH = args.batch
     path = Path(args.path)
     if args.extra and not Path(args.extra).is_absolute():
         args.extra = str((ROOT / args.extra) if (ROOT / args.extra).is_file() else Path(args.extra))
