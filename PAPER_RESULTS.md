@@ -2854,3 +2854,83 @@ and a she 4 / 12 / 4 / 31; simile 4 / 7 / 14 / 14; no repeated sentence 0 / 0 /
 - No slips: prompt noise at 1.0x gave no headings or preambles on the 8B.
 - Top-p does not cost the 8B any quality (6.09 against 5.84 untouched), unlike
   Llama; ratings on this model are compressed (almost all 5-7).
+
+### Steering sized by its effect; he/she and simile dropped (2026-09-30 to 10-01, runs r231-r234)
+
+**Rule change.** "A he and a she" and "simile" stay in every instruction (the
+prompts are unchanged, so earlier baselines stay comparable) but are no longer
+steered or scored (WHOLE_STORY_SCORED). Neither steering direction encoded its
+rule: the he/she direction favours "they", "them", "both"; the simile direction
+favours the things compared ("mirror", "cage"), not "like" or "as". Steered,
+both got worse (he/she failing 6% -> 58%, simile 11% -> 36% on Qwen3-1.7B).
+
+**Steering strength by effect (run r231, one story per model).** Steering at
+budget 2.5 (units of the per-coordinate activation scale) moves the next-word
+distribution by a different amount on each model (mean Fisher-Rao distance per
+step, middle-school prompt, 6 directions): Qwen3-1.7B 0.99, Qwen3-8B 0.84,
+Granite 4.0 1B 0.88, Llama-3.2-3B 0.55. The noise, already sized by its effect,
+moves them 0.60 / 0.69 / 0.60 / 0.54 and changes the first word in 4 of 4 draws
+on every model, so the noise is not weaker on the 8B. --steer-effect 1.0 sets
+the budget before any story so the steering moves the predictions by 1.0, the
+effect budget 2.5 has on Qwen3-1.7B where the budget was chosen: one constant
+for every model. Steering alone is sized the same way (from r234).
+
+**Qwen3-8B, middle-school prompt, 6 scored rules, 200 stories (method rerun
+r232; baselines from r230, which steered 8 directions at budget 2.5).** Budget
+sized to 3.36.
+
+| Qwen3-8B | Coherent | Rules broken (of 6) | Same-story | Distinct of 10 | Quality |
+|---|---|---|---|---|---|
+| Untouched | 200 | 1.79 | 99.6% | 1.02 | 6.13 |
+| Top-p 0.95, T=1.8 | 200 | 1.51 | 98.6% | 1.08 | 6.29 |
+| Rule steering only (r230) | 200 | 1.43 | 98.0% | 1.13 | 6.02 |
+| Method, budget 2.5 (r230) | 197 | 1.62 | 73.9% | 2.54 | |
+| Method, steering by effect (r232) | 200 | 1.42 | 68.5% | 2.85 | 6.24 |
+
+Effect-sized method against untouched / top-p / steering only: rules -0.38
+[-0.51, -0.24] / -0.10 [-0.24, +0.05] / -0.01 [-0.16, +0.13]; distinct +1.83
+[+1.26, +2.48] / +1.77 [+1.20, +2.40] / +1.72 [+1.20, +2.36]; quality +0.11
+[-0.18, +0.38] / -0.04 [-0.36, +0.29] (3 Sonnet raters, 45 seeds per arm; nearly
+every rating 6 or 7). Failing: present tense 73 / 57 / 27 / 41 / 28%, reading
+level 7 / 6 / 23 / 48 / 35%.
+
+- The noise no longer costs steering's rule gains on the 8B (level with steering
+  alone; the budget-2.5 method gave back 0.19), and variety rises slightly.
+- Read in full, the 8B's stories are coherent, well-written scenes that end on an
+  image rather than resolving; the untouched 8B writes the same way.
+
+**Closure (run r233, 3 stories).** The closure direction (12 pairs ending a
+scene: "She waves goodbye. The gate shuts behind her. That is the end.") added
+on a ramp to full strength by token 200, kept out of the steering's fade (a
+direction on its own schedule is no longer faded; commit 186b737). None of the
+three stories resolves; they read as before. The direction's word profile on
+the 8B ('ies', 'cast', 'word', 'anything', 'early') does not look like an
+ending, so this does not separate a weak direction from the model's habit.
+
+**Qwen3-8B, science fiction (adult reader), 5 scored rules, 200 stories per arm
+(run r234).** Budget sized to 5.12 (budget 2.5 moved the predictions only 0.64
+on this prompt); noise target 0.60 (top word 0.64, against 0.76 on middle
+school).
+
+| Qwen3-8B science fiction | Coherent | Rules broken (of 5) | Same-story | Distinct of 10 | Quality |
+|---|---|---|---|---|---|
+| Untouched | 200 | 1.26 | 99.2% | 1.04 | 6.09 |
+| Top-p 0.95, T=1.8 | 200 | 1.27 | 92.4% | 1.43 | 6.13 |
+| Rule steering only | 200 | 0.83 | 83.4% | 1.91 | 3.60 |
+| Method | 198 | 0.59 | 92.1% | 1.47 | 5.67 |
+
+Method against untouched / top-p / steering only: rules -0.67 [-0.78, -0.56] /
+-0.68 [-0.79, -0.56] / -0.24 [-0.39, -0.10]; distinct +0.42 [+0.16, +0.68] /
++0.04 [-0.32, +0.42] / -0.45 [-0.94, +0.00]; quality -0.42 [-0.69, -0.18] /
+-0.47 [-0.76, -0.18]. Failing: present tense 100 / 100 / 20 / 29%, reading level
+(grade 5 floor) 26 / 27 / 0 / 18%, speech 0 / 0 / 18 / 6%, no title or preamble
+0 / 0 / 45 / 5%.
+
+- Steering held at budget 5.12 for the whole story breaks the text: 45% of
+  steering-only stories lose their capitals mid-story ("i blink", "the morning
+  air"), doubled full stops; rated 3.60. Fading it after the opening (the
+  method) keeps it to 5% and 5.67.
+- The method breaks the fewest rules of any arm, but its variety is weak here
+  (level with top-p) and it costs 0.4 of quality. The effect target of 1.0
+  doubled the budget on this prompt: what moves the predictions by 1.0 per step
+  on a prompt where the model is less certain may be too strong a push.
