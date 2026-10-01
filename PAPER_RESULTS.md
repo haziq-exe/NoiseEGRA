@@ -2934,3 +2934,32 @@ Method against untouched / top-p / steering only: rules -0.67 [-0.78, -0.56] /
   (level with top-p) and it costs 0.4 of quality. The effect target of 1.0
   doubled the budget on this prompt: what moves the predictions by 1.0 per step
   on a prompt where the model is less certain may be too strong a push.
+
+### The noise's rule read from the model unsteered (run r236, 2026-10-01)
+
+The noise's target (k x the top word's probability) was read along the steered
+passage. On Qwen3-8B's science-fiction prompt the steering (budget 5.12) pulled
+the top word from 0.776 (unsteered) to 0.639, shrinking the noise to 0.56 per
+step against 0.67 on middle school. With --rule-unsteered the top word is read
+with the steering off: target 0.603 -> 0.738 top-p units, starting length 7.74 ->
+9.52. Same steering, prompt and seeds as r234; method arm only, 200 stories;
+references from r234.
+
+| Qwen3-8B science fiction | Coherent | Rules broken (of 5) | Same-story | Distinct of 10 |
+|---|---|---|---|---|
+| Untouched | 200 | 1.26 | 99.2% | 1.04 |
+| Top-p 0.95, T=1.8 | 200 | 1.27 | 92.4% | 1.43 |
+| Rule steering only | 200 | 0.83 | 83.4% | 1.91 |
+| Method, rule read steered (r234) | 198 | 0.59 | 92.1% | 1.47 |
+| Method, rule read unsteered | 196 | 0.62 | 87.4% | 1.77 |
+
+Unsteered-rule method against untouched / top-p / steering only / steered-rule
+method: rules -0.64 [-0.76, -0.53] / -0.65 [-0.77, -0.53] / -0.22 [-0.37, -0.07]
+/ +0.03 [-0.11, +0.16]; distinct +0.72 [+0.36, +1.10] / +0.34 [-0.14, +0.74] /
+-0.15 [-0.70, +0.34] / +0.30 [-0.14, +0.72].
+
+- More noise moves variety the right way (+0.30, not significant) at the same
+  rules and coherence; it is still level with steering alone, whose variety is
+  real (2.00 distinct over its 110 stories that keep their capitals).
+- On the first 50 seeds the change looked larger (+0.31 distinct, -0.24 rules);
+  at 200 the rule gain is gone. Variety measured on 50 stories is noisy.
