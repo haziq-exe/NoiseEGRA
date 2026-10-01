@@ -821,7 +821,8 @@ class EGRA:
         # to be at its final strength before they are. Any arm with steering can
         # ask for it, steering alone included.
         want = float(getattr(plan, "steer_effect", 0.0) or 0.0)
-        if (want > 0 or rule_on) and float(getattr(plan, "steer_budget", 0.0) or 0.0) > 0:
+        share = float(getattr(plan, "steer_share", 0.0) or 0.0)
+        if (want > 0 or share > 0 or rule_on) and float(getattr(plan, "steer_budget", 0.0) or 0.0) > 0:
             scache = getattr(plan, "_steer_cache", None)
             if scache is None:
                 scache = plan._steer_cache = {}
@@ -831,12 +832,15 @@ class EGRA:
             skey = tuple(int(i) for i in ids.view(-1).tolist())
             if skey not in scache:
                 from .online_calibration import budget_for_effect
-                sz = budget_for_effect(self, plan, ids, want if want > 0 else None)
-                smsg = (f"  [steer] budget {sz['given']:g} moves the predictions "
-                        f"{sz['at_given']:.4f} per step")
-                if want > 0:
+                sz = budget_for_effect(self, plan, ids, want if want > 0 else None,
+                                       share=share if share > 0 else None)
+                smsg = (f"  [steer] unsteered top word {sz['top_prob']:.3f}; budget "
+                        f"{sz['given']:g} moves the predictions {sz['at_given']:.4f} per step")
+                if want > 0 or share > 0:
                     plan.steer_budget = sz["budget"]
-                    smsg += (f"; sized to {want:g}: budget {sz['budget']:.3f} "
+                    smsg += (f"; sized to {sz['effect']:.4g}"
+                             + (f" (share {share:g})" if share > 0 else "")
+                             + f": budget {sz['budget']:.3f} "
                              f"moves them {sz['moves']:.4f}"
                              + ("" if sz["reached"] else "  -- NOT REACHED"))
                 scache[skey] = sz

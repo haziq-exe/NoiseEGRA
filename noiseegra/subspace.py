@@ -585,6 +585,10 @@ class SteeringPlan:
     # grows with sqrt(dim)) and moves each model's words by a different amount.
     # 0 keeps steer_budget as given.
     steer_effect: float = 0.0
+    # Or set that effect from the unsteered model's top-word probability, the
+    # rule the noise's target follows, with this share
+    # (online_calibration.steer_target_from_top_share). Overrides steer_effect.
+    steer_share: float = 0.0
     # A guard on the story's next token from its noise-free shadow: the story
     # samples only among tokens the shadow gives at least this share of its top
     # token's probability (0 is off). Needs the shadow row, i.e. offset_online.
@@ -1127,6 +1131,7 @@ class SteeringPlan:
         offset_measured: bool = False,
         online_absolute: bool = False,
         steer_effect: float = 0.0,
+        steer_share: float = 0.0,
         guard_alpha: float = 0.0,
         correct_eta: float = 0.0,
         feedback_mode: str = "",
@@ -1379,6 +1384,7 @@ class SteeringPlan:
             offset_measured=bool(offset_measured),
             online_absolute=bool(online_absolute),
             steer_effect=float(steer_effect or 0.0),
+            steer_share=float(steer_share or 0.0),
             guard_alpha=float(guard_alpha or 0.0),
             correct_eta=float(correct_eta or 0.0),
             feedback_mode=str(feedback_mode or ""),
@@ -2206,6 +2212,7 @@ class SteeringPlan:
             "offset_measured": self.offset_measured,
             "online_absolute": self.online_absolute,
             "steer_effect": self.steer_effect,
+            "steer_share": self.steer_share,
             "guard_alpha": self.guard_alpha,
             "correct_eta": self.correct_eta,
             "feedback_mode": self.feedback_mode,

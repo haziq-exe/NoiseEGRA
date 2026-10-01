@@ -132,6 +132,7 @@ def make_plan(
     offset_measured=False,
     online_absolute=False,
     steer_effect=0.0,
+    steer_share=0.0,
     guard_alpha=0.0,
     correct_eta=0.0,
     feedback_mode="",
@@ -274,6 +275,7 @@ def make_plan(
         offset_measured=offset_measured,
         online_absolute=online_absolute,
         steer_effect=steer_effect,
+        steer_share=steer_share,
         guard_alpha=guard_alpha,
         correct_eta=correct_eta,
         feedback_mode=feedback_mode,
@@ -2329,6 +2331,7 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                                offset_mode="none", steer_prefill=True,
                                prompt_tail_clear=keep,
                                steer_effect=float(getattr(args, "steer_effect", 0.0) or 0.0),
+                               steer_share=float(getattr(args, "steer_share", 0.0) or 0.0),
                                **quiet, **base)},
         ], (f"the model as it ships, nucleus sampling at temperature {t:g}, "
             "and the rule steering alone")
@@ -2735,7 +2738,9 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                       offset_prefill=True, offset_decode=True, noise_beta=cn,
                       offset_prefill_gain=prompt_gain,
                       steer_effect=(float(getattr(args, "steer_effect", 0.0) or 0.0)
-                                    if steer else 0.0))
+                                    if steer else 0.0),
+                      steer_share=(float(getattr(args, "steer_share", 0.0) or 0.0)
+                                   if steer else 0.0))
             if front != 1.0:
                 kw.update(offset_envelope="front", offset_envelope_steps=span,
                           offset_front_gain=front)

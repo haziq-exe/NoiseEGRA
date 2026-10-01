@@ -988,6 +988,11 @@ def main() -> None:
                          "unsteered, the same currency the noise is sized in. The run "
                          "log prints the effect of --steer-budget's length either way. "
                          "0 keeps --steer-budget as given")
+    ap.add_argument("--steer-share", type=float, default=0.0,
+                    help="like --steer-effect, but the effect is set from the "
+                         "unsteered model's top-word probability by the noise's rule: "
+                         "the steering may move at most this share of it, "
+                         "sin(d/2) = share * top word. Overrides --steer-effect")
     ap.add_argument("--budget-sweep", nargs="*", type=float, default=[2.0, 3.0, 4.5],
                     help="budgets --suite budget tries")
     ap.add_argument("--realloc-kappa", type=float, default=0.6,

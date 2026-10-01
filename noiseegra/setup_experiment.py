@@ -256,7 +256,9 @@ def _ortho_tag_once(model_name: str, spec: ExperimentSpec, *, compress: bool) ->
             parts.append(f"__od{plan.offset_draw}")
     if getattr(plan, "steer_budget", None):
         parts.append(f"__bud{_float_tag(plan.steer_budget)}")
-    if float(getattr(plan, "steer_effect", 0.0) or 0.0) > 0:
+    if float(getattr(plan, "steer_share", 0.0) or 0.0) > 0:
+        parts.append(f"__ss{_float_tag(plan.steer_share)}")
+    elif float(getattr(plan, "steer_effect", 0.0) or 0.0) > 0:
         parts.append(f"__se{_float_tag(plan.steer_effect)}")
     # How the coefficient is decided, not just how large it is. Without this a
     # constant arm and an error-driven arm at the same betas share a run id and

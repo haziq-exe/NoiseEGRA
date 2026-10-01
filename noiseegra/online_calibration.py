@@ -422,7 +422,21 @@ def _with_budget(plan, budget: float):
     return _Ctx()
 
 
+def steer_target_from_top_share(top_prob: float, share: float) -> float:
+    """The steering's effect target from the unsteered model's top-word probability.
+
+    The same rule as the noise's target (target_from_top_share), with its own
+    share: the steering may move at most ``share`` of the probability the
+    unsteered model gives its most likely next word, sin(d/2) = share * top_prob.
+    A model less sure of its next word is pushed less -- a fixed distance asks
+    for twice the budget on a prompt where Qwen3-8B's top word is 0.64 than
+    where it is 0.76, and held that long the push breaks the text.
+    """
+    return 2.0 * math.asin(min(1.0, float(share) * float(top_prob)))
+
+
 def budget_for_effect(egra, plan, prompt_ids, effect: Optional[float] = None, *,
+                      share: Optional[float] = None,
                       n_tokens: int = 48, iters: int = 12) -> Dict[str, float]:
     """The steering budget at which the push moves the predictions by ``effect``.
 
@@ -437,7 +451,9 @@ def budget_for_effect(egra, plan, prompt_ids, effect: Optional[float] = None, *,
     Measured once per prompt along the model's greedy continuation with the
     steering off, so nothing is sampled. The distance rises with the budget, so
     the budget is found by bisection on a log scale around the given one. With
-    ``effect`` None only the given budget's effect is measured.
+    ``effect`` None only the given budget's effect is measured. With ``share``
+    the effect is set from the unsteered model's top-word probability instead
+    (steer_target_from_top_share).
     """
     from .fisher_calibration import _logits, _probs, reference_passage
 
@@ -452,9 +468,13 @@ def budget_for_effect(egra, plan, prompt_ids, effect: Optional[float] = None, *,
             p = _probs(_logits(egra, plan, passage, n_prompt, with_offset=False), n_prompt)
         return float(fisher_rao_distance(base, p).mean())
 
+    top_prob = float(base.max(-1).values.mean())
+    if share is not None and share > 0:
+        effect = steer_target_from_top_share(top_prob, share)
     at_given = moved(given) if given > 0 else 0.0
     out = {"given": given, "at_given": at_given, "budget": given, "moves": at_given,
-           "reached": 1.0}
+           "reached": 1.0, "top_prob": top_prob,
+           "effect": float(effect) if effect is not None else 0.0}
     if effect is None or given <= 0:
         return out
     lo, hi = math.log(given / 20.0), math.log(given * 20.0)

@@ -92,6 +92,29 @@ egra.generate_with_orthogonal_steering(PROMPT, so, max_new_tokens=6, seed=1)
 check("steering alone is sized the same way, with no noise in the arm",
       abs(so.steer_budget - s["budget"]) / s["budget"] < 1e-6, f"{so.steer_budget:.4f}")
 
+print("\n== the effect set from the top word, the noise's rule ==")
+from noiseegra.online_calibration import steer_target_from_top_share  # noqa: E402
+import math  # noqa: E402
+check("a less certain model gets a smaller target",
+      steer_target_from_top_share(0.64, 0.7) < steer_target_from_top_share(0.76, 0.7))
+check("the mass moved is share x the top word",
+      abs(math.sin(steer_target_from_top_share(0.7, 0.5) / 2) - 0.35) < 1e-9)
+p1 = m1["top_prob"]
+sh = math.sin(goal / 2) / p1
+ss = budget_for_effect(egra, plan(), ids, share=sh)
+check("a share is turned into the effect it implies",
+      abs(ss["effect"] - goal) < 1e-6 and abs(ss["budget"] - s["budget"]) / s["budget"] < 1e-6,
+      f"{ss['effect']:.4f} vs {goal:.4f}")
+pss = SteeringPlan.build(V, [2, 3], [ConstraintSpec(n, beta=1.0) for n in V], rms_scale=1.0,
+        noise_mode="none", noise_alpha=0.0, steer_budget=1.0, offset_gamma=0.0,
+        offset_mode="none", steer_prefill=True, prompt_tail_clear=2, steer_share=sh,
+        steer_effect=99.0)
+check("the run id records the share",
+      "__ss" in _ortho_tag("M", ExperimentSpec(use_orthogonal_steering=True, steering_plan=pss)))
+egra.generate_with_orthogonal_steering(PROMPT, pss, max_new_tokens=6, seed=1)
+check("in a run, the share overrides a fixed effect",
+      abs(pss.steer_budget - s["budget"]) / s["budget"] < 1e-6, f"{pss.steer_budget:.4f}")
+
 print("\n== the noise's divergence ==")
 from noiseegra.online_calibration import _reference  # noqa: E402
 pd = plan()
