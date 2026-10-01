@@ -2323,9 +2323,13 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
         return [
             "baseline",
             {"mode": "baseline", "temperature": t, "top_p": 0.95},
+            # The same steering as the method's: sized by its effect when
+            # --steer-effect asks for that, so the two compare at one strength.
             {"plan": make_plan(beta=flat, steer_budget=b, offset_gamma=0.0,
                                offset_mode="none", steer_prefill=True,
-                               prompt_tail_clear=keep, **quiet, **base)},
+                               prompt_tail_clear=keep,
+                               steer_effect=float(getattr(args, "steer_effect", 0.0) or 0.0),
+                               **quiet, **base)},
         ], (f"the model as it ships, nucleus sampling at temperature {t:g}, "
             "and the rule steering alone")
 

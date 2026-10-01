@@ -813,7 +813,35 @@ class EGRA:
         rule = None
         online = float(getattr(plan, "offset_online", 0.0) or 0.0) > 0
         measured = bool(getattr(plan, "offset_measured", False))
-        if float(getattr(plan, "online_rule_k", 0.0) or 0.0) > 0 and (online or measured):
+        rule_on = float(getattr(plan, "online_rule_k", 0.0) or 0.0) > 0 and (online or measured)
+        # The rule steering's own effect, once per prompt, sized to
+        # plan.steer_effect when that is set (and only printed otherwise, in an
+        # arm that also measures the noise). First, because the noise's target
+        # and start are measured along the steered passage, so the steering has
+        # to be at its final strength before they are. Any arm with steering can
+        # ask for it, steering alone included.
+        want = float(getattr(plan, "steer_effect", 0.0) or 0.0)
+        if (want > 0 or rule_on) and float(getattr(plan, "steer_budget", 0.0) or 0.0) > 0:
+            scache = getattr(plan, "_steer_cache", None)
+            if scache is None:
+                scache = plan._steer_cache = {}
+            ids = self.tokenizer(self.apply_chat_template(prompt, tokenize=False,
+                                                          add_generation_prompt=True),
+                                 return_tensors="pt")["input_ids"].to(self._input_device())
+            skey = tuple(int(i) for i in ids.view(-1).tolist())
+            if skey not in scache:
+                from .online_calibration import budget_for_effect
+                sz = budget_for_effect(self, plan, ids, want if want > 0 else None)
+                smsg = (f"  [steer] budget {sz['given']:g} moves the predictions "
+                        f"{sz['at_given']:.4f} per step")
+                if want > 0:
+                    plan.steer_budget = sz["budget"]
+                    smsg += (f"; sized to {want:g}: budget {sz['budget']:.3f} "
+                             f"moves them {sz['moves']:.4f}"
+                             + ("" if sz["reached"] else "  -- NOT REACHED"))
+                scache[skey] = sz
+                print(smsg, flush=True)
+        if rule_on:
             from .online_calibration import (_reference, measure_for_rule,
                                              start_for_target, target_from_top_share)
             cache = getattr(plan, "_rule_cache", None)
@@ -824,21 +852,6 @@ class EGRA:
                                  return_tensors="pt")["input_ids"].to(self._input_device())
             key = tuple(int(i) for i in ids.view(-1).tolist())
             if key not in cache:
-                # The rule steering's own effect first: the noise's target and
-                # start are measured along the steered passage, so the steering
-                # has to be at its final strength before they are.
-                if float(getattr(plan, "steer_budget", 0.0) or 0.0) > 0:
-                    from .online_calibration import budget_for_effect
-                    want = float(getattr(plan, "steer_effect", 0.0) or 0.0)
-                    sz = budget_for_effect(self, plan, ids, want if want > 0 else None)
-                    smsg = (f"  [steer] budget {sz['given']:g} moves the predictions "
-                            f"{sz['at_given']:.4f} per step")
-                    if want > 0:
-                        plan.steer_budget = sz["budget"]
-                        smsg += (f"; sized to {want:g}: budget {sz['budget']:.3f} "
-                                 f"moves them {sz['moves']:.4f}"
-                                 + ("" if sz["reached"] else "  -- NOT REACHED"))
-                    print(smsg, flush=True)
                 ref = _reference(self, plan, ids, 48)
                 m = measure_for_rule(self, plan, ids, reference=ref)
                 m["target"] = target_from_top_share(m["unit"], m["top_prob"],

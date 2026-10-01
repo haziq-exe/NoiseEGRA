@@ -85,6 +85,13 @@ pk = plan()
 egra.generate_with_orthogonal_steering(PROMPT, pk, max_new_tokens=6, seed=1)
 check("without it the budget stays as given", pk.steer_budget == 1.0)
 
+so = SteeringPlan.build(V, [2, 3], [ConstraintSpec(n, beta=1.0) for n in V], rms_scale=1.0,
+        noise_mode="none", noise_alpha=0.0, steer_budget=1.0, offset_gamma=0.0,
+        offset_mode="none", steer_prefill=True, prompt_tail_clear=2, steer_effect=goal)
+egra.generate_with_orthogonal_steering(PROMPT, so, max_new_tokens=6, seed=1)
+check("steering alone is sized the same way, with no noise in the arm",
+      abs(so.steer_budget - s["budget"]) / s["budget"] < 1e-6, f"{so.steer_budget:.4f}")
+
 print("\n== the noise's divergence ==")
 from noiseegra.online_calibration import _reference  # noqa: E402
 pd = plan()
