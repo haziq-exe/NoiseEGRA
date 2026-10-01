@@ -2963,3 +2963,30 @@ method: rules -0.64 [-0.76, -0.53] / -0.65 [-0.77, -0.53] / -0.22 [-0.37, -0.07]
   real (2.00 distinct over its 110 stories that keep their capitals).
 - On the first 50 seeds the change looked larger (+0.31 distinct, -0.24 rules);
   at 200 the rule gain is gone. Variety measured on 50 stories is noisy.
+
+### More noise: the rule's share k at 0.6 and 0.8 (run r237, 50 stories, 2026-10-02)
+
+Qwen3-8B, science fiction, rule read unsteered, steering as r234/r236; method
+only, seeds 0-49; references and k 0.43 (r236) on the same seeds. Noise target
+0.74 / 1.05 / 1.45 top-p units at k 0.43 / 0.6 / 0.8 (starting length 0.13 /
+0.18 / 0.23 of the norm).
+
+| First 50 seeds | Coherent | Lost capitals or title | Under 60 words | Over 200 words | Doubled full stops | Rules (of 5) | Distinct of 10 |
+|---|---|---|---|---|---|---|---|
+| Untouched | 50 | 0% | 0 | 0 | 0 | 1.24 | 1.02 |
+| Top-p 0.95, T=1.8 | 50 | 0% | 0 | 0 | 0 | 1.28 | 1.33 |
+| Rule steering only | 50 | 48% | 0 | 0 | 44 | 0.86 | 1.34 |
+| Method k 0.43 | 49 | 8% | 0 | 1 | 12 | 0.45 | 1.84 |
+| Method k 0.6 | 49 | 6% | 3 | 5 | 13 | 0.84 | 3.00 |
+| Method k 0.8 | 49 | 14% | 2 | 10 | 14 | 0.98 | 4.44 |
+
+k 0.6 / 0.8 against k 0.43: distinct +1.16 [-0.04, +2.52] / +2.60 [+1.24, +4.06],
+rules +0.39 [+0.10, +0.67] / +0.53 [+0.22, +0.84]. Against steering alone:
+distinct +1.66 [+0.62, +2.90] / +3.10 [+1.78, +4.42], rules -0.02 / +0.12 (n.s.).
+Speech failing 8 / 14 / 41%.
+
+- More noise buys a lot of variety; the coherence checker passes 49 of 50 at
+  every k, but it misses one-sentence fragments (k 0.6 story 1: 33 words) and
+  off-brief stories (k 0.8 story 0: a relationship scene with no strange change).
+  Rules rise to steering alone's level; at k 0.8 four in ten stories lose their
+  speech and a fifth run past 200 words.
