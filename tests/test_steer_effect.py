@@ -115,6 +115,23 @@ egra.generate_with_orthogonal_steering(PROMPT, pss, max_new_tokens=6, seed=1)
 check("in a run, the share overrides a fixed effect",
       abs(pss.steer_budget - s["budget"]) / s["budget"] < 1e-6, f"{pss.steer_budget:.4f}")
 
+print("\n== the noise's rule read from the model unsteered ==")
+from noiseegra.online_calibration import target_from_top_share  # noqa: E402
+pu = SteeringPlan.build(V, [2, 3], [ConstraintSpec(n, beta=1.0) for n in V], rms_scale=1.0,
+        noise_mode="none", noise_alpha=0.0, steer_budget=1.0, offset_gamma=0.1,
+        offset_mode="orth", offset_norm="energy", offset_basis_kind="random",
+        offset_random_rank=8, noise_beta=2.0, offset_prefill=True, steer_prefill=True,
+        prompt_tail_clear=2, offset_online=1.0, online_max_gain=10.0, online_rule_k=0.43,
+        online_rule_start=True, rule_unsteered=True)
+check("the run id records it",
+      "clean" in _ortho_tag("M", ExperimentSpec(use_orthogonal_steering=True, steering_plan=pu)))
+egra.generate_with_orthogonal_steering(PROMPT, pu, max_new_tokens=6, seed=1)
+r = next(iter(pu._rule_cache.values())); st = next(iter(pu._steer_cache.values()))
+check("the top word is the unsteered one", abs(r["top_prob"] - st["top_prob"]) < 1e-9
+      and "steered_top_prob" in r, f"{r['top_prob']:.4f} vs steered {r.get('steered_top_prob', 0):.4f}")
+check("and the target follows it", abs(r["target"] - target_from_top_share(
+      r["unit"], st["top_prob"], 0.43)) < 1e-9)
+
 print("\n== the noise's divergence ==")
 from noiseegra.online_calibration import _reference  # noqa: E402
 pd = plan()

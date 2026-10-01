@@ -343,7 +343,8 @@ def _ortho_tag_once(model_name: str, spec: ExperimentSpec, *, compress: bool) ->
         if float(getattr(plan, "online_rule_k", 0.0) or 0.0) > 0:
             parts.append(f"rule{_float_tag(plan.online_rule_k)}"
                          + ("start" if getattr(plan, "online_rule_start", False) else "")
-                         + ("abs" if getattr(plan, "online_absolute", False) else ""))
+                         + ("abs" if getattr(plan, "online_absolute", False) else "")
+                         + ("clean" if getattr(plan, "rule_unsteered", False) else ""))
     if float(getattr(plan, "guard_alpha", 0.0) or 0.0) > 0:
         parts.append(f"__guard{_float_tag(plan.guard_alpha)}")
         if float(getattr(plan, "correct_eta", 0.0) or 0.0) > 0:

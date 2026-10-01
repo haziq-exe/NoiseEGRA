@@ -858,10 +858,20 @@ class EGRA:
             if key not in cache:
                 ref = _reference(self, plan, ids, 48)
                 m = measure_for_rule(self, plan, ids, reference=ref)
+                seen = ""
+                if getattr(plan, "rule_unsteered", False):
+                    # The unsteered top word, measured with the steering's own
+                    # sizing above (same passage length, steering off). With no
+                    # steering in the arm the steered reading already is that.
+                    sc = (getattr(plan, "_steer_cache", None) or {}).get(key)
+                    if sc is not None:
+                        seen = f" (steered {m['top_prob']:.3f})"
+                        m["steered_top_prob"] = m["top_prob"]
+                        m["top_prob"] = float(sc["top_prob"])
                 m["target"] = target_from_top_share(m["unit"], m["top_prob"],
                                                     float(plan.online_rule_k))
                 msg = (f"  [rule] top-p moves {m['unit']:.4f} per step, top word "
-                       f"{m['top_prob']:.3f}: noise target {m['target']:.3f} "
+                       f"{m['top_prob']:.3f}{seen}: noise target {m['target']:.3f} "
                        f"(k {float(plan.online_rule_k):g})")
                 if getattr(plan, "online_rule_start", False) or measured:
                     # Always the length at which the whole noise -- prompt and

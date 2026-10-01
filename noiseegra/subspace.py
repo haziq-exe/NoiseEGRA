@@ -577,6 +577,12 @@ class SteeringPlan:
     # With the rule: hold the noise's per-step effect at the rule's absolute
     # distance 2*asin(k*p1) rather than at target x the decoder's shift.
     online_absolute: bool = False
+    # With the rule: read the top word's probability from the model unsteered
+    # rather than along the steered passage. Steering flattens the next-word
+    # distribution, so read steered a stronger push shrinks the noise:
+    # Qwen3-8B's top word fell from 0.78 to 0.64 under the science-fiction
+    # brief's steering, and its noise to 0.56 per step against 0.67.
+    rule_unsteered: bool = False
     # Size the rule steering by its effect instead of its length: before any
     # story, the budget is set so the push moves the next-word predictions by
     # this mean Fisher-Rao distance per step, against the same model unsteered
@@ -1130,6 +1136,7 @@ class SteeringPlan:
         online_rule_start: bool = False,
         offset_measured: bool = False,
         online_absolute: bool = False,
+        rule_unsteered: bool = False,
         steer_effect: float = 0.0,
         steer_share: float = 0.0,
         guard_alpha: float = 0.0,
@@ -1383,6 +1390,7 @@ class SteeringPlan:
             online_rule_start=bool(online_rule_start),
             offset_measured=bool(offset_measured),
             online_absolute=bool(online_absolute),
+            rule_unsteered=bool(rule_unsteered),
             steer_effect=float(steer_effect or 0.0),
             steer_share=float(steer_share or 0.0),
             guard_alpha=float(guard_alpha or 0.0),
@@ -2211,6 +2219,7 @@ class SteeringPlan:
             "online_rule_start": self.online_rule_start,
             "offset_measured": self.offset_measured,
             "online_absolute": self.online_absolute,
+            "rule_unsteered": self.rule_unsteered,
             "steer_effect": self.steer_effect,
             "steer_share": self.steer_share,
             "guard_alpha": self.guard_alpha,

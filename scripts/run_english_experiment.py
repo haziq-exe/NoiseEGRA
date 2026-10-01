@@ -988,6 +988,11 @@ def main() -> None:
                          "unsteered, the same currency the noise is sized in. The run "
                          "log prints the effect of --steer-budget's length either way. "
                          "0 keeps --steer-budget as given")
+    ap.add_argument("--rule-unsteered", action="store_true",
+                    help="with --online-rule-k: read the top word's probability for "
+                         "the noise's target from the model unsteered, not along the "
+                         "steered passage, so a stronger steering push does not shrink "
+                         "the noise")
     ap.add_argument("--steer-share", type=float, default=0.0,
                     help="like --steer-effect, but the effect is set from the "
                          "unsteered model's top-word probability by the noise's rule: "
