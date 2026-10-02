@@ -3012,3 +3012,28 @@ k 0.43 is -0.41 [-0.59, -0.23] and k 0.6 -0.77 [-1.02, -0.53].
 - Not a better method, a different point on the same trade: about one more
   distinct story in ten for a third of a quality point, slightly more rules
   broken and more fragments. k stays at 0.43.
+
+### Llama-3.1-8B-Instruct, middle-school prompt, 50 stories (run r238, 2026-10-02)
+
+A second 8B model, another family: Unsloth's ungated copy of
+Llama-3.1-8B-Instruct, layers 7 and 16 of 32, prompt noise 1.0x; the current
+method (k 0.43, rule read unsteered, steering sized to effect 1.0); untouched
+and top-p, no steering-only arm. Steering at budget 2.5 moved the predictions
+only 0.39 per step, so the budget was sized to 6.12; noise target 0.43 top-p
+units (top word 0.70 unsteered, 0.57 steered).
+
+| Llama-3.1-8B, 50 | Coherent | Slips / lost capitals / doubled stops | Over 200 words | Rules (of 6) | Same-story | Distinct of 10 |
+|---|---|---|---|---|---|---|
+| Untouched | 50 | 0 / 0% / 0 | 0 | 0.94 | 65.5% | 3.12 |
+| Top-p 0.95, T=1.8 | 50 | 0 / 0% / 0 | 8 | 1.00 | 47.9% | 4.40 |
+| Method | 49 | 0 / 0% / 0 | 12 | 0.98 | 18.8% | 7.18 |
+
+Method against untouched / top-p: distinct +4.05 [+2.52, +5.86] / +2.78
+[+1.16, +4.88]; rules +0.04 [-0.22, +0.30] / -0.02 [-0.29, +0.24]. Failing:
+present tense 20 / 32 / 37%, speech 0 / 12 / 2%, one named character 74 / 56 /
+59%.
+
+- The largest variety gain of any model, with no loss of coherence and none of
+  the text damage seen on Qwen3-8B science fiction, even at budget 6.12.
+- No rule gain: the untouched Llama already writes in present tense (20%
+  failing) and the steering does not improve on it. Quality not yet rated.
