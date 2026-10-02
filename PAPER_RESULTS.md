@@ -3047,3 +3047,24 @@ singled out as garbled or breaking frame were all top-p.
   chose: 3.36 on Qwen3-8B middle school (quality level with untouched), 5.12 on
   Qwen3-8B science fiction (-0.41), 6.12 on Llama-3.1-8B (-1.06). Effect target
   1.0 asks for a large push where the steering moves a model's words little.
+
+### Llama-3.1-8B at 200 stories (run r238 extended, 2026-10-02)
+
+Same settings as the 50-story run; quality from 5 Sonnet raters on 100 seeds,
+all three arms in the same batches.
+
+| Llama-3.1-8B, 200 | Coherent | Lost capitals or title | Over 200 words | Rules (of 6) | Same-story | Distinct of 10 | Quality (100 seeds) |
+|---|---|---|---|---|---|---|---|
+| Untouched | 200 | 0% | 0 | 1.02 | 62.4% | 3.32 | 5.91 (0 rated 1-3) |
+| Top-p 0.95, T=1.8 | 200 | 0% | 33 | 1.14 | 39.4% | 4.90 | 3.78 (57) |
+| Method | 196 | 1% | 35 | 1.05 | 14.4% | 7.67 | 4.78 (24) |
+
+Method against untouched / top-p: distinct +4.35 [+3.26, +5.38] / +2.77
+[+1.56, +3.80]; rules +0.02 [-0.11, +0.15] / -0.09 [-0.24, +0.05]; quality
+-1.13 [-1.40, -0.86] / +1.00 [+0.62, +1.37]. Failing: present tense 30 / 47 /
+37%, speech 0 / 9 / 6%, one named character 73 / 57 / 61%. The 4 method
+stories the checker drops: 3 run-on, 1 not a story.
+
+- The 50-story result holds: the method more than doubles the untouched model's
+  variety and beats top-p on both variety and quality, but costs a point of
+  quality against the untouched model, with no rule gain.
