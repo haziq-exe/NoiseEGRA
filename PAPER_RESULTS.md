@@ -2990,3 +2990,25 @@ Speech failing 8 / 14 / 41%.
   off-brief stories (k 0.8 story 0: a relationship scene with no strange change).
   Rules rise to steering alone's level; at k 0.8 four in ten stories lose their
   speech and a fifth run past 200 words.
+
+Quality of the 50-seed sets (5 Sonnet raters, all six arms on seeds 0-49):
+untouched 5.90, top-p 5.94, steering only 3.46 (33 of 50 rated 1-3), method k
+0.43 / 0.6 / 0.8 5.10 / 4.70 / 4.10 (6 / 12 / 20 rated 1-3). Against k 0.43:
+k 0.6 -0.40 [-0.88, +0.06], k 0.8 -1.00 [-1.50, -0.50].
+
+### k 0.6 at 200 stories against the current method (r237/k06, 2026-10-02)
+
+| Qwen3-8B science fiction, 200 | Coherent | Lost capitals or title | Under 60 / over 200 words | Rules (of 5) | Distinct of 10 | Quality (100 seeds) |
+|---|---|---|---|---|---|---|
+| Untouched | 200 | 0% | 0 / 0 | 1.26 | 1.04 | 5.85 |
+| Method k 0.43 (r236) | 196 | 9% | 0 / 4 | 0.62 | 1.77 | 5.44 |
+| Method k 0.6 | 198 | 8% | 6 / 15 | 0.77 | 2.69 | 5.08 |
+
+k 0.6 against k 0.43: distinct +0.92 [+0.30, +1.54], rules +0.16 [+0.00, +0.31],
+quality -0.36 [-0.59, -0.14] (5 raters, 100 seeds, untouched in the same
+batches; 4 / 10 of 100 rated 1-3), speech failing 5% -> 17%. Against untouched
+k 0.43 is -0.41 [-0.59, -0.23] and k 0.6 -0.77 [-1.02, -0.53].
+
+- Not a better method, a different point on the same trade: about one more
+  distinct story in ten for a third of a quality point, slightly more rules
+  broken and more fragments. k stays at 0.43.
