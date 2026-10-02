@@ -78,6 +78,9 @@ EN_MODEL_HF_IDS: Dict[str, str] = {
     "Qwen2.5-7B": "Qwen/Qwen2.5-7B-Instruct",
     "OLMo-2-7B": "allenai/OLMo-2-1124-7B-Instruct",
     "Granite-3.1-8B": "ibm-granite/granite-3.1-8b-instruct",
+    # IBM's dense 8B instruct release of August 2026 (GraniteForCausalLM, 40
+    # blocks, bfloat16 weights); Apache 2.0, ungated.
+    "Granite-4.2-8B": "ibm-granite/granite-4.2-8b",
     "Mistral-Nemo-12B": "mistralai/Mistral-Nemo-Instruct-2407",
     # Own licences, still ungated
     "Falcon3-7B": "tiiuae/Falcon3-7B-Instruct",
@@ -98,6 +101,7 @@ EN_MODEL_DEPTHS: Dict[str, int] = {
     "Qwen2.5-7B": 28,
     "OLMo-2-7B": 32,
     "Granite-3.1-8B": 40,
+    "Granite-4.2-8B": 40,
     "Mistral-Nemo-12B": 40,
     "Falcon3-7B": 28,
     "Llama-3.1-8B": 32,
