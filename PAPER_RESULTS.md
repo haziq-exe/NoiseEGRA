@@ -3037,3 +3037,13 @@ present tense 20 / 32 / 37%, speech 0 / 12 / 2%, one named character 74 / 56 /
   the text damage seen on Qwen3-8B science fiction, even at budget 6.12.
 - No rule gain: the untouched Llama already writes in present tense (20%
   failing) and the steering does not improve on it. Quality not yet rated.
+
+Quality (3 Sonnet raters, all three arms on the 50 seeds): untouched 5.52 (0 of
+50 rated 1-3), top-p 3.66 (26), method 4.46 (11). Method against untouched
+-1.06 [-1.42, -0.70], against top-p +0.80 [+0.36, +1.22]. The stories a rater
+singled out as garbled or breaking frame were all top-p.
+
+- Across the 8B runs, quality tracks the steering budget the effect sizing
+  chose: 3.36 on Qwen3-8B middle school (quality level with untouched), 5.12 on
+  Qwen3-8B science fiction (-0.41), 6.12 on Llama-3.1-8B (-1.06). Effect target
+  1.0 asks for a large push where the steering moves a model's words little.
