@@ -3121,3 +3121,25 @@ Method against untouched: rules -0.58 [-0.86, -0.29] (3.99) / -0.53 [-0.82,
   so on this model the cost is not (only) the steering. 16 of 50 untouched
   stories already echo the rule list into the text ("a girl without a name",
   "inside quotation marks").
+
+### OLMo 3 7B Instruct (AllenAI, November 2025), middle-school prompt, 50 stories (run r242, 2026-10-03)
+
+Dense Olmo3ForCausalLM, float16, layers 7 and 16 of 32; the method at fixed
+budget 2.5 (k 0.43, rule read unsteered), untouched, top-p. OLMo is the least
+certain model tried (top word 0.55 unsteered; top-p moves it 1.56 per step), so
+the rule gives it the smallest noise target yet (0.30 top-p units). Quality: 3
+Sonnet raters, all three arms on the 50 seeds.
+
+| OLMo 3 7B, 50 | Coherent | Rules (of 6) | Same-story | Distinct of 10 | Quality | Rated 1-3 |
+|---|---|---|---|---|---|---|
+| Untouched | 50 | 1.36 | 90.4% | 1.60 | 6.12 | 0 |
+| Top-p 0.95, T=1.8 | 50 | 1.20 | 68.7% | 2.81 | 4.66 | 7 |
+| Method, budget 2.5 | 50 | 1.02 | 83.1% | 1.95 | 6.16 | 0 |
+
+Method against untouched / top-p: rules -0.34 [-0.60, -0.08] / -0.18 [-0.46,
++0.08]; distinct +0.35 [-0.34, +1.10] / -0.86 [-1.84, +0.16]; quality +0.04
+[-0.24, +0.32] / +1.50 [+1.22, +1.78]. Present tense failing 74 / 60 / 32%.
+
+- Quality equal to the untouched model and fewer rules broken, but little
+  variety: the top-word rule undersizes the noise on a model that is unsure of
+  each word yet still writes nearly the same story (90% of untouched pairs).
