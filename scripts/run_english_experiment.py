@@ -988,6 +988,13 @@ def main() -> None:
                          "unsteered, the same currency the noise is sized in. The run "
                          "log prints the effect of --steer-budget's length either way. "
                          "0 keeps --steer-budget as given")
+    ap.add_argument("--horizon-rank", type=int, default=0,
+                    help="with --online-rule-k: draw the per-story noise in the R "
+                         "directions per layer that move the predictions 16-48 tokens "
+                         "ahead most per unit of movement in the first 4 (generalised "
+                         "eigenvectors of the two Fisher matrices along the prompt's "
+                         "greedy continuation; noiseegra.horizon) instead of a random "
+                         "subspace. Sizing, drift and fading unchanged. 0 = off")
     ap.add_argument("--rule-unsteered", action="store_true",
                     help="with --online-rule-k: read the top word's probability for "
                          "the noise's target from the model unsteered, not along the "

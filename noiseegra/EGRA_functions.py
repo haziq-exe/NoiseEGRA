@@ -857,6 +857,19 @@ class EGRA:
             key = tuple(int(i) for i in ids.view(-1).tolist())
             if key not in cache:
                 ref = _reference(self, plan, ids, 48)
+                hz = int(getattr(plan, "horizon_rank", 0) or 0)
+                if hz > 0:
+                    # Where the noise points, before it is sized: the start is
+                    # measured with draws from this basis.
+                    from .horizon import horizon_basis
+                    hb, hd = horizon_basis(self, plan, ids, ref[0], rank=hz)
+                    for l, v in hb.items():
+                        if l in plan.layer_plans:
+                            plan.layer_plans[l].horizon_basis = v
+                    print(f"  [horizon] rank {hz} at {int(hd['layers'])} layers: "
+                          f"{hd['gain']:.1f}x the far-ahead movement per unit of "
+                          f"next-word movement of a random direction "
+                          f"(lowest layer {hd['gain_min']:.1f}x)", flush=True)
                 m = measure_for_rule(self, plan, ids, reference=ref)
                 seen = ""
                 if getattr(plan, "rule_unsteered", False):

@@ -595,6 +595,13 @@ class SteeringPlan:
     # rule the noise's target follows, with this share
     # (online_calibration.steer_target_from_top_share). Overrides steer_effect.
     steer_share: float = 0.0
+    # Draw the noise in the directions that move the predictions far ahead most
+    # per unit of next-word movement (noiseegra.horizon), this many per layer,
+    # instead of in a fresh random subspace. The basis is the model's own
+    # Fisher geometry along the prompt's greedy continuation, measured once per
+    # prompt; the draw inside it, the drift and the sizing are unchanged.
+    # 0 keeps the random subspace.
+    horizon_rank: int = 0
     # A guard on the story's next token from its noise-free shadow: the story
     # samples only among tokens the shadow gives at least this share of its top
     # token's probability (0 is off). Needs the shadow row, i.e. offset_online.
@@ -1139,6 +1146,7 @@ class SteeringPlan:
         rule_unsteered: bool = False,
         steer_effect: float = 0.0,
         steer_share: float = 0.0,
+        horizon_rank: int = 0,
         guard_alpha: float = 0.0,
         correct_eta: float = 0.0,
         feedback_mode: str = "",
@@ -1393,6 +1401,7 @@ class SteeringPlan:
             rule_unsteered=bool(rule_unsteered),
             steer_effect=float(steer_effect or 0.0),
             steer_share=float(steer_share or 0.0),
+            horizon_rank=int(horizon_rank or 0),
             guard_alpha=float(guard_alpha or 0.0),
             correct_eta=float(correct_eta or 0.0),
             feedback_mode=str(feedback_mode or ""),
@@ -1759,7 +1768,13 @@ class SteeringPlan:
                 lp.offset_basis = lp.offset_basis.to(dev)
             if lp.protect is not None and lp.protect.device != dev:
                 lp.protect = lp.protect.to(dev)
-            if self.offset_random_rank > 0:
+            hb = getattr(lp, "horizon_basis", None)
+            if int(getattr(self, "horizon_rank", 0) or 0) > 0 and hb is not None:
+                # The long-horizon directions of this prompt (noiseegra.horizon),
+                # already clear of the rule directions; the draw below is random
+                # inside them.
+                lp.offset_basis = hb.to(device=dev, dtype=dt)
+            elif self.offset_random_rank > 0:
                 # This story's own random subspace, drawn from the ambient RNG
                 # after seeding like every other draw here. Taken out of the
                 # rule directions before use, so the noise cannot move the
@@ -2222,6 +2237,7 @@ class SteeringPlan:
             "rule_unsteered": self.rule_unsteered,
             "steer_effect": self.steer_effect,
             "steer_share": self.steer_share,
+            "horizon_rank": self.horizon_rank,
             "guard_alpha": self.guard_alpha,
             "correct_eta": self.correct_eta,
             "feedback_mode": self.feedback_mode,

@@ -134,6 +134,7 @@ def make_plan(
     rule_unsteered=False,
     steer_effect=0.0,
     steer_share=0.0,
+    horizon_rank=0,
     guard_alpha=0.0,
     correct_eta=0.0,
     feedback_mode="",
@@ -278,6 +279,7 @@ def make_plan(
         rule_unsteered=rule_unsteered,
         steer_effect=steer_effect,
         steer_share=steer_share,
+        horizon_rank=horizon_rank,
         guard_alpha=guard_alpha,
         correct_eta=correct_eta,
         feedback_mode=feedback_mode,
@@ -2757,7 +2759,8 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                           online_rule_k=float(getattr(args, "online_rule_k", 0.0) or 0.0),
                           online_rule_start=bool(getattr(args, "online_rule_start", False)),
                           online_absolute=bool(getattr(args, "online_absolute", False)),
-                          rule_unsteered=bool(getattr(args, "rule_unsteered", False)))
+                          rule_unsteered=bool(getattr(args, "rule_unsteered", False)),
+                          horizon_rank=int(getattr(args, "horizon_rank", 0) or 0))
             elif sizing == "whilefixed":
                 # The full method with the controller taken out: the same
                 # direction (random subspace, projection, drift) at the length
