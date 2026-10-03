@@ -630,6 +630,10 @@ class SteeringPlan:
     # End the daydream at the next sentence or line end (at most 24 words on),
     # so the visible story does not begin inside one of its sentences.
     daydream_boundary: bool = False
+    # The text forced between the daydream and the story ("" = a paragraph
+    # break). A scene break ("\n\n* * *\n\n") lets the story open a new scene
+    # instead of carrying on the daydream's.
+    daydream_break: str = ""
     # Record, by the clean model's top-two gap, how often the noise changed the
     # chosen word (online_calibration.FlipRecorder); printed every 25 stories.
     flip_log: bool = False
@@ -1185,6 +1189,7 @@ class SteeringPlan:
         daydream_steps: int = 0,
         daydream_gain: float = 1.0,
         daydream_boundary: bool = False,
+        daydream_break: str = "",
         flip_log: bool = False,
         guard_alpha: float = 0.0,
         correct_eta: float = 0.0,
@@ -1448,6 +1453,7 @@ class SteeringPlan:
             daydream_steps=int(daydream_steps or 0),
             daydream_gain=float(daydream_gain or 1.0),
             daydream_boundary=bool(daydream_boundary),
+            daydream_break=str(daydream_break or ""),
             flip_log=bool(flip_log),
             guard_alpha=float(guard_alpha or 0.0),
             correct_eta=float(correct_eta or 0.0),

@@ -1446,7 +1446,8 @@ class EGRA:
             # A hidden daydream: its words, and the paragraph break that ends
             # it, are written first and cut from the text afterwards.
             dd = int(getattr(plan, "daydream_steps", 0) or 0)
-            dd_break = (self.tokenizer("\n\n", add_special_tokens=False)["input_ids"]
+            dd_text = str(getattr(plan, "daydream_break", "") or "\n\n")
+            dd_break = (self.tokenizer(dd_text, add_special_tokens=False)["input_ids"]
                         if dd > 0 else [])
             # With a boundary the daydream runs on past its length until it ends
             # a sentence or a line (at most dd_extra words more), so the story

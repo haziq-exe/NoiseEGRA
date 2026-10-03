@@ -79,6 +79,12 @@ check("with a boundary the daydream ends no earlier than its length",
       pb._daydream_shift >= 5 + len(brk), str(pb._daydream_shift))
 check("and the shadow stays on the story's words",
       int(getattr(pb, "shadow_drift", 0) or 0) == 0)
+ps = plan(5, 4.0); ps.daydream_break = "\n\n* * *\n\n"
+check("the run id records a scene break", "__dd5g4s" in _ortho_tag(
+      "M", ExperimentSpec(use_orthogonal_steering=True, steering_plan=ps)))
+egra.generate_with_orthogonal_steering(PROMPT, ps, max_new_tokens=8, seed=3)
+sb = egra.tokenizer("\n\n* * *\n\n", add_special_tokens=False)["input_ids"]
+check("a scene break is cut with the daydream", ps._daydream_shift == 5 + len(sb), str(ps._daydream_shift))
 p0 = plan(0)
 a = egra.generate_with_orthogonal_steering(PROMPT, p0, max_new_tokens=8, seed=3)
 b = egra.generate_with_orthogonal_steering(PROMPT, plan(0), max_new_tokens=8, seed=3)

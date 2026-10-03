@@ -1010,6 +1010,9 @@ def main() -> None:
     ap.add_argument("--daydream-boundary", action="store_true",
                     help="end the daydream at the next sentence or line end (at most 24 "
                          "words past --daydream-steps), so the story starts cleanly")
+    ap.add_argument("--daydream-scene", action="store_true",
+                    help="end the daydream with a scene break (* * *) instead of a "
+                         "paragraph break, so the story opens a new scene")
     ap.add_argument("--daydream-gain", type=float, default=4.0,
                     help="the noise's multiple during the daydream")
     ap.add_argument("--margin-words", action="store_true",
