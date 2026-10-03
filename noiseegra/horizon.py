@@ -100,6 +100,8 @@ def horizon_basis(egra, plan, prompt_ids: torch.Tensor, passage: torch.Tensor, *
     per unit of next-word movement the basis buys than a random direction does.
     """
     layers = _layers(egra, plan)
+    if getattr(plan, "offset_layers", None):
+        layers = [l for l in layers if l in plan.offset_layers]
     n_prompt = int(prompt_ids.shape[-1])
     m = int(passage.shape[-1]) - n_prompt
     near_rows = list(range(max(0, near[0]), min(near[1], m)))

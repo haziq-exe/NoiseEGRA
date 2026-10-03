@@ -298,6 +298,11 @@ def main() -> None:
     ap.add_argument("--model", default="Qwen3-8B", choices=sorted(EN_MODEL_HF_IDS))
     ap.add_argument("--model-id", help="HF id or local snapshot dir; overrides --model's id")
     ap.add_argument("--layers", nargs=2, type=int, metavar=("LO", "HI"))
+    ap.add_argument("--noise-layers", nargs=2, type=int, metavar=("LO", "HI"), default=None,
+                    help="suite 'headline': put the per-story noise at blocks [LO, HI) "
+                         "while the rule steering stays at --layers. The activation scale "
+                         "is still measured at --layers, so the steering's strength does "
+                         "not move with it. Default: noise at --layers")
     ap.add_argument("--dtype", default="auto",
                     choices=["auto", "float16", "bfloat16", "float32"],
                     help="'auto' is float16 on a GPU and float32 without one")
@@ -1349,6 +1354,13 @@ def main() -> None:
     model_id = args.model_id or hf_id
     lo, hi = args.layers if args.layers else EN_MODEL_LAYER_RANGES[args.model]
     layers = list(range(lo, hi))
+    args.push_band, args.noise_band = None, None
+    if getattr(args, "noise_layers", None):
+        # Noise somewhere other than the steering: the plan spans both bands,
+        # the push is held to --layers and the noise to --noise-layers.
+        nlo, nhi = args.noise_layers
+        args.push_band, args.noise_band = list(layers), list(range(nlo, nhi))
+        layers = sorted(set(layers) | set(args.noise_band))
     dtype_arg = None if args.dtype == "auto" else getattr(torch, args.dtype)
 
     # The constraint thresholds and the prompt selection are baked into the text
@@ -1662,7 +1674,8 @@ def main() -> None:
         cal_key = f"{args.model}|{lo}-{hi}"
         if cal_key not in state["rms_scale"]:
             print("\ncalibrating activation scale ...")
-            rms = RMSCalibrator(get_model()).collect_block_rms(messages[0], layers=layers)
+            rms = RMSCalibrator(get_model()).collect_block_rms(
+                messages[0], layers=(getattr(args, "push_band", None) or layers))
             state["rms_scale"][cal_key] = float(np.median(list(rms.values())))
             save_state(state_path, state)
         rms_scale = state["rms_scale"][cal_key]

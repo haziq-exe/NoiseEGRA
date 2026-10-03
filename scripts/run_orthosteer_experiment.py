@@ -2761,6 +2761,9 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                           online_absolute=bool(getattr(args, "online_absolute", False)),
                           rule_unsteered=bool(getattr(args, "rule_unsteered", False)),
                           horizon_rank=int(getattr(args, "horizon_rank", 0) or 0))
+                if getattr(args, "noise_band", None):
+                    kw.update(push_layers=list(args.push_band),
+                              offset_layers=list(args.noise_band))
             elif sizing == "whilefixed":
                 # The full method with the controller taken out: the same
                 # direction (random subspace, projection, drift) at the length
