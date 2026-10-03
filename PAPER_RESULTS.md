@@ -3170,3 +3170,46 @@ Against untouched: rules -0.50 [-0.78, -0.22] (k 0.6); quality -0.22 / -0.36 /
   quality, and the stories stay coherent. OLMo is unsure of each next word
   (top word 0.55) yet sure of the story: per-word uncertainty is wording, the
   plot is fixed at a few confident branch points the noise does not move.
+
+## Noise that changes the plot, not only the wording (2026-10-03, runs r244-r251)
+
+**The flaw.** The noise is sized by how far it moves the next-word distribution
+along a fixed passage -- the currency top-p spends. On OLMo 3 7B, unsure of each
+word (top word 0.55) yet writing the same story (90% of untouched pairs), raising
+it to twice the size (k 0.8) left variety flat. Every OLMo arm below: method at
+budget 2.5, seeds 0-49, 50 stories, middle-school prompt, 6 scored rules.
+
+| OLMo 3 7B, 50 | Coherent | Rules (of 6) | Distinct of 10 | vs current method |
+|---|---|---|---|---|
+| Untouched | 50 | 1.36 | 1.60 | |
+| Top-p 0.95, T=1.8 | 50 | 1.20 | 2.81 | |
+| Current method (k 0.43) | 50 | 1.02 | 1.95 | |
+| Noise share k 0.6 / 0.8 | 50 / 50 | 0.86 / 1.08 | 1.87 / 2.18 | n.s. |
+| Noise over the whole story | 50 | 0.88 | 1.86 | -0.09 n.s. |
+| Long-horizon Fisher directions (rank 8) | 50 | 0.78 | 1.85 | -0.10 n.s. |
+| Noise on the prompt's last positions | 50 | 1.02 | 1.62 | -0.33 n.s. |
+| Noise at layers 13-23 (40-72% depth) | 50 | 0.88 | 2.04 | +0.09 n.s. |
+| ... with long-horizon directions | 50 | 1.00 | 2.00 | +0.05 n.s. |
+| Noise share k 1.5 | 39 | 2.10 | 9.64* | garbled openings |
+| Margin scaling x1 / x2 / x3 (cap 4) | 50 / 50 / 50 | 0.94 | 2.10 / 2.51 / 2.30 | +0.15 / +0.56 / +0.35 n.s. |
+| Margin x2, cap 8 | 47 | 1.17 | 3.37 | +1.42 [+0.38, +2.76] |
+| **Margin x2, cap 8, word starts only** | **49** | **0.94** | **3.82** | **+1.87 [+0.68, +3.30]** |
+
+\* k 1.5: the openings are token salad ("Maggie lived across the hallway from
+her the quickly the, The king theder's..."), then the model writes a different,
+coherent story; the coherence checker passes several of these.
+
+- **Why direction, depth and place do not help:** a vector added to the hidden
+  state shifts the logits about equally at every step, but moves the choice only
+  where the gap between the top two words is small -- wording. Where the model is
+  sure -- who the story is about, what happens -- the push cannot cross the gap,
+  so at any size short of garbling the opening it spends itself on wording.
+  ("Long-horizon" directions moved far-ahead predictions 3,000x more per unit of
+  next-word movement, yet teacher-forced far-ahead movement is still wording.)
+- **The fix: margin scaling** (`--margin-scale P --margin-cap C --margin-words`,
+  online_calibration.MarginScaler). The noise's push on each decision -- the
+  story row minus its noise-free shadow from the same forward pass, first-order
+  linear in the noise -- is scaled by (clean top-two margin / its median on the
+  prompt's greedy continuation)^P within [1/4, C], and never amplified where the
+  clean choice continues a word (spelling: at cap 8 without this, words broke --
+  "skitter-shing", "musits"). The hidden-state noise is sized as before.
