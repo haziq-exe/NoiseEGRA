@@ -3313,3 +3313,48 @@ quality -0.76 [-1.18, -0.34], against top-p +1.46 [+1.02, +1.88].
 - Next: the daydream kept visible as the story's opening, inside the same word
   budget (r260 OLMo, r261 Qwen3-8B), to test whether the cost is the mid-scene
   start.
+
+**Where in the story the daydream's variety lies (runs r260-r263, 50 stories).**
+The daydream kept visible as the story's opening, inside the same word budget,
+scored 1.81 distinct on OLMo and 4.19 on Qwen3-8B against 4.17 and 5.84 hidden
+(46/50 coherent on Qwen3-8B). For 38/50 (OLMo) and 40/50 (Qwen) seeds the
+hidden story is the visible one minus the daydream, so the difference is where
+the judge reads: it sees only each story's first 128 tokens (about 95 words),
+and the daydreams themselves come from the model's few stock openings. Two
+checks on the same stories (eval/window_arms.json, eval/whole_story_arms.json):
+
+| Distinct of 10 | from word 0 | from word 40 | from word 80 | whole story (253 tokens) |
+|---|---|---|---|---|
+| OLMo untouched | 1.60 | 1.24 | 1.94 | 1.13 |
+| OLMo top-p | 2.81 | 2.13 | 2.21 | 1.95 |
+| OLMo current method | 1.95 | 1.62 | 1.88 | |
+| OLMo hidden daydream | 4.17 | 2.36 | 2.47 | 2.74 |
+| OLMo visible daydream | 1.81 | 1.76 | 2.20 | |
+| Qwen3-8B untouched | 1.00 | 1.05 | 1.22 | 1.00 |
+| Qwen3-8B top-p | 1.07 | 1.13 | 1.17 | 1.00 |
+| Qwen3-8B current method | 2.62 | 1.72 | 2.12 | |
+| Qwen3-8B hidden daydream | 5.84 | 2.25 | 2.38 | 3.15 |
+| Qwen3-8B visible daydream | 4.19 | 2.05 | 2.26 | |
+| Llama-8B untouched | 3.12 | 1.30 | 2.64 | 2.69 |
+| Llama-8B top-p | 4.40 | 2.69 | 3.78 | 4.05 |
+| Llama-8B current method | 5.62 | 1.75 | 3.14 | |
+| Llama-8B hidden daydream | 5.93 | 3.68 | 3.61 | 4.61 |
+
+Hidden daydream against top-p: from word 40 OLMo +0.23 [-0.84, +1.32], Qwen
++1.13 [+0.30, +2.00], Llama +0.99 [-0.30, +2.26]; from word 80 +0.26 (n.s.),
++1.20 [+0.46, +1.94], -0.17 (n.s.); whole story +0.79 [-0.20, +1.82], +2.15
+[+1.12, +3.38], +0.56 [-1.24, +2.18]. Against untouched, whole story: +1.61
+[+0.82, +2.48], +2.15 [+1.12, +3.38], +1.91 [+0.38, +3.36]. The whole-story
+judge reads past the 128 tokens it was trained on; its numbers compare only
+with each other.
+
+- Most of the hidden daydream's 128-token gain is in the first lines after the
+  daydream (scenes already under way). Further in, the stories partly converge:
+  it stays ahead of top-p on Qwen3-8B (where top-p does nothing) and is level
+  with top-p on OLMo and Llama.
+- Read whole, it is the most varied of untouched, top-p and daydream on all
+  three models, ahead of untouched on all three, ahead of top-p significantly
+  only on Qwen3-8B.
+- The 128-token judge, the NoveltyBench standard, favours any method that
+  changes openings. A plot-level claim needs the whole-story or later-window
+  judge alongside it.
