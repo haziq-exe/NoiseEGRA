@@ -883,6 +883,11 @@ class EGRA:
                         m["top_prob"] = float(sc["top_prob"])
                 m["target"] = target_from_top_share(m["unit"], m["top_prob"],
                                                     float(plan.online_rule_k))
+                if float(getattr(plan, "margin_scale", 0.0) or 0.0) > 0:
+                    from .online_calibration import reference_margin
+                    m["ref_margin"] = reference_margin(ref[1])
+                    print(f"  [margin] median top-two gap on the greedy continuation "
+                          f"{m['ref_margin']:.3f} nats", flush=True)
                 msg = (f"  [rule] top-p moves {m['unit']:.4f} per step, top word "
                        f"{m['top_prob']:.3f}{seen}: noise target {m['target']:.3f} "
                        f"(k {float(plan.online_rule_k):g})")
@@ -1442,6 +1447,13 @@ class EGRA:
                                           if str(getattr(plan, "offset_envelope", "flat")) == "rise"
                                           else 0))
                 processors = LogitsProcessorList([sizer, *(processors or [])])
+                ms = float(getattr(plan, "margin_scale", 0.0) or 0.0)
+                if ms > 0 and rule is not None and "ref_margin" in rule:
+                    # Right after the controller, which sizes the noise from
+                    # its raw push; the push on the decision is then equalised.
+                    from .online_calibration import MarginScaler
+                    scaler = MarginScaler(float(rule["ref_margin"]), power=ms)
+                    processors = LogitsProcessorList([sizer, scaler, *list(processors)[1:]])
                 if guard_alpha > 0:
                     # After the controller, which must read the story's raw
                     # scores; before any cut-off.

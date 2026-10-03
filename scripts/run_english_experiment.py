@@ -993,6 +993,11 @@ def main() -> None:
                          "unsteered, the same currency the noise is sized in. The run "
                          "log prints the effect of --steer-budget's length either way. "
                          "0 keeps --steer-budget as given")
+    ap.add_argument("--margin-scale", type=float, default=0.0,
+                    help="with the online noise: scale the noise's push on each decision "
+                         "by (clean top-two margin / its median on the prompt's greedy "
+                         "continuation)^P, held to [1/4, 4], so confident choices (the plot) "
+                         "move as readily as unsure ones (the wording). 0 = off")
     ap.add_argument("--horizon-rank", type=int, default=0,
                     help="with --online-rule-k: draw the per-story noise in the R "
                          "directions per layer that move the predictions 16-48 tokens "

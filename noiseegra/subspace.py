@@ -602,6 +602,12 @@ class SteeringPlan:
     # prompt; the draw inside it, the drift and the sizing are unchanged.
     # 0 keeps the random subspace.
     horizon_rank: int = 0
+    # Scale the residual noise's push on each decision by the clean model's
+    # top-two margin there, (margin / median margin)^power within [1/4, 4]
+    # (online_calibration.MarginScaler), so the noise can change confident
+    # choices -- the plot -- and not only unsure ones -- the wording. Needs the
+    # noise-free shadow row. 0 = off.
+    margin_scale: float = 0.0
     # A guard on the story's next token from its noise-free shadow: the story
     # samples only among tokens the shadow gives at least this share of its top
     # token's probability (0 is off). Needs the shadow row, i.e. offset_online.
@@ -1147,6 +1153,7 @@ class SteeringPlan:
         steer_effect: float = 0.0,
         steer_share: float = 0.0,
         horizon_rank: int = 0,
+        margin_scale: float = 0.0,
         guard_alpha: float = 0.0,
         correct_eta: float = 0.0,
         feedback_mode: str = "",
@@ -1402,6 +1409,7 @@ class SteeringPlan:
             steer_effect=float(steer_effect or 0.0),
             steer_share=float(steer_share or 0.0),
             horizon_rank=int(horizon_rank or 0),
+            margin_scale=float(margin_scale or 0.0),
             guard_alpha=float(guard_alpha or 0.0),
             correct_eta=float(correct_eta or 0.0),
             feedback_mode=str(feedback_mode or ""),
@@ -2238,6 +2246,7 @@ class SteeringPlan:
             "steer_effect": self.steer_effect,
             "steer_share": self.steer_share,
             "horizon_rank": self.horizon_rank,
+            "margin_scale": self.margin_scale,
             "guard_alpha": self.guard_alpha,
             "correct_eta": self.correct_eta,
             "feedback_mode": self.feedback_mode,

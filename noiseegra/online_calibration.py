@@ -524,3 +524,57 @@ def noise_divergence(egra, plan, prompt_ids, passage, length: float, *,
     firsts.sort()
     return {"first": float(firsts[len(firsts) // 2]),
             "departed": sum(f < n for f in firsts) / len(firsts), "tokens": float(n)}
+
+
+# --------------------------------------------------------------------------- #
+#  The noise's push on each decision, scaled by how sure the clean model is     #
+# --------------------------------------------------------------------------- #
+
+def reference_margin(clean_probs: torch.Tensor) -> float:
+    """Median gap between the clean model's top two log-probabilities along the
+    reference passage: the typical sureness of a step for this prompt."""
+    top = clean_probs.clamp_min(1e-30).log().topk(2, dim=-1).values
+    return float((top[:, 0] - top[:, 1]).median())
+
+
+class MarginScaler(LogitsProcessor):
+    """Scales the residual noise's effect on this step's decision by the clean
+    model's sureness at this step.
+
+    A vector added to the hidden state shifts the logits by about the same
+    amount at every step, but how much that moves the choice depends on the
+    gap between the clean model's top two words: where it is unsure, the shift
+    reorders words that mean the same; where it is sure -- who the story is
+    about, what happens -- the same shift cannot cross the gap. A fixed-size
+    noise therefore spends itself on wording and leaves the plot to the model's
+    defaults, at any size small enough to keep the wording intact.
+
+    Row 0 (the story) and row 1 (its noise-free shadow) come from the same
+    forward pass; their difference is the noise's own push on this decision,
+    first-order linear in its size. That push is scaled by (margin / median
+    margin)^power, held to [lo, hi]: amplified where the clean model is sure,
+    damped where it is not, so the noise has the same chance to change a
+    decision wherever it is made. The noise in the hidden states -- what later
+    words attend to -- is left as the controller sized it; only how hard it
+    pushes each choice is equalised. Placed after the controller, which reads
+    the raw push.
+    """
+
+    def __init__(self, ref_margin: float, *, power: float = 1.0,
+                 lo: float = 0.25, hi: float = 4.0):
+        self.ref = max(float(ref_margin), 1e-3)
+        self.power = float(power)
+        self.lo, self.hi = float(lo), float(hi)
+        self.history: List[float] = []
+
+    def __call__(self, input_ids, scores):
+        if scores.dim() != 2 or scores.shape[0] < 2:
+            return scores
+        clean = scores[1].float()
+        top = torch.log_softmax(clean, dim=-1).topk(2).values
+        margin = float(top[0] - top[1])
+        s = min(max((margin / self.ref) ** self.power, self.lo), self.hi)
+        self.history.append(s)
+        out = scores.clone()
+        out[0] = (clean + s * (scores[0].float() - clean)).to(scores.dtype)
+        return out

@@ -256,6 +256,8 @@ def _ortho_tag_once(model_name: str, spec: ExperimentSpec, *, compress: bool) ->
             parts.append(f"__od{plan.offset_draw}")
     if getattr(plan, "steer_budget", None):
         parts.append(f"__bud{_float_tag(plan.steer_budget)}")
+    if float(getattr(plan, "margin_scale", 0.0) or 0.0) > 0:
+        parts.append(f"__ms{_float_tag(plan.margin_scale)}")
     if int(getattr(plan, "horizon_rank", 0) or 0) > 0:
         parts.append(f"__hz{int(plan.horizon_rank)}")
     if float(getattr(plan, "steer_share", 0.0) or 0.0) > 0:
