@@ -137,6 +137,8 @@ def make_plan(
     horizon_rank=0,
     margin_scale=0.0,
     margin_cap=4.0,
+    daydream_steps=0,
+    daydream_gain=1.0,
     guard_alpha=0.0,
     correct_eta=0.0,
     feedback_mode="",
@@ -284,6 +286,8 @@ def make_plan(
         horizon_rank=horizon_rank,
         margin_scale=margin_scale,
         margin_cap=margin_cap,
+        daydream_steps=daydream_steps,
+        daydream_gain=daydream_gain,
         guard_alpha=guard_alpha,
         correct_eta=correct_eta,
         feedback_mode=feedback_mode,
@@ -2766,7 +2770,9 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                           rule_unsteered=bool(getattr(args, "rule_unsteered", False)),
                           horizon_rank=int(getattr(args, "horizon_rank", 0) or 0),
                           margin_scale=float(getattr(args, "margin_scale", 0.0) or 0.0),
-                          margin_cap=float(getattr(args, "margin_cap", 4.0) or 4.0))
+                          margin_cap=float(getattr(args, "margin_cap", 4.0) or 4.0),
+                          daydream_steps=int(getattr(args, "daydream_steps", 0) or 0),
+                          daydream_gain=float(getattr(args, "daydream_gain", 1.0) or 1.0))
                 if getattr(args, "noise_band", None):
                     kw.update(push_layers=list(args.push_band),
                               offset_layers=list(args.noise_band))

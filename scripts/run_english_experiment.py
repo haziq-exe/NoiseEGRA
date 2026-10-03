@@ -998,6 +998,13 @@ def main() -> None:
                          "by (clean top-two margin / its median on the prompt's greedy "
                          "continuation)^P, held to [1/4, 4], so confident choices (the plot) "
                          "move as readily as unsure ones (the wording). 0 = off")
+    ap.add_argument("--daydream-steps", type=int, default=0,
+                    help="a hidden daydream before the story: the first N words are written "
+                         "with the noise at --daydream-gain times its size, a paragraph break "
+                         "is forced, and the story follows with the noise as usual; the "
+                         "daydream stays in context but is cut from the text. 0 = off")
+    ap.add_argument("--daydream-gain", type=float, default=4.0,
+                    help="the noise's multiple during the daydream")
     ap.add_argument("--margin-cap", type=float, default=4.0,
                     help="largest multiple --margin-scale may apply (smallest 1/4)")
     ap.add_argument("--horizon-rank", type=int, default=0,

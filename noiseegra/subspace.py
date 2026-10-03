@@ -610,6 +610,15 @@ class SteeringPlan:
     margin_scale: float = 0.0
     # The largest multiple the margin scaling may apply (the smallest is 1/4).
     margin_cap: float = 4.0
+    # A hidden daydream before the story: for the first `daydream_steps` words
+    # the noise runs at `daydream_gain` times its size, then a paragraph break is
+    # forced and the story is written with the noise as usual. The daydream stays
+    # in the context the story attends to but is cut from the returned text. A
+    # disrupted opening makes the model drop its default plot and plan a new one
+    # (OLMo at 4x noise: garbled first lines, then a different, coherent story);
+    # this keeps that re-planning and hides what caused it. 0 = off.
+    daydream_steps: int = 0
+    daydream_gain: float = 1.0
     # A guard on the story's next token from its noise-free shadow: the story
     # samples only among tokens the shadow gives at least this share of its top
     # token's probability (0 is off). Needs the shadow row, i.e. offset_online.
@@ -1157,6 +1166,8 @@ class SteeringPlan:
         horizon_rank: int = 0,
         margin_scale: float = 0.0,
         margin_cap: float = 4.0,
+        daydream_steps: int = 0,
+        daydream_gain: float = 1.0,
         guard_alpha: float = 0.0,
         correct_eta: float = 0.0,
         feedback_mode: str = "",
@@ -1414,6 +1425,8 @@ class SteeringPlan:
             horizon_rank=int(horizon_rank or 0),
             margin_scale=float(margin_scale or 0.0),
             margin_cap=float(margin_cap or 4.0),
+            daydream_steps=int(daydream_steps or 0),
+            daydream_gain=float(daydream_gain or 1.0),
             guard_alpha=float(guard_alpha or 0.0),
             correct_eta=float(correct_eta or 0.0),
             feedback_mode=str(feedback_mode or ""),
@@ -1708,6 +1721,9 @@ class SteeringPlan:
         span = max(1, int(self.offset_envelope_steps or self.noise_traj_steps))
         # With segments, every envelope runs from the current segment's start.
         t = float(t) - float(getattr(self, "pulse_start", 0) or 0)
+        # After a hidden daydream the story's own schedule starts at its first
+        # visible word.
+        t = t - float(getattr(self, "_daydream_shift", 0) or 0)
         frac = min(max(float(t) / span, 0.0), 1.0)
         if mode == "decay":
             return float(0.5 * (1.0 + math.cos(math.pi * frac)))
@@ -1988,7 +2004,9 @@ class SteeringPlan:
             # the noise is sized before the story or not at all.
             gain = getattr(self, "online_gain", 1.0)
             gain = 1.0 if gain is None else float(gain)
-            off = lp.offset_at(t, self.envelope_at(t) * gain)
+            dd = int(getattr(self, "daydream_steps", 0) or 0)
+            boost = float(getattr(self, "daydream_gain", 1.0) or 1.0) if t < dd else 1.0
+            off = lp.offset_at(t, self.envelope_at(t) * gain * boost)
             if off is not None:
                 delta = off if delta is None else delta + off
 
@@ -2252,6 +2270,8 @@ class SteeringPlan:
             "horizon_rank": self.horizon_rank,
             "margin_scale": self.margin_scale,
             "margin_cap": self.margin_cap,
+            "daydream_steps": self.daydream_steps,
+            "daydream_gain": self.daydream_gain,
             "guard_alpha": self.guard_alpha,
             "correct_eta": self.correct_eta,
             "feedback_mode": self.feedback_mode,

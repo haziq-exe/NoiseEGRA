@@ -1432,6 +1432,13 @@ class EGRA:
                 from .arch_noise import SentenceCounter
                 processors = LogitsProcessorList(
                     [*(processors or []), SentenceCounter(self.tokenizer, arch)])
+            # A hidden daydream: its words, and the paragraph break that ends
+            # it, are written first and cut from the text afterwards.
+            dd = int(getattr(plan, "daydream_steps", 0) or 0)
+            dd_break = (self.tokenizer("\n\n", add_special_tokens=False)["input_ids"]
+                        if dd > 0 else [])
+            dd_hidden = dd + len(dd_break) if dd > 0 else 0
+            plan._daydream_shift = dd_hidden
             if online and shadow:
                 # First in the list, so it reads the model's own scores before
                 # anything else has touched them.
@@ -1445,7 +1452,7 @@ class EGRA:
                                     absolute=absolute,
                                     hold=(int(getattr(plan, "offset_envelope_steps", 0) or 0)
                                           if str(getattr(plan, "offset_envelope", "flat")) == "rise"
-                                          else 0))
+                                          else dd_hidden))
                 processors = LogitsProcessorList([sizer, *(processors or [])])
                 ms = float(getattr(plan, "margin_scale", 0.0) or 0.0)
                 if ms > 0 and rule is not None and "ref_margin" in rule:
@@ -1596,6 +1603,21 @@ class EGRA:
                 from .online_calibration import RuleTilt
                 tilt = RuleTilt(plan.output_profile, float(plan.output_tilt))
                 processors = LogitsProcessorList([*(processors or []), tilt])
+            if dd > 0:
+                # Last of all: at the end of the daydream every row writes the
+                # paragraph break, whatever it would have chosen.
+                n_in = int(inputs["input_ids"].shape[-1])
+
+                class _DaydreamBreak(LogitsProcessor):
+                    def __call__(self_, ids, scores):
+                        s = int(ids.shape[-1]) - n_in
+                        if dd <= s < dd + len(dd_break):
+                            forced = torch.full_like(scores, float("-inf"))
+                            forced[:, dd_break[s - dd]] = 0.0
+                            return forced
+                        return scores
+
+                processors = LogitsProcessorList([*(processors or []), _DaydreamBreak()])
             if processors is not None:
                 gen_kwargs["logits_processor"] = processors
             if int(num_beams) > 1:
@@ -1620,7 +1642,9 @@ class EGRA:
                                       trust_remote_code=True,
                                       num_beam_groups=int(num_beam_groups),
                                       diversity_penalty=float(diversity_penalty))
-            stopper = self._word_budget_stopper(inputs["input_ids"].shape[-1], max_words)
+            stopper = self._word_budget_stopper(
+                inputs["input_ids"].shape[-1],
+                (max_words + dd_hidden) if (max_words and dd_hidden) else max_words)
             if stopper is not None:
                 gen_kwargs["stopping_criteria"] = stopper
             if shadow:
@@ -1648,7 +1672,7 @@ class EGRA:
                 fit_base = float(plan.offset_prefill_gain)
                 self._fit_prompt_noise(plan, inputs, shared, fit_base)
             outputs = self.model.generate(
-                **inputs, max_new_tokens=max_new_tokens, **gen_kwargs
+                **inputs, max_new_tokens=max_new_tokens + dd_hidden, **gen_kwargs
             )
 
         finally:
@@ -1667,14 +1691,22 @@ class EGRA:
                 except Exception:
                     pass
 
-        generated_ids = outputs[0][input_ids.shape[-1]:]
+        # The daydream and its break are context, not story.
+        if dd_hidden and story_index is not None and int(story_index) < 3:
+            dream = self.tokenizer.decode(outputs[0][input_ids.shape[-1]:
+                                                     input_ids.shape[-1] + dd_hidden],
+                                          skip_special_tokens=True)
+            print(f"  [daydream] story {story_index}: {' '.join(dream.split())[:240]}",
+                  flush=True)
+        generated_ids = outputs[0][input_ids.shape[-1] + dd_hidden:]
         text = strip_reasoning(self.tokenizer.decode(generated_ids, skip_special_tokens=True))
         # Every returned sequence, best first, for a caller that keeps the set.
         self.last_candidates = [
-            strip_reasoning(self.tokenizer.decode(o[input_ids.shape[-1]:], skip_special_tokens=True))
+            strip_reasoning(self.tokenizer.decode(o[input_ids.shape[-1] + dd_hidden:],
+                                                  skip_special_tokens=True))
             for o in outputs[:max(1, int(num_return_sequences))]]
         if shadow:
-            other = outputs[1][input_ids.shape[-1]:]
+            other = outputs[1][input_ids.shape[-1] + dd_hidden:]
             drift = int((generated_ids != other).sum())
             plan.shadow_drift = int(getattr(plan, "shadow_drift", 0) or 0) + drift
             if drift:
