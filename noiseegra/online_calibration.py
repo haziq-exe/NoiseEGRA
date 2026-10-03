@@ -589,3 +589,43 @@ class MarginScaler(LogitsProcessor):
         out = scores.clone()
         out[0] = (clean + s * (scores[0].float() - clean)).to(scores.dtype)
         return out
+
+
+class FlipRecorder(LogitsProcessor):
+    """Records, per step, the clean model's top-two margin and whether the
+    story's scores -- after every other processor -- still pick the clean
+    model's top word. The evidence for where the noise acts: binned by margin,
+    the share of steps whose choice the noise changed.
+
+    Last in the list, after any margin scaling, so it sees what is sampled from.
+    Accumulates in ``stats`` across stories: bin -> [steps, changed].
+    """
+
+    EDGES = (0.5, 1.0, 2.0, 4.0, 8.0)
+
+    def __init__(self, stats: Dict[str, List[int]]):
+        self.stats = stats
+
+    def __call__(self, input_ids, scores):
+        if scores.dim() != 2 or scores.shape[0] < 2:
+            return scores
+        clean = torch.log_softmax(scores[1].float(), dim=-1)
+        top = clean.topk(2)
+        margin = float(top.values[0] - top.values[1])
+        changed = int(int(scores[0].float().argmax()) != int(top.indices[0]))
+        lo = 0.0
+        for hi in (*self.EDGES, float("inf")):
+            if margin < hi:
+                key = f"{lo:g}-{hi:g}"
+                break
+            lo = hi
+        rec = self.stats.setdefault(key, [0, 0])
+        rec[0] += 1
+        rec[1] += changed
+        return scores
+
+    @classmethod
+    def summary(cls, stats: Dict[str, List[int]]) -> str:
+        keys = sorted(stats, key=lambda k: float(k.split("-")[0]))
+        return "  ".join(f"gap {k}: {stats[k][1] / max(stats[k][0], 1):.1%} of {stats[k][0]}"
+                         for k in keys)

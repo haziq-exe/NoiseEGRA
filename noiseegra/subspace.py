@@ -622,6 +622,9 @@ class SteeringPlan:
     # this keeps that re-planning and hides what caused it. 0 = off.
     daydream_steps: int = 0
     daydream_gain: float = 1.0
+    # Record, by the clean model's top-two gap, how often the noise changed the
+    # chosen word (online_calibration.FlipRecorder); printed every 25 stories.
+    flip_log: bool = False
     # A guard on the story's next token from its noise-free shadow: the story
     # samples only among tokens the shadow gives at least this share of its top
     # token's probability (0 is off). Needs the shadow row, i.e. offset_online.
@@ -1172,6 +1175,7 @@ class SteeringPlan:
         margin_words: bool = False,
         daydream_steps: int = 0,
         daydream_gain: float = 1.0,
+        flip_log: bool = False,
         guard_alpha: float = 0.0,
         correct_eta: float = 0.0,
         feedback_mode: str = "",
@@ -1432,6 +1436,7 @@ class SteeringPlan:
             margin_words=bool(margin_words),
             daydream_steps=int(daydream_steps or 0),
             daydream_gain=float(daydream_gain or 1.0),
+            flip_log=bool(flip_log),
             guard_alpha=float(guard_alpha or 0.0),
             correct_eta=float(correct_eta or 0.0),
             feedback_mode=str(feedback_mode or ""),

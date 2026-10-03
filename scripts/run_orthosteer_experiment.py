@@ -140,6 +140,7 @@ def make_plan(
     margin_words=False,
     daydream_steps=0,
     daydream_gain=1.0,
+    flip_log=False,
     guard_alpha=0.0,
     correct_eta=0.0,
     feedback_mode="",
@@ -290,6 +291,7 @@ def make_plan(
         margin_words=margin_words,
         daydream_steps=daydream_steps,
         daydream_gain=daydream_gain,
+        flip_log=flip_log,
         guard_alpha=guard_alpha,
         correct_eta=correct_eta,
         feedback_mode=feedback_mode,
@@ -2775,7 +2777,8 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                           margin_cap=float(getattr(args, "margin_cap", 4.0) or 4.0),
                           margin_words=bool(getattr(args, "margin_words", False)),
                           daydream_steps=int(getattr(args, "daydream_steps", 0) or 0),
-                          daydream_gain=float(getattr(args, "daydream_gain", 1.0) or 1.0))
+                          daydream_gain=float(getattr(args, "daydream_gain", 1.0) or 1.0),
+                          flip_log=bool(getattr(args, "flip_log", False)))
                 if getattr(args, "noise_band", None):
                     kw.update(push_layers=list(args.push_band),
                               offset_layers=list(args.noise_band))

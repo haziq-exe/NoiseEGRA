@@ -84,6 +84,13 @@ check("the word-start mask covers the whole vocabulary",
       mask.dtype == torch.bool and mask.numel() == egra.model.config.vocab_size, str(mask.numel()))
 check("the shadow stayed on the story's words",
       int(getattr(p1, "shadow_drift", 0) or 0) == 0, str(getattr(p1, "shadow_drift", 0)))
+pf = plan(0.0); pf.flip_log = True
+withlog = egra.generate_with_orthogonal_steering(PROMPT, pf, max_new_tokens=8, seed=0)
+st = getattr(pf, "_flip_stats", {}) or {}
+check("the flip record counts every step, binned by the clean gap",
+      sum(v[0] for v in st.values()) == 8 and all(0 <= v[1] <= v[0] for v in st.values()), str(st))
+check("and does not change the story",
+      withlog == egra.generate_with_orthogonal_steering(PROMPT, plan(0.0), max_new_tokens=8, seed=0))
 same = egra.generate_with_orthogonal_steering(PROMPT, plan(0.0), max_new_tokens=8, seed=0)
 again = egra.generate_with_orthogonal_steering(PROMPT, plan(0.0), max_new_tokens=8, seed=0)
 check("off, a run is unchanged and reproducible", same == again)

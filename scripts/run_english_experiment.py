@@ -998,6 +998,10 @@ def main() -> None:
                          "by (clean top-two margin / its median on the prompt's greedy "
                          "continuation)^P, held to [1/4, 4], so confident choices (the plot) "
                          "move as readily as unsure ones (the wording). 0 = off")
+    ap.add_argument("--flip-log", action="store_true",
+                    help="record, binned by the clean model's top-two gap, how often the "
+                         "noise changed the chosen word; printed every 25 stories. No effect "
+                         "on generation")
     ap.add_argument("--daydream-steps", type=int, default=0,
                     help="a hidden daydream before the story: the first N words are written "
                          "with the noise at --daydream-gain times its size, a paragraph break "

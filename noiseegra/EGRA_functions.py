@@ -1606,6 +1606,14 @@ class EGRA:
                 from .online_calibration import RuleTilt
                 tilt = RuleTilt(plan.output_profile, float(plan.output_tilt))
                 processors = LogitsProcessorList([*(processors or []), tilt])
+            if shadow and getattr(plan, "flip_log", False):
+                # After everything that changes the story's scores: where the
+                # noise changed the clean model's choice, by its top-two gap.
+                from .online_calibration import FlipRecorder
+                stats = getattr(plan, "_flip_stats", None)
+                if stats is None:
+                    stats = plan._flip_stats = {}
+                processors = LogitsProcessorList([*(processors or []), FlipRecorder(stats)])
             if dd > 0:
                 # Last of all: at the end of the daydream every row writes the
                 # paragraph break, whatever it would have chosen.
@@ -1694,6 +1702,12 @@ class EGRA:
                 except Exception:
                     pass
 
+        if (getattr(plan, "flip_log", False) and getattr(plan, "_flip_stats", None)
+                and story_index is not None and (int(story_index) + 1) % 25 == 0):
+            from .online_calibration import FlipRecorder
+            print(f"  [flips] after {int(story_index) + 1} stories, choices the noise "
+                  f"changed by the clean model's top-two gap (nats): "
+                  f"{FlipRecorder.summary(plan._flip_stats)}", flush=True)
         # The daydream and its break are context, not story.
         if dd_hidden and story_index is not None and int(story_index) < 3:
             dream = self.tokenizer.decode(outputs[0][input_ids.shape[-1]:
