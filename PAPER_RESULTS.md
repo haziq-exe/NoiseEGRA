@@ -3143,3 +3143,30 @@ Method against untouched / top-p: rules -0.34 [-0.60, -0.08] / -0.18 [-0.46,
 - Quality equal to the untouched model and fewer rules broken, but little
   variety: the top-word rule undersizes the noise on a model that is unsure of
   each word yet still writes nearly the same story (90% of untouched pairs).
+
+### OLMo 3 7B with more noise (run r243, 50 stories, 2026-10-03)
+
+The method at noise share k 0.6 and 0.8 (target 0.43 / 0.58 top-p units, against
+0.30 at k 0.43), budget 2.5, seeds 0-49; references and k 0.43 from r242.
+Quality: 5 Sonnet raters, all five arms on the 50 seeds (a second rating of the
+r242 arms, in a different pool: untouched 6.00, k 0.43 5.78 here against 6.12 /
+6.16 there).
+
+| OLMo 3 7B, 50 | Coherent | Rules (of 6) | Same-story | Distinct of 10 | Quality | Rated 1-3 |
+|---|---|---|---|---|---|---|
+| Untouched | 50 | 1.36 | 90.4% | 1.60 | 6.00 | 0 |
+| Top-p 0.95, T=1.8 | 50 | 1.20 | 68.7% | 2.81 | 4.40 | 13 |
+| Method, k 0.43 | 50 | 1.02 | 83.1% | 1.95 | 5.78 | 1 |
+| Method, k 0.6 | 50 | 0.86 | 84.8% | 1.87 | 5.64 | 0 |
+| Method, k 0.8 | 50 | 1.08 | 81.1% | 2.18 | 5.38 | 1 |
+
+Against k 0.43: k 0.6 distinct -0.08 [-0.88, +0.74], quality -0.14 [-0.40,
++0.14]; k 0.8 distinct +0.23 [-0.72, +1.18], quality -0.40 [-0.72, -0.06].
+Against untouched: rules -0.50 [-0.78, -0.22] (k 0.6); quality -0.22 / -0.36 /
+-0.62 at k 0.43 / 0.6 / 0.8.
+
+- On OLMo more noise does not buy plot variety (unlike Qwen3-8B, where the
+  same steps gave 1.8 -> 3.0 -> 4.4): it changes the wording, costs a little
+  quality, and the stories stay coherent. OLMo is unsure of each next word
+  (top word 0.55) yet sure of the story: per-word uncertainty is wording, the
+  plot is fixed at a few confident branch points the noise does not move.
