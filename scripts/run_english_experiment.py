@@ -1005,6 +1005,9 @@ def main() -> None:
                          "daydream stays in context but is cut from the text. 0 = off")
     ap.add_argument("--daydream-gain", type=float, default=4.0,
                     help="the noise's multiple during the daydream")
+    ap.add_argument("--margin-words", action="store_true",
+                    help="with --margin-scale: amplify only where the clean choice starts "
+                         "a new word, never inside one (the rest of a word is spelling)")
     ap.add_argument("--margin-cap", type=float, default=4.0,
                     help="largest multiple --margin-scale may apply (smallest 1/4)")
     ap.add_argument("--horizon-rank", type=int, default=0,

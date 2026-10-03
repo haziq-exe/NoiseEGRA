@@ -561,10 +561,17 @@ class MarginScaler(LogitsProcessor):
     """
 
     def __init__(self, ref_margin: float, *, power: float = 1.0,
-                 lo: float = 0.25, hi: float = 4.0):
+                 lo: float = 0.25, hi: float = 4.0,
+                 word_start: Optional[torch.Tensor] = None):
         self.ref = max(float(ref_margin), 1e-3)
         self.power = float(power)
         self.lo, self.hi = float(lo), float(hi)
+        # Which vocabulary entries begin a word. A step whose clean choice
+        # continues a word is spelling, not a decision -- the model is sure of
+        # the rest of a word once it has started it -- and amplifying the push
+        # there breaks words ("skitter-shing", "musits"). Such steps are never
+        # amplified. None treats every step as a decision.
+        self.word_start = word_start
         self.history: List[float] = []
 
     def __call__(self, input_ids, scores):
@@ -574,6 +581,10 @@ class MarginScaler(LogitsProcessor):
         top = torch.log_softmax(clean, dim=-1).topk(2).values
         margin = float(top[0] - top[1])
         s = min(max((margin / self.ref) ** self.power, self.lo), self.hi)
+        if self.word_start is not None:
+            first = int(clean.argmax())
+            if first < self.word_start.numel() and not bool(self.word_start[first]):
+                s = min(s, 1.0)
         self.history.append(s)
         out = scores.clone()
         out[0] = (clean + s * (scores[0].float() - clean)).to(scores.dtype)

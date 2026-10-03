@@ -610,6 +610,9 @@ class SteeringPlan:
     margin_scale: float = 0.0
     # The largest multiple the margin scaling may apply (the smallest is 1/4).
     margin_cap: float = 4.0
+    # Only amplify at steps where the clean choice starts a new word: the inside
+    # of a word is spelling, which the model is sure of and should keep.
+    margin_words: bool = False
     # A hidden daydream before the story: for the first `daydream_steps` words
     # the noise runs at `daydream_gain` times its size, then a paragraph break is
     # forced and the story is written with the noise as usual. The daydream stays
@@ -1166,6 +1169,7 @@ class SteeringPlan:
         horizon_rank: int = 0,
         margin_scale: float = 0.0,
         margin_cap: float = 4.0,
+        margin_words: bool = False,
         daydream_steps: int = 0,
         daydream_gain: float = 1.0,
         guard_alpha: float = 0.0,
@@ -1425,6 +1429,7 @@ class SteeringPlan:
             horizon_rank=int(horizon_rank or 0),
             margin_scale=float(margin_scale or 0.0),
             margin_cap=float(margin_cap or 4.0),
+            margin_words=bool(margin_words),
             daydream_steps=int(daydream_steps or 0),
             daydream_gain=float(daydream_gain or 1.0),
             guard_alpha=float(guard_alpha or 0.0),
@@ -2270,6 +2275,7 @@ class SteeringPlan:
             "horizon_rank": self.horizon_rank,
             "margin_scale": self.margin_scale,
             "margin_cap": self.margin_cap,
+            "margin_words": self.margin_words,
             "daydream_steps": self.daydream_steps,
             "daydream_gain": self.daydream_gain,
             "guard_alpha": self.guard_alpha,

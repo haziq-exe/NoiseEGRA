@@ -44,6 +44,14 @@ p = torch.softmax(torch.tensor([[2.0, 0.0, -1.0], [0.0, 0.0, 0.0], [5.0, 1.0, 0.
 check("the reference margin is the median top-two log-probability gap",
       abs(reference_margin(p) - 2.0) < 1e-5, f"{reference_margin(p):.3f}")
 
+inside = torch.tensor([True, False, True])        # entry 1 continues a word
+mw = MarginScaler(1.0, power=1.0, word_start=inside)
+cont = torch.tensor([0.0, 3.0, -1.0])               # sure, but of the rest of a word
+mw(None, torch.stack([cont + 0.1, cont]))
+check("the inside of a word is never amplified", mw.history[-1] <= 1.0, f"{mw.history[-1]:.2f}")
+mw(None, torch.stack([clean + 0.1, clean]))
+check("a sure choice of the next word still is", mw.history[-1] > 1.0, f"{mw.history[-1]:.2f}")
+
 print("\n== in a run ==")
 from tiny_model import Tiny  # noqa: E402
 egra = Tiny()
@@ -71,6 +79,9 @@ check("stories generate with it", all(isinstance(o, str) and o for o in outs))
 r = next(iter(p1._rule_cache.values()))
 check("the reference margin is measured once per prompt", r.get("ref_margin", 0) > 0,
       f"{r.get('ref_margin', 0):.3f}")
+mask = egra._word_start_mask()
+check("the word-start mask covers the whole vocabulary",
+      mask.dtype == torch.bool and mask.numel() == egra.model.config.vocab_size, str(mask.numel()))
 check("the shadow stayed on the story's words",
       int(getattr(p1, "shadow_drift", 0) or 0) == 0, str(getattr(p1, "shadow_drift", 0)))
 same = egra.generate_with_orthogonal_steering(PROMPT, plan(0.0), max_new_tokens=8, seed=0)

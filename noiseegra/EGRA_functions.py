@@ -1460,7 +1460,10 @@ class EGRA:
                     # its raw push; the push on the decision is then equalised.
                     from .online_calibration import MarginScaler
                     scaler = MarginScaler(float(rule["ref_margin"]), power=ms,
-                                          hi=float(getattr(plan, "margin_cap", 4.0) or 4.0))
+                                          hi=float(getattr(plan, "margin_cap", 4.0) or 4.0),
+                                          word_start=(self._word_start_mask()
+                                                      if getattr(plan, "margin_words", False)
+                                                      else None))
                     processors = LogitsProcessorList([sizer, scaler, *list(processors)[1:]])
                 if guard_alpha > 0:
                     # After the controller, which must read the story's raw
@@ -1940,6 +1943,34 @@ class EGRA:
               + f": chance of a non-story opening {tried[0][1]:.3f} -> {story:.3f} "
               f"(noise-free {clean:.3f})", flush=True)
         return m
+
+    def _word_start_mask(self) -> torch.Tensor:
+        """True for vocabulary entries that begin a new word, or are punctuation,
+        whitespace or special -- every entry that is not the inside of a word."""
+        cached = getattr(self, "_word_start_cache", None)
+        if cached is not None:
+            return cached
+        n = int(getattr(self.model.config, "vocab_size", 0) or 0)
+        try:
+            n = max(n, len(self.tokenizer))
+        except TypeError:
+            pass
+        mask = torch.ones(n, dtype=torch.bool)
+        if hasattr(self.tokenizer, "convert_ids_to_tokens"):
+            toks = self.tokenizer.convert_ids_to_tokens(list(range(n)))
+        else:
+            toks = [self.tokenizer.decode([i]) for i in range(n)]
+        for i, s in enumerate(toks):
+            # A word-initial piece is marked: "Ġrain" (byte-level BPE) or
+            # "▁rain" (SentencePiece). A piece that starts with a bare letter or
+            # digit continues the word before it.
+            # The markers are themselves letters to str.isalnum() ("Ġ"), so
+            # they are checked first.
+            if (isinstance(s, str) and s and s[0] not in "\u0120\u010a\u2581 \n\t"
+                    and s[0].isalnum()):
+                mask[i] = False
+        self._word_start_cache = mask
+        return mask
 
     def _token_gradients(self, plan, blocks, layers, shared, cache, input_ids, token,
                          prefix_cache):
