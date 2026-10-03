@@ -3213,3 +3213,56 @@ coherent story; the coherence checker passes several of these.
   prompt's greedy continuation)^P within [1/4, C], and never amplified where the
   clean choice continues a word (spelling: at cap 8 without this, words broke --
   "skitter-shing", "musits"). The hidden-state noise is sized as before.
+
+### Where the noise changes the chosen word, and two fixes rated for quality (runs r250-r255, 2026-10-03/04)
+
+**The mechanism, measured** (`--flip-log`, OLMo 3 7B, 25 stories each): the
+share of steps whose chosen word the noise changed, by the noise-free model's
+top-two gap.
+
+| Clean top-two gap (nats) | <0.5 | 0.5-1 | 1-2 | 2-4 | 4-8 | >8 |
+|---|---|---|---|---|---|---|
+| Current method | 41.8% | 16.7% | 4.3% | 0.2% | 0.0% | 0.0% |
+| Margin x2, cap 8, word starts | 18.1% | 2.4% | 18.2% | 60.2% | 48.7% | 11.5% |
+
+The current noise changes only decisions the model is unsure of -- wording, as
+top-p does -- and never a confident one.
+
+**Hidden daydream** (`--daydream-steps 32 --daydream-gain 4 --daydream-boundary`
+with `--headline-prompt-gains 4`): noise 4x on the prompt and on a hidden opening
+of about 32 words that ends at a sentence or line end; a paragraph break is
+forced and the visible story follows at the usual noise. The noise sizing counts
+the daydream's boost, so the base length came out 0.53 (0.046 of the norm,
+against 1.23): prompt and daydream at about 2.1, the visible story below the
+current method's noise. The daydreams are fluent openings ("The flicker of the
+desk lamp dances over Rachel's notebook..."); the visible story continues them.
+Prompt 4x with the daydream at 1x (base 1.23, prompt 4.9) broke stories (10
+under 60 words, a refusal, a not-a-story).
+
+| OLMo 3 7B, seeds 0-49 | Coherent | Rules (of 6) | Distinct of 10 | Quality (5 raters) | Rated 1-3 |
+|---|---|---|---|---|---|
+| Untouched | 50 | 1.36 | 1.60 | 6.36 | 0 |
+| Top-p 0.95, T=1.8 | 50 | 1.20 | 2.81 | 4.76 | 11 |
+| Current method | 50 | 1.02 | 1.95 | 6.14 | 0 |
+| Margin x2, cap 8, word starts | 49 | 0.94 | 3.82 | 3.82 | 23 |
+| Daydream, prompt 4x only | 46 | 1.67 | 4.01 | | |
+| **Daydream, prompt 4x + daydream 4x** | **50** | **1.16** | **4.17** | **5.48** | **2** |
+
+Daydream against current / top-p / untouched: distinct +2.22 [+0.98, +3.50] /
++1.36 [-0.04, +2.54] / +2.56 [+1.38, +3.70]; quality -0.66 [-0.96, -0.38] /
++0.72 [+0.30, +1.14] / -0.88 [-1.18, -0.58]. Margin fix quality against current
+-2.32 [-2.74, -1.90].
+
+- **The margin fix is not a fix.** Flipping 60% of the confident decisions changes
+  the plot and also the confident choices that keep a story consistent (setting,
+  time of day, who speaks): fluent sentences that do not add up ("moonlight
+  pouring through cracked windows ... sunlight in her smile", "mummer she"),
+  rule text leaking ("Based on that, story written in PTense..."). The coherence
+  checker cannot see this; the raters can. The budget-neutral version (r256,
+  r257) is still to be rated.
+- **The daydream is the plot-level fix so far:** more variety than top-p at a
+  higher quality, from a modest disruption of how the prompt is read plus a
+  hidden opening written under noise -- the model starts the visible story from
+  a different place in its hidden state. Its cost (-0.66 against the current
+  method) is likely the mid-scene start (characters appear without
+  introduction).
