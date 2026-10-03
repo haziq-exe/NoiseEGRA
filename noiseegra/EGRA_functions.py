@@ -1452,7 +1452,8 @@ class EGRA:
                     # Right after the controller, which sizes the noise from
                     # its raw push; the push on the decision is then equalised.
                     from .online_calibration import MarginScaler
-                    scaler = MarginScaler(float(rule["ref_margin"]), power=ms)
+                    scaler = MarginScaler(float(rule["ref_margin"]), power=ms,
+                                          hi=float(getattr(plan, "margin_cap", 4.0) or 4.0))
                     processors = LogitsProcessorList([sizer, scaler, *list(processors)[1:]])
                 if guard_alpha > 0:
                     # After the controller, which must read the story's raw

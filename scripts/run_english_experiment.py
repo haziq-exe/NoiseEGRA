@@ -998,6 +998,8 @@ def main() -> None:
                          "by (clean top-two margin / its median on the prompt's greedy "
                          "continuation)^P, held to [1/4, 4], so confident choices (the plot) "
                          "move as readily as unsure ones (the wording). 0 = off")
+    ap.add_argument("--margin-cap", type=float, default=4.0,
+                    help="largest multiple --margin-scale may apply (smallest 1/4)")
     ap.add_argument("--horizon-rank", type=int, default=0,
                     help="with --online-rule-k: draw the per-story noise in the R "
                          "directions per layer that move the predictions 16-48 tokens "
