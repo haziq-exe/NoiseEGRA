@@ -3278,3 +3278,38 @@ Dropped.
 **OLMo at 200 stories (r242 extended, r251):** untouched 1.89 distinct, top-p
 2.55, current method 1.62 (no gain over untouched at 200), margin fix 3.15
 (+1.53 [+0.88, +2.32] vs current; rated 3.82 on the first 50).
+
+**Daydream on two more models, and two variants (runs r258, r259, 50 stories).**
+Same settings as on OLMo (prompt 4x, daydream 32 words at 4x, ended at a
+sentence end). Quality from 5 blind Sonnet raters, 10 seeds x 4 versions each,
+paired by seed.
+
+| 50 stories | Coherent | Distinct of 10 | Quality | Rated 1-3 |
+|---|---|---|---|---|
+| Qwen3-8B untouched | | | 5.64 | 0 |
+| Qwen3-8B top-p 0.95, T=1.8 | | 1.07 | 5.56 | 1 |
+| Qwen3-8B current method | | 2.62 | 6.04 | 0 |
+| **Qwen3-8B daydream** | **48** | **5.84** | **5.70** | **3** |
+| Llama-3.1-8B untouched | | | 6.20 | 0 |
+| Llama-3.1-8B top-p 0.95, T=1.8 | | 4.40 | 3.94 | 21 |
+| Llama-3.1-8B current method | | 5.62 | 6.16 | 0 |
+| **Llama-3.1-8B daydream** | **49** | **5.93** | **5.40** | **5** |
+
+Qwen3-8B daydream against current: distinct +3.22 [+1.28, +4.72]; quality
+-0.34 [-0.78, +0.06], against untouched +0.06 [-0.38, +0.46], against top-p
++0.14 [-0.30, +0.60]. Llama daydream against current: distinct +0.32 (n.s.);
+quality -0.76 [-1.18, -0.34], against top-p +1.46 [+1.02, +1.88].
+
+- On Qwen3-8B the daydream more than doubles the distinct stories at untouched
+  quality. On Llama, which already varies with the current method, it adds
+  nothing and costs 0.76 quality.
+- The low-rated daydream stories: two start mid-sentence (a comma inside closing
+  quotes was taken for a sentence end -- fixed in the code since), three Llama
+  stories start mid-scene with no setup, two Qwen stories loop on a sentence.
+- Variants on OLMo (r259): a scene break (* * *) in place of the paragraph
+  break lets the model return to its default story (distinct 2.71 against 4.17,
+  -1.45 [-2.62, +0.04]); the prompt at 2x instead of 4x gives 3.28 (-0.89,
+  n.s.). Both kept at 50/50 coherent. The paragraph break and prompt 4x stay.
+- Next: the daydream kept visible as the story's opening, inside the same word
+  budget (r260 OLMo, r261 Qwen3-8B), to test whether the cost is the mid-scene
+  start.
