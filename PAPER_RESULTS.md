@@ -3093,3 +3093,31 @@ Quality against untouched: budget 6.12 -1.20 [-1.58, -0.82], 4.0 -0.58 [-0.90,
   budget 2.5 the method matches the untouched model's quality (0 of 50 rated
   1-3) with 1.8x its variety; budget 4.0 keeps all the variety of 6.12 at half
   its quality cost.
+
+### Granite 4.2 8B (IBM, August 2026), middle-school prompt, 50 stories (runs r239, r241, 2026-10-03)
+
+Dense GraniteForCausalLM, float16, layers 9 and 19 of 40, prompt noise 1.0x.
+r239: the method as on Llama-3.1-8B (k 0.43, rule unsteered, steering sized to
+effect 1.0 -> budget 3.99; budget 2.5 moves Granite's predictions 0.60 per
+step), untouched, top-p; r241: the method at fixed budget 2.5. Noise target
+1.37-1.39 top-p units (top word 0.78; top-p moves only 0.50 per step).
+Quality: 5 Sonnet raters, all four arms on the 50 seeds.
+
+| Granite 4.2 8B, 50 | Coherent | Rules (of 6) | Same-story | Distinct of 10 | Quality | Rated 1-3 |
+|---|---|---|---|---|---|---|
+| Untouched | 50 | 1.86 | 96.7% | 1.17 | 5.84 | 0 |
+| Top-p 0.95, T=1.8 | 48 | 1.46 | 92.7% | 1.35 | 5.08 | 7 |
+| Method, effect-sized (3.99) | 46 | 1.28 | 87.8% | 1.76 | 4.48 | 16 |
+| Method, budget 2.5 | 49 | 1.33 | 96.2% | 1.27 | 4.78 | 11 |
+
+Method against untouched: rules -0.58 [-0.86, -0.29] (3.99) / -0.53 [-0.82,
+-0.23] (2.5); distinct +0.58 [-0.10, +1.24] / +0.10 [-0.34, +0.46]; quality
+-1.36 [-1.88, -0.84] / -1.06 [-1.48, -0.66]. Budget 2.5 against 3.99: quality
++0.30 [-0.20, +0.82].
+
+- Granite 4.2 8B writes one story ("She walks down the cracked sidewalk after
+  school... He waits near...") and neither top-p nor the method moves it much.
+  The method cuts broken rules but costs a point of quality even at budget 2.5,
+  so on this model the cost is not (only) the steering. 16 of 50 untouched
+  stories already echo the rule list into the text ("a girl without a name",
+  "inside quotation marks").
