@@ -1049,6 +1049,13 @@ class SteeringPlan:
     # isotropic; within one story it gives the coloured-noise trajectory a
     # fixed set of directions to wander among. Nothing about it is learned.
     offset_random_rank: int = 0
+    # Draw that random subspace from the model's own word vectors instead of
+    # from a Gaussian: each direction is the input embedding of one random
+    # content word (centred on the mean embedding), so the noise wanders among
+    # a few random words' meanings -- random words in the context, written into
+    # the hidden state instead of the text. Model geometry only; nothing learned
+    # from stories. Needs offset_random_rank > 0 (the number of words).
+    offset_vocab: bool = False
     # Run a shadow copy of the story alongside it: the same words, the same
     # steering, no perturbation. At every steered layer the story's state is
     # made to agree with the shadow's along the protected directions, which
@@ -1173,6 +1180,7 @@ class SteeringPlan:
         offset_scale: Optional[Mapping[int, torch.Tensor]] = None,
         offset_draw_shape: str = "sphere",
         offset_random_rank: int = 0,
+        offset_vocab: bool = False,
         offset_online: float = 0.0,
         online_max_gain: float = 2.5,
         online_min_gain: float = 0.25,
@@ -1438,6 +1446,7 @@ class SteeringPlan:
             offset_decode_steps=int(offset_decode_steps),
             offset_draw_shape=str(offset_draw_shape),
             offset_random_rank=int(offset_random_rank or 0),
+            offset_vocab=bool(offset_vocab),
             offset_online=float(offset_online or 0.0),
             online_max_gain=float(online_max_gain or 2.5),
             online_min_gain=float(online_min_gain or 0.25),
@@ -1816,6 +1825,7 @@ class SteeringPlan:
             return
 
         laid_out = getattr(self, "_offset_plan", None)
+        self._vocab_pick = None
         for lyr, lp in self.layer_plans.items():
             dev, dt = lp.basis.device, lp.basis.dtype
             # Relocate the tensors this draw touches to where the steering basis
@@ -1841,8 +1851,16 @@ class SteeringPlan:
                 # rule directions before use, so the noise cannot move the
                 # story along the directions the push holds.
                 k = min(int(self.offset_random_rank), self.dim - 1)
-                q = torch.linalg.qr(torch.randn(self.dim, k, dtype=torch.float32,
-                                                device=dev))[0]
+                pool = getattr(self, "_vocab_pool", None)
+                if getattr(self, "offset_vocab", False) and pool is not None:
+                    # One draw of words per story, shared by every layer.
+                    if getattr(self, "_vocab_pick", None) is None:
+                        self._vocab_pick = torch.randint(int(pool.shape[0]), (k,))
+                    cols = pool[self._vocab_pick].to(device=dev, dtype=torch.float32).t()
+                    q = torch.linalg.qr(cols)[0]
+                else:
+                    q = torch.linalg.qr(torch.randn(self.dim, k, dtype=torch.float32,
+                                                    device=dev))[0]
                 if self.offset_mode == "orth" and lp.protect is not None:
                     q = complement_basis(q, lp.protect.to(torch.float32))
                 lp.offset_basis = q.to(dt)
@@ -2336,6 +2354,7 @@ class SteeringPlan:
             "amplify_prefill": self.amplify_prefill,
             "amplify_rank": self.layer_plans[self.layers[0]].report.get("amplify_rank"),
             "offset_basis_kind": self.offset_basis_kind,
+            "offset_vocab": self.offset_vocab,
             "offset_prefill": self.offset_prefill,
             "noise_horizon": self.noise_horizon,
             "jitter_mode": self.jitter_mode,

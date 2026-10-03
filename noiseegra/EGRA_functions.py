@@ -810,6 +810,10 @@ class EGRA:
         # online_rule_start, the starting length at which random draws of the
         # noise already reach that target. Before the seed, because measuring
         # the start draws noise of its own.
+        if getattr(plan, "offset_vocab", False) and getattr(plan, "_vocab_pool", None) is None:
+            plan._vocab_ids, plan._vocab_pool = self._content_word_vectors()
+            print(f"  [vocab] noise directions drawn from {len(plan._vocab_ids)} content "
+                  "words' input embeddings", flush=True)
         rule = None
         online = float(getattr(plan, "offset_online", 0.0) or 0.0) > 0
         measured = bool(getattr(plan, "offset_measured", False))
@@ -951,6 +955,10 @@ class EGRA:
                 plan.resample_offset(story_index=story_index)
             except TypeError:
                 plan.resample_offset()
+        pick = getattr(plan, "_vocab_pick", None)
+        if pick is not None and story_index is not None and int(story_index) < 3:
+            words = [self.tokenizer.decode([plan._vocab_ids[int(i)]]).strip() for i in pick]
+            print(f"  [vocab] story {story_index}: {', '.join(words)}", flush=True)
 
         chat_text = self.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
         device = self._input_device()
@@ -1996,6 +2004,28 @@ class EGRA:
               + f": chance of a non-story opening {tried[0][1]:.3f} -> {story:.3f} "
               f"(noise-free {clean:.3f})", flush=True)
         return m
+
+    def _content_word_vectors(self):
+        """Ids and unit input embeddings, centred on the mean embedding, of the
+        vocabulary entries that are a whole lower-case word of four letters or
+        more -- mostly content words. No text is generated or read."""
+        n = int(self.model.get_input_embeddings().weight.shape[0])
+        try:
+            n = min(n, len(self.tokenizer))
+        except TypeError:
+            pass
+        if hasattr(self.tokenizer, "convert_ids_to_tokens"):
+            toks = self.tokenizer.convert_ids_to_tokens(list(range(n)))
+        else:
+            toks = [self.tokenizer.decode([i]) for i in range(n)]
+        ids = [i for i, s in enumerate(toks)
+               if isinstance(s, str) and len(s) >= 5 and s[0] in "\u0120\u2581 "
+               and s[1:].isalpha() and s[1:].islower() and s[1:].isascii()]
+        if not ids:
+            raise ValueError("no content words found in the vocabulary")
+        w = self.model.get_input_embeddings().weight.detach().float().cpu()
+        v = w[ids] - w[:n].mean(0, keepdim=True)
+        return ids, v / v.norm(dim=-1, keepdim=True).clamp_min(1e-12)
 
     def _word_start_mask(self) -> torch.Tensor:
         """True for vocabulary entries that begin a new word, or are punctuation,

@@ -256,6 +256,8 @@ def _ortho_tag_once(model_name: str, spec: ExperimentSpec, *, compress: bool) ->
             parts.append(f"__od{plan.offset_draw}")
     if getattr(plan, "steer_budget", None):
         parts.append(f"__bud{_float_tag(plan.steer_budget)}")
+    if getattr(plan, "offset_vocab", False):
+        parts.append("__voc")
     if int(getattr(plan, "daydream_steps", 0) or 0) > 0:
         parts.append(f"__dd{int(plan.daydream_steps)}g{_float_tag(plan.daydream_gain)}"
                      + ("b" if getattr(plan, "daydream_boundary", False) else "")

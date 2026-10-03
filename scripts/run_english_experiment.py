@@ -1013,6 +1013,10 @@ def main() -> None:
     ap.add_argument("--daydream-scene", action="store_true",
                     help="end the daydream with a scene break (* * *) instead of a "
                          "paragraph break, so the story opens a new scene")
+    ap.add_argument("--offset-vocab", action="store_true",
+                    help="draw each story's noise directions from the model's own word "
+                         "vectors: --offset-random-rank random content words' input "
+                         "embeddings instead of Gaussian directions")
     ap.add_argument("--daydream-keep", action="store_true",
                     help="keep the daydream and its break as the story's opening, inside "
                          "the usual word budget, instead of cutting them")
