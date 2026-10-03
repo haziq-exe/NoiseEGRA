@@ -94,6 +94,11 @@ def arms(path: Path, extra: str = "") -> dict:
 _HEAD = re.compile(r"^\s*(\*\*[^\n]*?\*\*|#{1,6}[^\n]*|title\s*:[^\n]*|\*[^*\n]+\*)\s*(\n|$)", re.I)
 _PRE = re.compile(r"^\s*(sure|here'?s|here is|certainly|okay|of course|absolutely)\b[^\n]*?(:|\n)\s*", re.I)
 STRIP_OPENINGS = True
+# Judge each story from its N-th word on (0 = from the start). The judge reads
+# only 128 tokens, so this moves its window along the story: a method that
+# hides or adds an opening is compared with the others at the same distance
+# into their stories.
+SKIP_WORDS = 0
 
 
 def strip_opening(text: str) -> str:
@@ -270,6 +275,8 @@ def score(path: Path, rids: list, limit: int, subsets: int, device: str,
         kept = coherent(texts)
         if STRIP_OPENINGS:
             kept = [strip_opening(k) for k in kept]
+        if SKIP_WORDS:
+            kept = [" ".join(k.split()[SKIP_WORDS:]) for k in kept]
         t0 = time.time()
         rep = {}
         same = same_matrix(kept, tok, model, torch, device, report=rep)
@@ -314,9 +321,10 @@ def summarise(path: Path, judged: dict) -> dict:
                 d[0] = v["distinct10"] - judged[ref]["distinct10"]
                 row[f"same_vs_{name}"], row[f"distinct_vs_{name}"] = s, d
         rows[rid] = row
-    (path if path.is_dir() else path.parent).joinpath("novelty.json").write_text(
+    name = f"novelty_skip{SKIP_WORDS}.json" if SKIP_WORDS else "novelty.json"
+    (path if path.is_dir() else path.parent).joinpath(name).write_text(
         json.dumps({"judge": JUDGE, "threshold": THRESHOLD, "tokens": MAX_TOKENS,
-                    "openings_stripped": STRIP_OPENINGS,
+                    "openings_stripped": STRIP_OPENINGS, "skip_words": SKIP_WORDS,
                     "arms": rows, "pairs": {r: v["same"] for r, v in judged.items()}},
                    indent=1))
     ci = lambda x: f"{x[0]:+.1%} [{x[1]:+.1%}, {x[2]:+.1%}]"
@@ -335,7 +343,7 @@ def summarise(path: Path, judged: dict) -> dict:
 
 
 def main() -> None:
-    global STRIP_OPENINGS, BATCH
+    global STRIP_OPENINGS, BATCH, SKIP_WORDS
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("path")
@@ -347,11 +355,15 @@ def main() -> None:
     ap.add_argument("--keep-openings", action="store_true",
                     help="judge stories with their leading headings and replies to the reader "
                          "(the scoring before 2026-09-29)")
+    ap.add_argument("--skip-words", type=int, default=0,
+                    help="judge each story from its N-th word on; written to "
+                         "novelty_skipN.json")
     ap.add_argument("--extra", default="",
                     help="JSON of earlier arms to judge alongside: {\"arms\": {run id: [stories]}}")
     args = ap.parse_args()
     STRIP_OPENINGS = not args.keep_openings
     BATCH = args.batch
+    SKIP_WORDS = max(0, int(args.skip_words))
     path = Path(args.path)
     if args.extra and not Path(args.extra).is_absolute():
         args.extra = str((ROOT / args.extra) if (ROOT / args.extra).is_file() else Path(args.extra))
@@ -374,7 +386,8 @@ def main() -> None:
             [sys.executable, "-u", __file__, str(path), "--part", f"{i}/{gpus}",
              "--limit", str(args.limit), "--subsets", str(args.subsets),
              *(["--extra", args.extra] if args.extra else []),
-             *(["--keep-openings"] if args.keep_openings else [])],
+             *(["--keep-openings"] if args.keep_openings else []),
+             "--skip-words", str(args.skip_words), "--batch", str(args.batch)],
             env=dict(os.environ, CUDA_VISIBLE_DEVICES=str(i))) for i in range(gpus)]
         codes = [p.wait() for p in procs]
         judged = {}
