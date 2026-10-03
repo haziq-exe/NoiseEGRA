@@ -3266,3 +3266,15 @@ Daydream against current / top-p / untouched: distinct +2.22 [+0.98, +3.50] /
   a different place in its hidden state. Its cost (-0.66 against the current
   method) is likely the mid-scene start (characters appear without
   introduction).
+
+**Budget-neutral margin scaling (runs r256, r257, 50 stories).** The scaling
+divided by its own average on the prompt's greedy continuation (2.06 OLMo, 2.37
+Llama, 2.68 Qwen3-8B), so the average push is unchanged. Distinct of 10, current
+method -> neutral: OLMo 1.95 -> 2.18 (n.s.), Llama-3.1-8B 5.62 -> 5.17 (n.s.),
+Qwen3-8B 2.62 -> 1.38 (-1.24 [-2.16, -0.28]). Strong enough to move the plot the
+margin scaling breaks the story's consistency; budget-neutral it moves nothing.
+Dropped.
+
+**OLMo at 200 stories (r242 extended, r251):** untouched 1.89 distinct, top-p
+2.55, current method 1.62 (no gain over untouched at 200), margin fix 3.15
+(+1.53 [+0.88, +2.32] vs current; rated 3.82 on the first 50).
