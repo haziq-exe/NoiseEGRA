@@ -886,8 +886,19 @@ class EGRA:
                 if float(getattr(plan, "margin_scale", 0.0) or 0.0) > 0:
                     from .online_calibration import reference_margin
                     m["ref_margin"] = reference_margin(ref[1])
+                    m["margin_norm"] = 1.0
+                    if getattr(plan, "margin_neutral", False):
+                        from .online_calibration import neutral_scale
+                        m["margin_norm"] = neutral_scale(
+                            ref[1], m["ref_margin"], power=float(plan.margin_scale),
+                            lo=0.25, hi=float(getattr(plan, "margin_cap", 4.0) or 4.0),
+                            word_start=(self._word_start_mask()
+                                        if getattr(plan, "margin_words", False) else None))
                     print(f"  [margin] median top-two gap on the greedy continuation "
-                          f"{m['ref_margin']:.3f} nats", flush=True)
+                          f"{m['ref_margin']:.3f} nats; average scale there "
+                          f"{m['margin_norm']:.3f}"
+                          + (" (divided out)" if getattr(plan, "margin_neutral", False) else ""),
+                          flush=True)
                 msg = (f"  [rule] top-p moves {m['unit']:.4f} per step, top word "
                        f"{m['top_prob']:.3f}{seen}: noise target {m['target']:.3f} "
                        f"(k {float(plan.online_rule_k):g})")
@@ -1468,7 +1479,8 @@ class EGRA:
                                           hi=float(getattr(plan, "margin_cap", 4.0) or 4.0),
                                           word_start=(self._word_start_mask()
                                                       if getattr(plan, "margin_words", False)
-                                                      else None))
+                                                      else None),
+                                          norm=float(rule.get("margin_norm", 1.0)))
                     processors = LogitsProcessorList([sizer, scaler, *list(processors)[1:]])
                 if guard_alpha > 0:
                     # After the controller, which must read the story's raw

@@ -613,6 +613,11 @@ class SteeringPlan:
     # Only amplify at steps where the clean choice starts a new word: the inside
     # of a word is spelling, which the model is sure of and should keep.
     margin_words: bool = False
+    # Divide the scaling by its average on the prompt's greedy continuation, so
+    # the noise's average push is unchanged and only moved from unsure steps to
+    # sure ones -- the same reallocation on every model, whatever its spread of
+    # sureness, instead of more push where many steps look sure.
+    margin_neutral: bool = False
     # A hidden daydream before the story: for the first `daydream_steps` words
     # the noise runs at `daydream_gain` times its size, then a paragraph break is
     # forced and the story is written with the noise as usual. The daydream stays
@@ -1176,6 +1181,7 @@ class SteeringPlan:
         margin_scale: float = 0.0,
         margin_cap: float = 4.0,
         margin_words: bool = False,
+        margin_neutral: bool = False,
         daydream_steps: int = 0,
         daydream_gain: float = 1.0,
         daydream_boundary: bool = False,
@@ -1438,6 +1444,7 @@ class SteeringPlan:
             margin_scale=float(margin_scale or 0.0),
             margin_cap=float(margin_cap or 4.0),
             margin_words=bool(margin_words),
+            margin_neutral=bool(margin_neutral),
             daydream_steps=int(daydream_steps or 0),
             daydream_gain=float(daydream_gain or 1.0),
             daydream_boundary=bool(daydream_boundary),

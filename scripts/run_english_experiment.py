@@ -1015,6 +1015,10 @@ def main() -> None:
     ap.add_argument("--margin-words", action="store_true",
                     help="with --margin-scale: amplify only where the clean choice starts "
                          "a new word, never inside one (the rest of a word is spelling)")
+    ap.add_argument("--margin-neutral", action="store_true",
+                    help="with --margin-scale: divide the scaling by its average on the "
+                         "prompt's greedy continuation, so the noise's average push is "
+                         "unchanged and only moved from unsure steps to sure ones")
     ap.add_argument("--margin-cap", type=float, default=4.0,
                     help="largest multiple --margin-scale may apply (smallest 1/4)")
     ap.add_argument("--horizon-rank", type=int, default=0,

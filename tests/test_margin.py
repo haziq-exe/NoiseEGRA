@@ -52,6 +52,21 @@ check("the inside of a word is never amplified", mw.history[-1] <= 1.0, f"{mw.hi
 mw(None, torch.stack([clean + 0.1, clean]))
 check("a sure choice of the next word still is", mw.history[-1] > 1.0, f"{mw.history[-1]:.2f}")
 
+from noiseegra.online_calibration import neutral_scale  # noqa: E402
+lp = torch.tensor([[3.0, 0.0, -1.0], [0.5, 0.0, -1.0], [1.0, 0.0, -1.0]])
+pp = torch.softmax(lp, -1)
+ref = reference_margin(pp)
+avg = neutral_scale(pp, ref, power=1.0, lo=0.25, hi=4.0)
+want = sum(min(max(((r[0] - r[1]).item() / ref), 0.25), 4.0)
+           for r in pp.log().topk(2, dim=-1).values) / 3
+check("the neutral average is the scaling's own average on the passage", abs(avg - want) < 1e-5,
+      f"{avg:.4f} vs {want:.4f}")
+mn = MarginScaler(ref, power=1.0, norm=avg)
+for row in lp:
+    mn(None, torch.stack([row + 0.1, row]))
+check("divided by it, the scaling averages one over the passage",
+      abs(sum(mn.history) / len(mn.history) - 1.0) < 1e-4, f"{sum(mn.history) / 3:.4f}")
+
 print("\n== in a run ==")
 from tiny_model import Tiny  # noqa: E402
 egra = Tiny()

@@ -530,6 +530,22 @@ def noise_divergence(egra, plan, prompt_ids, passage, length: float, *,
 #  The noise's push on each decision, scaled by how sure the clean model is     #
 # --------------------------------------------------------------------------- #
 
+def neutral_scale(clean_probs: torch.Tensor, ref: float, *, power: float, lo: float,
+                  hi: float, word_start: Optional[torch.Tensor] = None) -> float:
+    """Average of the margin scaling along the reference passage, so dividing by
+    it leaves the noise's average push where it was: the push moved from unsure
+    steps to sure ones, not added. Same rule as MarginScaler.__call__."""
+    lp = clean_probs.clamp_min(1e-30).log()
+    top = lp.topk(2, dim=-1)
+    m = (top.values[:, 0] - top.values[:, 1]).float()
+    s = ((m / max(float(ref), 1e-3)) ** float(power)).clamp(float(lo), float(hi))
+    if word_start is not None:
+        first = top.indices[:, 0].cpu()
+        inside = ~word_start[first.clamp_max(word_start.numel() - 1)]
+        s = torch.where(inside.to(s.device), s.clamp_max(1.0), s)
+    return float(s.mean())
+
+
 def reference_margin(clean_probs: torch.Tensor) -> float:
     """Median gap between the clean model's top two log-probabilities along the
     reference passage: the typical sureness of a step for this prompt."""
@@ -562,8 +578,11 @@ class MarginScaler(LogitsProcessor):
 
     def __init__(self, ref_margin: float, *, power: float = 1.0,
                  lo: float = 0.25, hi: float = 4.0,
-                 word_start: Optional[torch.Tensor] = None):
+                 word_start: Optional[torch.Tensor] = None, norm: float = 1.0):
         self.ref = max(float(ref_margin), 1e-3)
+        # Divides every step's scale: the average of the scaling on the
+        # reference passage (neutral_scale), so the average push is unchanged.
+        self.norm = max(float(norm), 1e-6)
         self.power = float(power)
         self.lo, self.hi = float(lo), float(hi)
         # Which vocabulary entries begin a word. A step whose clean choice
@@ -585,6 +604,7 @@ class MarginScaler(LogitsProcessor):
             first = int(clean.argmax())
             if first < self.word_start.numel() and not bool(self.word_start[first]):
                 s = min(s, 1.0)
+        s = s / self.norm
         self.history.append(s)
         out = scores.clone()
         out[0] = (clean + s * (scores[0].float() - clean)).to(scores.dtype)
