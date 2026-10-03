@@ -1417,6 +1417,22 @@ class EGRA:
 
                 handles.append(self.model.register_forward_pre_hook(grab_cache, with_kwargs=True))
 
+            # Which token this forward reads, for noise placed at sentence ends.
+            plan._at_boundary = False
+            if float(getattr(plan, "boundary_gain", 0.0) or 0.0) > 0:
+                bset = self._boundary_ids()
+
+                def see_token(module, args, kwargs):
+                    if shared.get("replay"):
+                        return None
+                    ids = kwargs.get("input_ids", args[0] if args else None)
+                    plan._at_boundary = bool(
+                        ids is not None and ids.shape[-1] == 1
+                        and not shared.get("is_prefill") and int(ids[0, -1]) in bset)
+                    return None
+
+                handles.append(self.model.register_forward_pre_hook(see_token, with_kwargs=True))
+
             # The push and a truncation scheme are different interventions --
             # one reshapes the representation, the other the distribution over
             # the next token -- so they compose. Every method arm until now used
@@ -2004,6 +2020,25 @@ class EGRA:
               + f": chance of a non-story opening {tried[0][1]:.3f} -> {story:.3f} "
               f"(noise-free {clean:.3f})", flush=True)
         return m
+
+    def _boundary_ids(self) -> set:
+        """Vocabulary entries that end a sentence or a line: their text, past any
+        closing quotes and spaces, ends with . ! or ?, or holds a line break."""
+        cached = getattr(self, "_boundary_cache", None)
+        if cached is not None:
+            return cached
+        n = int(self.model.get_input_embeddings().weight.shape[0])
+        try:
+            n = min(n, len(self.tokenizer))
+        except TypeError:
+            pass
+        out = set()
+        for i in range(n):
+            s = self.tokenizer.decode([i])
+            if "\n" in s or s.rstrip().rstrip('"\u201d\u2019\'').endswith((".", "!", "?")):
+                out.add(i)
+        self._boundary_cache = out
+        return out
 
     def _content_word_vectors(self):
         """Ids and unit input embeddings, centred on the mean embedding, of the

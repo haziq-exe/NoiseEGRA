@@ -1056,6 +1056,13 @@ class SteeringPlan:
     # the hidden state instead of the text. Model geometry only; nothing learned
     # from stories. Needs offset_random_rank > 0 (the number of words).
     offset_vocab: bool = False
+    # The noise at the position of every sentence-ending token (. ! ? or a line
+    # break), for the whole story, at this multiple of its length; 0 = off.
+    # Elsewhere the usual schedule. A boundary position is where the model
+    # holds what the next sentence is about, and every later token attends to
+    # it, so a push written there carries into the rest of the story without
+    # touching the wording inside sentences.
+    boundary_gain: float = 0.0
     # Run a shadow copy of the story alongside it: the same words, the same
     # steering, no perturbation. At every steered layer the story's state is
     # made to agree with the shadow's along the protected directions, which
@@ -1181,6 +1188,7 @@ class SteeringPlan:
         offset_draw_shape: str = "sphere",
         offset_random_rank: int = 0,
         offset_vocab: bool = False,
+        boundary_gain: float = 0.0,
         offset_online: float = 0.0,
         online_max_gain: float = 2.5,
         online_min_gain: float = 0.25,
@@ -1447,6 +1455,7 @@ class SteeringPlan:
             offset_draw_shape=str(offset_draw_shape),
             offset_random_rank=int(offset_random_rank or 0),
             offset_vocab=bool(offset_vocab),
+            boundary_gain=float(boundary_gain or 0.0),
             offset_online=float(offset_online or 0.0),
             online_max_gain=float(online_max_gain or 2.5),
             online_min_gain=float(online_min_gain or 0.25),
@@ -2057,7 +2066,11 @@ class SteeringPlan:
             gain = 1.0 if gain is None else float(gain)
             dd = int(getattr(self, "daydream_steps", 0) or 0)
             boost = float(getattr(self, "daydream_gain", 1.0) or 1.0) if t < dd else 1.0
-            off = lp.offset_at(t, self.envelope_at(t) * gain * boost)
+            env = self.envelope_at(t)
+            bg = float(getattr(self, "boundary_gain", 0.0) or 0.0)
+            if bg > 0 and getattr(self, "_at_boundary", False):
+                env = max(env, bg)
+            off = lp.offset_at(t, env * gain * boost)
             if off is not None:
                 delta = off if delta is None else delta + off
 
@@ -2355,6 +2368,7 @@ class SteeringPlan:
             "amplify_rank": self.layer_plans[self.layers[0]].report.get("amplify_rank"),
             "offset_basis_kind": self.offset_basis_kind,
             "offset_vocab": self.offset_vocab,
+            "boundary_gain": self.boundary_gain,
             "offset_prefill": self.offset_prefill,
             "noise_horizon": self.noise_horizon,
             "jitter_mode": self.jitter_mode,

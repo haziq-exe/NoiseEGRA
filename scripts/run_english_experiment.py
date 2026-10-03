@@ -1013,6 +1013,9 @@ def main() -> None:
     ap.add_argument("--daydream-scene", action="store_true",
                     help="end the daydream with a scene break (* * *) instead of a "
                          "paragraph break, so the story opens a new scene")
+    ap.add_argument("--boundary-gain", type=float, default=0.0,
+                    help="the noise at every sentence-ending token's position, for the "
+                         "whole story, at this multiple of its length (0 = off)")
     ap.add_argument("--offset-vocab", action="store_true",
                     help="draw each story's noise directions from the model's own word "
                          "vectors: --offset-random-rank random content words' input "
