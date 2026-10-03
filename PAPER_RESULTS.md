@@ -3068,3 +3068,28 @@ stories the checker drops: 3 run-on, 1 not a story.
 - The 50-story result holds: the method more than doubles the untouched model's
   variety and beats top-p on both variety and quality, but costs a point of
   quality against the untouched model, with no rule gain.
+
+### Llama-3.1-8B with less steering (run r240, 50 stories, 2026-10-03)
+
+The method at fixed steering budgets 2.5 and 4.0 (no effect sizing; budget 2.5
+moves Llama's predictions 0.39 per step, 4.0 0.62, the effect-sized 6.12 1.0),
+everything else as r238; seeds 0-49, untouched / top-p / budget 6.12 from
+r238. Quality: 5 Sonnet raters, all five arms on the 50 seeds.
+
+| Llama-3.1-8B, 50 | Coherent | Over 200 words | Rules (of 6) | Distinct of 10 | Quality | Rated 1-3 |
+|---|---|---|---|---|---|---|
+| Untouched | 50 | 0 | 0.94 | 3.12 | 6.00 | 0 |
+| Top-p 0.95, T=1.8 | 50 | 8 | 1.00 | 4.40 | 3.94 | 22 |
+| Method, budget 6.12 (effect 1.0) | 49 | 12 | 0.98 | 7.18 | 4.80 | 10 |
+| Method, budget 4.0 | 50 | 2 | 1.02 | 7.12 | 5.42 | 3 |
+| Method, budget 2.5 | 50 | 0 | 0.94 | 5.62 | 6.08 | 0 |
+
+Quality against untouched: budget 6.12 -1.20 [-1.58, -0.82], 4.0 -0.58 [-0.90,
+-0.30], 2.5 +0.08 [-0.10, +0.26]. Distinct against untouched: 4.0 +4.00 [+2.30,
++5.68], 2.5 +2.49 [+0.86, +4.08]; against top-p: 4.0 +2.73 [+0.86, +4.50], 2.5
++1.22 [-0.38, +3.14]. Rules level everywhere (steering does not move Llama's).
+
+- The quality loss on Llama-3.1-8B was the steering's size: at the original
+  budget 2.5 the method matches the untouched model's quality (0 of 50 rated
+  1-3) with 1.8x its variety; budget 4.0 keeps all the variety of 6.12 at half
+  its quality cost.
