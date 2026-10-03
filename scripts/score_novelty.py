@@ -321,7 +321,8 @@ def summarise(path: Path, judged: dict) -> dict:
                 d[0] = v["distinct10"] - judged[ref]["distinct10"]
                 row[f"same_vs_{name}"], row[f"distinct_vs_{name}"] = s, d
         rows[rid] = row
-    name = f"novelty_skip{SKIP_WORDS}.json" if SKIP_WORDS else "novelty.json"
+    name = ("novelty" + (f"_skip{SKIP_WORDS}" if SKIP_WORDS else "")
+            + (f"_tok{MAX_TOKENS}" if MAX_TOKENS != 128 else "") + ".json")
     (path if path.is_dir() else path.parent).joinpath(name).write_text(
         json.dumps({"judge": JUDGE, "threshold": THRESHOLD, "tokens": MAX_TOKENS,
                     "openings_stripped": STRIP_OPENINGS, "skip_words": SKIP_WORDS,
@@ -343,7 +344,7 @@ def summarise(path: Path, judged: dict) -> dict:
 
 
 def main() -> None:
-    global STRIP_OPENINGS, BATCH, SKIP_WORDS
+    global STRIP_OPENINGS, BATCH, SKIP_WORDS, MAX_TOKENS
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("path")
@@ -355,6 +356,10 @@ def main() -> None:
     ap.add_argument("--keep-openings", action="store_true",
                     help="judge stories with their leading headings and replies to the reader "
                          "(the scoring before 2026-09-29)")
+    ap.add_argument("--max-tokens", type=int, default=MAX_TOKENS,
+                    help="tokens of each story the judge reads (NoveltyBench: 128). Two "
+                         "stories must fit the judge's 512, so at most 253; above 128 is "
+                         "longer than the judge was trained on. Written to novelty_tokN.json")
     ap.add_argument("--skip-words", type=int, default=0,
                     help="judge each story from its N-th word on; written to "
                          "novelty_skipN.json")
@@ -364,6 +369,9 @@ def main() -> None:
     STRIP_OPENINGS = not args.keep_openings
     BATCH = args.batch
     SKIP_WORDS = max(0, int(args.skip_words))
+    if not 1 <= args.max_tokens <= 253:
+        raise SystemExit("--max-tokens must be 1-253: two stories share the judge's 512")
+    MAX_TOKENS = int(args.max_tokens)
     path = Path(args.path)
     if args.extra and not Path(args.extra).is_absolute():
         args.extra = str((ROOT / args.extra) if (ROOT / args.extra).is_file() else Path(args.extra))
@@ -387,7 +395,8 @@ def main() -> None:
              "--limit", str(args.limit), "--subsets", str(args.subsets),
              *(["--extra", args.extra] if args.extra else []),
              *(["--keep-openings"] if args.keep_openings else []),
-             "--skip-words", str(args.skip_words), "--batch", str(args.batch)],
+             "--skip-words", str(args.skip_words), "--batch", str(args.batch),
+             "--max-tokens", str(args.max_tokens)],
             env=dict(os.environ, CUDA_VISIBLE_DEVICES=str(i))) for i in range(gpus)]
         codes = [p.wait() for p in procs]
         judged = {}
