@@ -1644,8 +1644,11 @@ class EGRA:
                         s = int(ids.shape[-1]) - n_in
                         if dd_state["start"] is None and s >= dd:
                             last = tok.decode([int(ids[0, -1])]) if s > 0 else ""
-                            ended = ("\n" in last
-                                     or last.rstrip().endswith((".", "!", "?", '"', "\u201d")))
+                            # A closing quote ends a sentence only after . ! or ?,
+                            # never after a comma ("...," she says).
+                            tail = (tok.decode(ids[0, -3:].tolist()) if s > 0 else "").rstrip()
+                            tail = tail.rstrip('"\u201d\u2019\'')
+                            ended = "\n" in last or tail.endswith((".", "!", "?"))
                             if not dd_extra or ended or s >= dd + dd_extra:
                                 dd_state["start"] = s
                                 # The story's schedule starts at its first word.
