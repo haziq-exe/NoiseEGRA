@@ -47,6 +47,11 @@ def main() -> None:
     # --then-score: judge every arm's stories with NoveltyBench's classifier once
     # the shards are merged, on the GPUs the run already has.
     # Anything between it and "--" is passed to the scorer (e.g. --extra FILE).
+    # --runner PATH: another generator taking --shard and --out (scripts/run_domains.py).
+    runner = RUNNER
+    if len(rest) >= 2 and rest[0] == "--runner":
+        runner = ROOT / rest[1]
+        rest = rest[2:]
     then_score = bool(rest) and rest[0] == "--then-score"
     score_args = []
     if then_score:
@@ -67,7 +72,7 @@ def main() -> None:
         # -- exactly the fragmentation this setting addresses.
         env = dict(os.environ, CUDA_VISIBLE_DEVICES=str(i),
                    PYTORCH_ALLOC_CONF="expandable_segments:True")
-        cmd = [sys.executable, "-u", str(RUNNER), *rest,
+        cmd = [sys.executable, "-u", str(runner), *rest,
                "--shard", f"{i}/{shards}", "--out", f"{out}/shard{i}"]
         print(f"[gpu{i}] {' '.join(cmd[2:])}", flush=True)
         p = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE,
