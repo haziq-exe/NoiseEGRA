@@ -71,6 +71,14 @@ check("the shadow stayed on the story's words",
       int(getattr(pd, "shadow_drift", 0) or 0) == 0, str(getattr(pd, "shadow_drift", 0)))
 brk = egra.tokenizer("\n\n", add_special_tokens=False)["input_ids"]
 check("the hidden part is the daydream plus the break", pd._daydream_shift == 5 + len(brk))
+pb = plan(5, 4.0); pb.daydream_boundary = True
+check("the run id records the boundary", "__dd5g4b" in _ortho_tag(
+      "M", ExperimentSpec(use_orthogonal_steering=True, steering_plan=pb)))
+egra.generate_with_orthogonal_steering(PROMPT, pb, max_new_tokens=8, seed=3)
+check("with a boundary the daydream ends no earlier than its length",
+      pb._daydream_shift >= 5 + len(brk), str(pb._daydream_shift))
+check("and the shadow stays on the story's words",
+      int(getattr(pb, "shadow_drift", 0) or 0) == 0)
 p0 = plan(0)
 a = egra.generate_with_orthogonal_steering(PROMPT, p0, max_new_tokens=8, seed=3)
 b = egra.generate_with_orthogonal_steering(PROMPT, plan(0), max_new_tokens=8, seed=3)

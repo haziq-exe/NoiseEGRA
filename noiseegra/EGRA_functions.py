@@ -1437,6 +1437,11 @@ class EGRA:
             dd = int(getattr(plan, "daydream_steps", 0) or 0)
             dd_break = (self.tokenizer("\n\n", add_special_tokens=False)["input_ids"]
                         if dd > 0 else [])
+            # With a boundary the daydream runs on past its length until it ends
+            # a sentence or a line (at most dd_extra words more), so the story
+            # does not start inside one of its sentences.
+            dd_extra = 24 if (dd > 0 and getattr(plan, "daydream_boundary", False)) else 0
+            dd_state = {"start": None}
             dd_hidden = dd + len(dd_break) if dd > 0 else 0
             plan._daydream_shift = dd_hidden
             if online and shadow:
@@ -1452,7 +1457,7 @@ class EGRA:
                                     absolute=absolute,
                                     hold=(int(getattr(plan, "offset_envelope_steps", 0) or 0)
                                           if str(getattr(plan, "offset_envelope", "flat")) == "rise"
-                                          else dd_hidden))
+                                          else dd_hidden + dd_extra))
                 processors = LogitsProcessorList([sizer, *(processors or [])])
                 ms = float(getattr(plan, "margin_scale", 0.0) or 0.0)
                 if ms > 0 and rule is not None and "ref_margin" in rule:
@@ -1619,12 +1624,23 @@ class EGRA:
                 # paragraph break, whatever it would have chosen.
                 n_in = int(inputs["input_ids"].shape[-1])
 
+                tok = self.tokenizer
+
                 class _DaydreamBreak(LogitsProcessor):
                     def __call__(self_, ids, scores):
                         s = int(ids.shape[-1]) - n_in
-                        if dd <= s < dd + len(dd_break):
+                        if dd_state["start"] is None and s >= dd:
+                            last = tok.decode([int(ids[0, -1])]) if s > 0 else ""
+                            ended = ("\n" in last
+                                     or last.rstrip().endswith((".", "!", "?", '"', "\u201d")))
+                            if not dd_extra or ended or s >= dd + dd_extra:
+                                dd_state["start"] = s
+                                # The story's schedule starts at its first word.
+                                plan._daydream_shift = s + len(dd_break)
+                        b = dd_state["start"]
+                        if b is not None and b <= s < b + len(dd_break):
                             forced = torch.full_like(scores, float("-inf"))
-                            forced[:, dd_break[s - dd]] = 0.0
+                            forced[:, dd_break[s - b]] = 0.0
                             return forced
                         return scores
 
@@ -1655,7 +1671,7 @@ class EGRA:
                                       diversity_penalty=float(diversity_penalty))
             stopper = self._word_budget_stopper(
                 inputs["input_ids"].shape[-1],
-                (max_words + dd_hidden) if (max_words and dd_hidden) else max_words)
+                (max_words + dd_hidden + dd_extra) if (max_words and dd_hidden) else max_words)
             if stopper is not None:
                 gen_kwargs["stopping_criteria"] = stopper
             if shadow:
@@ -1683,7 +1699,7 @@ class EGRA:
                 fit_base = float(plan.offset_prefill_gain)
                 self._fit_prompt_noise(plan, inputs, shared, fit_base)
             outputs = self.model.generate(
-                **inputs, max_new_tokens=max_new_tokens + dd_hidden, **gen_kwargs
+                **inputs, max_new_tokens=max_new_tokens + dd_hidden + dd_extra, **gen_kwargs
             )
 
         finally:
@@ -1709,6 +1725,8 @@ class EGRA:
                   f"changed by the clean model's top-two gap (nats): "
                   f"{FlipRecorder.summary(plan._flip_stats)}", flush=True)
         # The daydream and its break are context, not story.
+        if dd_hidden and dd_state["start"] is not None:
+            dd_hidden = int(dd_state["start"]) + len(dd_break)
         if dd_hidden and story_index is not None and int(story_index) < 3:
             dream = self.tokenizer.decode(outputs[0][input_ids.shape[-1]:
                                                      input_ids.shape[-1] + dd_hidden],

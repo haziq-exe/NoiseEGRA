@@ -622,6 +622,9 @@ class SteeringPlan:
     # this keeps that re-planning and hides what caused it. 0 = off.
     daydream_steps: int = 0
     daydream_gain: float = 1.0
+    # End the daydream at the next sentence or line end (at most 24 words on),
+    # so the visible story does not begin inside one of its sentences.
+    daydream_boundary: bool = False
     # Record, by the clean model's top-two gap, how often the noise changed the
     # chosen word (online_calibration.FlipRecorder); printed every 25 stories.
     flip_log: bool = False
@@ -1175,6 +1178,7 @@ class SteeringPlan:
         margin_words: bool = False,
         daydream_steps: int = 0,
         daydream_gain: float = 1.0,
+        daydream_boundary: bool = False,
         flip_log: bool = False,
         guard_alpha: float = 0.0,
         correct_eta: float = 0.0,
@@ -1436,6 +1440,7 @@ class SteeringPlan:
             margin_words=bool(margin_words),
             daydream_steps=int(daydream_steps or 0),
             daydream_gain=float(daydream_gain or 1.0),
+            daydream_boundary=bool(daydream_boundary),
             flip_log=bool(flip_log),
             guard_alpha=float(guard_alpha or 0.0),
             correct_eta=float(correct_eta or 0.0),
