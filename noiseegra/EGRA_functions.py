@@ -1456,6 +1456,7 @@ class EGRA:
             dd_state = {"start": None}
             dd_hidden = dd + len(dd_break) if dd > 0 else 0
             plan._daydream_shift = dd_hidden
+            dd_keep = bool(getattr(plan, "daydream_keep", False))
             if online and shadow:
                 # First in the list, so it reads the model's own scores before
                 # anything else has touched them.
@@ -1687,7 +1688,8 @@ class EGRA:
                                       diversity_penalty=float(diversity_penalty))
             stopper = self._word_budget_stopper(
                 inputs["input_ids"].shape[-1],
-                (max_words + dd_hidden + dd_extra) if (max_words and dd_hidden) else max_words)
+                (max_words + dd_hidden + dd_extra) if (max_words and dd_hidden and not dd_keep)
+                else max_words)
             if stopper is not None:
                 gen_kwargs["stopping_criteria"] = stopper
             if shadow:
@@ -1715,7 +1717,8 @@ class EGRA:
                 fit_base = float(plan.offset_prefill_gain)
                 self._fit_prompt_noise(plan, inputs, shared, fit_base)
             outputs = self.model.generate(
-                **inputs, max_new_tokens=max_new_tokens + dd_hidden + dd_extra, **gen_kwargs
+                **inputs, max_new_tokens=max_new_tokens + (0 if dd_keep else dd_hidden + dd_extra),
+                **gen_kwargs
             )
 
         finally:
@@ -1749,6 +1752,8 @@ class EGRA:
                                           skip_special_tokens=True)
             print(f"  [daydream] story {story_index}: {' '.join(dream.split())[:240]}",
                   flush=True)
+        if dd_keep:
+            dd_hidden = 0       # shown as the story's opening
         generated_ids = outputs[0][input_ids.shape[-1] + dd_hidden:]
         text = strip_reasoning(self.tokenizer.decode(generated_ids, skip_special_tokens=True))
         # Every returned sequence, best first, for a caller that keeps the set.

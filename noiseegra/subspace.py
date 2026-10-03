@@ -634,6 +634,9 @@ class SteeringPlan:
     # break). A scene break ("\n\n* * *\n\n") lets the story open a new scene
     # instead of carrying on the daydream's.
     daydream_break: str = ""
+    # Keep the daydream and its break in the returned text, inside the usual
+    # word budget: the same boosted opening, shown as the story's first lines.
+    daydream_keep: bool = False
     # Record, by the clean model's top-two gap, how often the noise changed the
     # chosen word (online_calibration.FlipRecorder); printed every 25 stories.
     flip_log: bool = False
@@ -1190,6 +1193,7 @@ class SteeringPlan:
         daydream_gain: float = 1.0,
         daydream_boundary: bool = False,
         daydream_break: str = "",
+        daydream_keep: bool = False,
         flip_log: bool = False,
         guard_alpha: float = 0.0,
         correct_eta: float = 0.0,
@@ -1454,6 +1458,7 @@ class SteeringPlan:
             daydream_gain=float(daydream_gain or 1.0),
             daydream_boundary=bool(daydream_boundary),
             daydream_break=str(daydream_break or ""),
+            daydream_keep=bool(daydream_keep),
             flip_log=bool(flip_log),
             guard_alpha=float(guard_alpha or 0.0),
             correct_eta=float(correct_eta or 0.0),
@@ -2301,6 +2306,7 @@ class SteeringPlan:
             "margin_words": self.margin_words,
             "daydream_steps": self.daydream_steps,
             "daydream_gain": self.daydream_gain,
+            "daydream_keep": self.daydream_keep,
             "guard_alpha": self.guard_alpha,
             "correct_eta": self.correct_eta,
             "feedback_mode": self.feedback_mode,

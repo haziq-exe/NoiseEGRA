@@ -85,6 +85,18 @@ check("the run id records a scene break", "__dd5g4s" in _ortho_tag(
 egra.generate_with_orthogonal_steering(PROMPT, ps, max_new_tokens=8, seed=3)
 sb = egra.tokenizer("\n\n* * *\n\n", add_special_tokens=False)["input_ids"]
 check("a scene break is cut with the daydream", ps._daydream_shift == 5 + len(sb), str(ps._daydream_shift))
+pk = plan(5, 4.0); pk.daydream_keep = True
+check("the run id records a kept daydream", "__dd5g4k" in _ortho_tag(
+      "M", ExperimentSpec(use_orthogonal_steering=True, steering_plan=pk)))
+_decode, seen = egra.tokenizer.decode, []
+egra.tokenizer.decode = lambda ids, **kw: (seen.append(len(ids)), _decode(ids, **kw))[1]
+egra.generate_with_orthogonal_steering(PROMPT, pk, max_new_tokens=12, seed=3)
+n_kept = seen[-1] if seen else -1
+egra.generate_with_orthogonal_steering(PROMPT, plan(5, 4.0), max_new_tokens=12, seed=3)
+n_cut = seen[-1] if seen else -1
+egra.tokenizer.decode = _decode
+check("a kept daydream is returned, within the story's own length",
+      n_kept == 12 and n_cut == 12, f"kept {n_kept}, cut {n_cut} tokens")
 p0 = plan(0)
 a = egra.generate_with_orthogonal_steering(PROMPT, p0, max_new_tokens=8, seed=3)
 b = egra.generate_with_orthogonal_steering(PROMPT, plan(0), max_new_tokens=8, seed=3)

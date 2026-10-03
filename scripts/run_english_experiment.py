@@ -1013,6 +1013,9 @@ def main() -> None:
     ap.add_argument("--daydream-scene", action="store_true",
                     help="end the daydream with a scene break (* * *) instead of a "
                          "paragraph break, so the story opens a new scene")
+    ap.add_argument("--daydream-keep", action="store_true",
+                    help="keep the daydream and its break as the story's opening, inside "
+                         "the usual word budget, instead of cutting them")
     ap.add_argument("--daydream-gain", type=float, default=4.0,
                     help="the noise's multiple during the daydream")
     ap.add_argument("--margin-words", action="store_true",
