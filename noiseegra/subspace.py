@@ -1063,6 +1063,9 @@ class SteeringPlan:
     # it, so a push written there carries into the rest of the story without
     # touching the wording inside sentences.
     boundary_gain: float = 0.0
+    # Only after the opening noise has faded, where the online sizer no longer
+    # adjusts, so the sentence-end pushes are not paid for by shrinking it.
+    boundary_after: bool = False
     # Run a shadow copy of the story alongside it: the same words, the same
     # steering, no perturbation. At every steered layer the story's state is
     # made to agree with the shadow's along the protected directions, which
@@ -1189,6 +1192,7 @@ class SteeringPlan:
         offset_random_rank: int = 0,
         offset_vocab: bool = False,
         boundary_gain: float = 0.0,
+        boundary_after: bool = False,
         offset_online: float = 0.0,
         online_max_gain: float = 2.5,
         online_min_gain: float = 0.25,
@@ -1456,6 +1460,7 @@ class SteeringPlan:
             offset_random_rank=int(offset_random_rank or 0),
             offset_vocab=bool(offset_vocab),
             boundary_gain=float(boundary_gain or 0.0),
+            boundary_after=bool(boundary_after),
             offset_online=float(offset_online or 0.0),
             online_max_gain=float(online_max_gain or 2.5),
             online_min_gain=float(online_min_gain or 0.25),
@@ -2069,7 +2074,10 @@ class SteeringPlan:
             env = self.envelope_at(t)
             bg = float(getattr(self, "boundary_gain", 0.0) or 0.0)
             if bg > 0 and getattr(self, "_at_boundary", False):
-                env = max(env, bg)
+                if not getattr(self, "boundary_after", False):
+                    env = max(env, bg)
+                elif env <= 0.05:
+                    env = bg
             off = lp.offset_at(t, env * gain * boost)
             if off is not None:
                 delta = off if delta is None else delta + off
@@ -2369,6 +2377,7 @@ class SteeringPlan:
             "offset_basis_kind": self.offset_basis_kind,
             "offset_vocab": self.offset_vocab,
             "boundary_gain": self.boundary_gain,
+            "boundary_after": self.boundary_after,
             "offset_prefill": self.offset_prefill,
             "noise_horizon": self.noise_horizon,
             "jitter_mode": self.jitter_mode,

@@ -1016,6 +1016,9 @@ def main() -> None:
     ap.add_argument("--boundary-gain", type=float, default=0.0,
                     help="the noise at every sentence-ending token's position, for the "
                          "whole story, at this multiple of its length (0 = off)")
+    ap.add_argument("--boundary-after", action="store_true",
+                    help="sentence-end noise only after the opening noise has faded, "
+                         "outside the online sizer's budget")
     ap.add_argument("--offset-vocab", action="store_true",
                     help="draw each story's noise directions from the model's own word "
                          "vectors: --offset-random-rank random content words' input "

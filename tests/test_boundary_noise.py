@@ -64,6 +64,15 @@ check("off, a sentence end changes nothing",
       (d is None and e is None) or torch.allclose(d if d is not None else torch.zeros(1),
                                                   e if e is not None else torch.zeros(1)))
 
+pa = plan(4.0); pa.boundary_after = True; pa.resample_offset(story_index=0)
+p_old, p = p, pa
+check("after the fade only: none at a sentence end in the opening span",
+      abs(off(1, True) - off(1, False)) < 1e-6, f"{off(1, True):.3f} vs {off(1, False):.3f}")
+check("and the full multiple once the opening noise is gone", off(40, True) > 3.9 * off(1, False))
+check("the run id records it", "__bnd4a" in _ortho_tag(
+      "M", ExperimentSpec(use_orthogonal_steering=True, steering_plan=pa)))
+p = p_old
+
 print("\n== in a run ==")
 b = egra._boundary_ids()
 check("the vocabulary has sentence-ending entries", len(b) > 0, str(len(b)))
