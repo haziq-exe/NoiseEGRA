@@ -3468,3 +3468,46 @@ All others 49-50/50 coherent.
   model (untouched Qwen 9.6); counting distinct one-line premises gave
   untouched Qwen 9.0 for stories a reader sees as one template. NoveltyBench's
   judge, trained on human same/different labels, matches a reader here.
+
+**The hidden opening counted (Haziq's check, run r279 and 15 raters).** The judge
+had seen only the visible story of every hidden-opening version, while untouched
+and top-p were judged with their (stock) openings. Judged again with the opening
+included: the self-written opening rebuilt exactly (its hidden opening is word
+for word the untouched story's, same seed and sampling), the daydream from the
+visible-daydream runs (OLMo, Qwen3-8B).
+
+| Distinct of 10 | 128 tokens | whole story |
+|---|---|---|
+| OLMo untouched | 1.60 | 1.13 |
+| OLMo self-written: as shown / opening included | 3.56 / 1.70 | 2.61 / 1.16 |
+| OLMo daydream: as shown / opening included | 4.17 / 1.81 | 2.74 / 1.16 |
+| Qwen3-8B untouched | 1.00 | 1.00 |
+| Qwen3-8B self-written: as shown / opening included | 2.66 / 1.00 | 1.28 / 1.00 |
+| Qwen3-8B daydream: as shown / opening included | 5.84 / 4.19 | 3.15 / 1.79 |
+| Llama-8B untouched | 3.12 | 2.69 |
+| Llama-8B self-written: as shown / opening included | 6.64 / 3.17 | 6.08 / 2.50 |
+
+Opening included, against untouched, whole story: OLMo daydream +0.03 [-0.20,
++0.40], Llama self-written -0.19 [-1.28, +0.98], Qwen3-8B daydream +0.79 [+0.30,
++1.46] (128 tokens +3.19 [+1.96, +4.42]).
+
+Quality, 5 blind raters, same 50 seeds:
+
+| | Untouched | Self-written as shown | Self-written, opening included | Daydream as shown |
+|---|---|---|---|---|
+| OLMo | 6.38 | 5.30 | 6.26 | 5.44 |
+| Qwen3-8B | 5.74 | 5.28 | 5.78 | 5.76 |
+| Llama-8B | 5.62 | 4.64 | 5.36 | 5.10 |
+
+- Hiding an opening does not change the plot: the story continues the hidden
+  scene. Its variety came from the judge not seeing the stock opening, and it
+  costs 0.5-1.1 quality because the reader starts mid-scene.
+- The only plot change that survives is the Qwen3-8B daydream (+0.79 whole
+  story, at untouched quality): its noise-written openings are themselves
+  varied, and the stories differ with them.
+- The random-word and random-sentence controls are not affected the same way:
+  their visible stories begin from the start (the hidden text is not a story
+  opening), so their variety is the reader's -- OLMo random words 4.56 whole
+  story at 5.96 quality is a real change, though not a noise method.
+- Every hidden-opening number before this section that is not marked "opening
+  included" overstates the plot change.
