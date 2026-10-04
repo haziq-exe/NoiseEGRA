@@ -1701,6 +1701,33 @@ class EGRA:
                         return scores
 
                 processors = LogitsProcessorList([*(processors or []), _DaydreamBreak()])
+                target = float(getattr(plan, "daydream_surprise", 0.0) or 0.0)
+                plan._dd_gain_live = None
+                if target > 0 and shadow:
+                    # First in the list, so it reads the raw scores of the story
+                    # and its noise-free shadow.
+                    plan._dd_gain_live = float(getattr(plan, "daydream_gain", 4.0) or 4.0)
+                    sur = {"logp": None, "ent": None, "ratio": None, "log": []}
+
+                    class _Surprise(LogitsProcessor):
+                        def __call__(self_, ids, scores):
+                            s = int(ids.shape[-1]) - n_in
+                            in_dream = dd_state["start"] is None
+                            if in_dream and s > 0 and sur["logp"] is not None:
+                                chosen = int(ids[0, -1])
+                                r = float(-sur["logp"][chosen]) / max(float(sur["ent"]), 0.1)
+                                sur["ratio"] = r if sur["ratio"] is None else 0.7 * sur["ratio"] + 0.3 * r
+                                step = (target / max(sur["ratio"], 1e-3)) ** 0.3
+                                plan._dd_gain_live = min(max(plan._dd_gain_live * step, 1.0), 40.0)
+                                sur["log"].append((round(r, 2), round(plan._dd_gain_live, 2)))
+                            if in_dream and scores.shape[0] > 1:
+                                lp = torch.log_softmax(scores[1].float(), dim=-1)
+                                sur["logp"] = lp
+                                sur["ent"] = float(-(lp.exp() * lp).sum())
+                            return scores
+
+                    processors = LogitsProcessorList([_Surprise(), *list(processors)])
+                    plan._dd_surprise_log = sur["log"]
             if processors is not None:
                 gen_kwargs["logits_processor"] = processors
             if int(num_beams) > 1:
@@ -1791,6 +1818,12 @@ class EGRA:
                                           skip_special_tokens=True)
             print(f"  [daydream] story {story_index}: {' '.join(dream.split())[:240]}",
                   flush=True)
+            slog = getattr(plan, "_dd_surprise_log", None)
+            if slog:
+                rs = [x[0] for x in slog]
+                print(f"  [daydream surprise] story {story_index}: mean ratio "
+                      f"{sum(rs) / len(rs):.2f} over {len(rs)} words, noise multiple "
+                      f"{slog[0][1]:.1f} -> {slog[-1][1]:.1f}", flush=True)
         if dd_keep:
             dd_hidden = 0       # shown as the story's opening
         generated_ids = outputs[0][input_ids.shape[-1] + dd_hidden:]

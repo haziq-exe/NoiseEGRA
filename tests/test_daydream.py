@@ -113,6 +113,17 @@ check("sized with it off, the starting length is the unboosted one", abs(f4 - s1
 check("and the boost is restored for the story", qf.daydream_gain == 4.0)
 check("the run id records it", "__dd5g4f" in _ortho_tag(
       "M", ExperimentSpec(use_orthogonal_steering=True, steering_plan=qf)))
+pu = plan(5, 4.0); pu.daydream_surprise = 2.0; pu.daydream_free = True
+check("the run id records a surprise target", "__dd5g4fu2" in _ortho_tag(
+      "M", ExperimentSpec(use_orthogonal_steering=True, steering_plan=pu)))
+egra.generate_with_orthogonal_steering(PROMPT, pu, max_new_tokens=8, seed=3)
+log = getattr(pu, "_dd_surprise_log", None) or []
+check("the daydream's words are measured against the shadow", len(log) >= 3, str(log[:4]))
+check("and its noise multiple is adjusted while it is written, within bounds",
+      all(1.0 <= g <= 40.0 for _, g in log) and len({g for _, g in log}) > 1, str(log[:4]))
+pf = plan(5, 4.0)
+egra.generate_with_orthogonal_steering(PROMPT, pf, max_new_tokens=8, seed=3)
+check("without a target the multiple stays fixed", getattr(pf, "_dd_gain_live", None) is None)
 p0 = plan(0)
 a = egra.generate_with_orthogonal_steering(PROMPT, p0, max_new_tokens=8, seed=3)
 b = egra.generate_with_orthogonal_steering(PROMPT, plan(0), max_new_tokens=8, seed=3)

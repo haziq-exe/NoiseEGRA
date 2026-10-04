@@ -645,6 +645,13 @@ class SteeringPlan:
     # boost is a true multiple of the usual noise rather than a reallocation of
     # the same budget (with it on, a larger boost only shrinks the base length).
     daydream_free: bool = False
+    # Hold the daydream's words at this surprise to the noise-free shadow: each
+    # word's surprisal over the shadow's own entropy at that step (1 = as
+    # surprising as sampling the clean model; garble is several times that).
+    # The daydream's noise multiple is adjusted while it is written to keep the
+    # running ratio here -- unusual text the model still writes fluently,
+    # found for each model without tuning. 0 = a fixed multiple.
+    daydream_surprise: float = 0.0
     # Record, by the clean model's top-two gap, how often the noise changed the
     # chosen word (online_calibration.FlipRecorder); printed every 25 stories.
     flip_log: bool = False
@@ -1225,6 +1232,7 @@ class SteeringPlan:
         daydream_break: str = "",
         daydream_keep: bool = False,
         daydream_free: bool = False,
+        daydream_surprise: float = 0.0,
         flip_log: bool = False,
         guard_alpha: float = 0.0,
         correct_eta: float = 0.0,
@@ -1496,6 +1504,7 @@ class SteeringPlan:
             daydream_break=str(daydream_break or ""),
             daydream_keep=bool(daydream_keep),
             daydream_free=bool(daydream_free),
+            daydream_surprise=float(daydream_surprise or 0.0),
             flip_log=bool(flip_log),
             guard_alpha=float(guard_alpha or 0.0),
             correct_eta=float(correct_eta or 0.0),
@@ -2084,7 +2093,10 @@ class SteeringPlan:
             gain = getattr(self, "online_gain", 1.0)
             gain = 1.0 if gain is None else float(gain)
             dd = int(getattr(self, "daydream_steps", 0) or 0)
-            boost = float(getattr(self, "daydream_gain", 1.0) or 1.0) if t < dd else 1.0
+            live = getattr(self, "_dd_gain_live", None)
+            base_boost = float(live if live is not None else
+                               (getattr(self, "daydream_gain", 1.0) or 1.0))
+            boost = base_boost if t < dd else 1.0
             env = self.envelope_at(t)
             bg = float(getattr(self, "boundary_gain", 0.0) or 0.0)
             if bg > 0 and getattr(self, "_at_boundary", False):
@@ -2363,6 +2375,7 @@ class SteeringPlan:
             "daydream_gain": self.daydream_gain,
             "daydream_keep": self.daydream_keep,
             "daydream_free": self.daydream_free,
+            "daydream_surprise": self.daydream_surprise,
             "guard_alpha": self.guard_alpha,
             "correct_eta": self.correct_eta,
             "feedback_mode": self.feedback_mode,

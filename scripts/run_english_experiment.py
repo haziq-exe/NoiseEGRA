@@ -1032,6 +1032,11 @@ def main() -> None:
                     help="draw each story's noise directions from the model's own word "
                          "vectors: --offset-random-rank random content words' input "
                          "embeddings instead of Gaussian directions")
+    ap.add_argument("--daydream-surprise", type=float, default=0.0,
+                    help="hold the daydream's words at this surprise to the noise-free "
+                         "shadow (surprisal over the shadow's entropy; 1 = ordinary "
+                         "sampling), adjusting its noise multiple while it is written; "
+                         "--daydream-gain is the starting multiple")
     ap.add_argument("--daydream-free", action="store_true",
                     help="size the noise with the daydream's boost off, so --daydream-gain "
                          "multiplies the usual noise instead of sharing its budget")
