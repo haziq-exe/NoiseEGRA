@@ -3428,3 +3428,43 @@ OLMo's failures are short stories (11-12 under the length floor, 11-13% lose the
 opening capital); Qwen's are not-a-story, loops and leaked text. The more foreign
 the hidden context, the more varied the stories that survive and the more that
 break -- the same trade the random-word control shows, on both models.
+
+**Latent daydream, self-written hidden opening, and Claude plot judges (runs
+r276-r278, 50 stories, whole-story distinct of 10).**
+
+- Self-written hidden opening (`--hidden-context self`): the untouched model
+  samples its own opening (32 tokens, to the next sentence end), hidden, then a
+  paragraph break and untouched writing. No noise.
+- Latent daydream (`--hidden-context latent:SIGMA`): 32 hidden steps whose input
+  is the model's own expected embedding (top-50 probabilities times input
+  embeddings), never decoded, under a per-story slowly turning push of SIGMA x
+  the hidden state's norm at the steering layers; then untouched writing.
+
+| Distinct of 10, whole story | OLMo | Qwen3-8B | Llama-3.1-8B |
+|---|---|---|---|
+| Untouched | 1.13 | 1.00 | 2.69 |
+| Top-p | 1.95 | 1.00 | 4.05 |
+| Hidden daydream | 2.74 | 3.15 | 4.61 |
+| Self-written hidden opening | 2.61 | 1.28 | 6.08 |
+| Latent daydream, 0.05 | 1.76 | 1.40 | 3.43 |
+| Latent daydream, 0.2 | 2.97 | 1.25 (45/50) | 2.81 |
+| Hidden random sentence | 3.15 | 2.83 (47/50) | 3.11 |
+| Hidden random words | 4.56 | 2.61 (29/50) | 1.53 |
+
+All others 49-50/50 coherent.
+
+- The latent daydream fails: an expected embedding sits on the model's most
+  likely next word, so the trajectories collapse to one continuation (all three
+  printed OLMo latent openings: "Mara hurried through the hallway..."); at 0.2
+  they degrade ("The wind is not the wind...").
+- Hiding a sampled opening already re-plans the story on OLMo and Llama; the
+  noise adds nothing there. On Qwen3-8B, whose openings are all "The wind howled
+  like a lost puppy", only the noise-written daydream changes the plot: untouched
+  stories are one vignette (two people in a cold wind, a tense exchange), the
+  daydream's are different premises (learning to ride a bike, rescuing a
+  raccoon, baking for a bake sale, painting a fence) at untouched quality.
+- Claude plot judges (blind, 5 groups of 10 per version) do not discriminate:
+  counting distinct event sequences gave 7.6-10 for every version on every
+  model (untouched Qwen 9.6); counting distinct one-line premises gave
+  untouched Qwen 9.0 for stories a reader sees as one template. NoveltyBench's
+  judge, trained on human same/different labels, matches a reader here.
