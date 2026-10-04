@@ -3673,3 +3673,27 @@ otherwise. OLMo: 50/50, rules 1.14 / 1.18, whole-story distinct 1.27 / 1.26
 (untouched 1.13); the first stories are word for word the untouched ones. Qwen3-8B:
 50/50, distinct 1.00 / 1.00, still "The wind howled like a lost puppy". Random
 weight noise of this size is absorbed like random activation noise.
+
+**Weight noise, larger sizes, on every measure (runs r306-r309, 50 stories; one
+blind rating round on OLMo, 5 raters, same seeds).**
+
+| OLMo | Coherent | Rules | Distinct, whole | Quality | Rated 1-3 |
+|---|---|---|---|---|---|
+| Untouched | 50 | 1.36 | 1.13 | 5.32 | 0 |
+| Top-p | 50 | 1.20 | 1.95 | 3.06 | 36 |
+| Current method | 50 | 1.02 | 1.17 | 4.90 | 4 |
+| Weights 25% | 50 | 1.26 | 1.26 | | |
+| Weights 50% | 50 | 1.54 | 1.57 | 5.06 | 2 |
+| Weights 100% | 50 | 1.62 | 1.67 | 4.06 | 18 |
+| Weights 200% | 38 | | | | |
+
+Weights 50% against untouched: distinct +0.44 [-0.04, +0.90], quality -0.26
+[-0.58, +0.06]; against the current method +0.39 n.s. / +0.16 n.s. Weights 100%:
+distinct +0.54 [+0.08, +1.14], quality -1.26 [-1.64, -0.88]. Qwen3-8B: 25% 1.00
+and 50% 1.08 (all coherent), 100% 7/50 coherent (planning out loud, "Okay, let's
+see. I need to write..."), 200% 5/50.
+
+Weight noise keeps the text intact over a wider range than activation pushes
+(openings change at 50% while fluent), but the plot gain inside the clean range is
+small and not significant; past it quality drops (OLMo) or the model derails
+(Qwen3-8B). Rules worsen with size (no rule steering in these arms).
