@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -122,6 +123,21 @@ def generate_one(model, spec, mode, story_prompt, seed, max_new_tokens, max_word
     and is several times slower than every other condition, for output already
     scored as failed. None keeps the old behaviour.
     """
+    rho = float(os.environ.get("EGRA_WEIGHT_NOISE", "0") or 0)
+    if mode == "orthogonal_steering" and rho > 0:
+        # The method's story written by its own per-story perturbed copy of the
+        # model (noiseegra.hidden_context.weight_noise), at the steering layers.
+        from noiseegra.hidden_context import weight_noise
+        layers = sorted(getattr(spec.steering_plan, "layer_plans", {}) or [])
+        with weight_noise(model, seed, rho, layers):
+            return model.generate_with_orthogonal_steering(
+                story_prompt, spec.steering_plan,
+                max_new_tokens=max_new_tokens, do_sample=spec.do_sample,
+                temperature=spec.temperature, top_p=spec.top_p, top_k=spec.top_k, seed=seed,
+                max_words=max_words, story_index=story_index,
+                entropy_out=entropy_out,
+                typical_p=spec.typical_p, min_p=spec.min_p, eta_cutoff=spec.eta_cutoff,
+            )
     if mode == "orthogonal_steering":
         return model.generate_with_orthogonal_steering(
             story_prompt, spec.steering_plan,

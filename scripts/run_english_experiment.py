@@ -18,6 +18,7 @@ import argparse
 import csv
 import json
 import math
+import os
 import sys
 import time
 from pathlib import Path
@@ -1013,6 +1014,10 @@ def main() -> None:
     ap.add_argument("--daydream-scene", action="store_true",
                     help="end the daydream with a scene break (* * *) instead of a "
                          "paragraph break, so the story opens a new scene")
+    ap.add_argument("--weight-noise", type=float, default=0.0,
+                    help="write each steered story with its own perturbed copy of the model: "
+                         "Gaussian noise on the MLP output projections at the steering "
+                         "layers, norm this multiple of each weight's (0 = off)")
     ap.add_argument("--hidden-context", nargs="+", default=None,
                     help="also write untouched stories after hidden context at the start of "
                          "the reply: 'words' (random whole words), 'sentence' (a random "
@@ -1206,6 +1211,9 @@ def main() -> None:
                          "before argparse rejects it; this catches it locally in a "
                          "second")
     args = ap.parse_args()
+    if float(getattr(args, "weight_noise", 0.0) or 0.0) > 0:
+        # Read where each steered story is generated (kaggle_orthosteer).
+        os.environ["EGRA_WEIGHT_NOISE"] = str(float(args.weight_noise))
 
     # How many sentences one word may begin. Each rule set below sets its own
     # level; this is the value for the original mixed set, which sets none.

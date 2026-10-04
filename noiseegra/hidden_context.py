@@ -331,6 +331,37 @@ def _down_projections(model, layers):
     return out
 
 
+class weight_noise:
+    """Context manager: the MLP output projections in ``layers`` perturbed by
+    Gaussian noise of norm ``rho`` x the weight's own (drawn from ``seed``), and
+    restored exactly on exit from a copy kept on the CPU."""
+
+    def __init__(self, model, seed: int, rho: float, layers):
+        self.mats = _down_projections(model, layers)
+        self.seed, self.rho = int(seed), float(rho)
+
+    def __enter__(self):
+        for lin in self.mats:
+            if id(lin) not in _WEIGHT_BACKUP:
+                _WEIGHT_BACKUP[id(lin)] = lin.weight.detach().to("cpu", copy=True)
+        with torch.no_grad():
+            for i, lin in enumerate(self.mats):
+                W = lin.weight
+                g = torch.Generator(device=W.device).manual_seed(
+                    (self.seed * 7919 + i) & 0x7FFFFFFF)
+                noise = torch.randn(W.shape, generator=g, device=W.device, dtype=torch.float32)
+                noise.mul_(self.rho * float(W.float().norm()) / float(noise.norm()))
+                W.add_(noise.to(W.dtype))
+                del noise
+        return self
+
+    def __exit__(self, *exc):
+        with torch.no_grad():
+            for lin in self.mats:
+                lin.weight.copy_(_WEIGHT_BACKUP[id(lin)].to(lin.weight.device))
+        return False
+
+
 def generate_with_weight_noise(model, prompt, seed: int, rho: float, layers,
                                max_new_tokens: int = 500, max_words=None,
                                temperature: float = 1.0) -> str:
