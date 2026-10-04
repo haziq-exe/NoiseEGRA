@@ -3643,3 +3643,16 @@ content margin -0.36 [-0.70, -0.02]; current vs untouched OLMo -0.32 [-0.66,
   quality than top-p and the fewest rules, at -0.72 vs the current method.
 - The Qwen daydream rated level with untouched in three earlier rounds and -1.26
   here, beside five other versions: hidden openings carry a quality risk.
+
+**Opening chosen by where the noise took the model (runs r299-r301, 50 stories).**
+Per story, the default opening and six noise-path openings (push 0.2 x the hidden
+state's norm); each read without noise for its plan state (mean hidden state at
+two-thirds depth) and fluency (mean log-probability); the most distant opening
+within 1 nat/token of the default's fluency kept, story continued untouched.
+All 50/50 coherent, no damage; whole-story distinct OLMo 1.29, Qwen3-8B 1.00,
+Llama 2.71 (untouched 1.13 / 1.00 / 2.69). Almost every candidate was 2-6
+nats/token less likely than the default to the noise-free model (OLMo 3-6, Qwen
+2-6, Llama 1-3), so the default was kept. Openings that move the model's plan
+state are ones the model itself finds far less likely -- the trade every method
+here ran into, measured directly; smallest on Llama, the one model where the
+current method changes plots at full quality.
