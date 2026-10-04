@@ -1013,9 +1013,13 @@ def main() -> None:
     ap.add_argument("--daydream-scene", action="store_true",
                     help="end the daydream with a scene break (* * *) instead of a "
                          "paragraph break, so the story opens a new scene")
-    ap.add_argument("--hidden-context", nargs="+", choices=["words", "sentence"], default=None,
+    ap.add_argument("--hidden-context", nargs="+", default=None,
                     help="also write untouched stories after hidden context at the start of "
-                         "the reply: random whole words, or a random Wikipedia sentence")
+                         "the reply: 'words' (random whole words), 'sentence' (a random "
+                         "Wikipedia sentence), 'self' (an opening the model writes itself, "
+                         "no noise) or 'latent:SIGMA' (a latent daydream: expected-embedding "
+                         "steps under a per-story push of SIGMA times the hidden state's norm "
+                         "at --layers)")
     ap.add_argument("--hidden-tokens", type=int, default=32,
                     help="how many random words --hidden-context words places")
     ap.add_argument("--boundary-gain", type=float, default=0.0,
@@ -2215,8 +2219,12 @@ def main() -> None:
                      and s.top_k is None and s.temperature == args.temperature), None)
         if base is None:
             raise SystemExit("--hidden-context needs the untouched condition in the suite")
+        for k in args.hidden_context:
+            if k not in ("words", "sentence", "self") and not k.startswith("latent:"):
+                raise SystemExit(f"--hidden-context: unknown kind {k!r}")
         made += [dataclasses.replace(base, hidden_context=k,
-                                     hidden_tokens=int(args.hidden_tokens))
+                                     hidden_tokens=int(args.hidden_tokens),
+                                     hidden_layers=tuple(range(int(layers[0]), int(layers[-1]) + 1)))
                  for k in args.hidden_context]
     for spec in made:
         rid = _spec_to_run_id(args.model, spec)

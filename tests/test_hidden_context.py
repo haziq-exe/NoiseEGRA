@@ -73,6 +73,32 @@ a = egra.generate([{"role": "user", "content": "write a story"}], max_new_tokens
 b = egra.generate([{"role": "user", "content": "write a story"}], max_new_tokens=8, seed=3)
 check("without it, untouched writing is unchanged and reproducible", a == b)
 
+print("\n== generated hidden openings ==")
+from noiseegra.hidden_context import generate_after_hidden  # noqa: E402
+P = [{"role": "user", "content": "write a story"}]
+check("a latent daydream has its own id", _spec_to_run_id(
+      "M", ExperimentSpec(hidden_context="latent:0.2")) == "M__HIDDENlatent0p2")
+check("so does a self-written one", _spec_to_run_id(
+      "M", ExperimentSpec(hidden_context="self")) == "M__HIDDENself")
+s1 = generate_after_hidden(egra, P, "self", seed=5, n_tokens=4, max_new_tokens=8)
+s2 = generate_after_hidden(egra, P, "self", seed=5, n_tokens=4, max_new_tokens=8)
+check("a self-written opening, then a story, reproducibly", isinstance(s1, str) and s1 == s2)
+blocks = egra._get_transformer_blocks()
+seen = []
+h = blocks[2].register_forward_hook(lambda m, i, o: seen.append(1))
+l1 = generate_after_hidden(egra, P, "latent:0.2", seed=5, n_tokens=4, layers=(2, 3),
+                           max_new_tokens=8)
+h.remove()
+l2 = generate_after_hidden(egra, P, "latent:0.2", seed=5, n_tokens=4, layers=(2, 3),
+                           max_new_tokens=8)
+l0 = generate_after_hidden(egra, P, "latent:0.0", seed=5, n_tokens=4, layers=(2, 3),
+                           max_new_tokens=8)
+check("a latent daydream, then a story, reproducibly", isinstance(l1, str) and l1 == l2)
+check("the hooks are removed afterwards", len(blocks[2]._forward_hooks) == 0)
+lb = generate_after_hidden(egra, P, "latent:0.2", seed=6, n_tokens=4, layers=(2, 3),
+                           max_new_tokens=8)
+check("it runs at another seed and with no push", isinstance(lb, str) and isinstance(l0, str))
+
 print()
 print("all passed" if not FAILURES else f"FAILED: {FAILURES}")
 sys.exit(1 if FAILURES else 0)

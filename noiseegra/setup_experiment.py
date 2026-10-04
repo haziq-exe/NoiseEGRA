@@ -76,6 +76,7 @@ class ExperimentSpec:
     # (noiseegra.hidden_context): "words" or "sentence"; None = none.
     hidden_context: Optional[str] = None
     hidden_tokens: int = 32
+    hidden_layers: tuple = ()
     search_width: int = 0
     search_penalty: float = 0.0
     noise_plan: Any = None
@@ -459,7 +460,10 @@ def _spec_to_run_id(model_name: str, spec: ExperimentSpec) -> str:
 
     if mode == "baseline":
         if spec.hidden_context:
-            return (f"{model_name}__HIDDEN{spec.hidden_context}"
+            kind = spec.hidden_context
+            if kind.startswith("latent:"):
+                kind = "latent" + _float_tag(float(kind.split(":", 1)[1]))
+            return (f"{model_name}__HIDDEN{kind}"
                     + (f"{int(spec.hidden_tokens)}" if spec.hidden_context == "words" else "")
                     + sampling_tag)
         return f"{model_name}__BASELINE{sampling_tag}"

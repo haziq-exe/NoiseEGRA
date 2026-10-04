@@ -156,7 +156,14 @@ def generate_one(model, spec, mode, story_prompt, seed, max_new_tokens, max_word
                               temperature=spec.temperature)
     if mode == "baseline":
         hidden = None
-        if getattr(spec, "hidden_context", None):
+        kind = getattr(spec, "hidden_context", None) or ""
+        if kind == "self" or kind.startswith("latent:"):
+            from noiseegra.hidden_context import generate_after_hidden
+            return generate_after_hidden(
+                model, story_prompt, kind, seed, n_tokens=spec.hidden_tokens,
+                layers=tuple(spec.hidden_layers or ()), max_new_tokens=max_new_tokens,
+                max_words=max_words, temperature=spec.temperature, story_index=story_index)
+        if kind:
             from noiseegra.hidden_context import hidden_text
             hidden = hidden_text(model, spec.hidden_context, seed, spec.hidden_tokens)
             if story_index is not None and int(story_index) < 3:
