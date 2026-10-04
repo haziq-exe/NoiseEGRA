@@ -3411,3 +3411,20 @@ Wikipedia text.
 - The daydream's distinct contribution is a hidden context the model always
   accepts, written by the model itself, with the rule steering kept (fewer rules
   broken than either control on both models).
+
+**A daydream that garbles (runs r272, r273, 50 stories).** The noise sized with
+the daydream's boost off (`--daydream-free`), so 4x and 10x are true multiples.
+The daydreams now garble, as at k 1.5 ("Inistioosde-tonEikaf-tuscikeside...",
+"That | ||| ||| ||| ...").
+
+| 50 stories | Coherent | Under 60 words | Distinct, whole story | Distinct, 128 tokens |
+|---|---|---|---|---|
+| OLMo daydream 4x, outside the budget | 36 | 24 | 4.40 | 5.19 |
+| OLMo daydream 10x, outside the budget | 38 | 21 | 5.89 | 7.90 |
+| Qwen3-8B daydream 4x, outside the budget | 27 | | 4.60 | 8.08 |
+| Qwen3-8B daydream 10x, outside the budget | 20 | | 2.84 | 7.80 |
+
+OLMo's failures are short stories (11-12 under the length floor, 11-13% lose the
+opening capital); Qwen's are not-a-story, loops and leaked text. The more foreign
+the hidden context, the more varied the stories that survive and the more that
+break -- the same trade the random-word control shows, on both models.
