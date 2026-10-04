@@ -637,6 +637,10 @@ class SteeringPlan:
     # Keep the daydream and its break in the returned text, inside the usual
     # word budget: the same boosted opening, shown as the story's first lines.
     daydream_keep: bool = False
+    # Size the noise before any story with the daydream's boost off, so the
+    # boost is a true multiple of the usual noise rather than a reallocation of
+    # the same budget (with it on, a larger boost only shrinks the base length).
+    daydream_free: bool = False
     # Record, by the clean model's top-two gap, how often the noise changed the
     # chosen word (online_calibration.FlipRecorder); printed every 25 stories.
     flip_log: bool = False
@@ -1214,6 +1218,7 @@ class SteeringPlan:
         daydream_boundary: bool = False,
         daydream_break: str = "",
         daydream_keep: bool = False,
+        daydream_free: bool = False,
         flip_log: bool = False,
         guard_alpha: float = 0.0,
         correct_eta: float = 0.0,
@@ -1482,6 +1487,7 @@ class SteeringPlan:
             daydream_boundary=bool(daydream_boundary),
             daydream_break=str(daydream_break or ""),
             daydream_keep=bool(daydream_keep),
+            daydream_free=bool(daydream_free),
             flip_log=bool(flip_log),
             guard_alpha=float(guard_alpha or 0.0),
             correct_eta=float(correct_eta or 0.0),
@@ -2346,6 +2352,7 @@ class SteeringPlan:
             "daydream_steps": self.daydream_steps,
             "daydream_gain": self.daydream_gain,
             "daydream_keep": self.daydream_keep,
+            "daydream_free": self.daydream_free,
             "guard_alpha": self.guard_alpha,
             "correct_eta": self.correct_eta,
             "feedback_mode": self.feedback_mode,

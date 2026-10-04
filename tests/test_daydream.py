@@ -97,6 +97,22 @@ n_cut = seen[-1] if seen else -1
 egra.tokenizer.decode = _decode
 check("a kept daydream is returned, within the story's own length",
       n_kept == 12 and n_cut == 12, f"kept {n_kept}, cut {n_cut} tokens")
+def start_of(free, gain):
+    q = plan(5, gain); q.daydream_free = free
+    egra.generate_with_orthogonal_steering(PROMPT, q, max_new_tokens=8, seed=3)
+    return next(iter(q._rule_cache.values()))["start"], q
+
+
+s1, _ = start_of(False, 1.0)
+s4, _ = start_of(False, 4.0)
+f4, qf = start_of(True, 4.0)
+check("sized with the boost on, a larger boost shrinks the starting length", s4 < s1,
+      f"{s4:.4f} vs {s1:.4f}")
+check("sized with it off, the starting length is the unboosted one", abs(f4 - s1) / s1 < 0.05,
+      f"{f4:.4f} vs {s1:.4f}")
+check("and the boost is restored for the story", qf.daydream_gain == 4.0)
+check("the run id records it", "__dd5g4f" in _ortho_tag(
+      "M", ExperimentSpec(use_orthogonal_steering=True, steering_plan=qf)))
 p0 = plan(0)
 a = egra.generate_with_orthogonal_steering(PROMPT, p0, max_new_tokens=8, seed=3)
 b = egra.generate_with_orthogonal_steering(PROMPT, plan(0), max_new_tokens=8, seed=3)

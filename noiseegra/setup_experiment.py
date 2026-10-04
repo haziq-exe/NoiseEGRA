@@ -265,7 +265,8 @@ def _ortho_tag_once(model_name: str, spec: ExperimentSpec, *, compress: bool) ->
         parts.append(f"__dd{int(plan.daydream_steps)}g{_float_tag(plan.daydream_gain)}"
                      + ("b" if getattr(plan, "daydream_boundary", False) else "")
                      + ("s" if getattr(plan, "daydream_break", "") else "")
-                     + ("k" if getattr(plan, "daydream_keep", False) else ""))
+                     + ("k" if getattr(plan, "daydream_keep", False) else "")
+                     + ("f" if getattr(plan, "daydream_free", False) else ""))
     if float(getattr(plan, "margin_scale", 0.0) or 0.0) > 0:
         parts.append(f"__ms{_float_tag(plan.margin_scale)}"
                      + ("" if float(getattr(plan, "margin_cap", 4.0) or 4.0) == 4.0

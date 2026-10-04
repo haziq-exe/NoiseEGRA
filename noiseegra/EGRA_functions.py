@@ -920,15 +920,19 @@ class EGRA:
                     taper = getattr(plan, "offset_taper", 1.0)
                     plan.offset_decode, plan.offset_prefill = True, True
                     plan.offset_taper = 1.0
+                    dgain = getattr(plan, "daydream_gain", 1.0)
+                    if getattr(plan, "daydream_free", False):
+                        plan.daydream_gain = 1.0
                     try:
                         st = start_for_target(self, plan, ids, m["target"], m["unit"],
                                               reference=ref)
+                        m.update(st)
+                        from .online_calibration import noise_divergence
+                        dv = noise_divergence(self, plan, ids, ref[0], st["start"])
                     finally:
                         plan.offset_decode, plan.offset_prefill = decode, prefill
                         plan.offset_taper = taper
-                    m.update(st)
-                    from .online_calibration import noise_divergence
-                    dv = noise_divergence(self, plan, ids, ref[0], st["start"])
+                        plan.daydream_gain = dgain
                     msg += (f"; greedy text departs at token {dv['first']:.0f} of "
                             f"{dv['tokens']:.0f} (median of 4 draws, "
                             f"{dv['departed']:.0%} depart)")

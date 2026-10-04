@@ -144,6 +144,7 @@ def make_plan(
     daydream_boundary=False,
     daydream_break="",
     daydream_keep=False,
+    daydream_free=False,
     offset_vocab=False,
     boundary_gain=0.0,
     boundary_after=False,
@@ -302,6 +303,7 @@ def make_plan(
         daydream_boundary=daydream_boundary,
         daydream_break=daydream_break,
         daydream_keep=daydream_keep,
+        daydream_free=daydream_free,
         offset_vocab=offset_vocab,
         boundary_gain=boundary_gain,
         boundary_after=boundary_after,
@@ -2797,6 +2799,7 @@ def build_suite(name, vectors, layers, names, rms_scale, args):
                           daydream_break=("\n\n* * *\n\n" if getattr(args, "daydream_scene", False)
                                           else ""),
                           daydream_keep=bool(getattr(args, "daydream_keep", False)),
+                          daydream_free=bool(getattr(args, "daydream_free", False)),
                           offset_vocab=bool(getattr(args, "offset_vocab", False)),
                           boundary_gain=float(getattr(args, "boundary_gain", 0.0) or 0.0),
                           boundary_after=bool(getattr(args, "boundary_after", False)),
