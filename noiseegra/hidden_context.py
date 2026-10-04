@@ -130,7 +130,8 @@ def generate_after_hidden(model, prompt, kind: str, seed: int, n_tokens: int = 3
             return None
         h = out[0] if isinstance(out, (tuple, list)) else out
         th = 0.5 * math.pi * state["t"] / max(1, int(n_tokens) - 1)
-        u = math.cos(th) * a + math.sin(th) * b
+        # The layers of a model split over two GPUs live on different devices.
+        u = (math.cos(th) * a + math.sin(th) * b).to(device=h.device, dtype=h.dtype)
         h2 = h + sigma * h.norm(dim=-1, keepdim=True) * u
         return (h2, *out[1:]) if isinstance(out, (tuple, list)) else h2
 
@@ -146,8 +147,8 @@ def generate_after_hidden(model, prompt, kind: str, seed: int, n_tokens: int = 3
                 state["t"] = t
                 p = torch.softmax(logits / float(temperature), dim=-1)
                 v, ix = p.topk(50, dim=-1)
-                v = (v / v.sum(-1, keepdim=True)).to(W.dtype)
-                e = (v[..., None] * W[ix]).sum(1)
+                v = (v / v.sum(-1, keepdim=True)).to(device=W.device, dtype=W.dtype)
+                e = (v[..., None] * W[ix.to(W.device)]).sum(1)
                 softs.append(e)
                 o = m(inputs_embeds=e[:, None, :], past_key_values=past, use_cache=True)
                 past, logits = o.past_key_values, o.logits[:, -1].float()
@@ -156,13 +157,14 @@ def generate_after_hidden(model, prompt, kind: str, seed: int, n_tokens: int = 3
         for hd in handles:
             hd.remove()
     if story_index is not None and int(story_index) < 3:
-        near = [tok.decode([int((W @ s[0]).argmax())]) for s in softs]
+        near = [tok.decode([int((W @ s[0].to(W.device)).argmax())]) for s in softs]
         print(f"  [hidden latent] story {story_index}, nearest words: {''.join(near)[:240]!r}",
               flush=True)
     with torch.no_grad():
-        emb = torch.cat([E(ids), torch.stack(softs, dim=1), E(brk)], dim=1)
+        emb = torch.cat([E(ids.to(W.device)), torch.stack(softs, dim=1).to(W.device),
+                         E(brk.to(W.device))], dim=1)
     stopper = model._word_budget_stopper(0, max_words)
-    out = m.generate(inputs_embeds=emb, attention_mask=torch.ones(emb.shape[:2], device=dev,
+    out = m.generate(inputs_embeds=emb, attention_mask=torch.ones(emb.shape[:2], device=emb.device,
                                                                     dtype=torch.long),
                      max_new_tokens=max_new_tokens, **sampling, **pad,
                      **({"stopping_criteria": stopper} if stopper is not None else {}))
