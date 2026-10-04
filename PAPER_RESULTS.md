@@ -3358,3 +3358,56 @@ with each other.
 - The 128-token judge, the NoveltyBench standard, favours any method that
   changes openings. A plot-level claim needs the whole-story or later-window
   judge alongside it.
+
+**Plot-level fixes that did not work, and the controls for the hidden daydream
+(runs r264-r275, 50 stories, whole-story judge at 253 tokens).**
+
+Distinct of 10, whole story, against the current method (OLMo 1.17, Qwen3-8B 1.14):
+- Noise directions built from 4 random content words' input embeddings: OLMo
+  1.25, Qwen 1.17; with the daydream 2.08 and 3.60 (daydream alone 2.74, 3.15).
+- Noise at every sentence end, 4x / 10x: OLMo 1.29 / 1.21, Qwen 1.47 / 1.44; the
+  online sizer paid for it by dropping the regular noise to its 0.25 floor.
+  Only after the opening has faded (outside the sizer), 4x / 12x: OLMo 1.35 /
+  1.24, Qwen 1.16 / 1.02. All 47-50/50 coherent.
+- Daydream at 8x / 16x: OLMo 2.13 / 2.13, Qwen 2.44 / 2.76. The starting length
+  is measured with the boost on, so a larger boost only shrinks the base; the
+  daydreams stay the same fluent stock openings.
+
+Once a story is under way, no push of any size or direction changes its plot.
+
+Controls (Haziq): untouched writing, no noise or steering, after hidden context
+at the start of the reply -- 32 random whole-word tokens, or one random
+Wikipedia sentence (eval/random_sentences.txt) -- then a paragraph break.
+Same prompt, seeds, length rule and tokenisation as untouched. Quality: 5 blind
+Sonnet raters, 10 seeds x 4 versions each.
+
+| 50 stories | Coherent | Rules (of 6) | Distinct, whole story | Distinct, 128 tokens | Quality | Rated 1-3 |
+|---|---|---|---|---|---|---|
+| OLMo untouched | 50 | 1.36 | 1.13 | 1.60 | 6.50 | 0 |
+| OLMo top-p | 50 | 1.20 | 1.95 | 2.81 | | |
+| OLMo hidden daydream | 50 | 1.16 | 2.74 | 4.17 | 5.42 | 3 |
+| OLMo hidden sentence | 50 | 1.50 | 3.15 | 4.15 | 5.92 | 0 |
+| OLMo hidden random words | 50 | 1.54 | 4.56 | 6.36 | 5.96 | 1 |
+| Qwen3-8B untouched | 50 | 1.92 | 1.00 | 1.00 | 6.02 | 0 |
+| Qwen3-8B top-p | 50 | 1.60 | 1.00 | 1.07 | | |
+| Qwen3-8B hidden daydream | 48 | 1.48 | 3.15 | 5.84 | 6.04 | 3 |
+| Qwen3-8B hidden sentence | 47 | 1.91 | 2.83 | 3.34 | 5.30 | 6 |
+| Qwen3-8B hidden random words | 29 | 1.41 | 2.61 | 4.08 | 3.64 | 24 |
+
+Whole-story distinct against the daydream: OLMo words +1.82 [+0.44, +3.34],
+sentence +0.42 [-0.86, +1.60]; Qwen words -0.54 [-2.26, +1.08], sentence -0.32
+[-1.98, +1.18]. Quality, daydream against sentence: OLMo -0.50 [-0.88, -0.12],
+Qwen +0.74 [+0.20, +1.28]; daydream against untouched: OLMo -1.08 [-1.42,
+-0.74], Qwen +0.02 [-0.34, +0.36]. Qwen's broken random-word stories: 11 write
+about the words, 6 loop, 3 refuse; 3 broken sentence stories continue the
+Wikipedia text.
+
+- The daydream's plot effect is mostly hidden unrelated context in front of the
+  story, not the noise: plain random context gives as much variety or more.
+- Which hidden context is best depends on the model. OLMo tolerates foreign
+  context: random words beat the daydream on variety and quality. Qwen3-8B does
+  not: random words break 21/50 stories and the sentence costs 0.72 quality,
+  while the daydream -- the model's own text -- keeps untouched quality.
+- The daydream's distinct contribution is a hidden context the model always
+  accepts, written by the model itself, with the rule steering kept (fewer rules
+  broken than either control on both models).
