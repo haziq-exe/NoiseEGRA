@@ -3552,3 +3552,33 @@ Lost capitals: OLMo 2%, Qwen 8%, Llama 23%; Llama openings garbled ("Look Alex
 cries," Emily shouts to The Other kid). Sure decisions are mostly grammar, so
 amplifying them breaks sentences even inside the opening. Next: amplify only sure
 choices of a content word (a whole word of five or more letters), r290-r292.
+
+**Content-word margin, and a garbling daydream with a fresh start (runs
+r290-r295, 50 stories, whole-story judge).**
+
+| Distinct of 10, whole story | OLMo | Qwen3-8B | Llama-8B |
+|---|---|---|---|
+| Untouched | 1.13 | 1.00 | 2.69 |
+| Top-p | 1.95 | 1.00 | 4.05 |
+| Current method | 1.17 | 1.14 | 4.09 |
+| Margin, opening only | 1.91 | 1.65 | 4.67 (47/50) |
+| Margin, opening only, content words only | 1.24 | 1.03 | 4.27 |
+| Garbling daydream + scene break | 4.77 (41/50) | 6.46 (19/50) | 3.78 (17/50) |
+
+- Margin scaling restricted to sure choices of a content word (a whole word of
+  five or more letters) removes the damage (lost capitals 0/0/6% against
+  2/8/23%) and the variety with it (-0.62 [-1.20, -0.14] on Qwen): the
+  opening-only margin's extra variety came from flipping grammar.
+- The garbling daydream (sized outside the budget, x10) followed by a scene break
+  makes OLMo write fresh, different stories, as hidden random words do (4.56,
+  50/50); on Qwen3-8B and Llama the garble derails the story even after the break
+  (problem-solving steps, word-count tables, an "academic integrity protocol").
+
+**Where the plot-level search ends.** Judged fairly (whole story, nothing hidden
+from the judge), the plot changes that survive are: hidden random content on
+OLMo (random words 4.56, garbling daydream + break 4.77), the Qwen3-8B daydream
+(+0.79 with its opening counted), and top-p on OLMo and Llama. Every push inside
+the model while writing -- any direction, layer, timing, size, or amplification
+of sure decisions -- changes wording, or plot only by breaking grammar. Foreign
+content before the story buys plot variety exactly as far as a model tolerates
+it: OLMo does, Qwen3-8B and Llama do not.
