@@ -155,12 +155,18 @@ def generate_one(model, spec, mode, story_prompt, seed, max_new_tokens, max_word
                               max_new_tokens=max_new_tokens, max_words=max_words,
                               temperature=spec.temperature)
     if mode == "baseline":
+        hidden = None
+        if getattr(spec, "hidden_context", None):
+            from noiseegra.hidden_context import hidden_text
+            hidden = hidden_text(model, spec.hidden_context, seed, spec.hidden_tokens)
+            if story_index is not None and int(story_index) < 3:
+                print(f"  [hidden] story {story_index}: {hidden[:240]}", flush=True)
         return model.generate(
             story_prompt, max_new_tokens=max_new_tokens, do_sample=spec.do_sample,
             temperature=spec.temperature, top_p=spec.top_p, top_k=spec.top_k, seed=seed,
             max_words=max_words, entropy_out=entropy_out,
             typical_p=spec.typical_p, min_p=spec.min_p, eta_cutoff=spec.eta_cutoff,
-            penalty_alpha=spec.penalty_alpha,
+            penalty_alpha=spec.penalty_alpha, hidden_prefix=hidden,
         )
     raise ValueError(f"kaggle_orthosteer does not handle mode '{mode}'")
 

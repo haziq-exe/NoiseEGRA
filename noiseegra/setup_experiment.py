@@ -72,6 +72,10 @@ class ExperimentSpec:
     # candidates, Diverse Beam Search's penalty, and the full method's plan the
     # noise paths use. The steering plan is the rule steering alone.
     search_kind: Optional[str] = None
+    # Untouched writing after hidden context at the start of the reply
+    # (noiseegra.hidden_context): "words" or "sentence"; None = none.
+    hidden_context: Optional[str] = None
+    hidden_tokens: int = 32
     search_width: int = 0
     search_penalty: float = 0.0
     noise_plan: Any = None
@@ -454,6 +458,10 @@ def _spec_to_run_id(model_name: str, spec: ExperimentSpec) -> str:
     sampling_tag = _sampling_tag(spec)
 
     if mode == "baseline":
+        if spec.hidden_context:
+            return (f"{model_name}__HIDDEN{spec.hidden_context}"
+                    + (f"{int(spec.hidden_tokens)}" if spec.hidden_context == "words" else "")
+                    + sampling_tag)
         return f"{model_name}__BASELINE{sampling_tag}"
 
     if mode == "prior_method":

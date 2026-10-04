@@ -236,8 +236,13 @@ class EGRA:
 
     def generate(self, prompt, max_new_tokens=100, do_sample=True, temperature=1.0,
                  top_p=None, top_k=None, seed=None, max_words=None, entropy_out=None,
-                 typical_p=None, min_p=None, eta_cutoff=None, penalty_alpha=None):
+                 typical_p=None, min_p=None, eta_cutoff=None, penalty_alpha=None,
+                 hidden_prefix=None):
         """
+        ``hidden_prefix``: text placed at the start of the reply, then a paragraph
+        break; the story is what the model writes after it, and the prefix is not
+        returned.
+
         prompt should always be a list of dicts of the form [ {"role" : "system", "content" : system_prompt},
                                               {"role" : "user", "content" : user_prompt}  ]
         """
@@ -246,6 +251,8 @@ class EGRA:
           torch.manual_seed(seed)
 
         chat_text = self.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
+        if hidden_prefix:
+            chat_text = chat_text + str(hidden_prefix) + "\n\n"
         device = self._input_device()
         inputs = self.tokenizer(chat_text, return_tensors="pt").to(device)
         inputs.pop("token_type_ids", None)

@@ -1013,6 +1013,11 @@ def main() -> None:
     ap.add_argument("--daydream-scene", action="store_true",
                     help="end the daydream with a scene break (* * *) instead of a "
                          "paragraph break, so the story opens a new scene")
+    ap.add_argument("--hidden-context", nargs="+", choices=["words", "sentence"], default=None,
+                    help="also write untouched stories after hidden context at the start of "
+                         "the reply: random whole words, or a random Wikipedia sentence")
+    ap.add_argument("--hidden-tokens", type=int, default=32,
+                    help="how many random words --hidden-context words places")
     ap.add_argument("--boundary-gain", type=float, default=0.0,
                     help="the noise at every sentence-ending token's position, for the "
                          "whole story, at this multiple of its length (0 = off)")
@@ -2197,7 +2202,19 @@ def main() -> None:
 
     specs, run_ids, seen = [], [], set()
     skip = [f for f in (getattr(args, "skip_arms", None) or []) if f]
-    for spec in make_specs(*normalised):
+    made = make_specs(*normalised)
+    if getattr(args, "hidden_context", None):
+        # Controls for the hidden daydream: the untouched condition with only
+        # hidden text placed in front of the story (noiseegra.hidden_context).
+        import dataclasses
+        base = next((s for s in made if _spec_mode(s) == "baseline" and s.top_p is None
+                     and s.top_k is None and s.temperature == args.temperature), None)
+        if base is None:
+            raise SystemExit("--hidden-context needs the untouched condition in the suite")
+        made += [dataclasses.replace(base, hidden_context=k,
+                                     hidden_tokens=int(args.hidden_tokens))
+                 for k in args.hidden_context]
+    for spec in made:
         rid = _spec_to_run_id(args.model, spec)
         if rid in seen:
             continue
