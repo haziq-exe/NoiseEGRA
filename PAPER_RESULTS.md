@@ -3595,3 +3595,51 @@ on Llama the shadow shares the garbled words, so once garble is in context it is
 no longer surprising to the shadow and the controller drove the multiple to its
 cap of 40. Surprise against a shadow that reads the same context cannot detect
 drift once it has started.
+
+**Every method on every measure (one blind rating round per model, 5 raters,
+50 seeds, six versions side by side; whole-story judge; Haziq: compare on all
+measures, exclude methods that tank coherence or quality).**
+
+| OLMo | Coherent | Rules | Distinct, whole | Quality | Rated 1-3 |
+|---|---|---|---|---|---|
+| Untouched | 50 | 1.36 | 1.13 | 5.72 | 0 |
+| Top-p | 50 | 1.20 | 1.95 | 3.68 | 25 |
+| Current method | 50 | 1.02 | 1.17 | 5.40 | 0 |
+| Margin, opening only | 50 | 0.76 | 1.91 | 4.68 | 4 |
+| Margin, whole story | 49 | 0.94 | 2.93 | 2.96 | 39 |
+| Hidden random words | 50 | 1.54 | 4.56 | 5.12 | 2 |
+
+| Qwen3-8B | Coherent | Rules | Distinct, whole | Quality | Rated 1-3 |
+|---|---|---|---|---|---|
+| Untouched | 50 | 1.92 | 1.00 | 5.54 | 0 |
+| Top-p | 50 | 1.60 | 1.00 | 5.08 | 1 |
+| Current method | 50 | 1.42 | 1.14 | 5.18 | 2 |
+| Hidden daydream | 48 | 1.48 | 1.79 (opening counted) | 4.28 | 13 |
+| Margin, opening only | 50 | 1.76 | 1.65 | 3.68 | 25 |
+| Margin, whole story | 49 | 1.59 | 1.96 | 3.24 | 36 |
+
+| Llama-8B | Coherent | Rules | Distinct, whole | Quality | Rated 1-3 |
+|---|---|---|---|---|---|
+| Untouched | 50 | 0.94 | 2.69 | 5.26 | 0 |
+| Top-p | 50 | 1.00 | 4.05 | 3.02 | 38 |
+| Current method | 50 | 0.94 | 4.09 | 5.24 | 3 |
+| Margin, opening only | 47 | 1.28 | 4.67 | 3.72 | 24 |
+| Margin, content words | 50 | 0.92 | 4.27 | 4.88 | 3 |
+| Margin, whole story | 48 | 1.44 | 5.46 | 2.10 | 46 |
+
+Quality against the current method: OLMo top-p -1.72 [-2.02, -1.40], opening
+margin -0.72 [-1.04, -0.42], random words -0.28 [-0.62, +0.04]; Qwen daydream
+-0.90 [-1.36, -0.46], opening margin -1.50; Llama top-p -2.22 [-2.62, -1.84],
+content margin -0.36 [-0.70, -0.02]; current vs untouched OLMo -0.32 [-0.66,
++0.02], Qwen -0.36 [-0.68, -0.06], Llama -0.02 [-0.32, +0.26].
+
+- Top-p's variety on OLMo and Llama comes with collapsed quality (25 and 38 of
+  50 rated 1-3); it is not a reference to match on variety alone.
+- Llama-8B: the current method is the best balance -- top-p's variety (4.09 vs
+  4.05; +1.40 over untouched) at untouched quality and rules.
+- OLMo and Qwen3-8B (one story untouched): nothing noise-based adds plot variety
+  without a quality cost; the current method keeps quality and rules and adds no
+  plot variety. Opening-only margin on OLMo reaches top-p's variety at far better
+  quality than top-p and the fewest rules, at -0.72 vs the current method.
+- The Qwen daydream rated level with untouched in three earlier rounds and -1.26
+  here, beside five other versions: hidden openings carry a quality risk.
