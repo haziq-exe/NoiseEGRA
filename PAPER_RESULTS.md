@@ -3530,3 +3530,25 @@ All 49-50/50 coherent. Counted fairly the noisy opening reaches top-p at best;
 on Qwen3-8B its openings stay "The wind howls like a wolf / wild cat / dog".
 Only the daydream, which also reads the prompt with 4x noise, moved Qwen's
 plot -- next: the prompt noise alone (r283-r285, 2x/4x/8x, nothing hidden).
+
+**Margin scaling in the opening only (runs r286-r289, 50 stories, whole-story
+judge, nothing hidden).** The current method plus margin scaling (x2, cap 8,
+word starts) on the first 32 decisions only -- the window the method is already
+front-loaded to -- against margin scaling over the whole story (judged on whole
+stories for the first time, r289).
+
+| Distinct of 10, whole story | OLMo | Qwen3-8B | Llama-8B |
+|---|---|---|---|
+| Untouched | 1.13 | 1.00 | 2.69 |
+| Top-p | 1.95 | 1.00 | 4.05 |
+| Current method | 1.17 | 1.14 | 4.09 |
+| Margin, opening only | 1.91 | 1.65 | 4.67 (47/50) |
+| Margin, whole story | 2.93 (49/50) | 1.96 (49/50) | 5.46 (48/50) |
+
+Opening only against untouched / top-p / current: OLMo +0.78 [+0.12, +1.44] /
+-0.04 / +0.74 [-0.10, +1.36]; Qwen +0.65 [+0.18, +1.20] / +0.65 [+0.18, +1.20] /
++0.51 [-0.00, +1.10]; Llama +1.97 [+0.44, +3.76] / +0.61 n.s. / +0.57 n.s.
+Lost capitals: OLMo 2%, Qwen 8%, Llama 23%; Llama openings garbled ("Look Alex
+cries," Emily shouts to The Other kid). Sure decisions are mostly grammar, so
+amplifying them breaks sentences even inside the opening. Next: amplify only sure
+choices of a content word (a whole word of five or more letters), r290-r292.
