@@ -2171,6 +2171,10 @@ def main() -> None:
                 plan.gate_level = args.gate
         print(f"  {describe_gate(args.gate, thr)}")
 
+    if getattr(args, "hidden_context", None):
+        # The controls are copies of the untouched condition; a suite without
+        # it gets it here, set up like every other condition below.
+        items = list(items) + ["baseline"]
     normalised = []
     for it in items:
         d = {"mode": it} if isinstance(it, str) else dict(it)
