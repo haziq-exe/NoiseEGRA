@@ -217,3 +217,98 @@ def generate_after_hidden(model, prompt, kind: str, seed: int, n_tokens: int = 3
                      max_new_tokens=max_new_tokens, **sampling, **pad,
                      **({"stopping_criteria": stopper} if stopper is not None else {}))
     return tok.decode(out[0], skip_special_tokens=True).strip()
+
+
+def generate_selected_opening(model, prompt, seed: int, k: int, sigma: float, layers,
+                              n_tokens: int = 32, max_new_tokens: int = 500, max_words=None,
+                              temperature: float = 1.0, slack: float = 1.0,
+                              story_index=None) -> str:
+    """A visible opening chosen from ``k`` noise paths by where they took the model.
+
+    The untouched model writes its default opening; ``k`` noise paths (the turning
+    push of ``sigma`` x the hidden state's norm at ``layers``, a different
+    direction each) write alternatives. Each opening is read once without noise:
+    its plan state is the mean hidden state over the opening at a layer two
+    thirds of the way up, its fluency the mean log-probability of its tokens.
+    Among openings no more than ``slack`` nats per token less fluent than the
+    default, the one whose plan state is farthest (cosine) from the default's is
+    kept, and the story continues from it without noise. The opening is part of
+    the returned story.
+    """
+    tok, m = model.tokenizer, model.model
+    dev = model._input_device()
+    chat = model.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
+    ids = tok(chat, return_tensors="pt")["input_ids"].to(dev)
+    n_in = int(ids.shape[-1])
+    sampling = model._sampling_kwargs(do_sample=True, temperature=temperature, top_p=None,
+                                      top_k=None)
+    pad = {"pad_token_id": tok.pad_token_id if tok.pad_token_id is not None
+           else tok.eos_token_id}
+    blocks = model._get_transformer_blocks()
+    plan_layer = max(1, int(round(2 * len(blocks) / 3)))
+
+    def opening(s, push):
+        torch.manual_seed(int(s))
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(int(s))
+        handles, state, extra = [], None, {}
+        if push:
+            state, handles = _turning_push(model, s, sigma, int(n_tokens), layers)
+            from transformers import LogitsProcessorList
+
+            class _Step(LogitsProcessor):
+                def __call__(self_, input_ids, scores):
+                    state["t"] += 1
+                    return scores
+
+            first = {"done": False}
+
+            def on_first(mod, args, kwargs):
+                if first["done"]:
+                    state["on"] = True
+                first["done"] = True
+                return None
+
+            handles.append(m.register_forward_pre_hook(on_first, with_kwargs=True))
+            extra = {"logits_processor": LogitsProcessorList([_Step()])}
+        try:
+            out = m.generate(input_ids=ids, attention_mask=torch.ones_like(ids),
+                             max_new_tokens=int(n_tokens), **sampling, **pad, **extra)
+        finally:
+            if state is not None:
+                state["on"] = False
+            for hd in handles:
+                hd.remove()
+        return out[0, n_in:]
+
+    def read(op):
+        full = torch.cat([ids[0], op.to(dev)])[None]
+        with torch.no_grad():
+            o = m(input_ids=full, output_hidden_states=True)
+        lp = torch.log_softmax(o.logits[0, n_in - 1:-1].float(), dim=-1)
+        flu = float(lp.gather(-1, full[0, n_in:, None].to(lp.device)).mean())
+        h = o.hidden_states[plan_layer][0, n_in:].float().mean(0)
+        return h, flu
+
+    default = opening(seed, push=False)
+    h0, f0 = read(default)
+    best, best_d, rows = default, -1.0, []
+    for j in range(int(k)):
+        op = opening(int(seed) * 1009 + j + 1, push=True)
+        h, f = read(op)
+        d = float(1 - torch.nn.functional.cosine_similarity(h, h0.to(h.device), dim=0))
+        rows.append((round(d, 3), round(f - f0, 2)))
+        if f >= f0 - slack and d > best_d:
+            best, best_d = op, d
+    if story_index is not None and int(story_index) < 3:
+        print(f"  [selected opening] story {story_index}: distance, fluency vs default "
+              f"{rows}; kept {'the default' if best_d < 0 else f'distance {best_d:.3f}'}: "
+              f"{' '.join(tok.decode(best, skip_special_tokens=True).split())[:200]}",
+              flush=True)
+    full = torch.cat([ids[0], best.to(dev)])[None]
+    stopper = model._word_budget_stopper(n_in, max_words)
+    torch.manual_seed(int(seed))
+    out = m.generate(input_ids=full, attention_mask=torch.ones_like(full),
+                     max_new_tokens=max(1, int(max_new_tokens) - int(best.numel())), **sampling,
+                     **pad, **({"stopping_criteria": stopper} if stopper is not None else {}))
+    return tok.decode(out[0, n_in:], skip_special_tokens=True).strip()

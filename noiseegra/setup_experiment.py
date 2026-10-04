@@ -466,7 +466,10 @@ def _spec_to_run_id(model_name: str, spec: ExperimentSpec) -> str:
     if mode == "baseline":
         if spec.hidden_context:
             kind = spec.hidden_context
-            if kind.startswith(("latent:", "noisy:")):
+            if kind.startswith("select:"):
+                _, kk, ss = kind.split(":")
+                kind = f"select{int(kk)}s" + _float_tag(float(ss))
+            elif kind.startswith(("latent:", "noisy:")):
                 head, val = kind.split(":", 1)
                 kind = head + _float_tag(float(val))
             return (f"{model_name}__HIDDEN{kind}"

@@ -127,6 +127,17 @@ n2 = generate_after_hidden(egra, P, "noisy:0.5", seed=5, n_tokens=4, layers=(2, 
                            max_new_tokens=8)
 check("a noisy opening, then a story, reproducibly", isinstance(n1, str) and n1 == n2)
 
+from noiseegra.hidden_context import generate_selected_opening  # noqa: E402
+check("a selected opening has its own id", _spec_to_run_id(
+      "M", ExperimentSpec(hidden_context="select:6:0.2")) == "M__HIDDENselect6s0p2")
+g1 = generate_selected_opening(egra, P, seed=5, k=3, sigma=0.5, layers=(2, 3), n_tokens=4,
+                               max_new_tokens=10, story_index=0)
+g2 = generate_selected_opening(egra, P, seed=5, k=3, sigma=0.5, layers=(2, 3), n_tokens=4,
+                               max_new_tokens=10)
+check("a story continues from the chosen opening, reproducibly", isinstance(g1, str) and g1 == g2)
+check("and no hooks are left behind", len(blocks[2]._forward_hooks) == 0
+      and len(egra.model._forward_pre_hooks) == 0)
+
 print()
 print("all passed" if not FAILURES else f"FAILED: {FAILURES}")
 sys.exit(1 if FAILURES else 0)

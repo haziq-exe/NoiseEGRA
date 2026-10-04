@@ -2230,7 +2230,8 @@ def main() -> None:
         if base is None:
             raise SystemExit("--hidden-context needs the untouched condition in the suite")
         for k in args.hidden_context:
-            if k not in ("words", "sentence", "self") and not k.startswith(("latent:", "noisy:")):
+            if k not in ("words", "sentence", "self") and not k.startswith(("latent:", "noisy:",
+                                                                               "select:")):
                 raise SystemExit(f"--hidden-context: unknown kind {k!r}")
         made += [dataclasses.replace(base, hidden_context=k,
                                      hidden_tokens=int(args.hidden_tokens),
