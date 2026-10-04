@@ -312,3 +312,54 @@ def generate_selected_opening(model, prompt, seed: int, k: int, sigma: float, la
                      max_new_tokens=max(1, int(max_new_tokens) - int(best.numel())), **sampling,
                      **pad, **({"stopping_criteria": stopper} if stopper is not None else {}))
     return tok.decode(out[0, n_in:], skip_special_tokens=True).strip()
+
+
+_WEIGHT_BACKUP: dict = {}
+
+
+def _down_projections(model, layers):
+    """The linear maps in ``layers`` that write back into the residual stream from
+    a wider space (the MLP output projection); any residual-width output if none."""
+    d = int(model.model.config.hidden_size)
+    blocks = model._get_transformer_blocks()
+    out = []
+    for l in layers:
+        lins = [m for m in blocks[int(l)].modules() if isinstance(m, torch.nn.Linear)
+                and m.out_features == d]
+        wide = [m for m in lins if m.in_features > d]
+        out += wide or lins
+    return out
+
+
+def generate_with_weight_noise(model, prompt, seed: int, rho: float, layers,
+                               max_new_tokens: int = 500, max_words=None,
+                               temperature: float = 1.0) -> str:
+    """An untouched story written by a per-story perturbed copy of the model.
+
+    Each MLP output projection in ``layers`` gets Gaussian noise drawn from this
+    story's seed, scaled so its norm is ``rho`` times the weight's own. A push
+    added to the hidden state shifts every next-word score by about the same
+    amount; a change to the weights changes how the model responds to context,
+    so what the model itself finds fluent moves with it. The original weights
+    are restored exactly (from a copy kept on the CPU) after the story.
+    """
+    mats = _down_projections(model, layers)
+    for i, lin in enumerate(mats):
+        key = id(lin)
+        if key not in _WEIGHT_BACKUP:
+            _WEIGHT_BACKUP[key] = lin.weight.detach().to("cpu", copy=True)
+    try:
+        with torch.no_grad():
+            for i, lin in enumerate(mats):
+                W = lin.weight
+                g = torch.Generator(device=W.device).manual_seed((int(seed) * 7919 + i) & 0x7FFFFFFF)
+                noise = torch.randn(W.shape, generator=g, device=W.device, dtype=torch.float32)
+                noise.mul_(float(rho) * float(W.float().norm()) / float(noise.norm()))
+                W.add_(noise.to(W.dtype))
+                del noise
+        return model.generate(prompt, max_new_tokens=max_new_tokens, do_sample=True,
+                              temperature=temperature, seed=seed, max_words=max_words)
+    finally:
+        with torch.no_grad():
+            for lin in mats:
+                lin.weight.copy_(_WEIGHT_BACKUP[id(lin)].to(lin.weight.device))

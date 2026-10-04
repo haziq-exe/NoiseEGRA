@@ -3,6 +3,7 @@
     python tests/test_hidden_context.py
 """
 import sys, warnings
+import torch
 from pathlib import Path
 
 warnings.filterwarnings("ignore")
@@ -137,6 +138,19 @@ g2 = generate_selected_opening(egra, P, seed=5, k=3, sigma=0.5, layers=(2, 3), n
 check("a story continues from the chosen opening, reproducibly", isinstance(g1, str) and g1 == g2)
 check("and no hooks are left behind", len(blocks[2]._forward_hooks) == 0
       and len(egra.model._forward_pre_hooks) == 0)
+
+import noiseegra.hidden_context as HC2  # noqa: E402
+check("a weight-noise story has its own id", _spec_to_run_id(
+      "M", ExperimentSpec(hidden_context="weights:0.05")) == "M__HIDDENweights0p05")
+mats = HC2._down_projections(egra, (2, 3))
+check("the perturbed maps write into the residual stream", len(mats) > 0, str(len(mats)))
+before = [m.weight.detach().clone() for m in mats]
+w1 = HC2.generate_with_weight_noise(egra, P, seed=5, rho=0.05, layers=(2, 3), max_new_tokens=8)
+check("a story is written", isinstance(w1, str))
+check("and the weights are restored exactly afterwards",
+      all(torch.equal(b, m.weight) for b, m in zip(before, mats)))
+w2 = HC2.generate_with_weight_noise(egra, P, seed=5, rho=0.05, layers=(2, 3), max_new_tokens=8)
+check("reproducibly", w1 == w2)
 
 print()
 print("all passed" if not FAILURES else f"FAILED: {FAILURES}")

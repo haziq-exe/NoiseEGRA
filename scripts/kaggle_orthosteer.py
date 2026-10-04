@@ -157,6 +157,12 @@ def generate_one(model, spec, mode, story_prompt, seed, max_new_tokens, max_word
     if mode == "baseline":
         hidden = None
         kind = getattr(spec, "hidden_context", None) or ""
+        if kind.startswith("weights:"):
+            from noiseegra.hidden_context import generate_with_weight_noise
+            return generate_with_weight_noise(
+                model, story_prompt, seed, float(kind.split(":", 1)[1]),
+                tuple(spec.hidden_layers or ()), max_new_tokens=max_new_tokens,
+                max_words=max_words, temperature=spec.temperature)
         if kind.startswith("select:"):
             from noiseegra.hidden_context import generate_selected_opening
             _, kk, ss = kind.split(":")
