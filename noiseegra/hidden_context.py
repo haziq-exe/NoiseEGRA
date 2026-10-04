@@ -169,6 +169,7 @@ def generate_after_hidden(model, prompt, kind: str, seed: int, n_tokens: int = 3
                 cut = j
                 break
         hid = hid[:cut]
+        model.last_hidden = tok.decode(hid, skip_special_tokens=True).strip()
         if story_index is not None and int(story_index) < 3:
             print(f"  [hidden {kind}] story {story_index}: "
                   f"{' '.join(tok.decode(hid).split())[:240]}", flush=True)

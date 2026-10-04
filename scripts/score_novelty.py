@@ -76,7 +76,13 @@ def arms(path: Path, extra: str = "") -> dict:
     """
     runs: dict = {}
     for f in state_files(path):
-        for rid, cells in json.loads(f.read_text()).get("runs", {}).items():
+        st = json.loads(f.read_text())
+        hidden = st.get("hidden", {}) if WITH_HIDDEN else {}
+        for rid, cells in st.get("runs", {}).items():
+            # A hidden opening the story continues, put back in front of it, so
+            # the judge sees what the model wrote and not only what is shown.
+            cells = {k: (hidden[rid][k] + "\n\n" + v if k in hidden.get(rid, {}) else v)
+                     for k, v in cells.items()}
             runs.setdefault(rid, {}).update(cells)
     out = {rid: [c[k] for k in sorted(c, key=lambda x: int(x.split(":")[1]))]
            for rid, c in runs.items() if c}
@@ -99,6 +105,9 @@ STRIP_OPENINGS = True
 # hides or adds an opening is compared with the others at the same distance
 # into their stories.
 SKIP_WORDS = 0
+# Judge hidden-opening stories with their hidden opening in front (the state's
+# "hidden" record); written to novelty..._open.json.
+WITH_HIDDEN = False
 
 
 def strip_opening(text: str) -> str:
@@ -322,7 +331,8 @@ def summarise(path: Path, judged: dict) -> dict:
                 row[f"same_vs_{name}"], row[f"distinct_vs_{name}"] = s, d
         rows[rid] = row
     name = ("novelty" + (f"_skip{SKIP_WORDS}" if SKIP_WORDS else "")
-            + (f"_tok{MAX_TOKENS}" if MAX_TOKENS != 128 else "") + ".json")
+            + (f"_tok{MAX_TOKENS}" if MAX_TOKENS != 128 else "")
+            + ("_open" if WITH_HIDDEN else "") + ".json")
     (path if path.is_dir() else path.parent).joinpath(name).write_text(
         json.dumps({"judge": JUDGE, "threshold": THRESHOLD, "tokens": MAX_TOKENS,
                     "openings_stripped": STRIP_OPENINGS, "skip_words": SKIP_WORDS,
@@ -344,7 +354,7 @@ def summarise(path: Path, judged: dict) -> dict:
 
 
 def main() -> None:
-    global STRIP_OPENINGS, BATCH, SKIP_WORDS, MAX_TOKENS
+    global STRIP_OPENINGS, BATCH, SKIP_WORDS, MAX_TOKENS, WITH_HIDDEN
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("path")
@@ -360,6 +370,8 @@ def main() -> None:
                     help="tokens of each story the judge reads (NoveltyBench: 128). Two "
                          "stories must fit the judge's 512, so at most 253; above 128 is "
                          "longer than the judge was trained on. Written to novelty_tokN.json")
+    ap.add_argument("--with-hidden", action="store_true",
+                    help="put each story's hidden opening back in front of it before judging")
     ap.add_argument("--skip-words", type=int, default=0,
                     help="judge each story from its N-th word on; written to "
                          "novelty_skipN.json")
@@ -369,6 +381,7 @@ def main() -> None:
     STRIP_OPENINGS = not args.keep_openings
     BATCH = args.batch
     SKIP_WORDS = max(0, int(args.skip_words))
+    WITH_HIDDEN = bool(args.with_hidden)
     if not 1 <= args.max_tokens <= 253:
         raise SystemExit("--max-tokens must be 1-253: two stories share the judge's 512")
     MAX_TOKENS = int(args.max_tokens)
@@ -396,7 +409,8 @@ def main() -> None:
              *(["--extra", args.extra] if args.extra else []),
              *(["--keep-openings"] if args.keep_openings else []),
              "--skip-words", str(args.skip_words), "--batch", str(args.batch),
-             "--max-tokens", str(args.max_tokens)],
+             "--max-tokens", str(args.max_tokens),
+             *(["--with-hidden"] if args.with_hidden else [])],
             env=dict(os.environ, CUDA_VISIBLE_DEVICES=str(i))) for i in range(gpus)]
         codes = [p.wait() for p in procs]
         judged = {}

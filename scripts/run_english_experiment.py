@@ -2335,6 +2335,12 @@ def main() -> None:
                                     max_words=word_budget, story_index=k,
                                     entropy_out=probes)
                 state["runs"][rid][f"{p_idx}:{k}"] = text
+                opening = getattr(model, "last_hidden", None)
+                if opening:
+                    # The hidden opening this story continues, kept so the
+                    # story can be judged with it (score_novelty --with-hidden).
+                    state.setdefault("hidden", {}).setdefault(rid, {})[f"{p_idx}:{k}"] = opening
+                    model.last_hidden = None
                 if mode == "search":
                     # The whole candidate set, scored, for the set-level measures.
                     state.setdefault("candidates", {}).setdefault(rid, {})[f"{p_idx}:{k}"] = \
