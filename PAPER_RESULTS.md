@@ -3665,3 +3665,11 @@ OLMo: 50/50 coherent, no damage, rules 1.16, whole-story distinct 1.54 (+0.41
 Qwen3-8B: 1.01 -- its noise openings barely move the plan state (cosine distance
 0.03-0.06 against OLMo's 0.15-0.30). Gentle enough to stay fluent means close to
 the default plan; far enough to change it means improbable. Selection closed.
+
+**Per-story weight noise (runs r304, r305, 50 stories).** Gaussian noise on the
+MLP output projections in the steering band, its norm 3% or 8% of each weight's,
+a fresh draw per story, weights restored after each; untouched sampling
+otherwise. OLMo: 50/50, rules 1.14 / 1.18, whole-story distinct 1.27 / 1.26
+(untouched 1.13); the first stories are word for word the untouched ones. Qwen3-8B:
+50/50, distinct 1.00 / 1.00, still "The wind howled like a lost puppy". Random
+weight noise of this size is absorbed like random activation noise.
