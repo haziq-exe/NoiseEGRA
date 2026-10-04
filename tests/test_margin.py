@@ -52,6 +52,12 @@ check("the inside of a word is never amplified", mw.history[-1] <= 1.0, f"{mw.hi
 mw(None, torch.stack([clean + 0.1, clean]))
 check("a sure choice of the next word still is", mw.history[-1] > 1.0, f"{mw.history[-1]:.2f}")
 
+mo = MarginScaler(1.0, power=1.0, steps=2)
+for _ in range(3):
+    mo(None, torch.stack([clean + 0.1, clean]))
+check("with a window, only the first decisions are scaled", len(mo.history) == 2, str(mo.history))
+after = mo(None, torch.stack([story, clean]))
+check("and later ones are left as the noise made them", torch.equal(after[0], story))
 from noiseegra.online_calibration import neutral_scale  # noqa: E402
 lp = torch.tensor([[3.0, 0.0, -1.0], [0.5, 0.0, -1.0], [1.0, 0.0, -1.0]])
 pp = torch.softmax(lp, -1)
@@ -87,6 +93,9 @@ PROMPT = [{"role": "user", "content": "write a story"}]
 p1 = plan(1.0)
 check("the run id records it", "__ms1" in _ortho_tag(
       "M", ExperimentSpec(use_orthogonal_steering=True, steering_plan=p1)))
+po = plan(1.0); po.margin_steps = 32
+check("the run id records the window", "__ms1o32" in _ortho_tag(
+      "M", ExperimentSpec(use_orthogonal_steering=True, steering_plan=po)))
 check("and a run without it does not", "__ms" not in _ortho_tag(
       "M", ExperimentSpec(use_orthogonal_steering=True, steering_plan=plan(0.0))))
 outs = [egra.generate_with_orthogonal_steering(PROMPT, p1, max_new_tokens=8, seed=i) for i in range(2)]

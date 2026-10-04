@@ -1040,6 +1040,8 @@ def main() -> None:
                          "the usual word budget, instead of cutting them")
     ap.add_argument("--daydream-gain", type=float, default=4.0,
                     help="the noise's multiple during the daydream")
+    ap.add_argument("--margin-steps", type=int, default=0,
+                    help="margin scaling only on the story's first N decisions (0 = all)")
     ap.add_argument("--margin-words", action="store_true",
                     help="with --margin-scale: amplify only where the clean choice starts "
                          "a new word, never inside one (the rest of a word is spelling)")

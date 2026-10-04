@@ -1517,7 +1517,8 @@ class EGRA:
                                           word_start=(self._word_start_mask()
                                                       if getattr(plan, "margin_words", False)
                                                       else None),
-                                          norm=float(rule.get("margin_norm", 1.0)))
+                                          norm=float(rule.get("margin_norm", 1.0)),
+                                          steps=int(getattr(plan, "margin_steps", 0) or 0))
                     processors = LogitsProcessorList([sizer, scaler, *list(processors)[1:]])
                 if guard_alpha > 0:
                     # After the controller, which must read the story's raw

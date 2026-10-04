@@ -578,8 +578,15 @@ class MarginScaler(LogitsProcessor):
 
     def __init__(self, ref_margin: float, *, power: float = 1.0,
                  lo: float = 0.25, hi: float = 4.0,
-                 word_start: Optional[torch.Tensor] = None, norm: float = 1.0):
+                 word_start: Optional[torch.Tensor] = None, norm: float = 1.0,
+                 steps: int = 0):
         self.ref = max(float(ref_margin), 1e-3)
+        # Only the first `steps` decisions (0 = all): the opening, where the
+        # story's setting and premise are chosen. Later decisions mostly keep
+        # the story consistent with what is already written, and amplifying
+        # the push there breaks that consistency.
+        self.steps = int(steps)
+        self.calls = 0
         # Divides every step's scale: the average of the scaling on the
         # reference passage (neutral_scale), so the average push is unchanged.
         self.norm = max(float(norm), 1e-6)
@@ -595,6 +602,9 @@ class MarginScaler(LogitsProcessor):
 
     def __call__(self, input_ids, scores):
         if scores.dim() != 2 or scores.shape[0] < 2:
+            return scores
+        self.calls += 1
+        if self.steps and self.calls > self.steps:
             return scores
         clean = scores[1].float()
         top = torch.log_softmax(clean, dim=-1).topk(2).values
