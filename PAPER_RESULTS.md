@@ -3511,3 +3511,22 @@ Quality, 5 blind raters, same 50 seeds:
   story at 5.96 quality is a real change, though not a noise method.
 - Every hidden-opening number before this section that is not marked "opening
   included" overstates the plot change.
+
+**Noisy hidden opening (runs r280-r282, 50 stories, judged with the opening
+put back).** The hidden opening sampled as usual with a per-story turning push
+of SIGMA x the hidden state's norm at the steering layers; prompt and story
+untouched. Whole-story distinct of 10, opening included (as shown in brackets):
+
+| | OLMo | Qwen3-8B | Llama-8B |
+|---|---|---|---|
+| Untouched | 1.13 | 1.00 | 2.69 |
+| Top-p | 1.95 | 1.00 | 4.05 |
+| Current method | 1.17 | 1.14 | 4.09 |
+| Noisy opening 0.06 | 1.18 (2.47) | 1.00 (1.58) | 2.16 (4.09) |
+| Noisy opening 0.12 | 1.21 (2.65) | 1.00 (1.60) | 2.35 (5.56) |
+| Noisy opening 0.2 | 1.83 (3.21) | 1.13 (1.14) | 3.60 (5.91) |
+
+All 49-50/50 coherent. Counted fairly the noisy opening reaches top-p at best;
+on Qwen3-8B its openings stay "The wind howls like a wolf / wild cat / dog".
+Only the daydream, which also reads the prompt with 4x noise, moved Qwen's
+plot -- next: the prompt noise alone (r283-r285, 2x/4x/8x, nothing hidden).
