@@ -62,6 +62,11 @@ class EGRA:
 
     def _get_transformer_blocks(self):
         candidate_paths = [
+            # Multimodal checkpoints keep the text decoder under language_model;
+            # tried first so a vision or audio tower's layers are never taken.
+            ("model", "language_model", "layers"),
+            ("model", "language_model", "model", "layers"),
+            ("language_model", "model", "layers"),
             ("model", "layers"),
             ("model", "decoder", "layers"),
             ("transformer", "h"),

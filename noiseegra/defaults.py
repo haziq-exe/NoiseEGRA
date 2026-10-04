@@ -85,6 +85,9 @@ EN_MODEL_HF_IDS: Dict[str, str] = {
     # 32 blocks, bfloat16 weights); Apache 2.0, ungated.
     "OLMo-3-7B": "allenai/Olmo-3-7B-Instruct",
     "Mistral-Nemo-12B": "mistralai/Mistral-Nemo-Instruct-2407",
+    # Google's 12B unified multimodal release of June 2026 (48 decoder blocks,
+    # hidden 3840); Apache 2.0, ungated. Text only here.
+    "Gemma-4-12B": "google/gemma-4-12B-it",
     # Own licences, still ungated
     "Falcon3-7B": "tiiuae/Falcon3-7B-Instruct",
     # Gated: accept the licence on the model page first
@@ -107,6 +110,7 @@ EN_MODEL_DEPTHS: Dict[str, int] = {
     "Granite-4.2-8B": 40,
     "OLMo-3-7B": 32,
     "Mistral-Nemo-12B": 40,
+    "Gemma-4-12B": 48,
     "Falcon3-7B": 28,
     "Llama-3.1-8B": 32,
 }
