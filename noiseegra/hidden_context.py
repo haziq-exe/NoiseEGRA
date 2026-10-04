@@ -10,6 +10,7 @@ import math
 from pathlib import Path
 
 import torch
+from transformers import LogitsProcessor
 
 SENTENCES = Path(__file__).resolve().parents[1] / "eval" / "random_sentences.txt"
 KINDS = ("words", "sentence")
@@ -58,6 +59,34 @@ def _sentence_end(tok, ids) -> bool:
     return "\n" in s[-3:] or s.rstrip().rstrip('"”’\'').endswith((".", "!", "?"))
 
 
+def _turning_push(model, seed: int, sigma: float, n_steps: int, layers):
+    """A per-story push of ``sigma`` times the hidden state's own norm at each
+    layer in ``layers``, along a direction drawn from ``seed`` that turns by a
+    quarter circle over ``n_steps`` steps. Returns (state, handles); the push
+    acts only while ``state["on"]``, at step ``state["t"]``."""
+    W = model.model.get_input_embeddings().weight
+    g = torch.Generator().manual_seed(int(seed) & 0x7FFFFFFF)
+    a = torch.randn(W.shape[1], generator=g)
+    b = torch.randn(W.shape[1], generator=g)
+    b = b - (b @ a) / (a @ a) * a
+    a, b = a / a.norm(), b / b.norm()
+    state = {"on": False, "t": 0}
+
+    def push(mod, inp, out):
+        if not state["on"]:
+            return None
+        state["fired"] = state.get("fired", 0) + 1
+        h = out[0] if isinstance(out, (tuple, list)) else out
+        th = 0.5 * math.pi * min(state["t"], n_steps - 1) / max(1, int(n_steps) - 1)
+        # The layers of a model split over two GPUs live on different devices.
+        u = (math.cos(th) * a + math.sin(th) * b).to(device=h.device, dtype=h.dtype)
+        h2 = h + sigma * h.norm(dim=-1, keepdim=True) * u
+        return (h2, *out[1:]) if isinstance(out, (tuple, list)) else h2
+
+    blocks = model._get_transformer_blocks()
+    return state, [blocks[int(l)].register_forward_hook(push) for l in layers]
+
+
 def generate_after_hidden(model, prompt, kind: str, seed: int, n_tokens: int = 32,
                           layers=(), max_new_tokens: int = 500, max_words=None,
                           temperature: float = 1.0, extra: int = 24, story_index=None) -> str:
@@ -91,9 +120,45 @@ def generate_after_hidden(model, prompt, kind: str, seed: int, n_tokens: int = 3
            else tok.eos_token_id}
     E = m.get_input_embeddings()
 
-    if kind == "self":
-        out = m.generate(input_ids=ids, attention_mask=torch.ones_like(ids),
-                         max_new_tokens=int(n_tokens) + int(extra), **sampling, **pad)
+    if kind == "self" or kind.startswith("noisy:"):
+        handles, state = [], None
+        if kind.startswith("noisy:"):
+            # The opening is sampled as usual, with the push on top of it; the
+            # prompt is read and the story written without it.
+            state, handles = _turning_push(model, seed, float(kind.split(":", 1)[1]),
+                                           int(n_tokens), layers)
+
+            class _Step(LogitsProcessor):
+                def __call__(self_, input_ids, scores):
+                    state["t"] += 1
+                    return scores
+
+            state["on"] = False
+        try:
+            if state is not None:
+                # On for the opening's own steps only: the prompt's forward
+                # pass is the first call, so switch on after it.
+                from transformers import LogitsProcessorList
+                first = {"done": False}
+
+                def on_first(mod, args, kwargs):
+                    if first["done"]:
+                        state["on"] = True
+                    first["done"] = True
+                    return None
+
+                handles.append(m.register_forward_pre_hook(on_first, with_kwargs=True))
+                extra_kw = {"logits_processor": LogitsProcessorList([_Step()])}
+            else:
+                extra_kw = {}
+            out = m.generate(input_ids=ids, attention_mask=torch.ones_like(ids),
+                             max_new_tokens=int(n_tokens) + int(extra), **sampling, **pad,
+                             **extra_kw)
+        finally:
+            if state is not None:
+                state["on"] = False
+            for hd in handles:
+                hd.remove()
         hid = out[0, ids.shape[-1]:]
         eos = tok.eos_token_id
         if eos is not None and (hid == eos).any():
@@ -105,8 +170,8 @@ def generate_after_hidden(model, prompt, kind: str, seed: int, n_tokens: int = 3
                 break
         hid = hid[:cut]
         if story_index is not None and int(story_index) < 3:
-            print(f"  [hidden self] story {story_index}: {' '.join(tok.decode(hid).split())[:240]}",
-                  flush=True)
+            print(f"  [hidden {kind}] story {story_index}: "
+                  f"{' '.join(tok.decode(hid).split())[:240]}", flush=True)
         full = torch.cat([ids, hid[None].to(dev), brk], dim=-1)
         stopper = model._word_budget_stopper(full.shape[-1], max_words)
         out = m.generate(input_ids=full, attention_mask=torch.ones_like(full),
@@ -116,27 +181,9 @@ def generate_after_hidden(model, prompt, kind: str, seed: int, n_tokens: int = 3
 
     if not kind.startswith("latent:"):
         raise ValueError(f"unknown generated hidden context {kind!r}")
-    sigma = float(kind.split(":", 1)[1])
     W = E.weight
-    g = torch.Generator().manual_seed(int(seed) & 0x7FFFFFFF)
-    a = torch.randn(W.shape[1], generator=g)
-    b = torch.randn(W.shape[1], generator=g)
-    b = b - (b @ a) / (a @ a) * a
-    a, b = (a / a.norm()).to(dev, W.dtype), (b / b.norm()).to(dev, W.dtype)
-    state = {"on": False, "t": 0}
-
-    def push(mod, inp, out):
-        if not state["on"]:
-            return None
-        h = out[0] if isinstance(out, (tuple, list)) else out
-        th = 0.5 * math.pi * state["t"] / max(1, int(n_tokens) - 1)
-        # The layers of a model split over two GPUs live on different devices.
-        u = (math.cos(th) * a + math.sin(th) * b).to(device=h.device, dtype=h.dtype)
-        h2 = h + sigma * h.norm(dim=-1, keepdim=True) * u
-        return (h2, *out[1:]) if isinstance(out, (tuple, list)) else h2
-
-    blocks = model._get_transformer_blocks()
-    handles = [blocks[int(l)].register_forward_hook(push) for l in layers]
+    state, handles = _turning_push(model, seed, float(kind.split(":", 1)[1]), int(n_tokens),
+                                   layers)
     softs = []
     try:
         with torch.no_grad():

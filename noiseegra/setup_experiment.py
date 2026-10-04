@@ -461,8 +461,9 @@ def _spec_to_run_id(model_name: str, spec: ExperimentSpec) -> str:
     if mode == "baseline":
         if spec.hidden_context:
             kind = spec.hidden_context
-            if kind.startswith("latent:"):
-                kind = "latent" + _float_tag(float(kind.split(":", 1)[1]))
+            if kind.startswith(("latent:", "noisy:")):
+                head, val = kind.split(":", 1)
+                kind = head + _float_tag(float(val))
             return (f"{model_name}__HIDDEN{kind}"
                     + (f"{int(spec.hidden_tokens)}" if spec.hidden_context == "words" else "")
                     + sampling_tag)

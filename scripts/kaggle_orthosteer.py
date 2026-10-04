@@ -157,7 +157,7 @@ def generate_one(model, spec, mode, story_prompt, seed, max_new_tokens, max_word
     if mode == "baseline":
         hidden = None
         kind = getattr(spec, "hidden_context", None) or ""
-        if kind == "self" or kind.startswith("latent:"):
+        if kind == "self" or kind.startswith(("latent:", "noisy:")):
             from noiseegra.hidden_context import generate_after_hidden
             return generate_after_hidden(
                 model, story_prompt, kind, seed, n_tokens=spec.hidden_tokens,

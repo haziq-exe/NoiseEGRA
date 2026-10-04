@@ -99,6 +99,34 @@ lb = generate_after_hidden(egra, P, "latent:0.2", seed=6, n_tokens=4, layers=(2,
                            max_new_tokens=8)
 check("it runs at another seed and with no push", isinstance(lb, str) and isinstance(l0, str))
 
+import noiseegra.hidden_context as HC  # noqa: E402
+check("a noisy opening has its own id", _spec_to_run_id(
+      "M", ExperimentSpec(hidden_context="noisy:0.1")) == "M__HIDDENnoisy0p1")
+seen_states = []
+_orig = HC._turning_push
+
+
+def _spy(*a, **kw):
+    st, hs = _orig(*a, **kw)
+    seen_states.append(st)
+    return st, hs
+
+
+HC._turning_push = _spy
+n1 = generate_after_hidden(egra, P, "noisy:0.5", seed=5, n_tokens=4, layers=(2, 3),
+                           max_new_tokens=8)
+HC._turning_push = _orig
+st = seen_states[-1]
+check("the push fires while the opening is sampled", st.get("fired", 0) > 0 and st["t"] > 0,
+      str(st))
+check("at two layers per opening step, not on the prompt",
+      st.get("fired", 0) <= 2 * st["t"], str(st))
+check("and is off for the story", st["on"] is False and len(blocks[2]._forward_hooks) == 0
+      and len(egra.model._forward_pre_hooks) == 0)
+n2 = generate_after_hidden(egra, P, "noisy:0.5", seed=5, n_tokens=4, layers=(2, 3),
+                           max_new_tokens=8)
+check("a noisy opening, then a story, reproducibly", isinstance(n1, str) and n1 == n2)
+
 print()
 print("all passed" if not FAILURES else f"FAILED: {FAILURES}")
 sys.exit(1 if FAILURES else 0)
