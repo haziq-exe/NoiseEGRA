@@ -3656,3 +3656,12 @@ nats/token less likely than the default to the noise-free model (OLMo 3-6, Qwen
 state are ones the model itself finds far less likely -- the trade every method
 here ran into, measured directly; smallest on Llama, the one model where the
 current method changes plots at full quality.
+
+**Larger pool, gentler push (runs r302, r303, 50 stories).** Sixteen noise-path
+openings per story at 0.08 of the hidden state's norm, same selection. Candidates
+now within 0.1-1 nat/token of the default's fluency, so a noise opening was kept.
+OLMo: 50/50 coherent, no damage, rules 1.16, whole-story distinct 1.54 (+0.41
+[+0.00, +0.96] vs untouched, +0.37 [-0.12, +0.88] vs current, -0.41 vs top-p).
+Qwen3-8B: 1.01 -- its noise openings barely move the plan state (cosine distance
+0.03-0.06 against OLMo's 0.15-0.30). Gentle enough to stay fluent means close to
+the default plan; far enough to change it means improbable. Selection closed.
