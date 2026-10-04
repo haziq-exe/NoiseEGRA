@@ -1518,7 +1518,10 @@ class EGRA:
                                                       if getattr(plan, "margin_words", False)
                                                       else None),
                                           norm=float(rule.get("margin_norm", 1.0)),
-                                          steps=int(getattr(plan, "margin_steps", 0) or 0))
+                                          steps=int(getattr(plan, "margin_steps", 0) or 0),
+                                          content=(self._content_mask()
+                                                   if getattr(plan, "margin_content", False)
+                                                   else None))
                     processors = LogitsProcessorList([sizer, scaler, *list(processors)[1:]])
                 if guard_alpha > 0:
                     # After the controller, which must read the story's raw
@@ -2032,6 +2035,28 @@ class EGRA:
               + f": chance of a non-story opening {tried[0][1]:.3f} -> {story:.3f} "
               f"(noise-free {clean:.3f})", flush=True)
         return m
+
+    def _content_mask(self) -> torch.Tensor:
+        """True for vocabulary entries that are a whole word of five or more
+        letters (word-initial marker, then letters only): mostly content words."""
+        cached = getattr(self, "_content_cache", None)
+        if cached is not None:
+            return cached
+        n = int(self.model.get_input_embeddings().weight.shape[0])
+        try:
+            n = min(n, len(self.tokenizer))
+        except TypeError:
+            pass
+        toks = (self.tokenizer.convert_ids_to_tokens(list(range(n)))
+                if hasattr(self.tokenizer, "convert_ids_to_tokens")
+                else [self.tokenizer.decode([i]) for i in range(n)])
+        mask = torch.zeros(n, dtype=torch.bool)
+        for i, s in enumerate(toks):
+            if (isinstance(s, str) and len(s) >= 6 and s[0] in "\u0120\u2581 "
+                    and s[1:].isalpha()):
+                mask[i] = True
+        self._content_cache = mask
+        return mask
 
     def _boundary_ids(self) -> set:
         """Vocabulary entries that end a sentence or a line: their text, past any

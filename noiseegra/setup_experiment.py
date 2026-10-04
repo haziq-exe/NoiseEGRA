@@ -279,7 +279,8 @@ def _ortho_tag_once(model_name: str, spec: ExperimentSpec, *, compress: bool) ->
                      + ("w" if getattr(plan, "margin_words", False) else "")
                      + ("n" if getattr(plan, "margin_neutral", False) else "")
                      + (f"o{int(plan.margin_steps)}" if int(getattr(plan, "margin_steps", 0) or 0)
-                        else ""))
+                        else "")
+                     + ("c" if getattr(plan, "margin_content", False) else ""))
     if int(getattr(plan, "horizon_rank", 0) or 0) > 0:
         parts.append(f"__hz{int(plan.horizon_rank)}")
     if float(getattr(plan, "steer_share", 0.0) or 0.0) > 0:

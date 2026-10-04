@@ -620,6 +620,8 @@ class SteeringPlan:
     margin_neutral: bool = False
     # Margin scaling only on the first N decisions (0 = the whole story).
     margin_steps: int = 0
+    # Amplify only sure choices of a content word (five or more letters).
+    margin_content: bool = False
     # A hidden daydream before the story: for the first `daydream_steps` words
     # the noise runs at `daydream_gain` times its size, then a paragraph break is
     # forced and the story is written with the noise as usual. The daydream stays
@@ -1216,6 +1218,7 @@ class SteeringPlan:
         margin_words: bool = False,
         margin_neutral: bool = False,
         margin_steps: int = 0,
+        margin_content: bool = False,
         daydream_steps: int = 0,
         daydream_gain: float = 1.0,
         daydream_boundary: bool = False,
@@ -1486,6 +1489,7 @@ class SteeringPlan:
             margin_words=bool(margin_words),
             margin_neutral=bool(margin_neutral),
             margin_steps=int(margin_steps or 0),
+            margin_content=bool(margin_content),
             daydream_steps=int(daydream_steps or 0),
             daydream_gain=float(daydream_gain or 1.0),
             daydream_boundary=bool(daydream_boundary),
@@ -2354,6 +2358,7 @@ class SteeringPlan:
             "margin_cap": self.margin_cap,
             "margin_words": self.margin_words,
             "margin_steps": self.margin_steps,
+            "margin_content": self.margin_content,
             "daydream_steps": self.daydream_steps,
             "daydream_gain": self.daydream_gain,
             "daydream_keep": self.daydream_keep,

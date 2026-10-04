@@ -579,7 +579,7 @@ class MarginScaler(LogitsProcessor):
     def __init__(self, ref_margin: float, *, power: float = 1.0,
                  lo: float = 0.25, hi: float = 4.0,
                  word_start: Optional[torch.Tensor] = None, norm: float = 1.0,
-                 steps: int = 0):
+                 steps: int = 0, content: Optional[torch.Tensor] = None):
         self.ref = max(float(ref_margin), 1e-3)
         # Only the first `steps` decisions (0 = all): the opening, where the
         # story's setting and premise are chosen. Later decisions mostly keep
@@ -587,6 +587,12 @@ class MarginScaler(LogitsProcessor):
         # the push there breaks that consistency.
         self.steps = int(steps)
         self.calls = 0
+        # Which entries start a content word (a whole word of five or more
+        # letters). Sure choices are mostly grammar; amplifying those breaks
+        # sentences. With this mask only a sure choice of a content word -- a
+        # place, an object, a name, which is what sets the premise -- is
+        # amplified. None amplifies every sure word start.
+        self.content = content
         # Divides every step's scale: the average of the scaling on the
         # reference passage (neutral_scale), so the average push is unchanged.
         self.norm = max(float(norm), 1e-6)
@@ -613,6 +619,10 @@ class MarginScaler(LogitsProcessor):
         if self.word_start is not None:
             first = int(clean.argmax())
             if first < self.word_start.numel() and not bool(self.word_start[first]):
+                s = min(s, 1.0)
+        if self.content is not None:
+            first = int(clean.argmax())
+            if first >= self.content.numel() or not bool(self.content[first]):
                 s = min(s, 1.0)
         s = s / self.norm
         self.history.append(s)

@@ -93,6 +93,16 @@ PROMPT = [{"role": "user", "content": "write a story"}]
 p1 = plan(1.0)
 check("the run id records it", "__ms1" in _ortho_tag(
       "M", ExperimentSpec(use_orthogonal_steering=True, steering_plan=p1)))
+cm = torch.tensor([True, False, False])          # only entry 0 is a content word
+mc = MarginScaler(1.0, power=1.0, content=cm)
+mc(None, torch.stack([clean + 0.1, clean]))        # clean top is entry 0
+check("a sure content word is amplified", mc.history[-1] > 1.0, f"{mc.history[-1]:.2f}")
+gram = torch.tensor([0.0, 3.0, -1.0])               # clean top is entry 1, not content
+mc(None, torch.stack([gram + 0.1, gram]))
+check("a sure grammar word is not", mc.history[-1] <= 1.0, f"{mc.history[-1]:.2f}")
+pc = plan(1.0); pc.margin_content = True
+check("the run id records it", "__ms1c" in _ortho_tag(
+      "M", ExperimentSpec(use_orthogonal_steering=True, steering_plan=pc)))
 po = plan(1.0); po.margin_steps = 32
 check("the run id records the window", "__ms1o32" in _ortho_tag(
       "M", ExperimentSpec(use_orthogonal_steering=True, steering_plan=po)))
