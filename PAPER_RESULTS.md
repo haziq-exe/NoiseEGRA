@@ -3582,3 +3582,16 @@ the model while writing -- any direction, layer, timing, size, or amplification
 of sure decisions -- changes wording, or plot only by breaking grammar. Foreign
 content before the story buys plot variety exactly as far as a model tolerates
 it: OLMo does, Qwen3-8B and Llama do not.
+
+**Daydream held at a set surprise (runs r296-r298, 50 stories).** A controller
+adjusted the daydream's noise multiple while it was written so each word's
+surprisal over the noise-free shadow's entropy averaged 2; noise sized with the
+boost off, prompt 4x, then a scene break. Coherent / whole-story distinct: OLMo
+41/50, 3.52 (17 under 60 words); Qwen3-8B 18/50 (19 not stories); Llama 19/50.
+Two flaws: on Qwen the derailment comes from the 4x prompt noise at full size
+(hidden openings are meta-talk -- "As a user who has chosen to have their
+queries handled by the AI assistant..." -- with the daydream multiple near 1);
+on Llama the shadow shares the garbled words, so once garble is in context it is
+no longer surprising to the shadow and the controller drove the multiple to its
+cap of 40. Surprise against a shadow that reads the same context cannot detect
+drift once it has started.
