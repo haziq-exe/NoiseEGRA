@@ -3723,3 +3723,58 @@ but costs 1.7-1.8 quality: the controller sits at its floor in every story and
 the openings come out garbled ("a squirrel flattens against their heart rate").
 Lowering the floor and the prompt noise cut the short stories but not the
 quality loss. The method fails on Nemo as it stands.
+
+## Forgetting the prompt's noise, and sizing the noise by the plan state (2026-10-05)
+
+Two changes to the current method (drifting noise + fading steering, middle-school
+prompt), each alone and together, 50 stories each on OLMo-3-7B, Qwen3-8B and
+Llama-3.1-8B (runs r320, r321, r322). Compared on the same seeds with the stored
+untouched, top-p and current-method stories; variety judged on whole stories (253
+tokens); quality rated blind by Sonnet with all six versions in one round per model.
+
+- **Forget** (`--prompt-forget prompt`): the noise is still added while the prompt
+  is read, but once the writing noise has faded to nothing (word 64) the story's
+  cached memory of the prompt is replaced with the noise-free shadow copy's. After
+  that the noise survives only through the words it chose.
+- **Plan size** (`--plan-size 0.5`): the noise length is set, before any story, so
+  that it moves the hidden state two thirds up the model (layer 21 of 32 on OLMo,
+  24 of 36 on Qwen) over the first 32 words of the default continuation by half the
+  distance between the states of two different story requests (this one and a
+  science-fiction one). No next-word probabilities are used; the size is held fixed
+  while writing (no controller). Lengths found: OLMo 1.11 (current method starts at
+  1.23 and its controller cuts it to about 0.31), Qwen 6.81 (current starts at
+  10.29), so OLMo writes with about four times the current method's noise.
+
+| Model | Version | Distinct of 10 | Rules broken | Quality | Rated 1-3 |
+|---|---|---|---|---|---|
+| OLMo | untouched | 1.13 | 1.36 | 5.48 | 0/50 |
+| OLMo | top-p | 1.95 | 1.20 | 3.46 | 27/50 |
+| OLMo | current | 1.17 | 1.02 | 5.12 | 0/50 |
+| OLMo | plan size | 1.07 | 1.04 | 5.30 | 1/50 |
+| OLMo | forget | 1.25 | 0.86 | 5.20 | 0/50 |
+| OLMo | both | 1.38 | 0.98 | 5.24 | 2/50 |
+| Qwen3-8B | untouched | 1.00 | 1.92 | 5.48 | 0/50 |
+| Qwen3-8B | top-p | 1.00 | 1.60 | 5.10 | 2/50 |
+| Qwen3-8B | current | 1.14 | 1.42 | 5.08 | 3/50 |
+| Qwen3-8B | plan size | 1.10 | 1.58 | 5.08 | 0/50 |
+| Qwen3-8B | forget | 1.44 | 1.46 | 5.14 | 1/50 |
+| Qwen3-8B | both | 1.01 | 1.36 | 5.08 | 2/50 |
+| Llama-8B | untouched | 2.69 | 0.94 | 4.70 | 3/50 |
+| Llama-8B | top-p | 4.05 | 1.00 | 2.56 | 48/50 |
+| Llama-8B | current | 4.09 | 0.94 | 4.76 | 3/50 |
+| Llama-8B | plan size | 4.31 | 0.78 | 4.78 | 3/50 |
+| Llama-8B | forget | 4.15 | 0.80 | 4.68 | 3/50 |
+| Llama-8B | both | 3.85 | 0.68 | 4.54 | 3/50 |
+
+No version differs from the current method on any measure: every 95% interval
+against it includes zero (variety, rules and quality, on all three models). No text
+damage in any version (no lost capitals, no stories under 60 words). Readings:
+
+- Forgetting the prompt's noise neither helps nor hurts, so the noise's lasting
+  effect already runs through the words it chose, not through a noisy memory of
+  the prompt.
+- The plan-state yardstick and the next-word yardstick give lengths within a factor
+  of 1.5 of each other, so the next-word sizing was not holding the noise to a
+  top-p-sized effect. On OLMo, four times the current method's writing noise left
+  both variety and quality unchanged: on this collapsed model the size of the noise
+  is not what limits plot variety.
