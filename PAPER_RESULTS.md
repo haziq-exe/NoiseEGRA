@@ -3778,3 +3778,32 @@ damage in any version (no lost capitals, no stories under 60 words). Readings:
   top-p-sized effect. On OLMo, four times the current method's writing noise left
   both variety and quality unchanged: on this collapsed model the size of the noise
   is not what limits plot variety.
+
+## Larger plan-state sizes, and forgetting everything the noise touched (OLMo, 2026-10-05)
+
+Follow-up on OLMo-3-7B (run r323, 50 stories each, same seeds and comparison arms
+as above, all six versions rated in one blind round). **Plan 1x / 2x**: the noise
+length moves the layer-21 state the full / twice the distance between the two story
+requests (lengths 2.49 and 5.39; the current method starts at 1.23 and its controller
+cuts it to about 0.31). **Forget all** (`--prompt-forget all`): when the fade ends the
+story's whole cached memory -- prompt and the 64 words written so far -- is replaced
+with the noise-free shadow's, so from then on the model is exactly a clean model
+reading the same text.
+
+| Version | Distinct of 10 | Rules broken | Under 60 words | Lost capitals | Quality | Rated 1-3 |
+|---|---|---|---|---|---|---|
+| untouched | 1.13 | 1.36 | 0 | 0% | 5.74 | 0/50 |
+| top-p | 1.95 | 1.20 | 0 | 0% | 3.96 | 11/50 |
+| current | 1.17 | 1.02 | 0 | 0% | 5.54 | 0/50 |
+| plan 1x | 1.45 | 1.24 | 0 | 0% | 4.74 | 5/50 |
+| forget all | 1.29 | 1.00 | 0 | 0% | 5.42 | 0/50 |
+| plan 2x | 9.02 (39 coherent) | 2.44 | 23 | 24% | 1.88 | 47/50 |
+
+- Forget all equals the current method on every measure (variety +0.12 [-0.36,+0.50],
+  rules -0.02, quality -0.12 [-0.30,+0.06]).
+- Plan 1x: variety +0.28 [-0.26,+0.66] (not real), quality -0.80 [-1.12,-0.48] (real).
+- Plan 2x: broken text -- fragments, ungrammatical sentences, the model musing about
+  what the story could be. Its variety score measures the damage.
+
+On OLMo, raising the noise goes from the same story to worse writing to broken text,
+with no size at which the plot changes and the writing holds up.
