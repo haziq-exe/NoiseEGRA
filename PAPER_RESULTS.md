@@ -3697,3 +3697,10 @@ Weight noise keeps the text intact over a wider range than activation pushes
 (openings change at 50% while fluent), but the plot gain inside the clean range is
 small and not significant; past it quality drops (OLMo) or the model derails
 (Qwen3-8B). Rules worsen with size (no rule steering in these arms).
+
+**The current method with 50% weight noise (runs r310 OLMo, r312 Llama-8B, 50
+stories; the Qwen3-8B run was stopped to save GPU time).** Each steered story
+written by its own perturbed copy of the model (--weight-noise 0.5). OLMo: 50/50,
+rules 0.98, whole-story distinct 1.32 (current 1.17, weight noise alone 1.57,
+untouched 1.13). Llama-8B: 50/50, rules 0.80, distinct 4.14 (current 4.09). The
+rule steering keeps rules level, but the combination adds no plot variety.
