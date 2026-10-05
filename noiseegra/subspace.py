@@ -620,6 +620,10 @@ class SteeringPlan:
     margin_neutral: bool = False
     # Margin scaling only on the first N decisions (0 = the whole story).
     margin_steps: int = 0
+    # Once the writing noise has faded to nothing, the story's memory is
+    # replaced by its noise-free shadow's: "prompt" for the prompt's entries
+    # only, "all" for everything read so far ("" = keep the noisy memory).
+    prompt_forget: str = ""
     # Amplify only sure choices of a content word (five or more letters).
     margin_content: bool = False
     # A hidden daydream before the story: for the first `daydream_steps` words
@@ -1225,6 +1229,7 @@ class SteeringPlan:
         margin_words: bool = False,
         margin_neutral: bool = False,
         margin_steps: int = 0,
+        prompt_forget: str = "",
         margin_content: bool = False,
         daydream_steps: int = 0,
         daydream_gain: float = 1.0,
@@ -1497,6 +1502,7 @@ class SteeringPlan:
             margin_words=bool(margin_words),
             margin_neutral=bool(margin_neutral),
             margin_steps=int(margin_steps or 0),
+            prompt_forget=str(prompt_forget or ""),
             margin_content=bool(margin_content),
             daydream_steps=int(daydream_steps or 0),
             daydream_gain=float(daydream_gain or 1.0),
@@ -2370,6 +2376,7 @@ class SteeringPlan:
             "margin_cap": self.margin_cap,
             "margin_words": self.margin_words,
             "margin_steps": self.margin_steps,
+            "prompt_forget": self.prompt_forget,
             "margin_content": self.margin_content,
             "daydream_steps": self.daydream_steps,
             "daydream_gain": self.daydream_gain,

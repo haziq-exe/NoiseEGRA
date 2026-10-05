@@ -669,3 +669,92 @@ class FlipRecorder(LogitsProcessor):
         keys = sorted(stats, key=lambda k: float(k.split("-")[0]))
         return "  ".join(f"gap {k}: {stats[k][1] / max(stats[k][0], 1):.1%} of {stats[k][0]}"
                          for k in keys)
+
+
+# --------------------------------------------------------------------------- #
+#  Sizing the noise where the plan lives, not by the next-word distribution    #
+# --------------------------------------------------------------------------- #
+
+# Set by the runner: the size as a share of the distance between two story
+# requests' plan states (0 = off), and the second request's prompt.
+PLAN_KAPPA: float = 0.0
+PLAN_ALT_PROMPT = None
+
+
+def _plan_layer(egra) -> int:
+    """The layer two thirds of the way up, where models hold their plan for
+    what comes next (Dong et al., ICML 2025)."""
+    return max(1, int(round(2 * len(egra._get_transformer_blocks()) / 3)))
+
+
+@torch.no_grad()
+def plan_states(egra, plan, ids: torch.Tensor, n_prompt: int, *,
+                with_offset: bool) -> torch.Tensor:
+    """Hidden states at the plan layer for every position of ``ids``, with the
+    plan applied as generation applies it (fisher_calibration._logits)."""
+    from .fisher_calibration import _logits
+
+    blocks = egra._get_transformer_blocks()
+    box = {}
+
+    def grab(module, inp, out):
+        t = out[0] if isinstance(out, (tuple, list)) else out
+        box["h"] = t[0].detach().float().clone()
+
+    h = blocks[_plan_layer(egra)].register_forward_hook(grab)
+    try:
+        _logits(egra, plan, ids, n_prompt, with_offset=with_offset)
+    finally:
+        h.remove()
+    return box["h"]
+
+
+@torch.no_grad()
+def plan_space_start(egra, plan, prompt_ids: torch.Tensor, alt_ids: torch.Tensor,
+                     kappa: float, *, n_tokens: int = 32, seeds=(0, 1, 2, 3),
+                     iters: int = 10) -> Dict[str, float]:
+    """The noise length that moves the plan-layer state by ``kappa`` times the
+    distance between the plan states of two different story requests.
+
+    The reference distance is between the plan-layer states at the last
+    position of the prompt and of a second prompt asking for a different kind
+    of story -- how far apart two requests put the model. The noise's effect is
+    the mean distance it moves the plan-layer state over the first
+    ``n_tokens`` of the model's own greedy continuation (teacher-forced), over
+    a few random draws made as a story makes them. Nothing about the
+    next-word distribution enters; nothing is sampled.
+    """
+    from .fisher_calibration import reference_passage
+
+    n_prompt = int(prompt_ids.shape[-1])
+    passage = reference_passage(egra, plan, prompt_ids, n_tokens)
+    clean = plan_states(egra, plan, passage, n_prompt, with_offset=False)
+    alt = plan_states(egra, plan, alt_ids, int(alt_ids.shape[-1]), with_offset=False)
+    ref = float((clean[n_prompt - 1] - alt[-1]).norm())
+    goal = float(kappa) * ref
+    norm = float(plan.rms_scale) * math.sqrt(plan.dim)
+
+    def moved(length: float) -> float:
+        out = []
+        for s in seeds:
+            torch.manual_seed(1_000_003 + int(s))
+            plan.resample_offset(story_index=0)
+            scale_offsets(plan, length)
+            noisy = plan_states(egra, plan, passage, n_prompt, with_offset=True)
+            out.append(float((noisy[n_prompt:] - clean[n_prompt:]).norm(dim=-1).mean()))
+        return sum(out) / len(out)
+
+    lo, hi = math.log(norm / 500.0), math.log(norm)
+    top = moved(norm)
+    if top < goal:
+        return {"start": norm, "fraction": 1.0, "moves": top, "goal": goal, "ref": ref,
+                "reached": 0.0}
+    best = (norm, top)
+    for _ in range(int(iters)):
+        mid = 0.5 * (lo + hi)
+        d = moved(math.exp(mid))
+        if abs(d - goal) < abs(best[1] - goal):
+            best = (math.exp(mid), d)
+        lo, hi = (mid, hi) if d < goal else (lo, mid)
+    return {"start": best[0], "fraction": best[0] / norm, "moves": best[1], "goal": goal,
+            "ref": ref, "reached": 1.0}

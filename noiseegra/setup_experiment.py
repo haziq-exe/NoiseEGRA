@@ -361,6 +361,11 @@ def _ortho_tag_once(model_name: str, spec: ExperimentSpec, *, compress: bool) ->
         parts.append(f"__rr{int(plan.offset_random_rank)}")
     if getattr(plan, "shadow_protect", False):
         parts.append("__shadow")
+    if getattr(plan, "prompt_forget", ""):
+        parts.append(f"__forget{plan.prompt_forget}")
+    from . import online_calibration as _oc
+    if _oc.PLAN_KAPPA > 0:
+        parts.append(f"__plansz{_float_tag(_oc.PLAN_KAPPA)}")
     if float(getattr(plan, "offset_online", 0.0) or 0.0) > 0:
         parts.append(f"__online{_float_tag(plan.offset_online)}")
         if float(getattr(plan, "online_max_gain", 2.5) or 2.5) != 2.5:

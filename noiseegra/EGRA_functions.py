@@ -37,6 +37,17 @@ def strip_reasoning(text: str) -> str:
     return "" if _OPEN_THINK.match(out) else out.strip()
 
 
+
+def _cache_tensors(pkv):
+    """Each layer's (keys, values) in a generation cache, whatever its kind:
+    a Cache with ``layers`` (transformers 4.56+), one with ``key_cache`` and
+    ``value_cache`` lists, or the legacy tuple of pairs."""
+    if hasattr(pkv, "layers"):
+        return [(l.keys, l.values) for l in pkv.layers if getattr(l, "keys", None) is not None]
+    if hasattr(pkv, "key_cache"):
+        return list(zip(pkv.key_cache, pkv.value_cache))
+    return [(kv[0], kv[1]) for kv in pkv]
+
 class EGRA:
     def __init__(self, model, use_AENI=False, dtype=None):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -952,6 +963,24 @@ class EGRA:
                             f"({st['fraction']:.3f} of the norm) moves it "
                             f"{st['moves']:.3f}"
                             + ("" if st["reached"] else "  -- NOT REACHED at the norm"))
+                from . import online_calibration as _oc
+                if _oc.PLAN_KAPPA > 0 and _oc.PLAN_ALT_PROMPT is not None:
+                    # Sized where the plan lives: the start replaced by the
+                    # length that moves the plan-layer state a share of the
+                    # distance between two story requests, held fixed (the
+                    # controller, which reads the next-word distribution, is
+                    # locked at 1x).
+                    alt = self.tokenizer(self.apply_chat_template(
+                        _oc.PLAN_ALT_PROMPT, tokenize=False, add_generation_prompt=True),
+                        return_tensors="pt")["input_ids"].to(self._input_device())
+                    ps = _oc.plan_space_start(self, plan, ids, alt, _oc.PLAN_KAPPA)
+                    m["start"] = ps["start"]
+                    plan.online_min_gain = plan.online_max_gain = 1.0
+                    msg += (f"\n  [plan size] two requests' plan states {ps['ref']:.2f} apart "
+                            f"at layer {_oc._plan_layer(self)}; length {ps['start']:.2f} "
+                            f"({ps['fraction']:.3f} of the norm) moves the plan state "
+                            f"{ps['moves']:.2f} (asked {ps['goal']:.2f}), held fixed"
+                            + ("" if ps["reached"] else "  -- NOT REACHED at the norm"))
                 cache[key] = m
                 print(msg, flush=True)
             rule = cache[key]
@@ -1448,6 +1477,38 @@ class EGRA:
                     return None
 
                 handles.append(self.model.register_forward_pre_hook(see_token, with_kwargs=True))
+
+            # Forgetting the noise: at the first step the writing noise has
+            # faded to nothing, the story's cached keys and values -- its memory
+            # of the prompt, or of everything so far -- are overwritten with the
+            # shadow row's, which read the same tokens with the steering and no
+            # noise. From then on the noise survives only in the words it chose.
+            forget = str(getattr(plan, "prompt_forget", "") or "")
+            plan._forgot_at = None
+            if forget:
+                if not shadow:
+                    raise ValueError("forgetting the noise copies the noise-free shadow "
+                                     "row's memory; it needs the online sizing")
+                n_prompt_f = int(inputs["input_ids"].shape[-1])
+
+                def forget_noise(module, args, kwargs):
+                    if (shared.get("replay") or shared.get("is_prefill")
+                            or plan._forgot_at is not None):
+                        return None
+                    if plan.envelope_at(shared["cur_t"]) > 1e-6:
+                        return None
+                    pkv = kwargs.get("past_key_values")
+                    if pkv is None:
+                        return None
+                    for k, v in _cache_tensors(pkv):
+                        n = n_prompt_f if forget == "prompt" else k.shape[-2]
+                        k[0, ..., :n, :].copy_(k[1, ..., :n, :])
+                        v[0, ..., :n, :].copy_(v[1, ..., :n, :])
+                    plan._forgot_at = int(shared["cur_t"])
+                    return None
+
+                handles.append(self.model.register_forward_pre_hook(forget_noise,
+                                                                    with_kwargs=True))
 
             # The push and a truncation scheme are different interventions --
             # one reshapes the representation, the other the distribution over

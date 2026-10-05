@@ -1014,6 +1014,14 @@ def main() -> None:
     ap.add_argument("--daydream-scene", action="store_true",
                     help="end the daydream with a scene break (* * *) instead of a "
                          "paragraph break, so the story opens a new scene")
+    ap.add_argument("--plan-size", type=float, default=0.0,
+                    help="size the noise where the plan lives: the length that moves the "
+                         "hidden state two thirds up the model, over the first 32 words of "
+                         "its default continuation, by this share of the distance between "
+                         "the plan states of this request and --plan-alt-brief's; held fixed "
+                         "(no next-word controller). 0 = the usual sizing")
+    ap.add_argument("--plan-alt-brief", default="scifi",
+                    help="the other story request whose plan state sets --plan-size's scale")
     ap.add_argument("--weight-noise", type=float, default=0.0,
                     help="write each steered story with its own perturbed copy of the model: "
                          "Gaussian noise on the MLP output projections at the steering "
@@ -1053,6 +1061,11 @@ def main() -> None:
     ap.add_argument("--margin-content", action="store_true",
                     help="margin scaling amplifies only sure choices of a content word "
                          "(a whole word of five or more letters)")
+    ap.add_argument("--prompt-forget", choices=["", "prompt", "all"], default="",
+                    help="once the writing noise has faded out, replace the story's memory "
+                         "of the prompt (prompt) or of everything so far (all) with the "
+                         "noise-free shadow's, so the noise lasts only through the words "
+                         "it chose")
     ap.add_argument("--margin-steps", type=int, default=0,
                     help="margin scaling only on the story's first N decisions (0 = all)")
     ap.add_argument("--margin-words", action="store_true",
@@ -1569,6 +1582,12 @@ def main() -> None:
             or (args.constraint_set == "whole" and args.whole_prompt != "young") else
             wp.build_generic_messages(checker.requirements(), args.constraints)]
         stories_per_prompt = args.stories
+        if float(getattr(args, "plan_size", 0.0) or 0.0) > 0:
+            from noiseegra import online_calibration as _oc
+            _oc.PLAN_KAPPA = float(args.plan_size)
+            _oc.PLAN_ALT_PROMPT = wp.build_middle_messages(
+                checker.requirements(), args.constraints, target=args.story_target,
+                brief=args.plan_alt_brief)
         print(f"task: one generic instruction, {len(args.constraints)} requirements, "
               f"{stories_per_prompt} stories in a single group")
         print("\n" + messages[0][1]["content"] + "\n")
