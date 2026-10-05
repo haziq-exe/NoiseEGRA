@@ -3704,3 +3704,22 @@ written by its own perturbed copy of the model (--weight-noise 0.5). OLMo: 50/50
 rules 0.98, whole-story distinct 1.32 (current 1.17, weight noise alone 1.57,
 untouched 1.13). Llama-8B: 50/50, rules 0.80, distinct 4.14 (current 4.09). The
 rule steering keeps rules level, but the combination adds no plot variety.
+
+**Mistral-Nemo 12B, the largest model that fits on two T4s in fp16 (runs r313-r318,
+50 stories; one blind rating round, 5 raters, same seeds).** Gemma 4 12B, the
+strongest candidate, overflows in fp16 once noise is added (nan in the noise
+sizing, sampling crash) and cannot run on T4s.
+
+| Mistral-Nemo 12B | Coherent | Under 60 words | Rules | Distinct, whole | Quality | Rated 1-3 |
+|---|---|---|---|---|---|---|
+| Untouched | 50 | 1 | 1.46 | 5.18 | 5.50 | 4 |
+| Top-p | 50 | 2 | 1.60 | 4.26 | 4.36 | 11 |
+| Current method | 50 | 11 | 1.10 | 5.40 | 3.80 | 21 |
+| Current, floor 1/20 | 50 | 12 | 1.12 | 4.94 | | |
+| Current, floor 1/20, prompt noise 1/4 | 50 | 3 | 0.98 | 5.96 | 3.66 | 25 |
+
+Untouched Nemo already writes varied stories. The method breaks the fewest rules
+but costs 1.7-1.8 quality: the controller sits at its floor in every story and
+the openings come out garbled ("a squirrel flattens against their heart rate").
+Lowering the floor and the prompt noise cut the short stories but not the
+quality loss. The method fails on Nemo as it stands.
