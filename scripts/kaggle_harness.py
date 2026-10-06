@@ -290,6 +290,15 @@ sh(f"git -C {{repo}} fetch --quiet --all && git -C {{repo}} checkout --quiet {{C
 print("code at", sh(f"git -C {{repo}} log --oneline -1",
                     capture_output=True, text=True).stdout.strip(), flush=True)
 
+# ---- saved models -----------------------------------------------------------
+# A model saved by `kaggle_harness.py cache-model` is attached as a notebook
+# source; the loader reads it from there instead of downloading it.
+caches = [str(p) for p in Path("/kaggle/input").rglob("*")
+          if p.is_dir() and p.name.startswith("noiseegra-cache-")] if root.is_dir() else []
+if caches:
+    os.environ["EGRA_LOCAL_MODELS"] = os.pathsep.join(caches)
+    print("saved models attached:", ", ".join(caches), flush=True)
+
 # ---- dependencies -----------------------------------------------------------
 os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
 sh("pip install -q hf_transfer vendi-score sentence-transformers 'datasets<4' "
@@ -354,7 +363,8 @@ sys.exit(rc)
 def write_kernel(folder: Path, *, kernel_id: str, title: str, repo: str, commit: str,
                  state_dir: str, out_name: str, command: str, gpu: bool,
                  dataset_sources: List[str], spacy: bool,
-                 max_minutes: int = 240, expect_state: bool = False) -> None:
+                 max_minutes: int = 240, expect_state: bool = False,
+                 kernel_sources: List[str] = ()) -> None:
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "run.py").write_text(
         KERNEL_TEMPLATE.format(repo=repo, commit=commit, state_dir=state_dir,
@@ -374,9 +384,60 @@ def write_kernel(folder: Path, *, kernel_id: str, title: str, repo: str, commit:
         "enable_internet": True,
         "dataset_sources": dataset_sources,
         "competition_sources": [],
-        "kernel_sources": [],
+        "kernel_sources": list(kernel_sources),
         "model_sources": [],
     }, indent=2), encoding="utf-8")
+
+
+# --------------------------------------------------------------------------- #
+#  Saved models                                                                #
+# --------------------------------------------------------------------------- #
+
+CACHE_TEMPLATE = '''# Saves one model's weights as this notebook's output, so experiment runs can
+# attach it (kaggle_harness.py run --model-cache) instead of downloading it.
+import os, subprocess, sys, time
+from pathlib import Path
+os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
+subprocess.run("pip install -q hf_transfer 2>&1 | tail -1", shell=True)
+from huggingface_hub import snapshot_download
+MODEL = {model_id!r}
+dest = Path("/kaggle/working") / MODEL.replace("/", "__")
+t0 = time.time()
+snapshot_download(MODEL, local_dir=str(dest),
+                  allow_patterns=["*.json", "*.safetensors", "*.model", "*.txt", "*.jinja",
+                                  "tokenizer*"])
+size = sum(f.stat().st_size for f in dest.rglob("*") if f.is_file()) / 1e9
+print(f"saved {{MODEL}}: {{size:.1f}} GB in {{time.time() - t0:.0f}} s at {{dest}}", flush=True)
+if size > 19.5:
+    sys.exit("too large for a notebook's 20 GB output; this copy will not be kept")
+'''
+
+
+def cache_slug(model_id: str) -> str:
+    """The cache notebook's slug for a model id (Kaggle slugs: lowercase, hyphens)."""
+    import re
+    s = re.sub(r"[^a-z0-9]+", "-", model_id.lower()).strip("-")
+    return f"{KERNEL_PREFIX}-cache-{s}"[:50].rstrip("-")
+
+
+def cmd_cache_model(args) -> None:
+    api = _api()
+    user = _username(api, args.user)
+    slug = cache_slug(args.model_id)
+    folder = EXPERIMENTS / "_model_cache" / slug
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "run.py").write_text(CACHE_TEMPLATE.format(model_id=args.model_id), encoding="utf-8")
+    (folder / "kernel-metadata.json").write_text(json.dumps({
+        "id": f"{user}/{slug}", "title": slug, "code_file": "run.py", "language": "python",
+        "kernel_type": "script", "is_private": True, "enable_gpu": False,
+        "enable_internet": True, "dataset_sources": [], "competition_sources": [],
+        "kernel_sources": [], "model_sources": [],
+    }, indent=2), encoding="utf-8")
+    reply = api.kernels_push(str(folder))
+    if getattr(reply, "error", None):
+        sys.exit(f"push refused: {reply.error}")
+    print(f"pushed {user}/{slug} (no GPU). When it completes, attach it with "
+          f"--model-cache {args.model_id}")
 
 
 # --------------------------------------------------------------------------- #
@@ -594,7 +655,8 @@ def cmd_run(args) -> None:
                  title=f"{KERNEL_PREFIX} {name}", repo=args.repo, commit=commit,
                  state_dir=dataset_slug, out_name=name, command=command,
                  gpu=not args.no_gpu, dataset_sources=sources, spacy=not args.no_spacy,
-                 max_minutes=args.max_minutes, expect_state=bool(sources))
+                 max_minutes=args.max_minutes, expect_state=bool(sources),
+                 kernel_sources=[f"{user}/{cache_slug(m)}" for m in (args.model_cache or [])])
 
     if args.dry_run:
         print(f"would push {kernel_id}")
@@ -924,11 +986,21 @@ def main() -> None:
                         "cleanly at this point rather than running to Kaggle's "
                         "nine-hour cap; the checkpoint means you resume by reissuing "
                         "the same command")
+    r.add_argument("--model-cache", nargs="*", default=[], metavar="MODEL_ID",
+                   help="attach this account's saved copy of each model (made by "
+                        "cache-model) so the run reads it from disk, not the Hub")
     r.add_argument("command", nargs=argparse.REMAINDER,
                    help="after --, the command to run inside the repo. Write {OUT} "
                         "for the output directory; a command that does not mention "
                         "it gets --out appended")
     r.set_defaults(func=cmd_run)
+
+    cm = sub.add_parser("cache-model",
+                        help="save a model's weights as a notebook output (no GPU) for "
+                             "runs to attach with --model-cache")
+    cm.add_argument("--model-id", required=True)
+    cm.add_argument("--user", help="Kaggle username; cached after the first time")
+    cm.set_defaults(func=cmd_cache_model)
 
     sess = sub.add_parser("sessions",
                           help="list harness kernels still consuming GPU time")

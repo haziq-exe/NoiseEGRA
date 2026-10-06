@@ -38,6 +38,26 @@ def strip_reasoning(text: str) -> str:
 
 
 
+def local_model_path(model_id: str) -> str:
+    """A saved copy of ``model_id`` if one is attached, else ``model_id``.
+
+    On Kaggle a model can be saved once as a notebook's output and attached to
+    later runs (scripts/kaggle_harness.py cache-model), so its weights are read
+    from disk instead of downloaded each time. ``EGRA_LOCAL_MODELS`` lists the
+    folders to look in (os.pathsep-separated); a copy is a subfolder named after
+    the model id with '/' as '__', found at most two levels down."""
+    import os
+    from pathlib import Path
+    roots = [r for r in os.environ.get("EGRA_LOCAL_MODELS", "").split(os.pathsep) if r]
+    name = str(model_id).replace("/", "__")
+    for r in roots:
+        for cand in [Path(r) / name, *Path(r).glob(f"*/{name}"), *Path(r).glob(f"*/*/{name}")]:
+            if (cand / "config.json").is_file():
+                print(f"loading {model_id} from the saved copy at {cand}", flush=True)
+                return str(cand)
+    return model_id
+
+
 def _cache_tensors(pkv):
     """Each layer's (keys, values) in a generation cache, whatever its kind:
     a Cache with ``layers`` (transformers 4.56+), one with ``key_cache`` and
@@ -61,6 +81,7 @@ class EGRA:
             model_dtype = torch.float16
         else:
             model_dtype = torch.float32
+        model = local_model_path(model)
         if use_AENI:
             self.model = AutoModelForCausalLM.from_pretrained(
                 model, dtype=model_dtype, device_map="auto", attn_implementation="eager"
