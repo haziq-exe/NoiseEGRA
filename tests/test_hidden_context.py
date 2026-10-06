@@ -188,6 +188,40 @@ check("the run id names it", _spec_to_run_id("M", ExperimentSpec(hidden_context=
       and _spec_to_run_id("M", ExperimentSpec(hidden_context="transplantiso:2.0:4")) == "M__HIDDENtransplantiso2p4",
       _spec_to_run_id("M", ExperimentSpec(hidden_context="transplantiso:2.0:4")))
 
+print("\n== a random direction grown into one the model amplifies ==")
+import noiseegra.hidden_context as HC4  # noqa: E402
+ids = egra.tokenizer(egra.apply_chat_template(P, tokenize=False, add_generation_prompt=True),
+                     return_tensors="pt")["input_ids"]
+t0, f0, l0 = HC4.amplified_direction(egra, ids, 3, 0.3, 0, 1, 3)
+t5, f5, l5 = HC4.amplified_direction(egra, ids, 3, 0.3, 5, 1, 3)
+check("both start from the same random direction", abs(f0 - f5) < 1e-6)
+check("the grown direction keeps its length", abs(float(t5.norm() - t0.norm())) < 1e-3 * float(t0.norm()))
+check("and moves the planning state further than the random start", l5 > f5, f"{f5:.4f} -> {l5:.4f}")
+check("nothing is left needing gradients", not any(p.requires_grad for p in egra.model.parameters()))
+a1 = HC4.generate_with_amplified(egra, P, 3, 0.3, 3, (1, 2), max_new_tokens=8, story_index=0)
+a2 = HC4.generate_with_amplified(egra, P, 3, 0.3, 3, (1, 2), max_new_tokens=8)
+check("a story is written, reproducibly", isinstance(a1, str) and a1 == a2)
+check("and nothing stays hooked", egra.generate(P, max_new_tokens=8, do_sample=True, seed=5) == plain)
+check("the run id names it", _spec_to_run_id("M", ExperimentSpec(hidden_context="amplify:0.25:8")) == "M__HIDDENamplify0p25s8",
+      _spec_to_run_id("M", ExperimentSpec(hidden_context="amplify:0.25:8")))
+
+print("\n== a hidden story idea ==")
+from noiseegra.hidden_context import generate_after_hidden as gah  # noqa: E402
+calls = []
+_mg = egra.model.generate
+def _spy_gen(**kw):
+    calls.append(kw["input_ids"][0].tolist())
+    return _mg(**kw)
+egra.model.generate = _spy_gen
+s0 = gah(egra, P, "premise:0", 4, n_tokens=32, layers=(1, 2), max_new_tokens=8, story_index=0)
+egra.model.generate = _mg
+cue_ids = egra.tokenizer("Story idea:", add_special_tokens=False)["input_ids"]
+check("the idea is written after the cue", calls[0][-len(cue_ids):] == cue_ids)
+check("and the story after the idea, the cue included", calls[1][len(calls[0]) - len(cue_ids):][:len(cue_ids)] == cue_ids)
+s1 = gah(egra, P, "premise:0.3", 4, n_tokens=32, layers=(1, 2), max_new_tokens=8, story_index=0)
+check("a story follows it", isinstance(s1, str) and "Story idea" not in s1)
+check("the run id names it", _spec_to_run_id("M", ExperimentSpec(hidden_context="premise:0.2")) == "M__HIDDENpremise0p2")
+
 print()
 print("all passed" if not FAILURES else f"FAILED: {FAILURES}")
 sys.exit(1 if FAILURES else 0)

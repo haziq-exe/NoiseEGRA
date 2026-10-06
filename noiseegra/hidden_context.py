@@ -120,9 +120,16 @@ def generate_after_hidden(model, prompt, kind: str, seed: int, n_tokens: int = 3
            else tok.eos_token_id}
     E = m.get_input_embeddings()
 
-    if kind == "self" or kind.startswith("noisy:"):
+    premise = kind.startswith("premise:")
+    if premise:
+        # A one-sentence story idea, written after a fixed cue at the start of
+        # the reply and hidden with it: the plot is decided in a few committed
+        # words, which is where the push acts (sigma 0: the model's own idea).
+        cue = torch.tensor([tok("Story idea:", add_special_tokens=False)["input_ids"]], device=dev)
+        ids = torch.cat([ids, cue], dim=-1)
+    if kind == "self" or kind.startswith("noisy:") or premise:
         handles, state = [], None
-        if kind.startswith("noisy:"):
+        if (kind.startswith("noisy:") or premise) and float(kind.split(":", 1)[1]) > 0:
             # The opening is sampled as usual, with the push on top of it; the
             # prompt is read and the story written without it.
             state, handles = _turning_push(model, seed, float(kind.split(":", 1)[1]),
@@ -160,6 +167,9 @@ def generate_after_hidden(model, prompt, kind: str, seed: int, n_tokens: int = 3
             for hd in handles:
                 hd.remove()
         hid = out[0, ids.shape[-1]:]
+        if premise:
+            n_tokens = int(cue.shape[-1]) + 6
+            ids, hid = ids[:, :-cue.shape[-1]], torch.cat([cue[0], hid])
         eos = tok.eos_token_id
         if eos is not None and (hid == eos).any():
             hid = hid[:int((hid == eos).nonzero()[0])]
@@ -492,4 +502,129 @@ def generate_with_transplant(model, prompt, seed: int, alpha: float, layers, *,
         print(f"  [transplant{' iso' if iso else ''} {alpha:g}] story {story_index}: layer "
               f"{layer}, last {n_positions} prompt positions, push {seen.get('ratio', 0):.2f} x "
               f"the state there; from: {text[:120]}", flush=True)
+    return out
+
+
+# --------------------------------------------------------------------------- #
+#  A random direction grown into one the model amplifies                       #
+# --------------------------------------------------------------------------- #
+
+class _Stop(Exception):
+    pass
+
+
+def amplified_direction(model, ids, seed: int, radius: float, steps: int, src: int, tgt: int,
+                        n_last: int = 8, lr: float = 0.5):
+    """A per-story direction at block ``src`` that later blocks amplify.
+
+    Random noise is corrected away by the layers after it; directions toward
+    other real states are not (arXiv 2410.12555, 2606.24964). Following MELBO
+    (Mack and Turner, 2024): start from a random direction drawn from ``seed``,
+    of length ``radius`` x the hidden state's mean size at ``src``, added at every
+    prompt position after the first, and take ``steps`` gradient steps on the
+    sphere of that radius to make the state at block ``tgt`` over the last
+    ``n_last`` prompt positions -- where the reply is planned -- move as far as
+    possible from where it is without the push. Only the prompt is read; nothing
+    is generated and no example text is used. ``steps`` 0 is the random start
+    itself (the control). Returns (direction, how far it moved the planning
+    state at the start and at the end, relative to that state's size).
+    """
+    blocks = model._get_transformer_blocks()
+    for p in model.model.parameters():
+        p.requires_grad_(False)
+    box = {}
+
+    def grab_src(module, inp, out):
+        t = out[0] if isinstance(out, (tuple, list)) else out
+        box["src"] = t[0, 1:].detach().float()
+
+    def grab_tgt(module, inp, out):
+        t = out[0] if isinstance(out, (tuple, list)) else out
+        box["tgt"] = t[0, -int(n_last):]
+        raise _Stop
+
+    def run(theta=None):
+        hs = [blocks[int(tgt)].register_forward_hook(grab_tgt)]
+        if theta is None:
+            hs.append(blocks[int(src)].register_forward_hook(grab_src))
+        else:
+            def add(module, inp, out):
+                t = out[0] if isinstance(out, (tuple, list)) else out
+                t2 = t.clone()
+                t2[:, 1:] = t2[:, 1:] + theta.to(device=t.device, dtype=t.dtype)
+                return (t2, *out[1:]) if isinstance(out, (tuple, list)) else t2
+            hs.append(blocks[int(src)].register_forward_hook(add))
+        try:
+            model.model(input_ids=ids, use_cache=False)
+        except _Stop:
+            pass
+        finally:
+            for h in hs:
+                h.remove()
+        return box["tgt"]
+
+    with torch.no_grad():
+        clean = run().float().detach()
+    R = float(radius) * float(box["src"].norm(dim=-1).mean())
+    scale = float(clean.norm(dim=-1).mean())
+    g = torch.Generator().manual_seed((int(seed) * 15485863 + 3) & 0x7FFFFFFF)
+    theta = torch.randn(box["src"].shape[-1], generator=g).to(box["src"].device)
+    theta = theta * (R / theta.norm())
+
+    def moved(th):
+        with torch.no_grad():
+            return float((run(th).float() - clean).norm(dim=-1).mean()) / scale
+
+    first = moved(theta)
+    for _ in range(int(steps)):
+        th = theta.clone().requires_grad_(True)
+        with torch.enable_grad():
+            loss = (run(th).float() - clean).pow(2).sum(-1).mean()
+            loss.backward()
+        grad = th.grad
+        if grad is None or not torch.isfinite(grad).all() or float(grad.norm()) == 0:
+            break
+        grad = grad - (grad @ theta) / (theta @ theta) * theta
+        theta = theta + float(lr) * R * grad / grad.norm()
+        theta = theta * (R / theta.norm())
+    return theta.detach(), first, (moved(theta) if steps else first)
+
+
+def generate_with_amplified(model, prompt, seed: int, radius: float, steps: int, layers, *,
+                            max_new_tokens: int = 500, max_words=None,
+                            temperature: float = 1.0, story_index=None) -> str:
+    """An untouched story written with this story's amplified direction added at
+    the first steering layer, at every position after the first (prompt and
+    story), the way MELBO's vectors are applied. The direction is grown toward
+    the planning positions at two thirds of the depth."""
+    layers = list(layers)
+    src = int(layers[0])
+    tgt = max(src + 1, int(round(2 * len(model._get_transformer_blocks()) / 3)))
+    chat = model.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
+    ids = model.tokenizer(chat, return_tensors="pt")["input_ids"].to(model._input_device())
+    theta, first, last = amplified_direction(model, ids, seed, radius, steps, src, tgt)
+    blocks = model._get_transformer_blocks()
+    state = {"prefill": True}
+
+    def add(module, inp, out):
+        t = out[0] if isinstance(out, (tuple, list)) else out
+        with torch.no_grad():
+            v = theta.to(device=t.device, dtype=t.dtype)
+            if state["prefill"]:
+                t[:, 1:] += v
+                state["prefill"] = False
+            else:
+                t += v
+        return None
+
+    h = blocks[src].register_forward_hook(add)
+    try:
+        out = model.generate(prompt, max_new_tokens=max_new_tokens, do_sample=True,
+                             temperature=temperature, seed=seed, max_words=max_words)
+    finally:
+        h.remove()
+    if story_index is not None and int(story_index) < 3:
+        print(f"  [amplified {radius:g}x, {steps} steps] story {story_index}: layer {src} -> "
+              f"{tgt}; moves the planning state {first:.3f} -> {last:.3f} of its size",
+              flush=True)
     return out

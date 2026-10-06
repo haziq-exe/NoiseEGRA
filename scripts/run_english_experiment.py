@@ -1035,7 +1035,12 @@ def main() -> None:
                          "at --layers), 'transplant:ALPHA[:P]' (ALPHA x a random sentence's "
                          "state minus the average sentence's, added at the middle of --layers "
                          "to the last P prompt positions, default 8; no text shown) or "
-                         "'transplantiso:ALPHA[:P]' (a random direction of the same length)")
+                         "'transplantiso:ALPHA[:P]' (a random direction of the same length), "
+                         "'amplify:R:STEPS' (a random direction of R x the state's size at the "
+                         "first layer, grown by STEPS gradient steps on the prompt into one "
+                         "that moves the planning positions most; added throughout) or "
+                         "'premise:SIGMA' (a hidden one-sentence story idea after 'Story idea:', "
+                         "written under a push of SIGMA, then the untouched story)")
     ap.add_argument("--hidden-tokens", type=int, default=32,
                     help="how many random words --hidden-context words places")
     ap.add_argument("--boundary-gain", type=float, default=0.0,
@@ -2261,7 +2266,8 @@ def main() -> None:
             raise SystemExit("--hidden-context needs the untouched condition in the suite")
         for k in args.hidden_context:
             if k not in ("words", "sentence", "self") and not k.startswith(
-                    ("latent:", "noisy:", "select:", "weights:", "transplant:", "transplantiso:")):
+                    ("latent:", "noisy:", "select:", "weights:", "transplant:", "transplantiso:",
+                     "amplify:", "premise:")):
                 raise SystemExit(f"--hidden-context: unknown kind {k!r}")
         made += [dataclasses.replace(base, hidden_context=k,
                                      hidden_tokens=int(args.hidden_tokens),
