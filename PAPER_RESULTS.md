@@ -3842,3 +3842,55 @@ library floor" becomes "Leo sketches dragons ... on the library steps"). A real
 meaning state at the planning positions, at up to 0.8 x the state's size, does no
 better than a random push there. The same sentence as text in the reply changes
 the plot; as a hidden state it does not.
+
+## Quality of the transplant; an amplified random direction; a hidden story idea (2026-10-06, runs r324-r327)
+
+**Transplant quality** (r324, blind round per model, all versions on the same 50 seeds):
+OLMo untouched 5.48, top-p 3.38, current 5.00, transplant 1x 5.64, 2x 5.24, random push
+5.30; Qwen untouched 5.10, top-p 4.88, current 4.70, transplant 1x 5.04, 2x 5.08, random
+push 5.08. Transplant 1x vs current: OLMo +0.64 [+0.30, +0.98], Qwen +0.34 [+0.02, +0.68].
+Rules: OLMo 1.10 / 1.06 vs untouched 1.36 (2x: -0.30 [-0.56, -0.02]). No damage.
+
+**Amplified random direction** (`--hidden-context amplify:R:STEPS`, OLMo, r325; and
+`--amplify R:STEPS` with the rule steering, r327). Per story, a random direction of R x
+the hidden state's mean size at layer 7, grown by 8 gradient steps on the prompt alone
+(MELBO-style, Mack and Turner 2024) into the direction of the same length that moves the
+state at layer 21 over the last 8 prompt positions most; added at every position after
+the first. At R 0.25 the growing raises that movement from 0.15-0.18 to 1.06-1.22 of the
+state's size. STEPS 0 is the ungrown random start.
+
+| OLMo, 50 stories | Coherent | Distinct, whole story | Rules | Over 200 words | Quality | Rated 1-3 |
+|---|---|---|---|---|---|---|
+| untouched | 50 | 1.13 | 1.36 | 0 | 5.90 | 0 |
+| top-p | 50 | 1.95 | 1.20 | 1 | 4.28 | 4 |
+| current | 50 | 1.17 | 1.02 | 0 | 5.74 | 0 |
+| amplified 0.25, no steering | 28 | 7.19 | 1.38 | 32 | 1.90 | 40 |
+| amplified 0.5, no steering | 34 | 8.64 | 1.84 | 42 | 1.08 | 50 |
+| random start 0.5, no steering | 50 | 1.20 | 1.02 | 0 | 5.24 | 0 |
+| amplified 0.25, steered | 28 | 7.68 | 1.40 | 23 | 1.64 | 45 |
+| amplified 0.5, steered | 38 | 7.52 | 1.86 | 35 | 1.08 | 50 |
+| random start 0.25, steered | 50 | 1.33 | 0.78 | 0 | 5.46 | 0 |
+
+The direction the model amplifies most at the planning positions switches the kind of
+reply: essays about the request, writing advice, refusals ("I can't make it, but here
+it is"), off-topic text at 0.5. The coherence filter passes many of these (fluent, not
+garbled), so the variety score counts off-task replies; the blind raters do not. The rule
+steering does not hold the reply in story mode against it.
+
+**Hidden story idea** (`--hidden-context premise:SIGMA`, Qwen3-8B, r326): the reply starts
+with "Story idea:", one hidden sentence is written under a turning push of SIGMA x the
+hidden state's norm at layers 8-18 (0 = no push), then the untouched story.
+
+| Qwen3-8B, 50 stories | Coherent | Distinct, whole story | Rules | Quality | Rated 1-3 |
+|---|---|---|---|---|---|
+| untouched | 50 | 1.00 | 1.92 | 5.14 | 0 |
+| top-p | 50 | 1.00 | 1.60 | 4.86 | 3 |
+| current | 50 | 1.14 | 1.42 | 4.72 | 9 |
+| idea, no push | 50 | 1.10 | 1.38 | 5.34 | 0 |
+| idea, push 0.1 | 50 | 1.12 | 1.54 | 5.32 | 2 |
+| idea, push 0.2 | 49 | 1.13 | 1.48 | 4.78 | 4 |
+
+The hidden idea gives the best quality and fewest rules broken of these versions on
+Qwen (no push vs current: quality +0.62 [+0.24, +1.00]; rules vs untouched -0.54), but no
+plot variety: Qwen's ideas are themselves one idea ("a curious kid finds a mysterious
+book"), and the push does not change them.
