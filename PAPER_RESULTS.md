@@ -3807,3 +3807,38 @@ reading the same text.
 
 On OLMo, raising the noise goes from the same story to worse writing to broken text,
 with no size at which the plot changes and the writing holds up.
+
+## A random sentence's meaning where the reply is planned (2026-10-06, run r324)
+
+Why random noise does not change plots, from the literature: models correct
+generic perturbations of the hidden state back toward states real text produces,
+and only directions toward other real activations change the output much
+(arXiv 2410.12555, 2606.24964); the plan for a reply is formed at the last prompt
+positions and pulled in by attention while writing (Dong et al., ICML 2025; Men et
+al., EMNLP 2024), and those positions are the ones the current method leaves clean.
+
+Test (`--hidden-context transplant:ALPHA`): an untouched story, except that while the
+prompt is read, ALPHA times a random Wikipedia sentence's hidden state minus the
+average sentence's (mean over its tokens, first token left out) is added once at
+the middle steering layer (OLMo layer 11, Qwen layer 13) to the last 8 prompt
+positions. The sentence is the one the hidden-sentence control showed as text
+for the same seed; it is never shown. Control (`transplantiso`): a random
+direction of the same length at the same place. At ALPHA 1 the push is 0.36-0.45 x
+the hidden state's size there. 50 stories each, whole-story distinct of 10.
+
+| | OLMo | Qwen3-8B |
+|---|---|---|
+| untouched | 1.13 | 1.00 |
+| transplant 1x | 1.26 | 1.00 |
+| transplant 2x | 1.16 | 1.05 (49/50 coherent) |
+| random push, same length as 2x | 1.12 | 1.03 |
+| hidden random sentence, shown as text (r263) | 3.15 | 2.83 |
+| hidden random words, shown as text (r263) | 4.56 | 2.61 |
+
+No story is identical to the untouched story of its seed, and at 2x only 9/50 (OLMo)
+and 23/50 (Qwen) open with the same five words: the push changes the wording and
+names, then the model writes the same story (OLMo seed 0: "Mara tiptoes across the
+library floor" becomes "Leo sketches dragons ... on the library steps"). A real
+meaning state at the planning positions, at up to 0.8 x the state's size, does no
+better than a random push there. The same sentence as text in the reply changes
+the plot; as a hidden state it does not.
