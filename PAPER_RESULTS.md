@@ -3926,3 +3926,23 @@ broke 19/50 replies in r327. OLMo-3-7B, 50 stories, same seeds; one blind qualit
 - Locked R 0.25 is clean (quality = current) and changes nothing.
 - The on-task direction does not hold the reply type against the unlocked direction
   (32/50 coherent against 28/50 without it).
+
+## Sizes of the reply-type-locked direction (2026-10-07, run r329)
+
+The same method as r328 (random direction grown with the first word's chances locked,
+rule steering), OLMo-3-7B, 50 stories, one blind round with untouched, top-p and current.
+
+| OLMo, 50 stories | Coherent | Distinct, whole story | Rules | Under 60 / over 200 words | Quality | Rated 1-3 |
+|---|---|---|---|---|---|---|
+| untouched | 50 | 1.13 | 1.36 | 0 / 0 | 5.54 | 1 |
+| top-p | 50 | 1.95 | 1.20 | 0 / 1 | 3.62 | 22 |
+| current | 50 | 1.17 | 1.02 | 0 / 0 | 5.18 | 0 |
+| locked, R 0.35 | 50 | 1.44 | 1.02 | 1 / 7 | 4.70 | 5 |
+| locked, R 0.4 | 49 | 1.32 | 1.14 | 1 / 6 | 4.66 | 7 |
+| locked x3 (weight 30), R 0.5 | 50 | 1.91 | 1.32 | 3 / 8 | 3.88 | 15 |
+| locked, R 0.5 (r328, separate round) | 50 | 2.48 | 1.24 | 3 / 8 | 3.92 | 15 |
+
+Distinct vs untouched: R 0.35 +0.31 [-0.14, +0.82], R 0.4 +0.19 [-0.18, +0.64], R 0.5 x3
++0.78 [+0.16, +1.58]. Quality vs current: -0.48, -0.52, -1.30 (all real). There is no
+size between 0.25 and 0.5 where the plot changes and the writing holds: quality falls
+first (by 0.35), and the variety only appears at 0.5, where quality is top-p's.
