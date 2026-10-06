@@ -1,5 +1,5 @@
 {
- "_readme": "Contrast pairs for the whole-story rules on the middle-school task. Each direction comes from the middle-school pair file where it has one -- present tense, register, dialogue, naming, repeated sentences -- and otherwise from the children's file. Four of those are already written at middle-school sentence length in that file (both_genders, simile, no_heading, in_story: sentences of about fourteen to seventeen words, two of them framed around middle-school readers); closure is the one still in the children's register.",
+ "_readme": "Contrast pairs for the whole-story rules on the middle-school task. Each direction comes from the middle-school pair file where it has one -- present tense, register, dialogue, naming, repeated sentences -- and otherwise from the children's file. Four of those are already written at middle-school sentence length in that file (both_genders, simile, no_heading, in_story: sentences of about fourteen to seventeen words, two of them framed around middle-school readers); closure is the one still in the children's register. on_task (2026-10-06, Haziq): a story sentence against the ways replies left the story under strong pushes on OLMo -- refusals, essays and comments on the requirements, writing advice, 'here is a story' preambles, outlines, questions back to the user, off-topic text. Hand-written; steered only, not scored.",
  "constraints": {
   "present_tense": {
    "targets": "present_tense",
@@ -645,6 +645,91 @@
      "prefix": "The lesson is over.",
      "positive": "Books go into bags. The room empties out. The teacher turns the light off.",
      "negative": "Books go into bags. Then the teacher speaks again. Nobody is leaving yet."
+    }
+   ]
+  },
+  "on_task": {
+   "targets": "on_task",
+   "pairs": [
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Mara steps onto the bus and scans the rows for an empty seat near the back.",
+     "negative": "I am sorry, but I cannot write that story with every one of these requirements at once."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Theo forgets his lines and the auditorium goes very quiet around him.",
+     "negative": "You have given a very constrained list of rules that would make any story feel artificial."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Rain slides down the window while Nia waits for her name to be called.",
+     "negative": "Here is a short story written in the present tense that meets each of your requirements."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Jonah grips the rope and swings across the creek before his sister can stop him.",
+     "negative": "Writing for middle schoolers works best when the sentences are short and the stakes are clear."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "The hallway smells like floor wax as Priya hurries past the closed classroom doors.",
+     "negative": "To calculate how long the story should be, first count the words in each paragraph."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Leo slips the note into his locker and glances over his shoulder at the empty corridor.",
+     "negative": "Let me break down each of your requirements and explain why some of them conflict."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Ana kneels beside the injured fox and whispers that she will not hurt it.",
+     "negative": "This sounds like a classroom assignment, so here are some tips for getting started on it."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "The power goes out just as Sam opens the last page of the mystery he is reading.",
+     "negative": "As an AI, I do not write stories that follow such a strict and unusual set of rules."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Kai races the tide back to the cliff path, his sneakers filling with cold seawater.",
+     "negative": "Before I write anything, could you tell me more about the reader and the theme you want?"
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Rosa counts the coins in her pocket twice and still comes up one dollar short.",
+     "negative": "Great question! Stories for this age group usually need a relatable hero and a clear goal."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "The old elevator shudders between floors and Eli presses every button at once.",
+     "negative": "The list you shared reads like a style guide, and style guides are useful for editors."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Maya hears the dog barking in the empty house next door and decides to look.",
+     "negative": "I cannot fulfil this request, but I am happy to help with a different kind of writing."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Dev holds the trophy above his head while the whole gym chants his name.",
+     "negative": "Below is an outline of the plot, followed by notes on tense, dialogue and reading level."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Lily finds a key taped under the library table with her name written on it.",
+     "negative": "The number of pages a reprinted book has depends on the font, margins and paper size."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Omar steps off the train into a town where every clock has stopped at noon.",
+     "negative": "Present tense, dialogue, one named character: those are the requirements, so let us check them."
+    },
+    {
+     "prefix": "The instruction asks for a short story for middle schoolers.",
+     "positive": "Zoe paddles the canoe toward the island as the fog closes in behind her.",
+     "negative": "In this essay I will explain why short stories matter so much for young readers today."
     }
    ]
   }

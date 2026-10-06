@@ -1014,11 +1014,13 @@ def main() -> None:
     ap.add_argument("--daydream-scene", action="store_true",
                     help="end the daydream with a scene break (* * *) instead of a "
                          "paragraph break, so the story opens a new scene")
-    ap.add_argument("--amplify", default=None, metavar="R:STEPS",
+    ap.add_argument("--amplify", default=None, metavar="R:STEPS[:LOCK]",
                     help="add to every steered arm a per-story random direction of R x the "
                          "hidden state's size at the first --layers layer, grown by STEPS "
                          "gradient steps on the prompt into the one that moves the planning "
-                         "positions most (STEPS 0: the random start)")
+                         "positions most (STEPS 0: the random start); LOCK > 0 also charges "
+                         "each step LOCK x the change in the first word's chances, so it "
+                         "cannot grow by switching the kind of reply")
     ap.add_argument("--plan-size", type=float, default=0.0,
                     help="size the noise where the plan lives: the length that moves the "
                          "hidden state two thirds up the model, over the first 32 words of "
@@ -1597,8 +1599,8 @@ def main() -> None:
         stories_per_prompt = args.stories
         if getattr(args, "amplify", None):
             from noiseegra import hidden_context as _hc
-            rr, kk = args.amplify.split(":")
-            _hc.AMPLIFY = (float(rr), int(kk))
+            parts = args.amplify.split(":")
+            _hc.AMPLIFY = (float(parts[0]), int(parts[1])) + ((float(parts[2]),) if len(parts) > 2 else ())
         if float(getattr(args, "plan_size", 0.0) or 0.0) > 0:
             from noiseegra import online_calibration as _oc
             _oc.PLAN_KAPPA = float(args.plan_size)

@@ -365,7 +365,8 @@ def _ortho_tag_once(model_name: str, spec: ExperimentSpec, *, compress: bool) ->
         parts.append(f"__forget{plan.prompt_forget}")
     from . import hidden_context as _hc
     if _hc.AMPLIFY is not None:
-        parts.append(f"__amp{_float_tag(_hc.AMPLIFY[0])}s{int(_hc.AMPLIFY[1])}")
+        parts.append(f"__amp{_float_tag(_hc.AMPLIFY[0])}s{int(_hc.AMPLIFY[1])}"
+                     + (f"lk{_float_tag(_hc.AMPLIFY[2])}" if len(_hc.AMPLIFY) > 2 else ""))
     from . import online_calibration as _oc
     if _oc.PLAN_KAPPA > 0:
         parts.append(f"__plansz{_float_tag(_oc.PLAN_KAPPA)}")

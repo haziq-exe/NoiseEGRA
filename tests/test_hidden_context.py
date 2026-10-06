@@ -198,6 +198,14 @@ check("both start from the same random direction", abs(f0 - f5) < 1e-6)
 check("the grown direction keeps its length", abs(float(t5.norm() - t0.norm())) < 1e-3 * float(t0.norm()))
 check("and moves the planning state further than the random start", l5 > f5, f"{f5:.4f} -> {l5:.4f}")
 check("nothing is left needing gradients", not any(p.requires_grad for p in egra.model.parameters()))
+_, _, lf = HC4.amplified_direction(egra, ids, 3, 0.3, 5, 1, 3, lock=1e-9)
+free_kl = egra._amplify_kl
+_, _, ll = HC4.amplified_direction(egra, ids, 3, 0.3, 5, 1, 3, lock=50.0)
+lock_kl = egra._amplify_kl
+check("both measure the first word's change from the same start", abs(free_kl[0] - lock_kl[0]) < 1e-6)
+check("locked, the grown direction changes the first word less",
+      lock_kl[-1] < free_kl[-1], f"free {free_kl[-1]:.4f} vs locked {lock_kl[-1]:.4f} nats")
+check("and still moves the planning state further than its start", ll > f5, f"{f5:.3f} -> {ll:.3f}")
 a1 = HC4.generate_with_amplified(egra, P, 3, 0.3, 3, (1, 2), max_new_tokens=8, story_index=0)
 a2 = HC4.generate_with_amplified(egra, P, 3, 0.3, 3, (1, 2), max_new_tokens=8)
 check("a story is written, reproducibly", isinstance(a1, str) and a1 == a2)

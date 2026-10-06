@@ -139,6 +139,15 @@ check("the steered story carries it", "[amplified 0.3x, 3 steps]" in buf.getvalu
       and qa._amplify_log[1] > qa._amplify_log[0], str(getattr(qa, "_amplify_log", None)))
 check("the run id records it", "__amp0p3s3" in _ortho_tag(
       "M", ExperimentSpec(use_orthogonal_steering=True, steering_plan=qa)))
+HCA.AMPLIFY = (0.3, 3, 10.0)
+ql = plan()
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    egra.generate_with_orthogonal_steering(PROMPT, ql, max_new_tokens=8, seed=2, story_index=0)
+check("with the lock the run says so", "reply type locked at 10" in buf.getvalue()
+      and "first-word change" in buf.getvalue())
+check("and the run id records the lock", "__amp0p3s3lk10" in _ortho_tag(
+      "M", ExperimentSpec(use_orthogonal_steering=True, steering_plan=ql)))
 HCA.AMPLIFY = None
 with contextlib.redirect_stdout(io.StringIO()):
     b = egra.generate_with_orthogonal_steering(PROMPT, plan(), max_new_tokens=8, seed=2)

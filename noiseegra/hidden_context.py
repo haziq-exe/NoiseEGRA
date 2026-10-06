@@ -519,7 +519,7 @@ AMPLIFY = None
 
 
 def amplified_direction(model, ids, seed: int, radius: float, steps: int, src: int, tgt: int,
-                        n_last: int = 8, lr: float = 0.5):
+                        n_last: int = 8, lr: float = 0.5, lock: float = 0.0):
     """A per-story direction at block ``src`` that later blocks amplify.
 
     Random noise is corrected away by the layers after it; directions toward
@@ -531,8 +531,13 @@ def amplified_direction(model, ids, seed: int, radius: float, steps: int, src: i
     ``n_last`` prompt positions -- where the reply is planned -- move as far as
     possible from where it is without the push. Only the prompt is read; nothing
     is generated and no example text is used. ``steps`` 0 is the random start
-    itself (the control). Returns (direction, how far it moved the planning
-    state at the start and at the end, relative to that state's size).
+    itself (the control). With ``lock`` > 0 each step also pays ``lock`` x the
+    change (KL, nats) in the model's chances for the first word of its reply,
+    so the direction cannot grow by switching what kind of reply it gives (an
+    essay, a refusal) -- each kind starts differently. Returns (direction, how
+    far it moved the planning state at the start and at the end, relative to
+    that state's size); with a lock the first-word change at the end is kept
+    in ``model._amplify_kl``.
     """
     blocks = model._get_transformer_blocks()
     for p in model.model.parameters():
@@ -546,7 +551,8 @@ def amplified_direction(model, ids, seed: int, radius: float, steps: int, src: i
     def grab_tgt(module, inp, out):
         t = out[0] if isinstance(out, (tuple, list)) else out
         box["tgt"] = t[0, -int(n_last):]
-        raise _Stop
+        if not lock:
+            raise _Stop
 
     def run(theta=None):
         hs = [blocks[int(tgt)].register_forward_hook(grab_tgt)]
@@ -560,7 +566,9 @@ def amplified_direction(model, ids, seed: int, radius: float, steps: int, src: i
                 return (t2, *out[1:]) if isinstance(out, (tuple, list)) else t2
             hs.append(blocks[int(src)].register_forward_hook(add))
         try:
-            model.model(input_ids=ids, use_cache=False)
+            o = model.model(input_ids=ids, use_cache=False)
+            if lock:
+                box["first"] = torch.log_softmax(o.logits[0, -1].float(), dim=-1)
         except _Stop:
             pass
         finally:
@@ -570,6 +578,11 @@ def amplified_direction(model, ids, seed: int, radius: float, steps: int, src: i
 
     with torch.no_grad():
         clean = run().float().detach()
+        first_clean = box["first"].detach() if lock else None
+
+    def kl_first():
+        lp = box["first"]
+        return (first_clean.exp() * (first_clean - lp)).sum()
     R = float(radius) * float(box["src"].norm(dim=-1).mean())
     scale = float(clean.norm(dim=-1).mean())
     g = torch.Generator().manual_seed((int(seed) * 15485863 + 3) & 0x7FFFFFFF)
@@ -581,10 +594,16 @@ def amplified_direction(model, ids, seed: int, radius: float, steps: int, src: i
             return float((run(th).float() - clean).norm(dim=-1).mean()) / scale
 
     first = moved(theta)
+    if lock:
+        with torch.no_grad():
+            run(theta)
+            model._amplify_kl = [float(kl_first())]
     for _ in range(int(steps)):
         th = theta.clone().requires_grad_(True)
         with torch.enable_grad():
-            loss = (run(th).float() - clean).pow(2).sum(-1).mean()
+            loss = (run(th).float() - clean).pow(2).sum(-1).mean() / scale ** 2
+            if lock:
+                loss = loss - float(lock) * kl_first()
             loss.backward()
         grad = th.grad
         if grad is None or not torch.isfinite(grad).all() or float(grad.norm()) == 0:
@@ -592,6 +611,10 @@ def amplified_direction(model, ids, seed: int, radius: float, steps: int, src: i
         grad = grad - (grad @ theta) / (theta @ theta) * theta
         theta = theta + float(lr) * R * grad / grad.norm()
         theta = theta * (R / theta.norm())
+    if lock:
+        with torch.no_grad():
+            run(theta)
+            model._amplify_kl.append(float(kl_first()))
     return theta.detach(), first, (moved(theta) if steps else first)
 
 

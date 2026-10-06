@@ -1111,12 +1111,13 @@ class EGRA:
         # plan layer to every position after the first, under the steering.
         from . import hidden_context as _hc
         if _hc.AMPLIFY is not None:
-            rad, steps = _hc.AMPLIFY
+            rad, steps = _hc.AMPLIFY[0], _hc.AMPLIFY[1]
+            lock = float(_hc.AMPLIFY[2]) if len(_hc.AMPLIFY) > 2 else 0.0
             src = normalized_layers[0]
             tgt = max(src + 1, int(round(2 * len(blocks) / 3)))
             theta, a0, a1 = _hc.amplified_direction(
                 self, input_ids[:1], int(seed if seed is not None else (story_index or 0)),
-                rad, steps, src, tgt)
+                rad, steps, src, tgt, lock=lock)
             plan._amplify_log = (a0, a1)
             amp_state = {"prefill": True}
 
@@ -1133,8 +1134,11 @@ class EGRA:
 
             handles.append(blocks[src].register_forward_hook(amp_hook))
             if story_index is not None and int(story_index) < 3:
-                print(f"  [amplified {rad:g}x, {steps} steps] story {story_index}: layer {src} -> "
-                      f"{tgt}; moves the planning state {a0:.3f} -> {a1:.3f} of its size",
+                kl = getattr(self, "_amplify_kl", None) if lock else None
+                print(f"  [amplified {rad:g}x, {steps} steps"
+                      + (f", reply type locked at {lock:g}" if lock else "") + f"] story {story_index}: "
+                      f"layer {src} -> {tgt}; moves the planning state {a0:.3f} -> {a1:.3f} of its size"
+                      + (f"; first-word change {kl[0]:.3f} -> {kl[-1]:.3f} nats" if kl else ""),
                       flush=True)
 
         # Same decode-step bookkeeping as the other noise methods: one increment
