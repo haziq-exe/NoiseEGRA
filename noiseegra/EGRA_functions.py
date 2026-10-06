@@ -1140,7 +1140,10 @@ class EGRA:
                 self, input_ids[:1], int(seed if seed is not None else (story_index or 0)),
                 rad, steps, src, tgt, lock=lock)
             plan._amplify_log = (a0, a1)
-            amp_state = {"prefill": True}
+            amp_state = {"prefill": True, "t": 0}
+            # How long the push lasts while writing: None = throughout; N = full
+            # for N words then a cosine fade over N more (0 = the prompt only).
+            fade = _hc.AMPLIFY_FADE
 
             def amp_hook(module, inp, out):
                 t = out[0] if isinstance(out, (tuple, list)) else out
@@ -1149,8 +1152,18 @@ class EGRA:
                     if amp_state["prefill"]:
                         t[:, 1:] += v
                         amp_state["prefill"] = False
+                        return None
+                    step = amp_state["t"]
+                    amp_state["t"] += 1
+                    if fade is None:
+                        g = 1.0
+                    elif fade <= 0:
+                        g = 0.0
                     else:
-                        t += v
+                        late = min(max((step - fade) / fade, 0.0), 1.0)
+                        g = 0.5 * (1.0 + math.cos(math.pi * late))
+                    if g > 0:
+                        t += g * v
                 return None
 
             handles.append(blocks[src].register_forward_hook(amp_hook))

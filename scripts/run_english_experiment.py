@@ -1014,6 +1014,10 @@ def main() -> None:
     ap.add_argument("--daydream-scene", action="store_true",
                     help="end the daydream with a scene break (* * *) instead of a "
                          "paragraph break, so the story opens a new scene")
+    ap.add_argument("--amplify-fade", type=int, default=None, metavar="N",
+                    help="with --amplify: the direction is added to the prompt, then at "
+                         "full size for the first N written words and faded to nothing "
+                         "over the next N (0 = the prompt only; default: throughout)")
     ap.add_argument("--amplify", default=None, metavar="R:STEPS[:LOCK]",
                     help="add to every steered arm a per-story random direction of R x the "
                          "hidden state's size at the first --layers layer, grown by STEPS "
@@ -1601,6 +1605,7 @@ def main() -> None:
             from noiseegra import hidden_context as _hc
             parts = args.amplify.split(":")
             _hc.AMPLIFY = (float(parts[0]), int(parts[1])) + ((float(parts[2]),) if len(parts) > 2 else ())
+            _hc.AMPLIFY_FADE = args.amplify_fade
         if float(getattr(args, "plan_size", 0.0) or 0.0) > 0:
             from noiseegra import online_calibration as _oc
             _oc.PLAN_KAPPA = float(args.plan_size)

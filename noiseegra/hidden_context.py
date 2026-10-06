@@ -516,6 +516,8 @@ class _Stop(Exception):
 # Set by the runner (--amplify R:STEPS): the steered arms then carry this story's
 # amplified direction (radius, steps); None = off.
 AMPLIFY = None
+# How long that direction lasts while writing (--amplify-fade): None = throughout.
+AMPLIFY_FADE = None
 
 
 def amplified_direction(model, ids, seed: int, radius: float, steps: int, src: int, tgt: int,

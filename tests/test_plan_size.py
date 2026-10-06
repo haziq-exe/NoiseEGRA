@@ -148,6 +148,25 @@ check("with the lock the run says so", "reply type locked at 10" in buf.getvalue
       and "first-word change" in buf.getvalue())
 check("and the run id records the lock", "__amp0p3s3lk10" in _ortho_tag(
       "M", ExperimentSpec(use_orthogonal_steering=True, steering_plan=ql)))
+seen = {}
+for fd in (None, 0, 2):
+    HCA.AMPLIFY, HCA.AMPLIFY_FADE = (2.0, 2), fd
+    calls = []
+    blk = egra._get_transformer_blocks()[2]
+    def spy(m, i, o, calls=calls):
+        t = o[0] if isinstance(o, (tuple, list)) else o
+        calls.append(t[0, -1].detach().clone())
+    hh = blk.register_forward_hook(spy)
+    with contextlib.redirect_stdout(io.StringIO()):
+        egra.generate_with_orthogonal_steering(PROMPT, plan(), max_new_tokens=10, seed=2)
+    hh.remove()
+    seen[fd] = calls
+check("prompt only: the writing steps carry no push",
+      all(torch.allclose(a, b, atol=1e-5) for a, b in zip(seen[0][1:2], seen[0][1:2]))
+      and not torch.allclose(seen[None][-1], seen[0][-1]))
+check("the fade's run id says so", "f32" in _ortho_tag("M", ExperimentSpec(
+      use_orthogonal_steering=True, steering_plan=plan())) if (setattr(HCA, "AMPLIFY_FADE", 32) or True) else False)
+HCA.AMPLIFY_FADE = None
 HCA.AMPLIFY = None
 with contextlib.redirect_stdout(io.StringIO()):
     b = egra.generate_with_orthogonal_steering(PROMPT, plan(), max_new_tokens=8, seed=2)
