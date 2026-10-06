@@ -179,6 +179,14 @@ def generate_one(model, spec, mode, story_prompt, seed, max_new_tokens, max_word
                 model, story_prompt, seed, float(kind.split(":", 1)[1]),
                 tuple(spec.hidden_layers or ()), max_new_tokens=max_new_tokens,
                 max_words=max_words, temperature=spec.temperature)
+        if kind.startswith(("transplant:", "transplantiso:")):
+            from noiseegra.hidden_context import generate_with_transplant
+            parts = kind.split(":")
+            return generate_with_transplant(
+                model, story_prompt, seed, float(parts[1]), tuple(spec.hidden_layers or ()),
+                n_positions=int(parts[2]) if len(parts) > 2 else 8,
+                iso=kind.startswith("transplantiso:"), max_new_tokens=max_new_tokens,
+                max_words=max_words, temperature=spec.temperature, story_index=story_index)
         if kind.startswith("select:"):
             from noiseegra.hidden_context import generate_selected_opening
             _, kk, ss = kind.split(":")

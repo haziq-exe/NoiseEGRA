@@ -394,3 +394,102 @@ def generate_with_weight_noise(model, prompt, seed: int, rho: float, layers,
         with torch.no_grad():
             for lin in mats:
                 lin.weight.copy_(_WEIGHT_BACKUP[id(lin)].to(lin.weight.device))
+
+
+# --------------------------------------------------------------------------- #
+#  A random context's meaning, placed where the reply is planned               #
+# --------------------------------------------------------------------------- #
+
+# How many sentences of the pool make the average state taken off every draw.
+_MEAN_POOL = 64
+
+
+@torch.no_grad()
+def content_state(model, text: str, layer: int) -> torch.Tensor:
+    """The hidden state after block ``layer`` while the model reads ``text``
+    as plain text, averaged over its tokens (the first left out: it carries the
+    huge attention-sink activations, not the text's meaning)."""
+    blocks = model._get_transformer_blocks()
+    box = {}
+
+    def grab(module, inp, out):
+        t = out[0] if isinstance(out, (tuple, list)) else out
+        box["h"] = t[0].detach().float()
+
+    ids = model.tokenizer(text, return_tensors="pt")["input_ids"].to(model._input_device())
+    h = blocks[int(layer)].register_forward_hook(grab)
+    try:
+        model.model(input_ids=ids, use_cache=False)
+    finally:
+        h.remove()
+    s = box["h"]
+    return (s[1:] if s.shape[0] > 1 else s).mean(0)
+
+
+def _mean_state(model, layer: int) -> torch.Tensor:
+    cache = getattr(model, "_transplant_mean", None) or {}
+    if layer not in cache:
+        lines = [s for s in SENTENCES.read_text().splitlines() if s.strip()][:_MEAN_POOL]
+        cache[layer] = torch.stack([content_state(model, s, layer) for s in lines]).mean(0)
+        model._transplant_mean = cache
+    return cache[layer]
+
+
+def transplant_delta(model, seed: int, layer: int, alpha: float, iso: bool = False):
+    """This story's push: ``alpha`` times how far a random sentence's state at
+    ``layer`` sits from the average sentence's -- a direction the model reads
+    as meaning, because real text put it there. With ``iso``, a random
+    direction of the same length instead (the control)."""
+    text = hidden_text(model, "sentence", seed)
+    v = content_state(model, text, layer) - _mean_state(model, layer)
+    if iso:
+        g = torch.Generator().manual_seed((int(seed) * 104729 + 17) & 0x7FFFFFFF)
+        r = torch.randn(v.shape, generator=g).to(v.device)
+        v = r * (v.norm() / r.norm())
+    return float(alpha) * v, text
+
+
+def generate_with_transplant(model, prompt, seed: int, alpha: float, layers, *,
+                             n_positions: int = 8, iso: bool = False,
+                             max_new_tokens: int = 500, max_words=None,
+                             temperature: float = 1.0, story_index=None) -> str:
+    """An untouched story whose plan is formed from a shifted reading of the request.
+
+    The push is added once, while the prompt is read, after one middle block
+    (the middle of ``layers``), at the last ``n_positions`` prompt positions --
+    where models settle what the whole reply will be (Dong et al., ICML 2025) --
+    and nowhere else. Every word is then written by the untouched model,
+    attending to that shifted memory of the request. The push is the state a
+    random Wikipedia sentence (the same one the hidden-sentence control shows
+    the model as text) leaves at that block, minus the average sentence's: a
+    random point of the model's own meaning space, never shown as words, so
+    there is nothing to copy, continue or write about.
+    """
+    layers = list(layers)
+    layer = int(layers[len(layers) // 2])
+    delta, text = transplant_delta(model, seed, layer, alpha, iso=iso)
+    blocks = model._get_transformer_blocks()
+    seen = {}
+
+    def push(module, inp, out):
+        t = out[0] if isinstance(out, (tuple, list)) else out
+        if t.dim() != 3 or t.shape[1] <= 1 or seen.get("done"):
+            return None
+        n = min(int(n_positions), t.shape[1])
+        with torch.no_grad():
+            seen["ratio"] = float(delta.norm() / t[0, -n:].float().norm(dim=-1).mean())
+            t[:, -n:, :] += delta.to(device=t.device, dtype=t.dtype)
+        seen["done"] = True
+        return None
+
+    h = blocks[layer].register_forward_hook(push)
+    try:
+        out = model.generate(prompt, max_new_tokens=max_new_tokens, do_sample=True,
+                             temperature=temperature, seed=seed, max_words=max_words)
+    finally:
+        h.remove()
+    if story_index is not None and int(story_index) < 3:
+        print(f"  [transplant{' iso' if iso else ''} {alpha:g}] story {story_index}: layer "
+              f"{layer}, last {n_positions} prompt positions, push {seen.get('ratio', 0):.2f} x "
+              f"the state there; from: {text[:120]}", flush=True)
+    return out

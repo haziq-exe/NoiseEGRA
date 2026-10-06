@@ -477,6 +477,9 @@ def _spec_to_run_id(model_name: str, spec: ExperimentSpec) -> str:
             elif kind.startswith(("latent:", "noisy:", "weights:")):
                 head, val = kind.split(":", 1)
                 kind = head + _float_tag(float(val))
+            elif kind.startswith(("transplant:", "transplantiso:")):
+                parts = kind.split(":")
+                kind = parts[0] + _float_tag(float(parts[1])) + (f"p{int(parts[2])}" if len(parts) > 2 else "")
             return (f"{model_name}__HIDDEN{kind}"
                     + (f"{int(spec.hidden_tokens)}" if spec.hidden_context == "words" else "")
                     + sampling_tag)

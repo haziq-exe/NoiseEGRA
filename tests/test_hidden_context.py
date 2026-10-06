@@ -152,6 +152,42 @@ check("and the weights are restored exactly afterwards",
 w2 = HC2.generate_with_weight_noise(egra, P, seed=5, rho=0.05, layers=(2, 3), max_new_tokens=8)
 check("reproducibly", w1 == w2)
 
+print("\n== a random sentence's meaning where the reply is planned ==")
+import noiseegra.hidden_context as HC3  # noqa: E402
+d1, t1 = HC3.transplant_delta(egra, 5, 2, 1.0)
+d2, t2 = HC3.transplant_delta(egra, 5, 2, 2.0)
+check("the push comes from the same sentence the sentence control shows", t1 == hidden_text(egra, "sentence", 5))
+check("and scales with its size", torch.allclose(d2, 2 * d1))
+di, _ = HC3.transplant_delta(egra, 5, 2, 1.0, iso=True)
+check("the control is a different direction of the same length",
+      abs(float(di.norm() - d1.norm())) < 1e-4 and float(torch.nn.functional.cosine_similarity(di, d1, 0)) < 0.9)
+other, _ = HC3.transplant_delta(egra, 6, 2, 1.0)
+check("each story draws its own", not torch.allclose(other, d1))
+s1 = HC3.generate_with_transplant(egra, P, 5, 1.0, (2, 3), max_new_tokens=8, story_index=0)
+s2 = HC3.generate_with_transplant(egra, P, 5, 1.0, (2, 3), max_new_tokens=8)
+plain = egra.generate(P, max_new_tokens=8, do_sample=True, seed=5)
+check("a story is written, reproducibly", isinstance(s1, str) and s1 == s2)
+seen_logits = []
+_orig_gen = egra.generate
+def _spy(prompt, **kw):
+    ids = egra.tokenizer(egra.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True),
+                         return_tensors="pt")["input_ids"]
+    seen_logits.append(egra.model(input_ids=ids).logits[0, -1].detach().clone())
+    return _orig_gen(prompt, **kw)
+egra.generate = _spy
+HC3.generate_with_transplant(egra, P, 5, 5.0, (2, 3), max_new_tokens=4)
+egra.generate = _orig_gen
+ids = egra.tokenizer(egra.apply_chat_template(P, tokenize=False, add_generation_prompt=True),
+                     return_tensors="pt")["input_ids"]
+clean_logits = egra.model(input_ids=ids).logits[0, -1]
+check("the push changes what the model predicts after the prompt",
+      not torch.allclose(seen_logits[0], clean_logits, atol=1e-4),
+      f"max change {float((seen_logits[0] - clean_logits).abs().max()):.4f}")
+check("and nothing is left hooked afterwards", egra.generate(P, max_new_tokens=8, do_sample=True, seed=5) == plain)
+check("the run id names it", _spec_to_run_id("M", ExperimentSpec(hidden_context="transplant:1.0")) == "M__HIDDENtransplant1"
+      and _spec_to_run_id("M", ExperimentSpec(hidden_context="transplantiso:2.0:4")) == "M__HIDDENtransplantiso2p4",
+      _spec_to_run_id("M", ExperimentSpec(hidden_context="transplantiso:2.0:4")))
+
 print()
 print("all passed" if not FAILURES else f"FAILED: {FAILURES}")
 sys.exit(1 if FAILURES else 0)
