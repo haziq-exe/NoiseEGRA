@@ -513,6 +513,11 @@ class _Stop(Exception):
     pass
 
 
+# Set by the runner (--amplify R:STEPS): the steered arms then carry this story's
+# amplified direction (radius, steps); None = off.
+AMPLIFY = None
+
+
 def amplified_direction(model, ids, seed: int, radius: float, steps: int, src: int, tgt: int,
                         n_last: int = 8, lr: float = 0.5):
     """A per-story direction at block ``src`` that later blocks amplify.

@@ -1106,6 +1106,37 @@ class EGRA:
         handles = []
         model_handle = None
 
+        # An amplified random direction (noiseegra.hidden_context): grown on the
+        # prompt alone, before any hook is attached, then added at the first
+        # plan layer to every position after the first, under the steering.
+        from . import hidden_context as _hc
+        if _hc.AMPLIFY is not None:
+            rad, steps = _hc.AMPLIFY
+            src = normalized_layers[0]
+            tgt = max(src + 1, int(round(2 * len(blocks) / 3)))
+            theta, a0, a1 = _hc.amplified_direction(
+                self, input_ids[:1], int(seed if seed is not None else (story_index or 0)),
+                rad, steps, src, tgt)
+            plan._amplify_log = (a0, a1)
+            amp_state = {"prefill": True}
+
+            def amp_hook(module, inp, out):
+                t = out[0] if isinstance(out, (tuple, list)) else out
+                with torch.no_grad():
+                    v = theta.to(device=t.device, dtype=t.dtype)
+                    if amp_state["prefill"]:
+                        t[:, 1:] += v
+                        amp_state["prefill"] = False
+                    else:
+                        t += v
+                return None
+
+            handles.append(blocks[src].register_forward_hook(amp_hook))
+            if story_index is not None and int(story_index) < 3:
+                print(f"  [amplified {rad:g}x, {steps} steps] story {story_index}: layer {src} -> "
+                      f"{tgt}; moves the planning state {a0:.3f} -> {a1:.3f} of its size",
+                      flush=True)
+
         # Same decode-step bookkeeping as the other noise methods: one increment
         # per model forward call, not per layer.
         shared = {"forward_calls": 0, "t": 0, "cur_t": 0, "is_prefill": True}

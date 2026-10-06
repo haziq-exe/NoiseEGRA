@@ -128,6 +128,23 @@ check("with all, everything read before the fade's end is the copy's too",
 check("the run id records it", "__forgetprompt" in _ortho_tag(
       "M", ExperimentSpec(use_orthogonal_steering=True, steering_plan=fp)))
 
+print("\n== the amplified direction under the steering ==")
+import noiseegra.hidden_context as HCA  # noqa: E402
+HCA.AMPLIFY = (0.3, 3)
+qa = plan()
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    a = egra.generate_with_orthogonal_steering(PROMPT, qa, max_new_tokens=8, seed=2, story_index=0)
+check("the steered story carries it", "[amplified 0.3x, 3 steps]" in buf.getvalue()
+      and qa._amplify_log[1] > qa._amplify_log[0], str(getattr(qa, "_amplify_log", None)))
+check("the run id records it", "__amp0p3s3" in _ortho_tag(
+      "M", ExperimentSpec(use_orthogonal_steering=True, steering_plan=qa)))
+HCA.AMPLIFY = None
+with contextlib.redirect_stdout(io.StringIO()):
+    b = egra.generate_with_orthogonal_steering(PROMPT, plan(), max_new_tokens=8, seed=2)
+check("and is gone when switched off", "__amp" not in _ortho_tag(
+      "M", ExperimentSpec(use_orthogonal_steering=True, steering_plan=plan())))
+
 print()
 if FAILURES:
     print(f"{len(FAILURES)} FAILED: {FAILURES}")
