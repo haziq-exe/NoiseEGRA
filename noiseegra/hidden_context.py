@@ -603,7 +603,9 @@ def amplified_direction(model, ids, seed: int, radius: float, steps: int, src: i
         with torch.enable_grad():
             loss = (run(th).float() - clean).pow(2).sum(-1).mean() / scale ** 2
             if lock:
-                loss = loss - float(lock) * kl_first()
+                # The first word's chances come off the last layer, which
+                # can sit on another GPU than the planning layer.
+                loss = loss - float(lock) * kl_first().to(loss.device)
             loss.backward()
         grad = th.grad
         if grad is None or not torch.isfinite(grad).all() or float(grad.norm()) == 0:
