@@ -3946,3 +3946,30 @@ Distinct vs untouched: R 0.35 +0.31 [-0.14, +0.82], R 0.4 +0.19 [-0.18, +0.64], 
 +0.78 [+0.16, +1.58]. Quality vs current: -0.48, -0.52, -1.30 (all real). There is no
 size between 0.25 and 0.5 where the plot changes and the writing holds: quality falls
 first (by 0.35), and the variety only appears at 0.5, where quality is top-p's.
+
+## The reply-type-locked direction faded while writing (2026-10-07, run r330)
+
+The r328 direction (random, grown with the first word's chances locked, R 0.5, rule
+steering) was added at every position of the story. Here it is added to the prompt and
+then: not at all while writing (prompt only), or at full size for the first 32 written
+words and faded to nothing over the next 32 (`--amplify-fade 32`). OLMo-3-7B, 50 stories;
+all versions in one blind round, the r328 always-on version included. The model was read
+from a saved copy attached to the run (`--model-cache`), not downloaded.
+
+| OLMo, 50 stories | Coherent | Distinct, whole story | Rules | Under 60 / over 200 words | Quality | Rated 1-3 |
+|---|---|---|---|---|---|---|
+| untouched | 50 | 1.13 | 1.36 | 0 / 0 | 5.44 | 1 |
+| top-p | 50 | 1.95 | 1.20 | 0 / 1 | 3.56 | 24 |
+| current | 50 | 1.17 | 1.02 | 0 / 0 | 5.10 | 1 |
+| locked R 0.5, throughout (r328) | 50 | 2.48 | 1.24 | 3 / 8 | 3.76 | 18 |
+| locked R 0.5, prompt only | 49 | 1.28 | 1.18 | 2 / 5 | 4.54 | 7 |
+| locked R 0.5, faded after 32 words | 50 | 2.10 | 1.14 | 3 / 4 | 4.32 | 11 |
+| locked R 0.75, faded after 32 words | 47 | 2.58 | 1.58 | 11 / 9 | 3.42 | 25 |
+
+- Faded R 0.5: distinct +0.97 [+0.26, +1.84] over untouched, every reply a story, fewer
+  rules broken than untouched; quality +0.76 [+0.38, +1.12] over top-p, +0.56 over the
+  always-on version, but -0.78 [-1.16, -0.40] below the current method. It is more
+  varied than top-p and much better written: on OLMo it dominates top-p.
+- Prompt only: no plot change (+0.15). The push has to reach the first written words;
+  the plan at the end of the prompt alone is restored by the model.
+- R 0.75 faded: more variety, but 11 fragments and top-p's quality.
