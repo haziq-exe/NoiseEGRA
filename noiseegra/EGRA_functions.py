@@ -1138,7 +1138,7 @@ class EGRA:
             tgt = max(src + 1, int(round(2 * len(blocks) / 3)))
             theta, a0, a1 = _hc.amplified_direction(
                 self, input_ids[:1], int(seed if seed is not None else (story_index or 0)),
-                rad, steps, src, tgt, lock=lock)
+                rad, steps, src, tgt, lock=lock, caps=_hc.AMPLIFY_CAPS)
             plan._amplify_log = (a0, a1)
             amp_state = {"prefill": True, "t": 0}
             # How long the push lasts while writing: None = throughout; N = full
@@ -1172,7 +1172,10 @@ class EGRA:
                 print(f"  [amplified {rad:g}x, {steps} steps"
                       + (f", reply type locked at {lock:g}" if lock else "") + f"] story {story_index}: "
                       f"layer {src} -> {tgt}; moves the planning state {a0:.3f} -> {a1:.3f} of its size"
-                      + (f"; first-word change {kl[0]:.3f} -> {kl[-1]:.3f} nats" if kl else ""),
+                      + (f"; first-word change {kl[0]:.3f} -> {kl[-1]:.3f} nats" if kl else "")
+                      + (f"; shortened to {self._amplify_shrink:.2f} to stay inside the caps"
+                         if _hc.AMPLIFY_CAPS is not None
+                         and getattr(self, "_amplify_shrink", 1.0) < 1.0 else ""),
                       flush=True)
 
         # Same decode-step bookkeeping as the other noise methods: one increment

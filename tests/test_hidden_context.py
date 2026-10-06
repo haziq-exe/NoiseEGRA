@@ -206,6 +206,9 @@ check("both measure the first word's change from the same start", abs(free_kl[0]
 check("locked, the grown direction changes the first word less",
       lock_kl[-1] < free_kl[-1], f"free {free_kl[-1]:.4f} vs locked {lock_kl[-1]:.4f} nats")
 check("and still moves the planning state further than its start", ll > f5, f"{f5:.3f} -> {ll:.3f}")
+_, _, lc = HC4.amplified_direction(egra, ids, 3, 0.3, 5, 1, 3, lock=10.0, caps=(0.5, 0.01))
+check("with caps the grown direction stays inside them", lc <= 0.5 + 1e-6 and egra._amplify_kl[-1] <= 0.01 + 1e-6,
+      f"move {lc:.3f}, first-word {egra._amplify_kl[-1]:.4f}, shortened {egra._amplify_shrink:.2f}")
 a1 = HC4.generate_with_amplified(egra, P, 3, 0.3, 3, (1, 2), max_new_tokens=8, story_index=0)
 a2 = HC4.generate_with_amplified(egra, P, 3, 0.3, 3, (1, 2), max_new_tokens=8)
 check("a story is written, reproducibly", isinstance(a1, str) and a1 == a2)

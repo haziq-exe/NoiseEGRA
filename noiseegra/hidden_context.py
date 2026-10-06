@@ -518,10 +518,12 @@ class _Stop(Exception):
 AMPLIFY = None
 # How long that direction lasts while writing (--amplify-fade): None = throughout.
 AMPLIFY_FADE = None
+# Caps on the grown direction (--amplify-caps MOVE:KL): None = no caps.
+AMPLIFY_CAPS = None
 
 
 def amplified_direction(model, ids, seed: int, radius: float, steps: int, src: int, tgt: int,
-                        n_last: int = 8, lr: float = 0.5, lock: float = 0.0):
+                        n_last: int = 8, lr: float = 0.5, lock: float = 0.0, caps=None):
     """A per-story direction at block ``src`` that later blocks amplify.
 
     Random noise is corrected away by the layers after it; directions toward
@@ -540,6 +542,12 @@ def amplified_direction(model, ids, seed: int, radius: float, steps: int, src: i
     far it moved the planning state at the start and at the end, relative to
     that state's size); with a lock the first-word change at the end is kept
     in ``model._amplify_kl``.
+
+    ``caps`` = (most planning movement, most first-word change in nats): a
+    step that would leave either cap is refused and the step halved, and a
+    direction still outside them at the end (a random start already beyond
+    them) is shortened until it is inside -- some random starts otherwise run
+    away into text the model cannot write ("TheTheThe...", word salad).
     """
     blocks = model._get_transformer_blocks()
     for p in model.model.parameters():
@@ -600,6 +608,15 @@ def amplified_direction(model, ids, seed: int, radius: float, steps: int, src: i
         with torch.no_grad():
             run(theta)
             model._amplify_kl = [float(kl_first())]
+
+    def inside(th):
+        """Planning movement and first-word change of ``th``, and whether both
+        are within the caps."""
+        mv = moved(th)
+        kl = float(kl_first()) if lock else 0.0
+        return mv, kl, (mv <= caps[0] and kl <= caps[1])
+
+    step = float(lr)
     for _ in range(int(steps)):
         th = theta.clone().requires_grad_(True)
         with torch.enable_grad():
@@ -613,8 +630,22 @@ def amplified_direction(model, ids, seed: int, radius: float, steps: int, src: i
         if grad is None or not torch.isfinite(grad).all() or float(grad.norm()) == 0:
             break
         grad = grad - (grad @ theta) / (theta @ theta) * theta
-        theta = theta + float(lr) * R * grad / grad.norm()
-        theta = theta * (R / theta.norm())
+        cand = theta + step * R * grad / grad.norm()
+        cand = cand * (R / cand.norm())
+        if caps is not None:
+            _, _, ok = inside(cand)
+            if not ok:
+                step *= 0.5
+                continue
+        theta = cand
+    if caps is not None:
+        mv, kl, ok = inside(theta)
+        shrink = 1.0
+        while not ok and shrink > 1 / 64:
+            shrink *= 0.7
+            mv, kl, ok = inside(theta * shrink)
+        theta = theta * shrink
+        model._amplify_shrink = shrink
     if lock:
         with torch.no_grad():
             run(theta)

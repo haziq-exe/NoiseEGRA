@@ -1014,6 +1014,11 @@ def main() -> None:
     ap.add_argument("--daydream-scene", action="store_true",
                     help="end the daydream with a scene break (* * *) instead of a "
                          "paragraph break, so the story opens a new scene")
+    ap.add_argument("--amplify-caps", default=None, metavar="MOVE:KL",
+                    help="with --amplify: refuse growing steps that move the planning "
+                         "state past MOVE x its size or change the first word's chances "
+                         "by more than KL nats, and shorten a direction still outside "
+                         "them (e.g. 1.0:2.0)")
     ap.add_argument("--amplify-fade", type=int, default=None, metavar="N",
                     help="with --amplify: the direction is added to the prompt, then at "
                          "full size for the first N written words and faded to nothing "
@@ -1606,6 +1611,9 @@ def main() -> None:
             parts = args.amplify.split(":")
             _hc.AMPLIFY = (float(parts[0]), int(parts[1])) + ((float(parts[2]),) if len(parts) > 2 else ())
             _hc.AMPLIFY_FADE = args.amplify_fade
+            if args.amplify_caps:
+                mv, kl = args.amplify_caps.split(":")
+                _hc.AMPLIFY_CAPS = (float(mv), float(kl))
         if float(getattr(args, "plan_size", 0.0) or 0.0) > 0:
             from noiseegra import online_calibration as _oc
             _oc.PLAN_KAPPA = float(args.plan_size)
