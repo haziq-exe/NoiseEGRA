@@ -3894,3 +3894,35 @@ The hidden idea gives the best quality and fewest rules broken of these versions
 Qwen (no push vs current: quality +0.62 [+0.24, +1.00]; rules vs untouched -0.54), but no
 plot variety: Qwen's ideas are themselves one idea ("a curious kid finds a mysterious
 book"), and the push does not change them.
+
+## The random direction grown with the reply type locked; an on-task steering direction (2026-10-07, run r328)
+
+Reply type locked (`--amplify R:8:10`): the random direction grown as in r325/r327, but
+each growing step also pays 10 x the change (KL, nats) in the model's chances for the
+first word of its reply, so it cannot grow by switching to an essay, advice or a
+refusal. With the six rule-steering directions. At R 0.25 the growing raises the
+planning-state movement from 0.15-0.18 to 0.30-0.37 of its size (unlocked: 1.06-1.22).
+On-task direction: 16 hand-written pairs (a story sentence against a refusal, an essay
+on the requirements, advice, a preamble, an outline, a question back, off-topic text),
+added as a seventh steering direction to a rerun of the unlocked R 0.25 version that
+broke 19/50 replies in r327. OLMo-3-7B, 50 stories, same seeds; one blind quality round.
+
+| OLMo, 50 stories | Coherent | Distinct, whole story | Rules | Under 60 / over 200 words | Quality | Rated 1-3 |
+|---|---|---|---|---|---|---|
+| untouched | 50 | 1.13 | 1.36 | 0 / 0 | 5.40 | 1 |
+| top-p | 50 | 1.95 | 1.20 | 0 / 1 | 3.54 | 26 |
+| current | 50 | 1.17 | 1.02 | 0 / 0 | 4.94 | 2 |
+| locked, R 0.25 | 50 | 1.08 | 1.12 | 0 / 3 | 5.10 | 0 |
+| locked, R 0.5 | 50 | 2.48 | 1.24 | 3 / 8 | 3.92 | 15 |
+| unlocked R 0.25 + on-task direction | 32 | 6.89 | 1.40 | 4 / 20 | 1.58 | 48 |
+
+- Locked R 0.5 is the first version on OLMo whose replies all stay stories while the
+  plot changes: distinct +1.35 [+0.60, +2.28] over untouched and above top-p, with
+  better quality than top-p (+0.38 [+0.06, +0.68]) but below untouched (-1.48) and the
+  current method (-1.02). The stories differ in situation (a rainy plaza, a cafeteria
+  mystery about a stolen bag, a dragon sketch, a schoolyard standoff) where untouched
+  OLMo returns to "Mara in the library". Its low-rated stories are one- or
+  two-sentence fragments (3 under 60 words) and muddled sentences.
+- Locked R 0.25 is clean (quality = current) and changes nothing.
+- The on-task direction does not hold the reply type against the unlocked direction
+  (32/50 coherent against 28/50 without it).
