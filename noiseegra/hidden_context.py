@@ -825,7 +825,8 @@ def generate_with_noisy_thinking(model, prompt, seed: int, radius: float, layers
     if forced:
         # Ran out of budget (or stopped at an end-of-text inside the thinking):
         # drop any end-of-text and close the thinking by hand.
-        think = torch.tensor([t for t in think.tolist() if t not in eos], device=dev)
+        think = torch.tensor([t for t in think.tolist() if t not in eos], dtype=torch.long,
+                             device=dev)
         close = tok("\n</think>\n\n", add_special_tokens=False, return_tensors="pt")["input_ids"][0].to(dev)
         think = torch.cat([think, close])
     else:

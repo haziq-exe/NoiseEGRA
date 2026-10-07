@@ -251,6 +251,20 @@ check("thinking that never closes is closed by hand and counted",
 check("thinking switched back to what it was", getattr(egra, "enable_thinking", None) is None)
 check("and nothing stays hooked", egra.generate(P, max_new_tokens=8, do_sample=True, seed=5) == plain)
 c0 = HC5.generate_with_noisy_thinking(egra, P, 4, 0.0, (1, 2), max_think=6, max_new_tokens=6)
+_eos = egra.tokenizer.eos_token_id
+_g = egra.model.generate
+def _ends_at_once(**kw):
+    ids = kw["input_ids"]
+    return torch.cat([ids, torch.full((1, 1), int(_eos if not isinstance(_eos, list) else _eos[0]),
+                                      dtype=ids.dtype)], dim=-1)
+egra.model.generate = _ends_at_once
+try:
+    empty_ok = isinstance(HC5.generate_with_noisy_thinking(egra, P, 4, 0.0, (1, 2), max_think=6,
+                                                           max_new_tokens=6), str)
+except Exception as e:
+    empty_ok = False
+egra.model.generate = _g
+check("thinking that ends at once (empty) is closed without crashing", empty_ok)
 check("the control (no push) runs too", isinstance(c0, str))
 check("run ids", _spec_to_run_id("M", ExperimentSpec(hidden_context="think:0.5")) == "M__HIDDENthink0p5"
       and _spec_to_run_id("M", ExperimentSpec(hidden_context="think:0.5:64")) == "M__HIDDENthink0p5t64")
