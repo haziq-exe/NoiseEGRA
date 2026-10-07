@@ -490,8 +490,9 @@ def _spec_to_run_id(model_name: str, spec: ExperimentSpec) -> str:
             elif kind.startswith("amplify:"):
                 _, rr, kk = kind.split(":")
                 kind = f"amplify{_float_tag(float(rr))}s{int(kk)}"
-            elif kind.startswith("premise:"):
-                kind = "premise" + _float_tag(float(kind.split(":", 1)[1]))
+            elif kind.startswith(("premise:", "ampremise:")):
+                head, val = kind.split(":", 1)
+                kind = head + _float_tag(float(val))
             elif kind.startswith(("transplant:", "transplantiso:")):
                 parts = kind.split(":")
                 kind = parts[0] + _float_tag(float(parts[1])) + (f"p{int(parts[2])}" if len(parts) > 2 else "")

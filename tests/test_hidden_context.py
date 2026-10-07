@@ -232,6 +232,13 @@ check("and the story after the idea, the cue included", calls[1][len(calls[0]) -
 s1 = gah(egra, P, "premise:0.3", 4, n_tokens=32, layers=(1, 2), max_new_tokens=8, story_index=0)
 check("a story follows it", isinstance(s1, str) and "Story idea" not in s1)
 check("the run id names it", _spec_to_run_id("M", ExperimentSpec(hidden_context="premise:0.2")) == "M__HIDDENpremise0p2")
+calls = []
+egra.model.generate = _spy_gen
+s2 = gah(egra, P, "ampremise:0.3", 4, n_tokens=32, layers=(1, 2), max_new_tokens=8, story_index=0)
+egra.model.generate = _mg
+check("an idea written under the grown direction, then a story", isinstance(s2, str) and len(calls) == 2)
+check("with nothing left hooked", egra.generate(P, max_new_tokens=8, do_sample=True, seed=5) == plain)
+check("and its run id", _spec_to_run_id("M", ExperimentSpec(hidden_context="ampremise:0.5")) == "M__HIDDENampremise0p5")
 
 print()
 print("all passed" if not FAILURES else f"FAILED: {FAILURES}")

@@ -120,7 +120,8 @@ def generate_after_hidden(model, prompt, kind: str, seed: int, n_tokens: int = 3
            else tok.eos_token_id}
     E = m.get_input_embeddings()
 
-    premise = kind.startswith("premise:")
+    ampremise = kind.startswith("ampremise:")
+    premise = kind.startswith("premise:") or ampremise
     if premise:
         # A one-sentence story idea, written after a fixed cue at the start of
         # the reply and hidden with it: the plot is decided in a few committed
@@ -129,7 +130,34 @@ def generate_after_hidden(model, prompt, kind: str, seed: int, n_tokens: int = 3
         ids = torch.cat([ids, cue], dim=-1)
     if kind == "self" or kind.startswith("noisy:") or premise:
         handles, state = [], None
-        if (kind.startswith("noisy:") or premise) and float(kind.split(":", 1)[1]) > 0:
+        if ampremise:
+            # The idea is written under this story's grown direction (random,
+            # grown on the prompt alone, reply type locked); the story itself
+            # is written by the untouched model, so all visible text is clean.
+            rad = float(kind.split(":", 1)[1])
+            blocks = model._get_transformer_blocks()
+            src = int(list(layers)[0])
+            tgt = max(src + 1, int(round(2 * len(blocks) / 3)))
+            theta, a0, a1 = amplified_direction(model, ids[:, :-cue.shape[-1]], seed, rad, 8,
+                                                src, tgt, lock=10.0)
+            pre = {"done": False}
+
+            def amp_push(mod, inp, out):
+                t = out[0] if isinstance(out, (tuple, list)) else out
+                with torch.no_grad():
+                    v = theta.to(device=t.device, dtype=t.dtype)
+                    if not pre["done"]:
+                        t[:, 1:] += v
+                        pre["done"] = True
+                    else:
+                        t += v
+                return None
+
+            handles = [blocks[src].register_forward_hook(amp_push)]
+            if story_index is not None and int(story_index) < 3:
+                print(f"  [idea under the grown direction {rad:g}x] story {story_index}: "
+                      f"planning state moved {a0:.3f} -> {a1:.3f}", flush=True)
+        elif (kind.startswith("noisy:") or premise) and float(kind.split(":", 1)[1]) > 0:
             # The opening is sampled as usual, with the push on top of it; the
             # prompt is read and the story written without it.
             state, handles = _turning_push(model, seed, float(kind.split(":", 1)[1]),

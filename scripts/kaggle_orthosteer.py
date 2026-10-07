@@ -201,7 +201,7 @@ def generate_one(model, spec, mode, story_prompt, seed, max_new_tokens, max_word
                 model, story_prompt, seed, int(kk), float(ss), tuple(spec.hidden_layers or ()),
                 n_tokens=spec.hidden_tokens, max_new_tokens=max_new_tokens, max_words=max_words,
                 temperature=spec.temperature, story_index=story_index)
-        if kind == "self" or kind.startswith(("latent:", "noisy:", "premise:")):
+        if kind == "self" or kind.startswith(("latent:", "noisy:", "premise:", "ampremise:")):
             from noiseegra.hidden_context import generate_after_hidden
             return generate_after_hidden(
                 model, story_prompt, kind, seed, n_tokens=spec.hidden_tokens,
