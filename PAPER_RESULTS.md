@@ -4080,3 +4080,22 @@ one blind round per model with the previous best version.
 - OLMo, automatic caps: no real plot change (+0.13), quality -0.32 vs current.
 - Across every cap tried, variety and damage come from the same large pushes: the more
   the size is held back, the cleaner the stories and the fewer the plot changes.
+
+## How long the grown direction lasts while writing (OLMo, 2026-10-07, run r338)
+
+The r330 version (R 0.5, lock 10, uncapped, rule steering) faded after 8 or 16 written
+words instead of 32. OLMo-3-7B, 50 stories, one blind round with the 32-word version.
+
+| OLMo, 50 stories | Coherent | Distinct, whole story | Rules | Quality | Rated 1-3 |
+|---|---|---|---|---|---|
+| untouched | 50 | 1.13 | 1.36 | 5.24 | 2 |
+| top-p | 50 | 1.95 | 1.20 | 3.26 | 33 |
+| current | 50 | 1.17 | 1.02 | 4.92 | 2 |
+| faded after 8 words | 50 | 1.38 | 1.08 | 4.36 | 13 |
+| faded after 16 words | 50 | 1.51 | 1.06 | 4.20 | 12 |
+| faded after 32 words (r330) | 50 | 2.10 | 1.14 | 4.20 | 11 |
+
+The plot change grows with how long the push lasts (prompt only 1.28, 8 words 1.38, 16
+words 1.51, 32 words 2.10), while the quality cost is the same at every length
+(-0.56 to -0.72 vs the current method). The cost is paid as soon as the push reaches the
+first written words; 32 words buys the most plot change for it.
