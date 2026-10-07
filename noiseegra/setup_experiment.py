@@ -368,6 +368,8 @@ def _ortho_tag_once(model_name: str, spec: ExperimentSpec, *, compress: bool) ->
         parts.append(f"__amp{_float_tag(_hc.AMPLIFY[0])}s{int(_hc.AMPLIFY[1])}"
                      + (f"lk{_float_tag(_hc.AMPLIFY[2])}" if len(_hc.AMPLIFY) > 2 else "")
                      + (f"f{int(_hc.AMPLIFY_FADE)}" if _hc.AMPLIFY_FADE is not None else "")
+                     + (f"k{int(_hc.AMPLIFY_LASTK)}" if _hc.AMPLIFY_LASTK else "")
+                     + ("n" if _hc.AMPLIFY_NORM else "")
                      + ((f"cauto{_float_tag(_hc.AMPLIFY_CAPS[1])}" if _hc.AMPLIFY_CAPS[0] == "auto"
                          else f"c{_float_tag(_hc.AMPLIFY_CAPS[0])}-{_float_tag(_hc.AMPLIFY_CAPS[1])}")
                         if _hc.AMPLIFY_CAPS is not None else ""))

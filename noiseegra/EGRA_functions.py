@@ -1148,7 +1148,9 @@ class EGRA:
                     mv, kl = [], []
                     for s in range(8):
                         _, _, m1 = _hc.amplified_direction(self, input_ids[:1], 900_001 + s, rad,
-                                                           steps, src, tgt, lock=lock)
+                                                           steps, src, tgt, lock=lock,
+                                                           lastk=_hc.AMPLIFY_LASTK,
+                                                           norm=_hc.AMPLIFY_NORM)
                         mv.append(m1)
                         kl.append(self._amplify_kl[-1] if lock else 0.0)
                     import statistics
@@ -1162,19 +1164,23 @@ class EGRA:
                 caps = cached[key]
             theta, a0, a1 = _hc.amplified_direction(
                 self, input_ids[:1], int(seed if seed is not None else (story_index or 0)),
-                rad, steps, src, tgt, lock=lock, caps=caps)
+                rad, steps, src, tgt, lock=lock, caps=caps,
+                lastk=_hc.AMPLIFY_LASTK, norm=_hc.AMPLIFY_NORM)
             plan._amplify_log = (a0, a1)
             amp_state = {"prefill": True, "t": 0}
             # How long the push lasts while writing: None = throughout; N = full
             # for N words then a cosine fade over N more (0 = the prompt only).
             fade = _hc.AMPLIFY_FADE
 
+            amp_lastk, amp_norm = int(_hc.AMPLIFY_LASTK or 0), bool(_hc.AMPLIFY_NORM)
+
             def amp_hook(module, inp, out):
                 t = out[0] if isinstance(out, (tuple, list)) else out
                 with torch.no_grad():
                     v = theta.to(device=t.device, dtype=t.dtype)
                     if amp_state["prefill"]:
-                        t[:, 1:] += v
+                        pos = slice(-amp_lastk, None) if amp_lastk else slice(1, None)
+                        t.copy_(_hc.apply_push(t, v, pos, amp_norm))
                         amp_state["prefill"] = False
                         return None
                     step = amp_state["t"]
@@ -1187,7 +1193,10 @@ class EGRA:
                         late = min(max((step - fade) / fade, 0.0), 1.0)
                         g = 0.5 * (1.0 + math.cos(math.pi * late))
                     if g > 0:
-                        t += g * v
+                        if amp_norm:
+                            t.copy_(_hc.apply_push(t, g * v, slice(None), True))
+                        else:
+                            t += g * v
                 return None
 
             handles.append(blocks[src].register_forward_hook(amp_hook))

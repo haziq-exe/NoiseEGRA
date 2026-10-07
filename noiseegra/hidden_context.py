@@ -520,10 +520,30 @@ AMPLIFY = None
 AMPLIFY_FADE = None
 # Caps on the grown direction (--amplify-caps MOVE:KL): None = no caps.
 AMPLIFY_CAPS = None
+# Where and how it is applied (--amplify-where): push only the last K prompt
+# positions (0 = all after the first), and rotate each state toward the push
+# keeping its length instead of adding (norm).
+AMPLIFY_LASTK = 0
+AMPLIFY_NORM = False
+
+
+def apply_push(t: torch.Tensor, v: torch.Tensor, positions, norm: bool) -> torch.Tensor:
+    """``t`` (batch, seq, d) with ``v`` applied at ``positions`` (a slice): added,
+    or with ``norm`` the state turned toward state + v keeping its own length
+    (Angular / Spherical Steering: meaning rides on direction, length changes
+    are what break fluency). Returns a new tensor."""
+    out = t.clone()
+    h = out[:, positions]
+    new = h + v
+    if norm:
+        new = new * (h.norm(dim=-1, keepdim=True) / new.norm(dim=-1, keepdim=True).clamp_min(1e-6))
+    out[:, positions] = new.to(out.dtype)
+    return out
 
 
 def amplified_direction(model, ids, seed: int, radius: float, steps: int, src: int, tgt: int,
-                        n_last: int = 8, lr: float = 0.5, lock: float = 0.0, caps=None):
+                        n_last: int = 8, lr: float = 0.5, lock: float = 0.0, caps=None,
+                        lastk: int = 0, norm: bool = False):
     """A per-story direction at block ``src`` that later blocks amplify.
 
     Random noise is corrected away by the layers after it; directions toward
@@ -571,8 +591,8 @@ def amplified_direction(model, ids, seed: int, radius: float, steps: int, src: i
         else:
             def add(module, inp, out):
                 t = out[0] if isinstance(out, (tuple, list)) else out
-                t2 = t.clone()
-                t2[:, 1:] = t2[:, 1:] + theta.to(device=t.device, dtype=t.dtype)
+                pos = slice(-int(lastk), None) if lastk else slice(1, None)
+                t2 = apply_push(t, theta.to(device=t.device, dtype=t.dtype), pos, norm)
                 return (t2, *out[1:]) if isinstance(out, (tuple, list)) else t2
             hs.append(blocks[int(src)].register_forward_hook(add))
         try:

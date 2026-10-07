@@ -1020,6 +1020,11 @@ def main() -> None:
                          "by more than KL nats, and shorten a direction still outside "
                          "them (e.g. 1.0:2.0); 'auto:F' sets both at F x the median of eight "
                          "uncapped growths on this model and prompt")
+    ap.add_argument("--amplify-where", nargs="*", default=[], metavar="OPT",
+                    help="with --amplify: 'last:K' pushes only the last K prompt positions "
+                         "(and the written words), leaving the instruction's stored memory "
+                         "alone; 'norm' turns each state toward the push keeping its length "
+                         "instead of adding. The direction is grown under the same rule.")
     ap.add_argument("--amplify-fade", type=int, default=None, metavar="N",
                     help="with --amplify: the direction is added to the prompt, then at "
                          "full size for the first N written words and faded to nothing "
@@ -1612,6 +1617,13 @@ def main() -> None:
             parts = args.amplify.split(":")
             _hc.AMPLIFY = (float(parts[0]), int(parts[1])) + ((float(parts[2]),) if len(parts) > 2 else ())
             _hc.AMPLIFY_FADE = args.amplify_fade
+            for opt in (args.amplify_where or []):
+                if opt == "norm":
+                    _hc.AMPLIFY_NORM = True
+                elif opt.startswith("last:"):
+                    _hc.AMPLIFY_LASTK = int(opt.split(":", 1)[1])
+                else:
+                    raise SystemExit(f"--amplify-where: unknown option {opt!r}")
             if args.amplify_caps:
                 mv, kl = args.amplify_caps.split(":")
                 _hc.AMPLIFY_CAPS = ("auto", float(kl)) if mv == "auto" else (float(mv), float(kl))

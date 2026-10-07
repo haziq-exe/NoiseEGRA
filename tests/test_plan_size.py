@@ -177,6 +177,18 @@ check("automatic caps are sized once, from eight uncapped growths",
 check("and the run id says so", "cauto2" in _ortho_tag("M", ExperimentSpec(
       use_orthogonal_steering=True, steering_plan=qa2)))
 HCA.AMPLIFY_CAPS = None
+t = torch.randn(1, 5, 64)
+v = torch.randn(64)
+r = HCA.apply_push(t, v, slice(-2, None), True)
+check("turning keeps each state's length", torch.allclose(r.norm(dim=-1), t.norm(dim=-1), atol=1e-4))
+check("and only at the chosen positions", torch.equal(r[:, :3], t[:, :3]) and not torch.equal(r[:, 3:], t[:, 3:]))
+HCA.AMPLIFY, HCA.AMPLIFY_FADE, HCA.AMPLIFY_LASTK, HCA.AMPLIFY_NORM = (0.3, 2, 10.0), 32, 4, True
+qn = plan()
+with contextlib.redirect_stdout(io.StringIO()):
+    out_n = egra.generate_with_orthogonal_steering(PROMPT, qn, max_new_tokens=6, seed=2, story_index=0)
+check("a story is written with both", isinstance(out_n, str))
+check("and the run id names them", "k4n" in _ortho_tag("M", ExperimentSpec(use_orthogonal_steering=True, steering_plan=qn)))
+HCA.AMPLIFY_LASTK, HCA.AMPLIFY_NORM = 0, False
 HCA.AMPLIFY_FADE = None
 HCA.AMPLIFY = None
 with contextlib.redirect_stdout(io.StringIO()):
