@@ -4209,3 +4209,38 @@ Push 0.25 vs untouched: opening +0.48 [+0.06, +1.00], middle +0.38 [0.00, +0.86]
 [-0.22, +0.90], end -0.62 [-1.38, +0.06]). The pushed thinking varies the openings a little
 more than unpushed thinking, but the stories converge to the same plot; the current method
 varies every window more.
+
+## A second diversity reading on whole stories: long-text embedding similarity (2026-10-08, run r348)
+
+The NoveltyBench judge reads at most 253 tokens and was trained on about 128. Second
+reading: every story embedded in full with BAAI/bge-m3 (8,192-token context), mean pairwise
+cosine similarity per version (lower = more varied), 95% bootstrap interval (resampling
+stories) for the difference from the same model's untouched stories. No pair in any
+version reaches 0.9 similarity, so the near-duplicate rate is 0 throughout and is not
+informative at that threshold. 50 stories each, same seeds as the NoveltyBench numbers.
+
+| Version | Embedding similarity | vs untouched | NoveltyBench distinct, whole |
+|---|---|---|---|
+| OLMo untouched | 0.605 | -- | 1.13 |
+| OLMo top-p | 0.615 | +0.009 [-0.006, +0.025] | 1.95 |
+| OLMo current | 0.619 | +0.014 [-0.003, +0.032] | 1.17 |
+| OLMo grown direction, faded | 0.571 | -0.034 [-0.053, -0.014] | 2.10 |
+| OLMo hidden idea, no push | 0.605 | -0.000 [-0.019, +0.018] | 1.48 |
+| OLMo hidden idea, grown direction | 0.593 | -0.012 [-0.029, +0.005] | 2.51 |
+| Qwen untouched | 0.734 | -- | 1.00 |
+| Qwen top-p | 0.682 | -0.053 [-0.073, -0.031] | 1.00 |
+| Qwen current | 0.589 | -0.145 [-0.165, -0.125] | 1.14 |
+| Qwen fixed caps | 0.626 | -0.109 [-0.139, -0.076] | 2.11 |
+| Qwen automatic caps | 0.653 | -0.081 [-0.109, -0.054] | 1.39 |
+| Qwen hidden idea, grown direction | 0.632 | -0.102 [-0.143, -0.065] | 1.41 |
+| Qwen thinking, no push | 0.635 | -0.099 [-0.118, -0.079] | 1.08 |
+| Qwen thinking, push 0.25 | 0.623 | -0.111 [-0.136, -0.086] | 1.08 |
+| Qwen thinking, push 0.5 | 0.665 | -0.070 [-0.093, -0.045] | 1.08 |
+
+The two readings disagree. On Qwen the embeddings find every changed version more varied
+than untouched, the current method most (which NoveltyBench scores at 1.14 whole but 2.62
+at the opening and 2.12 at the end); thinking alone is as varied as the hidden idea. On OLMo
+the embeddings find only the faded grown direction more varied, and see no real difference
+for top-p or the hidden idea (NoveltyBench 1.95 and 2.51). A general-purpose embedding
+mixes wording, register and setting with plot; the NoveltyBench judge is trained on
+"same story or not" but on short texts. Neither reading measures plot alone.
