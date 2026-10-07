@@ -10,7 +10,9 @@ class Qwen3(EGRA):
 
     Qwen3 has a reasoning mode that is on by default and emits a ``<think>``
     block before the answer. We disable it -- a visible chain of thought would
-    contaminate the story text and every constraint measured on it.
+    contaminate the story text and every constraint measured on it -- unless
+    ``enable_thinking`` is set True (the thinking-noise arm turns it on for its
+    own generation and strips the block from the story).
     """
 
     def __init__(self, dtype=None, model: str = "Qwen/Qwen3-8B"):
@@ -21,5 +23,5 @@ class Qwen3(EGRA):
             messages,
             tokenize=tokenize,
             add_generation_prompt=add_generation_prompt,
-            enable_thinking=False,
+            enable_thinking=bool(getattr(self, "enable_thinking", None)),
         )

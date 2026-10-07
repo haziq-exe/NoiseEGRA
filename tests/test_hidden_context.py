@@ -255,6 +255,16 @@ check("the control (no push) runs too", isinstance(c0, str))
 check("run ids", _spec_to_run_id("M", ExperimentSpec(hidden_context="think:0.5")) == "M__HIDDENthink0p5"
       and _spec_to_run_id("M", ExperimentSpec(hidden_context="think:0.5:64")) == "M__HIDDENthink0p5t64")
 
+from noiseegra.models.Qwen3 import Qwen3  # noqa: E402
+seen_kw = {}
+class _T:
+    def apply_chat_template(self, m, **kw):
+        seen_kw.update(kw); return "x"
+q3 = object.__new__(Qwen3); q3.tokenizer = _T()
+q3.apply_chat_template(P, add_generation_prompt=True); off_default = seen_kw["enable_thinking"]
+q3.enable_thinking = True; q3.apply_chat_template(P, add_generation_prompt=True); on = seen_kw["enable_thinking"]
+check("Qwen3 keeps thinking off by default and turns it on when asked", off_default is False and on is True)
+
 print()
 print("all passed" if not FAILURES else f"FAILED: {FAILURES}")
 sys.exit(1 if FAILURES else 0)

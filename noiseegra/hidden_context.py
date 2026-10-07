@@ -746,7 +746,7 @@ def generate_with_amplified(model, prompt, seed: int, radius: float, steps: int,
 # --------------------------------------------------------------------------- #
 
 def generate_with_noisy_thinking(model, prompt, seed: int, radius: float, layers, *,
-                                 push_tokens: int = 128, max_think: int = 600,
+                                 push_tokens: int = 128, max_think: int = 800,
                                  max_new_tokens: int = 500, max_words=None,
                                  temperature: float = 1.0, story_index=None) -> str:
     """A reasoning model thinks under this story's grown direction, then the
