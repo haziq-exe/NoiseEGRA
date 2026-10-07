@@ -4159,3 +4159,33 @@ blind round per model with the strongest earlier versions.
 - Qwen: a small gain (+0.41 [0.00, +0.84]) at top-p's and the current method's quality,
   -0.60 below untouched; more rules broken than with the idea alone. Qwen's grown
   direction at R 0.5 varies its ideas less than OLMo's.
+
+## The grown direction in a reasoning model's thinking (Qwen3-8B, 2026-10-08, runs r344-r346)
+
+Haziq's proposal: on a reasoning model, put the push into the thinking instead of a
+hidden "Story idea:" sentence, and let the untouched model write the answer once
+`</think>` is out. `--hidden-context think:R`: thinking on (Qwen3's `<think>` = token
+151667, `</think>` = 151668); the grown direction (random per story, grown on the prompt,
+first word locked) is added during the prompt and the first 128 thinking tokens, then
+removed so the model closes its thinking unpushed; thinking still open after 800 tokens is
+closed by hand. The story is written by the untouched model after the thinking. (A first
+launch found the Qwen3 wrapper hard-coding thinking off -- fixed; and a crash on empty
+thinking at R 0.75 -- fixed, the R 0.5 run resumed from its checkpoint.) 50 stories, one
+blind round.
+
+| Qwen3-8B, 50 stories | Empty thinking | Median thinking words | Distinct, whole story | Rules | Quality | Rated 1-3 |
+|---|---|---|---|---|---|---|
+| untouched (thinking off) | -- | -- | 1.00 | 1.92 | 5.20 | 0 |
+| top-p | -- | -- | 1.00 | 1.60 | 4.70 | 5 |
+| current | -- | -- | 1.14 | 1.42 | 4.78 | 7 |
+| thinking, no push | 0 | 361 | 1.08 | 0.68 | 5.34 | 0 |
+| thinking, push 0.25 | 5 | 444 | 1.08 | -- | 5.30 | 2 |
+| thinking, push 0.5 | 13 | 191 | 1.08 | 1.44 | 4.82 | 3 |
+| thinking, push 0.75 (18 stories) | 10 of 18 | 4 | 1.00 | 1.56 | -- | -- |
+
+- No push size changes Qwen's plot through its thinking. A small push leaves the thinking
+  as it was; a larger one empties or garbles it (0.75: "UIAlert贺", `<think> </think>`).
+- Qwen's thinking is a requirements check ("Let me check the requirements again... present
+  tense, 150 words..."), not a plot choice, so there is little plan in it to redirect.
+- Thinking alone is the strongest rule-follower on Qwen: rules broken 0.68 vs 1.92
+  untouched, best quality of all versions (5.34), no variety.
