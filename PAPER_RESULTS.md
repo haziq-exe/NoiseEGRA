@@ -4189,3 +4189,23 @@ blind round.
   tense, 150 words..."), not a plot choice, so there is little plan in it to redirect.
 - Thinking alone is the strongest rule-follower on Qwen: rules broken 0.68 vs 1.92
   untouched, best quality of all versions (5.34), no variety.
+
+## Thinking-push stories by window (Qwen3-8B, 2026-10-08, run r347)
+
+Distinct of 10 by window (opening = first 128 tokens; middle = from word 40; end = from
+word 80; whole = first 253 tokens), 50 stories each, same seeds.
+
+| Qwen3-8B | Opening | Middle | End | Whole |
+|---|---|---|---|---|
+| untouched | 1.00 | 1.05 | 1.22 | 1.00 |
+| top-p | 1.07 | 1.13 | 1.17 | 1.00 |
+| current | 2.62 | 1.72 | 2.12 | 1.14 |
+| thinking, no push | 1.22 | 1.23 | 1.87 | 1.08 |
+| thinking, push 0.25 | 1.48 | 1.43 | 1.26 | 1.08 |
+| thinking, push 0.5 | 1.41 | 1.10 | 1.15 | 1.08 |
+
+Push 0.25 vs untouched: opening +0.48 [+0.06, +1.00], middle +0.38 [0.00, +0.86], end
++0.04, whole +0.08; vs thinking without a push no window differs (opening +0.27
+[-0.22, +0.90], end -0.62 [-1.38, +0.06]). The pushed thinking varies the openings a little
+more than unpushed thinking, but the stories converge to the same plot; the current method
+varies every window more.
