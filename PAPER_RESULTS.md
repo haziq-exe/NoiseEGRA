@@ -3998,3 +3998,30 @@ planning movement 3.0 of its size, text "TheTheThe..."; Llama story 0: first-wor
 12 nats, word salad). The OLMo setting does not carry over unchanged. Caps on the growing
 (`--amplify-caps 1.0:2.0`: refuse a step past 1.0 x the planning state's size or 2 nats of
 first-word change, shorten a start already past them) are being tested (r333, r334).
+
+## Caps on the growing, Qwen3-8B and Llama-3.1-8B (2026-10-07, runs r333, r334)
+
+The r331/r332 version with `--amplify-caps 1.0:2.0`. One blind round per model with the
+uncapped version included.
+
+| 50 stories | Coherent | Distinct, whole story | Rules | Lost capitals | Under 60 / over 200 | Quality | Rated 1-3 |
+|---|---|---|---|---|---|---|---|
+| Qwen untouched | 50 | 1.00 | 1.92 | 0% | 0 / 0 | 5.42 | 0 |
+| Qwen top-p | 50 | 1.00 | 1.60 | 0% | 0 / 0 | 5.30 | 0 |
+| Qwen current | 50 | 1.14 | 1.42 | 0% | 0 / 0 | 5.24 | 2 |
+| Qwen locked, faded | 43 | 4.32 | 1.92 | 26% | 1 / 15 | 3.36 | 24 |
+| Qwen locked, faded, capped | 48 | 2.11 | 1.50 | 10% | 1 / 5 | 4.72 | 6 |
+| Llama untouched | 50 | 2.69 | 0.94 | 0% | 0 / 0 | 4.90 | 1 |
+| Llama top-p | 50 | 4.05 | 1.00 | 0% | 0 / 8 | 3.04 | 40 |
+| Llama current | 50 | 4.09 | 0.94 | 0% | 0 / 0 | 5.08 | 2 |
+| Llama locked, faded | 47 | 5.13 | 1.78 | 2% | 8 / 9 | 2.72 | 37 |
+| Llama locked, faded, capped | 48 | 3.43 | 1.14 | 0% | 2 / 3 | 4.04 | 15 |
+
+- Qwen capped: distinct +1.11 [+0.42, +1.90] over untouched (top-p and the current method
+  do not change Qwen's story at all: 1.00, 1.14), fewer rules broken than untouched (-0.42
+  [-0.66, -0.16]), quality 4.72: -0.52 [-0.96, -0.06] below the current method, -0.70 below
+  untouched. The caps recover +1.36 quality from the uncapped version and keep half its
+  variety. The best balance on Qwen so far.
+- Llama capped: the damage is gone (quality +1.32 over uncapped, +1.00 over top-p), but
+  so is the gain: distinct 3.43 is below the current method's 4.09 (within noise of
+  untouched), at -1.04 quality. On Llama the current method stays the better choice.
