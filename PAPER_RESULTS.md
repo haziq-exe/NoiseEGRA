@@ -4053,3 +4053,30 @@ The growing direction changes plots on the two collapsed models where nothing el
 at about half a point to three quarters of a point of quality; the size at which it does
 so without breaking text differs by model (OLMo needs the uncapped size, Qwen breaks
 without caps).
+
+## Caps sized per model automatically (2026-10-07, runs r336, r337)
+
+`--amplify-caps auto:2.0`: before any story, eight uncapped growths on this model and
+prompt; both caps set at 2 x their medians (OLMo: movement 0.58, first word 0.63 nats ->
+caps 1.15 / 1.25; Qwen: 0.81, 0.40 -> 1.62 / 0.80). Otherwise as r330/r333. 50 stories,
+one blind round per model with the previous best version.
+
+| 50 stories | Coherent | Distinct, whole story | Rules | Quality | Rated 1-3 |
+|---|---|---|---|---|---|
+| OLMo untouched | 50 | 1.13 | 1.36 | 5.22 | 1 |
+| OLMo top-p | 50 | 1.95 | 1.20 | 3.38 | 30 |
+| OLMo current | 50 | 1.17 | 1.02 | 4.78 | 3 |
+| OLMo locked, faded, uncapped (r330) | 50 | 2.10 | 1.14 | 4.16 | 12 |
+| OLMo automatic caps | 50 | 1.26 | 0.94 | 4.46 | 5 |
+| Qwen untouched | 50 | 1.00 | 1.92 | 5.24 | 0 |
+| Qwen top-p | 50 | 1.00 | 1.60 | 4.86 | 3 |
+| Qwen current | 50 | 1.14 | 1.42 | 4.82 | 3 |
+| Qwen fixed caps (r333) | 48 | 2.11 | 1.50 | 4.30 | 13 |
+| Qwen automatic caps | 50 | 1.39 | 1.20 | 4.68 | 7 |
+
+- Qwen, automatic caps: more varied than untouched (+0.39 [+0.04, +0.78]), top-p and the
+  current method, at their quality (-0.14 [-0.50, +0.22] vs current, -0.18 vs top-p) and
+  with the fewest rules broken (-0.72 vs untouched). A small gain with nothing given up.
+- OLMo, automatic caps: no real plot change (+0.13), quality -0.32 vs current.
+- Across every cap tried, variety and damage come from the same large pushes: the more
+  the size is held back, the cleaner the stories and the fewer the plot changes.
