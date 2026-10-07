@@ -3973,3 +3973,28 @@ from a saved copy attached to the run (`--model-cache`), not downloaded.
 - Prompt only: no plot change (+0.15). The push has to reach the first written words;
   the plan at the end of the prompt alone is restored by the model.
 - R 0.75 faded: more variety, but 11 fragments and top-p's quality.
+
+## The faded reply-type-locked direction on Qwen3-8B and Llama-3.1-8B (2026-10-07, runs r331, r332)
+
+Same method as the OLMo r330 faded version (R 0.5, lock 10, faded after 32 words, rule
+steering), 50 stories each, against the stored untouched / top-p / current stories on the
+same seeds; one blind round per model.
+
+| 50 stories | Coherent | Distinct, whole story | Rules | Lost capitals | Under 60 / over 200 | Quality | Rated 1-3 |
+|---|---|---|---|---|---|---|---|
+| Qwen untouched | 50 | 1.00 | 1.92 | 0% | 0 / 0 | 5.36 | 0 |
+| Qwen top-p | 50 | 1.00 | 1.60 | 0% | 0 / 0 | 5.12 | 2 |
+| Qwen current | 50 | 1.14 | 1.42 | 0% | 0 / 0 | 5.06 | 2 |
+| Qwen locked, faded | 43 | 4.32 | 1.92 | 26% | 1 / 15 | 3.22 | 27 |
+| Llama untouched | 50 | 2.69 | 0.94 | 0% | 0 / 0 | 4.94 | 0 |
+| Llama top-p | 50 | 4.05 | 1.00 | 0% | 0 / 8 | 2.82 | 43 |
+| Llama current | 50 | 4.09 | 0.94 | 0% | 0 / 0 | 4.88 | 1 |
+| Llama locked, faded | 47 | 5.13 | 1.78 | 2% | 8 / 9 | 2.66 | 36 |
+
+Qwen's stories differ for the first time (distinct +3.32 [+2.06, +4.68]), but quality
+falls by 2.1 and a quarter lose their capitals; Llama's quality falls to top-p's. The
+per-story log shows why: some random starts run away while growing (Qwen story 0:
+planning movement 3.0 of its size, text "TheTheThe..."; Llama story 0: first-word change
+12 nats, word salad). The OLMo setting does not carry over unchanged. Caps on the growing
+(`--amplify-caps 1.0:2.0`: refuse a step past 1.0 x the planning state's size or 2 nats of
+first-word change, shorten a start already past them) are being tested (r333, r334).
