@@ -179,6 +179,14 @@ def generate_one(model, spec, mode, story_prompt, seed, max_new_tokens, max_word
                 model, story_prompt, seed, float(kind.split(":", 1)[1]),
                 tuple(spec.hidden_layers or ()), max_new_tokens=max_new_tokens,
                 max_words=max_words, temperature=spec.temperature)
+        if kind.startswith("think:"):
+            from noiseegra.hidden_context import generate_with_noisy_thinking
+            parts = kind.split(":")
+            return generate_with_noisy_thinking(
+                model, story_prompt, seed, float(parts[1]), tuple(spec.hidden_layers or ()),
+                push_tokens=int(parts[2]) if len(parts) > 2 else 128,
+                max_new_tokens=max_new_tokens, max_words=max_words,
+                temperature=spec.temperature, story_index=story_index)
         if kind.startswith("amplify:"):
             from noiseegra.hidden_context import generate_with_amplified
             _, rr, kk = kind.split(":")

@@ -739,3 +739,109 @@ def generate_with_amplified(model, prompt, seed: int, radius: float, steps: int,
               f"{tgt}; moves the planning state {first:.3f} -> {last:.3f} of its size",
               flush=True)
     return out
+
+
+# --------------------------------------------------------------------------- #
+#  The grown direction in a reasoning model's thinking                         #
+# --------------------------------------------------------------------------- #
+
+def generate_with_noisy_thinking(model, prompt, seed: int, radius: float, layers, *,
+                                 push_tokens: int = 128, max_think: int = 600,
+                                 max_new_tokens: int = 500, max_words=None,
+                                 temperature: float = 1.0, story_index=None) -> str:
+    """A reasoning model thinks under this story's grown direction, then the
+    untouched model writes the answer.
+
+    Thinking is switched on. While the model reads the prompt and writes its
+    first ``push_tokens`` thinking tokens, the grown direction (random per
+    story, grown on the prompt alone, first word locked; ``radius`` 0 = no push,
+    the control) is added at the first of ``layers``; then it is removed and
+    the model finishes its thinking clean, so the push never has to produce the
+    closing tag itself. If no ``</think>`` appears within ``max_think`` tokens
+    the thinking is closed by hand (counted in ``model._think_forced``). The
+    visible answer -- the story -- is written by the untouched model after the
+    thinking, which stays in its context but is not returned.
+    """
+    tok, m = model.tokenizer, model.model
+    dev = model._input_device()
+    torch.manual_seed(int(seed))
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(int(seed))
+    old = getattr(model, "enable_thinking", None)
+    model.enable_thinking = True
+    try:
+        chat = model.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
+    finally:
+        model.enable_thinking = old
+    ids = tok(chat, return_tensors="pt")["input_ids"].to(dev)
+    # The closing tag is one special token in reasoning models' vocabularies.
+    try:
+        end_id = tok.convert_tokens_to_ids("</think>")
+    except AttributeError:
+        end_id = -1
+    sampling = model._sampling_kwargs(do_sample=True, temperature=temperature, top_p=None,
+                                      top_k=None)
+    pad = {"pad_token_id": tok.pad_token_id if tok.pad_token_id is not None
+           else tok.eos_token_id}
+    handles = []
+    if float(radius) > 0:
+        layers = list(layers)
+        blocks = model._get_transformer_blocks()
+        src = int(layers[0])
+        tgt = max(src + 1, int(round(2 * len(blocks) / 3)))
+        theta, a0, a1 = amplified_direction(model, ids, seed, float(radius), 8, src, tgt,
+                                            lock=10.0)
+        st = {"calls": 0}
+
+        def push(mod, inp, out):
+            t = out[0] if isinstance(out, (tuple, list)) else out
+            st["calls"] += 1
+            with torch.no_grad():
+                v = theta.to(device=t.device, dtype=t.dtype)
+                if st["calls"] == 1:
+                    t[:, 1:] += v
+                elif st["calls"] <= int(push_tokens) + 1:
+                    t += v
+            return None
+
+        handles.append(blocks[src].register_forward_hook(push))
+    from transformers import StoppingCriteria, StoppingCriteriaList
+
+    class _EndThink(StoppingCriteria):
+        def __call__(self_, input_ids, scores, **kw):
+            return torch.tensor([int(input_ids[0, -1]) == int(end_id)], device=input_ids.device)
+
+    try:
+        out = m.generate(input_ids=ids, attention_mask=torch.ones_like(ids),
+                         max_new_tokens=int(max_think), **sampling, **pad,
+                         stopping_criteria=StoppingCriteriaList([_EndThink()]))
+    finally:
+        for h in handles:
+            h.remove()
+    think = out[0, ids.shape[-1]:]
+    eos = tok.eos_token_id
+    eos = set(eos if isinstance(eos, (list, tuple)) else ([] if eos is None else [eos]))
+    forced = int(end_id) not in think.tolist()
+    if forced:
+        # Ran out of budget (or stopped at an end-of-text inside the thinking):
+        # drop any end-of-text and close the thinking by hand.
+        think = torch.tensor([t for t in think.tolist() if t not in eos], device=dev)
+        close = tok("\n</think>\n\n", add_special_tokens=False, return_tensors="pt")["input_ids"][0].to(dev)
+        think = torch.cat([think, close])
+    else:
+        nl = tok("\n\n", add_special_tokens=False, return_tensors="pt")["input_ids"][0].to(dev)
+        think = torch.cat([think, nl])
+    model._think_forced = getattr(model, "_think_forced", 0) + int(forced)
+    model._think_count = getattr(model, "_think_count", 0) + 1
+    model.last_hidden = tok.decode(think, skip_special_tokens=True).strip()
+    full = torch.cat([ids, think[None]], dim=-1)
+    stopper = model._word_budget_stopper(full.shape[-1], max_words)
+    out = m.generate(input_ids=full, attention_mask=torch.ones_like(full),
+                     max_new_tokens=max_new_tokens, **sampling, **pad,
+                     **({"stopping_criteria": stopper} if stopper is not None else {}))
+    if story_index is not None and int(story_index) < 3:
+        print(f"  [thinking, push {radius:g}x for {push_tokens} tokens] story {story_index}: "
+              f"{len(think)} thinking tokens{' (closed by hand)' if forced else ''}; "
+              f"{model._think_forced}/{model._think_count} closed by hand so far; thought: "
+              f"{' '.join(model.last_hidden.split())[:200]}", flush=True)
+    return tok.decode(out[0, full.shape[-1]:], skip_special_tokens=True).strip()

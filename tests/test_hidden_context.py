@@ -240,6 +240,21 @@ check("an idea written under the grown direction, then a story", isinstance(s2, 
 check("with nothing left hooked", egra.generate(P, max_new_tokens=8, do_sample=True, seed=5) == plain)
 check("and its run id", _spec_to_run_id("M", ExperimentSpec(hidden_context="ampremise:0.5")) == "M__HIDDENampremise0p5")
 
+print("\n== thinking under the grown direction ==")
+import noiseegra.hidden_context as HC5  # noqa: E402
+egra._think_forced = egra._think_count = 0
+th = HC5.generate_with_noisy_thinking(egra, P, 4, 0.3, (1, 2), push_tokens=3, max_think=6,
+                                     max_new_tokens=6, story_index=0)
+check("a story is written after the thinking", isinstance(th, str))
+check("thinking that never closes is closed by hand and counted",
+      egra._think_count == 1 and egra._think_forced == 1)
+check("thinking switched back to what it was", getattr(egra, "enable_thinking", None) is None)
+check("and nothing stays hooked", egra.generate(P, max_new_tokens=8, do_sample=True, seed=5) == plain)
+c0 = HC5.generate_with_noisy_thinking(egra, P, 4, 0.0, (1, 2), max_think=6, max_new_tokens=6)
+check("the control (no push) runs too", isinstance(c0, str))
+check("run ids", _spec_to_run_id("M", ExperimentSpec(hidden_context="think:0.5")) == "M__HIDDENthink0p5"
+      and _spec_to_run_id("M", ExperimentSpec(hidden_context="think:0.5:64")) == "M__HIDDENthink0p5t64")
+
 print()
 print("all passed" if not FAILURES else f"FAILED: {FAILURES}")
 sys.exit(1 if FAILURES else 0)
