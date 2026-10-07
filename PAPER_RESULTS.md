@@ -4125,3 +4125,37 @@ under the same rule. 50 stories, one blind round with all versions.
   -0.08) and also the plot change (1.20). Both come from pushing the instruction itself.
 - The plot change on OLMo is a reinterpretation of the request, made in the stored memory
   of the instruction; that is also what costs the writing quality.
+
+## The grown direction decides a hidden story idea; the untouched model writes the story (2026-10-07, runs r340, r341)
+
+`--hidden-context ampremise:0.5`. The reply starts with "Story idea:"; one sentence is
+written while this story's grown direction (random, grown on the prompt alone by 8 steps,
+reply type locked at 10, R 0.5, at layer 7) is added at every position; the push is then
+removed and the untouched model writes the visible story after the hidden idea and a
+paragraph break. Control: the same hidden idea with no push (`premise:0`). 50 stories, one
+blind round per model with the strongest earlier versions.
+
+| 50 stories | Coherent | Distinct, whole story | Rules | Quality | Rated 1-3 |
+|---|---|---|---|---|---|
+| OLMo untouched | 50 | 1.13 | 1.36 | 5.28 | 1 |
+| OLMo top-p | 50 | 1.95 | 1.20 | 3.28 | 30 |
+| OLMo current | 50 | 1.17 | 1.02 | 4.72 | 3 |
+| OLMo faded grown direction (r330) | 50 | 2.10 | 1.14 | 4.20 | 10 |
+| OLMo hidden idea, no push | 50 | 1.48 | 1.36 | 5.86 | 0 |
+| OLMo hidden idea, grown direction | 50 | 2.51 | 1.16 | 5.04 | 7 |
+| Qwen untouched | 50 | 1.00 | 1.92 | 5.16 | 0 |
+| Qwen top-p | 50 | 1.00 | 1.60 | 4.70 | 4 |
+| Qwen current | 50 | 1.14 | 1.42 | 4.84 | 2 |
+| Qwen hidden idea, no push (r326) | 50 | 1.10 | 1.38 | 5.46 | 0 |
+| Qwen automatic caps (r337) | 50 | 1.39 | 1.20 | 4.70 | 8 |
+| Qwen hidden idea, grown direction | 49 | 1.41 | 1.80 | 4.56 | 7 |
+
+- OLMo: the most varied version on this model (distinct +1.38 [+0.58, +2.28] over
+  untouched; above top-p's 1.95 and the faded direction's 2.10), every story coherent, no
+  fragments or over-long stories, and quality level with untouched (-0.24 [-0.58, +0.10])
+  and the current method (+0.32 [-0.10, +0.76]), +1.76 over top-p. The push's damage stays
+  in the hidden sentence; the plot change it makes reaches the story through that sentence.
+  The push is what varies the plot: the idea alone gives 1.48.
+- Qwen: a small gain (+0.41 [0.00, +0.84]) at top-p's and the current method's quality,
+  -0.60 below untouched; more rules broken than with the idea alone. Qwen's grown
+  direction at R 0.5 varies its ideas less than OLMo's.
