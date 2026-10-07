@@ -4099,3 +4099,29 @@ The plot change grows with how long the push lasts (prompt only 1.28, 8 words 1.
 words 1.51, 32 words 2.10), while the quality cost is the same at every length
 (-0.56 to -0.72 vs the current method). The cost is paid as soon as the push reaches the
 first written words; 32 words buys the most plot change for it.
+
+## Where the damage comes from: the instruction's stored memory, not the state's length (OLMo, 2026-10-07, run r339)
+
+Two changes from the steering literature on the r330 version (R 0.5, lock 10, uncapped,
+faded after 32 words): push only the last 8 prompt positions plus the written words,
+leaving the instruction's stored keys and values alone (KV-cache contamination, arXiv
+2605.10664); and turn each state toward state + push at its own length instead of adding
+(Angular Steering, NeurIPS 2025; Spherical Steering, ICML 2026). The direction is grown
+under the same rule. 50 stories, one blind round with all versions.
+
+| OLMo, 50 stories | Coherent | Distinct, whole story | Rules | Quality | Rated 1-3 |
+|---|---|---|---|---|---|
+| untouched | 50 | 1.13 | 1.36 | 5.34 | 1 |
+| top-p | 50 | 1.95 | 1.20 | 3.34 | 34 |
+| current | 50 | 1.17 | 1.02 | 4.82 | 2 |
+| added, all prompt positions (r330) | 50 | 2.10 | 1.14 | 4.20 | 11 |
+| last 8 prompt positions only | 50 | 1.20 | 0.80 | 4.74 | 2 |
+| turned, length kept | 49 | 1.84 | 1.10 | 4.14 | 9 |
+| last 8 + turned | 50 | 1.51 | 0.86 | 4.52 | 12 |
+
+- Keeping the length does not reduce the damage: same quality as adding (4.14 vs 4.20) with
+  a little less plot change. The length change is not the cause.
+- Leaving the instruction's stored memory alone removes the damage (quality = current,
+  -0.08) and also the plot change (1.20). Both come from pushing the instruction itself.
+- The plot change on OLMo is a reinterpretation of the request, made in the stored memory
+  of the instruction; that is also what costs the writing quality.
