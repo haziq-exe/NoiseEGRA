@@ -4025,3 +4025,31 @@ uncapped version included.
 - Llama capped: the damage is gone (quality +1.32 over uncapped, +1.00 over top-p), but
   so is the gain: distinct 3.43 is below the current method's 4.09 (within noise of
   untouched), at -1.04 quality. On Llama the current method stays the better choice.
+
+## Caps on OLMo, and the three models together (2026-10-07, run r335)
+
+The capped version (r333/r334 settings) on OLMo-3-7B, 50 stories, rated in one blind round
+with the uncapped faded version (r330).
+
+| OLMo, 50 stories | Coherent | Distinct, whole story | Rules | Quality | Rated 1-3 |
+|---|---|---|---|---|---|
+| untouched | 50 | 1.13 | 1.36 | 5.18 | 0 |
+| top-p | 50 | 1.95 | 1.20 | 3.32 | 32 |
+| current | 50 | 1.17 | 1.02 | 4.84 | 1 |
+| locked, faded (r330) | 50 | 2.10 | 1.14 | 4.12 | 12 |
+| locked, faded, capped | 50 | 1.18 | 0.94 | 4.56 | 3 |
+
+On OLMo the caps remove the plot change (+0.05 over untouched) and keep quality level with
+the current method (-0.28 [-0.56, 0.00]): the stories that changed plot were the ones whose
+growing went past the caps. Summary across models, best version of the new method:
+
+| Model | Version | Distinct vs untouched / top-p / current | Quality vs current |
+|---|---|---|---|
+| OLMo-3-7B | locked, faded, uncapped | 2.10 vs 1.13 / 1.95 / 1.17 | -0.72 (top-p -1.52) |
+| Qwen3-8B | locked, faded, capped | 2.11 vs 1.00 / 1.00 / 1.14 | -0.52 (top-p +0.06) |
+| Llama-3.1-8B | none better than current | current 4.09 vs 2.69 / 4.05 | -- |
+
+The growing direction changes plots on the two collapsed models where nothing else did,
+at about half a point to three quarters of a point of quality; the size at which it does
+so without breaking text differs by model (OLMo needs the uncapped size, Qwen breaks
+without caps).
