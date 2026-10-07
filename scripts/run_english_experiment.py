@@ -1018,7 +1018,8 @@ def main() -> None:
                     help="with --amplify: refuse growing steps that move the planning "
                          "state past MOVE x its size or change the first word's chances "
                          "by more than KL nats, and shorten a direction still outside "
-                         "them (e.g. 1.0:2.0)")
+                         "them (e.g. 1.0:2.0); 'auto:F' sets both at F x the median of eight "
+                         "uncapped growths on this model and prompt")
     ap.add_argument("--amplify-fade", type=int, default=None, metavar="N",
                     help="with --amplify: the direction is added to the prompt, then at "
                          "full size for the first N written words and faded to nothing "
@@ -1613,7 +1614,7 @@ def main() -> None:
             _hc.AMPLIFY_FADE = args.amplify_fade
             if args.amplify_caps:
                 mv, kl = args.amplify_caps.split(":")
-                _hc.AMPLIFY_CAPS = (float(mv), float(kl))
+                _hc.AMPLIFY_CAPS = ("auto", float(kl)) if mv == "auto" else (float(mv), float(kl))
         if float(getattr(args, "plan_size", 0.0) or 0.0) > 0:
             from noiseegra import online_calibration as _oc
             _oc.PLAN_KAPPA = float(args.plan_size)

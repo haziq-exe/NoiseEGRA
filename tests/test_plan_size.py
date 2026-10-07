@@ -166,6 +166,17 @@ check("prompt only: the writing steps carry no push",
       and not torch.allclose(seen[None][-1], seen[0][-1]))
 check("the fade's run id says so", "f32" in _ortho_tag("M", ExperimentSpec(
       use_orthogonal_steering=True, steering_plan=plan())) if (setattr(HCA, "AMPLIFY_FADE", 32) or True) else False)
+HCA.AMPLIFY, HCA.AMPLIFY_FADE, HCA.AMPLIFY_CAPS = (0.3, 2, 10.0), 32, ("auto", 2.0)
+qa2 = plan()
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    egra.generate_with_orthogonal_steering(PROMPT, qa2, max_new_tokens=6, seed=2, story_index=0)
+    egra.generate_with_orthogonal_steering(PROMPT, qa2, max_new_tokens=6, seed=3, story_index=1)
+check("automatic caps are sized once, from eight uncapped growths",
+      buf.getvalue().count("[amplified caps]") == 1, buf.getvalue().split("[amplified caps]")[-1][:120])
+check("and the run id says so", "cauto2" in _ortho_tag("M", ExperimentSpec(
+      use_orthogonal_steering=True, steering_plan=qa2)))
+HCA.AMPLIFY_CAPS = None
 HCA.AMPLIFY_FADE = None
 HCA.AMPLIFY = None
 with contextlib.redirect_stdout(io.StringIO()):

@@ -1136,9 +1136,33 @@ class EGRA:
             lock = float(_hc.AMPLIFY[2]) if len(_hc.AMPLIFY) > 2 else 0.0
             src = normalized_layers[0]
             tgt = max(src + 1, int(round(2 * len(blocks) / 3)))
+            caps = _hc.AMPLIFY_CAPS
+            if caps is not None and caps[0] == "auto":
+                # Sized for this model and prompt, once: the median planning
+                # movement and first-word change of eight uncapped growths,
+                # times the factor, so typical directions pass and only the
+                # runaways are stopped.
+                key = ("amp_caps", int(input_ids.shape[-1]), rad, steps, lock, src, tgt)
+                cached = getattr(self, "_amp_caps_cache", {})
+                if key not in cached:
+                    mv, kl = [], []
+                    for s in range(8):
+                        _, _, m1 = _hc.amplified_direction(self, input_ids[:1], 900_001 + s, rad,
+                                                           steps, src, tgt, lock=lock)
+                        mv.append(m1)
+                        kl.append(self._amplify_kl[-1] if lock else 0.0)
+                    import statistics
+                    f = float(caps[1])
+                    cached[key] = (f * statistics.median(mv), f * max(statistics.median(kl), 1e-3))
+                    self._amp_caps_cache = cached
+                    print(f"  [amplified caps] eight uncapped growths: movement median "
+                          f"{statistics.median(mv):.3f} (max {max(mv):.3f}), first-word change median "
+                          f"{statistics.median(kl):.3f} (max {max(kl):.3f}) nats -> caps "
+                          f"{cached[key][0]:.3f} / {cached[key][1]:.3f}", flush=True)
+                caps = cached[key]
             theta, a0, a1 = _hc.amplified_direction(
                 self, input_ids[:1], int(seed if seed is not None else (story_index or 0)),
-                rad, steps, src, tgt, lock=lock, caps=_hc.AMPLIFY_CAPS)
+                rad, steps, src, tgt, lock=lock, caps=caps)
             plan._amplify_log = (a0, a1)
             amp_state = {"prefill": True, "t": 0}
             # How long the push lasts while writing: None = throughout; N = full
