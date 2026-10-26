@@ -4284,3 +4284,39 @@ the r240 current-method stories); Granite current is r241.
   (NoveltyBench: much more varied on OLMo and Llama; embeddings: barely) -- consistent with
   top-p changing wording and events within the same overall look, which a general embedding
   sees as similar.
+
+## Variety, quality and rules together on the latest 7-12B runs (2026-10-26)
+
+Same stories as the embedding table above. Variety = mean pairwise embedding similarity
+(bge-m3, lower = more varied). Quality = one fresh blind Sonnet round per model, the three
+versions mixed, first 50 seeds (1-10; "low" = rated 1-3). Rules = average of the six scored
+rules broken (all stories in the set: 200 for OLMo, 50 otherwise). All coherent except OLMo
+top-p and current 199/200, Granite top-p 48/50 and current 49/50.
+
+| Model | Version | Similarity | Quality | Rated 1-3 | Rules broken |
+|---|---|---|---|---|---|
+| OLMo-3-7B | untouched | 0.614 | 5.44 | 0 | 1.24 |
+| | top-p | 0.603 | 3.26 | 32 | 1.24 |
+| | current | 0.616 | 5.16 | 0 | 0.98 |
+| Qwen3-8B | untouched | 0.734 | 5.22 | 0 | 1.92 |
+| | top-p | 0.682 | 4.88 | 3 | 1.60 |
+| | current | 0.589 | 4.82 | 3 | 1.42 |
+| Llama-3.1-8B | untouched | 0.589 | 4.62 | 2 | 0.94 |
+| | top-p | 0.582 | 2.66 | 44 | 1.00 |
+| | current | 0.568 | 4.76 | 3 | 0.94 |
+| Granite-4.2-8B | untouched | 0.736 | 4.82 | 4 | 1.86 |
+| | top-p | 0.691 | 4.18 | 16 | 1.50 |
+| | current | 0.659 | 4.16 | 12 | 1.32 |
+| Mistral-Nemo-12B | untouched | 0.574 | 5.54 | 1 | 1.46 |
+| | top-p | 0.567 | 4.38 | 12 | 1.60 |
+| | current | 0.525 | 3.88 | 20 | 1.10 |
+
+Current method vs untouched / vs top-p (95% intervals):
+
+| Model | Similarity | Quality | Rules |
+|---|---|---|---|
+| OLMo | +0.002 [-0.007, +0.011] / +0.013 [+0.005, +0.021] | -0.28 [-0.60, +0.06] / +1.90 [+1.64, +2.16] | -0.26 [-0.39, -0.13] / -0.26 [-0.39, -0.12] |
+| Qwen | -0.145 [-0.165, -0.125] / -0.092 [-0.112, -0.071] | -0.40 [-0.76, -0.06] / -0.06 [-0.38, +0.30] | -0.50 [-0.78, -0.20] / -0.18 [-0.48, +0.14] |
+| Llama | -0.021 [-0.040, -0.002] / -0.014 [-0.032, +0.005] | +0.14 [-0.18, +0.44] / +2.10 [+1.74, +2.44] | +0.00 [-0.28, +0.28] / -0.06 [-0.36, +0.24] |
+| Granite | -0.077 [-0.095, -0.058] / -0.032 [-0.049, -0.013] | -0.66 [-0.98, -0.34] / -0.02 [-0.42, +0.38] | -0.54 [-0.84, -0.26] / -0.18 [-0.46, +0.10] |
+| Nemo | -0.049 [-0.069, -0.030] / -0.042 [-0.061, -0.024] | -1.66 [-2.08, -1.22] / -0.50 [-0.90, -0.08] | -0.36 [-0.62, -0.12] / -0.50 [-0.72, -0.28] |
