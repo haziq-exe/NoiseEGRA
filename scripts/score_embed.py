@@ -28,6 +28,24 @@ def pair_sims(E):
     return S, S[iu]
 
 
+def distinct_of_k(S, thr, k=10, subsets=500, seed=0):
+    """Average number of distinct stories in random sets of k: a story counts as new
+    unless its similarity to a story already kept in the set is at least ``thr``."""
+    rng = np.random.default_rng(seed)
+    n = len(S)
+    if n < k:
+        return float("nan")
+    tot = 0
+    for _ in range(subsets):
+        ix = rng.choice(n, k, replace=False)
+        kept = []
+        for i in ix:
+            if all(S[i, j] < thr for j in kept):
+                kept.append(i)
+        tot += len(kept)
+    return tot / subsets
+
+
 def boot_diff(Sa, Sb, n=2000, seed=0):
     """95% interval for mean pairwise similarity of a minus b, resampling stories."""
     rng = np.random.default_rng(seed)
@@ -48,6 +66,9 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--model", default="BAAI/bge-m3")
     ap.add_argument("--dup", type=float, default=0.9, help="near-duplicate similarity threshold")
+    ap.add_argument("--thresholds", nargs="*", type=float, default=[0.8, 0.85],
+                    help="similarity at or above which two stories count as the same, for "
+                         "a distinct-of-10 count at each")
     ap.add_argument("--reference", nargs="*", default=[],
                     help="name fragments of the versions to compare against (default: 'untouched')")
     args = ap.parse_args()
@@ -61,9 +82,12 @@ def main():
         S, p = pair_sims(np.asarray(E, dtype=np.float64))
         sims[name] = S
         res[name] = {"n": len(stories), "mean_sim": float(p.mean()),
-                     "near_dup": float((p >= args.dup).mean())}
+                     "near_dup": float((p >= args.dup).mean()),
+                     "distinct10": {str(t): distinct_of_k(S, t) for t in args.thresholds},
+                     "pct_pairs_above": {str(t): float((p >= t).mean()) for t in args.thresholds}}
         print(f"  {name:42s} n {len(stories):3d}  mean similarity {p.mean():.4f}  "
-              f"near-duplicate pairs {100 * (p >= args.dup).mean():5.1f}%", flush=True)
+              + "  ".join(f"distinct of 10 @{t:g}: {res[name]['distinct10'][str(t)]:.2f}"
+                          for t in args.thresholds), flush=True)
     refs = args.reference or ["untouched"]
     for name in arms:
         prefix = name.split(" ")[0]
