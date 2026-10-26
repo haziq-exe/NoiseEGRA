@@ -4320,3 +4320,47 @@ Current method vs untouched / vs top-p (95% intervals):
 | Llama | -0.021 [-0.040, -0.002] / -0.014 [-0.032, +0.005] | +0.14 [-0.18, +0.44] / +2.10 [+1.74, +2.44] | +0.00 [-0.28, +0.28] / -0.06 [-0.36, +0.24] |
 | Granite | -0.077 [-0.095, -0.058] / -0.032 [-0.049, -0.013] | -0.66 [-0.98, -0.34] / -0.02 [-0.42, +0.38] | -0.54 [-0.84, -0.26] / -0.18 [-0.46, +0.10] |
 | Nemo | -0.049 [-0.069, -0.030] / -0.042 [-0.061, -0.024] | -1.66 [-2.08, -1.22] / -0.50 [-0.90, -0.08] | -0.36 [-0.62, -0.12] / -0.50 [-0.72, -0.28] |
+
+## Untouched, top-p and the current method at 200 stories on five 7-12B models (2026-10-27, runs r350-r354)
+
+New 200-story runs for Qwen3-8B (r351), Granite-4.2-8B (r352), Mistral-Nemo-12B (r350), all
+three versions each, and the Llama-3.1-8B current method (r353; Llama untouched / top-p
+from r238, same seeds); OLMo-3-7B from r242. Current method = fixed steering budget 2.5.
+Variety = mean pairwise bge-m3 similarity on whole stories (lower = more varied). Quality =
+one blind Sonnet round per model over all 600 stories (1-10; "low" = rated 1-3). Rules =
+average of the six scored rules broken. 95% intervals.
+
+| Model | Version | Similarity | Quality | Rated 1-3 (of 200) | Rules broken | Coherent |
+|---|---|---|---|---|---|---|
+| OLMo-3-7B | untouched | 0.614 | 5.50 | 0 | 1.24 | 200 |
+| | top-p | 0.603 | 3.48 | 113 | 1.24 | 199 |
+| | current | 0.616 | 5.09 | 5 | 0.98 | 199 |
+| Qwen3-8B | untouched | 0.719 | 5.29 | 0 | 1.79 | 200 |
+| | top-p | 0.663 | 5.09 | 3 | 1.51 | 200 |
+| | current | 0.603 | 4.65 | 36 | 1.51 | 200 |
+| Llama-3.1-8B | untouched | 0.595 | 5.01 | 2 | 1.02 | 200 |
+| | top-p | 0.580 | 2.94 | 161 | 1.15 | 200 |
+| | current | 0.569 | 4.86 | 18 | 0.87 | 198 |
+| Granite-4.2-8B | untouched | 0.735 | 5.19 | 3 | 2.07 | 200 |
+| | top-p | 0.692 | 4.58 | 32 | 1.53 | 192 |
+| | current | 0.656 | 4.71 | 35 | 1.34 | 195 |
+| Mistral-Nemo-12B | untouched | 0.579 | 5.43 | 10 | 1.51 | 200 |
+| | top-p | 0.566 | 4.17 | 62 | 1.59 | 200 |
+| | current | 0.528 | 3.83 | 92 | 1.21 | 199 |
+
+Current method vs untouched / vs top-p:
+
+| Model | Similarity | Quality | Rules |
+|---|---|---|---|
+| OLMo | +0.002 [-0.007, +0.011] / +0.013 [+0.005, +0.021] | -0.41 [-0.57, -0.24] / +1.60 [+1.48, +1.74] | -0.26 [-0.39, -0.13] / -0.26 [-0.39, -0.12] |
+| Qwen | -0.116 [-0.127, -0.104] / -0.060 [-0.071, -0.049] | -0.64 [-0.83, -0.46] / -0.45 [-0.62, -0.26] | -0.28 [-0.41, -0.14] / +0.00 [-0.14, +0.15] |
+| Llama | -0.026 [-0.037, -0.016] / -0.011 [-0.022, -0.001] | -0.15 [-0.30, -0.01] / +1.93 [+1.76, +2.10] | -0.15 [-0.29, -0.02] / -0.28 [-0.42, -0.12] |
+| Granite | -0.079 [-0.089, -0.070] / -0.037 [-0.046, -0.027] | -0.48 [-0.67, -0.29] / +0.14 [-0.07, +0.35] | -0.72 [-0.88, -0.57] / -0.19 [-0.34, -0.04] |
+| Nemo | -0.051 [-0.061, -0.041] / -0.038 [-0.047, -0.028] | -1.60 [-1.83, -1.37] / -0.34 [-0.56, -0.12] | -0.30 [-0.44, -0.18] / -0.39 [-0.50, -0.26] |
+
+- The current method is the most varied of the three on four models (Qwen, Llama, Granite,
+  Nemo), more than top-p on each, and breaks fewer rules than untouched on all five.
+- Its quality cost vs untouched: Llama -0.15, OLMo -0.41, Granite -0.48, Qwen -0.64, Nemo
+  -1.60. Against top-p: far better on OLMo and Llama (where top-p rates 113/200 and 161/200
+  stories at 1-3), level on Granite, worse on Qwen (-0.45) and Nemo (-0.34).
+- OLMo: no variety change by this measure. Nemo remains the failure case (92/200 rated 1-3).
