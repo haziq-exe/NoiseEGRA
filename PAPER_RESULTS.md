@@ -4244,3 +4244,14 @@ the embeddings find only the faded grown direction more varied, and see no real 
 for top-p or the hidden idea (NoveltyBench 1.95 and 2.51). A general-purpose embedding
 mixes wording, register and setting with plot; the NoveltyBench judge is trained on
 "same story or not" but on short texts. Neither reading measures plot alone.
+
+## A plot-element reading with fixed labels fails its consistency check (2026-10-26)
+
+Haiku labelled each story with one setting (18 options) and one main event (19 options);
+same plot = same setting and same main event; 32 versions x 50 stories, shuffled and
+anonymised, 80 stories labelled twice in different batches. The repeats agreed on setting
+and event only 52% of the time (event alone 62%): these short stories fit several
+categories ("girl teases a friend at the playground" = game or everyday moment). With
+that much labelling noise every version scores 7.9-9.7 distinct plots of 10, including
+untouched Qwen3-8B, whose stories are one story. The reading cannot rank methods and is
+not used.
