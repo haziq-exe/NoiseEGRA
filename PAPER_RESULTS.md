@@ -4255,3 +4255,32 @@ categories ("girl teases a friend at the playground" = game or everyday moment).
 that much labelling noise every version scores 7.9-9.7 distinct plots of 10, including
 untouched Qwen3-8B, whose stories are one story. The reading cannot rank methods and is
 not used.
+
+## Embedding diversity on the latest 7-12B runs: untouched, top-p, current method (2026-10-26, run r349)
+
+Whole stories embedded with BAAI/bge-m3; mean pairwise cosine similarity per version (lower
+= more varied), with 95% bootstrap intervals (resampling stories) for the difference from
+untouched and from top-p. Latest middle-school run per model; the current method is the
+fixed-budget (2.5) version. Llama untouched/top-p are the first 50 of r238 (same seeds as
+the r240 current-method stories); Granite current is r241.
+
+| Model | Stories | Untouched | Top-p | Current | Current vs untouched | Current vs top-p | Top-p vs untouched |
+|---|---|---|---|---|---|---|---|
+| OLMo-3-7B | 200 | 0.614 | 0.603 | 0.616 | +0.002 [-0.007, +0.011] | +0.013 [+0.005, +0.021] | -0.011 [-0.019, -0.002] |
+| Qwen3-8B | 50 | 0.734 | 0.682 | 0.589 | -0.145 [-0.165, -0.125] | -0.092 [-0.112, -0.071] | -0.053 [-0.073, -0.031] |
+| Llama-3.1-8B | 50 | 0.589 | 0.582 | 0.568 | -0.021 [-0.040, -0.002] | -0.014 [-0.032, +0.005] | -0.007 [-0.024, +0.009] |
+| Granite-4.2-8B | 50 | 0.736 | 0.691 | 0.659 | -0.077 [-0.095, -0.058] | -0.032 [-0.049, -0.013] | -0.045 [-0.064, -0.025] |
+| Mistral-Nemo-12B | 50 | 0.574 | 0.567 | 0.525 | -0.049 [-0.069, -0.030] | -0.042 [-0.061, -0.024] | -0.007 [-0.028, +0.015] |
+
+- The current method is more varied than untouched on four of five models and more
+  varied than top-p on three (Qwen, Granite, Nemo); level with top-p on Llama. On OLMo it
+  is level with untouched and slightly less varied than top-p.
+- A distinct-of-10 count at similarity cut-offs 0.80 and 0.85 is 9.8-10 for almost every
+  version (only untouched Qwen 7.8 and untouched Granite 7.3 at 0.80): stories this short
+  rarely embed above 0.8 even when they tell the same story, so the count does not
+  discriminate. Mean similarity is the usable reading.
+- Against the NoveltyBench whole-story judge: both readings put the current method ahead of
+  untouched on Qwen, and both find OLMo's current method unchanged. They disagree on top-p
+  (NoveltyBench: much more varied on OLMo and Llama; embeddings: barely) -- consistent with
+  top-p changing wording and events within the same overall look, which a general embedding
+  sees as similar.
