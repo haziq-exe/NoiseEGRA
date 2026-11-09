@@ -1620,6 +1620,8 @@ def main() -> None:
             or (args.constraint_set == "whole" and args.whole_prompt != "young") else
             wp.build_generic_messages(checker.requirements(), args.constraints)]
         stories_per_prompt = args.stories
+        from noiseegra import attn_space as _as0
+        _as0.STEER_PAIRS, _as0.STEER_NAMES = str(PAIR_SETS[args.pairs]), list(args.steer_vectors)
         if getattr(args, "attn_noise", None):
             from noiseegra import attn_space as _as
             _as.ATTN_NOISE = {w.split(":")[0]: float(w.split(":")[1]) for w in args.attn_noise}
@@ -2316,7 +2318,8 @@ def main() -> None:
         for k in args.hidden_context:
             if k not in ("words", "sentence", "self") and not k.startswith(
                     ("latent:", "noisy:", "select:", "weights:", "transplant:", "transplantiso:",
-                     "amplify:", "premise:", "ampremise:", "think:")):
+                     "amplify:", "premise:", "ampremise:", "think:", "qsteer:", "vsteer:",
+                     "boost:")):
                 raise SystemExit(f"--hidden-context: unknown kind {k!r}")
         made += [dataclasses.replace(base, hidden_context=k,
                                      hidden_tokens=int(args.hidden_tokens),

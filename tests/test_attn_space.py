@@ -69,4 +69,31 @@ check("the run id records it", "__attq1k0p5f32" in _ortho_tag(
       "M", ExperimentSpec(use_orthogonal_steering=True, steering_plan=p)))
 AS.ATTN_NOISE = None
 check("and not when off", "__att" not in _ortho_tag("M", ExperimentSpec(use_orthogonal_steering=True, steering_plan=p)))
+print("\n== rule steering inside attention ==")
+import json, tempfile
+pairs = {"constraints": {"a": {"targets": "a", "pairs": [
+    {"prefix": "x", "positive": "she walks to the bus stop now", "negative": "she walked to the bus stop then"},
+    {"prefix": "x", "positive": "he runs past the old gate", "negative": "he ran past the old gate"}]}}}
+f = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False); json.dump(pairs, f); f.close()
+AS.STEER_PAIRS, AS.STEER_NAMES = f.name, ["a"]
+d = AS.contrast_directions(egra, ids, [2, 3], "q")
+check("a query-space direction per layer at unit RMS",
+      set(d) == {2, 3} and abs(float(d[2].pow(2).mean().sqrt()) - 1) < 1e-4)
+plain = egra.generate(P, max_new_tokens=8, do_sample=True, seed=5)
+for kind in ("qsteer:1.0", "vsteer:1.0", "boost:1.0"):
+    o = AS.generate_with_attn_steer(egra, P, 5, kind, (2, 3), max_new_tokens=8, story_index=0)
+    check(f"{kind} writes a story and leaves nothing behind",
+          isinstance(o, str) and egra.generate(P, max_new_tokens=8, do_sample=True, seed=5) == plain)
+import torch.nn.functional as F
+orig = F.scaled_dot_product_attention
+with AS.instruction_boost(3.0, (2, 8), 12) as b:
+    with torch.no_grad():
+        o = egra.model(input_ids=ids, use_cache=True)
+        s = egra.model(input_ids=ids[:, -1:], past_key_values=o.past_key_values, use_cache=True)
+check("the boost acts on every layer's written-word attention", b.calls == len(blocks), str(b.calls))
+check("and changes that word's prediction", not torch.allclose(s.logits[0, -1], c1, atol=1e-5))
+check("the attention function is restored", F.scaled_dot_product_attention is orig)
+from noiseegra.setup_experiment import _spec_to_run_id
+check("run ids", _spec_to_run_id("M", ExperimentSpec(hidden_context="boost:1.0")) == "M__HIDDENboost1"
+      and _spec_to_run_id("M", ExperimentSpec(hidden_context="qsteer:0.5")) == "M__HIDDENqsteer0p5")
 print(); print("all passed" if not FAILURES else f"FAILED: {FAILURES}"); sys.exit(1 if FAILURES else 0)
