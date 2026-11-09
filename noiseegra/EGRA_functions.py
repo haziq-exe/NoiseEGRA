@@ -1130,6 +1130,13 @@ class EGRA:
         # An amplified random direction (noiseegra.hidden_context): grown on the
         # prompt alone, before any hook is attached, then added at the first
         # plan layer to every position after the first, under the steering.
+        # Per-story random noise on the queries / prompt keys (noiseegra.attn_space).
+        from . import attn_space as _as
+        if _as.ATTN_NOISE:
+            ah, _ = _as.attach(self, normalized_layers, int(input_ids.shape[-1]),
+                               int(seed if seed is not None else (story_index or 0)))
+            handles.extend(ah)
+
         from . import hidden_context as _hc
         if _hc.AMPLIFY is not None:
             rad, steps = _hc.AMPLIFY[0], _hc.AMPLIFY[1]

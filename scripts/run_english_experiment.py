@@ -1014,6 +1014,14 @@ def main() -> None:
     ap.add_argument("--daydream-scene", action="store_true",
                     help="end the daydream with a scene break (* * *) instead of a "
                          "paragraph break, so the story opens a new scene")
+    ap.add_argument("--attn-noise", nargs="*", default=[], metavar="WHICH:SIZE",
+                    help="per-story random noise on attention's own vectors in every steered "
+                         "arm: q:S (queries of the words being written), k:S (the prompt's "
+                         "stored keys), v:S (the prompt's stored values); S in units of the "
+                         "vector's RMS (noiseegra.attn_space)")
+    ap.add_argument("--attn-fade", type=int, default=32,
+                    help="with --attn-noise q: full for N written tokens, faded over N more "
+                         "(0 = the whole story)")
     ap.add_argument("--amplify-caps", default=None, metavar="MOVE:KL",
                     help="with --amplify: refuse growing steps that move the planning "
                          "state past MOVE x its size or change the first word's chances "
@@ -1612,6 +1620,10 @@ def main() -> None:
             or (args.constraint_set == "whole" and args.whole_prompt != "young") else
             wp.build_generic_messages(checker.requirements(), args.constraints)]
         stories_per_prompt = args.stories
+        if getattr(args, "attn_noise", None):
+            from noiseegra import attn_space as _as
+            _as.ATTN_NOISE = {w.split(":")[0]: float(w.split(":")[1]) for w in args.attn_noise}
+            _as.ATTN_FADE = int(args.attn_fade)
         if getattr(args, "amplify", None):
             from noiseegra import hidden_context as _hc
             parts = args.amplify.split(":")
