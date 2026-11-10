@@ -4364,3 +4364,88 @@ Current method vs untouched / vs top-p:
   -1.60. Against top-p: far better on OLMo and Llama (where top-p rates 113/200 and 161/200
   stories at 1-3), level on Granite, worse on Qwen (-0.45) and Nemo (-0.34).
 - OLMo: no variety change by this measure. Nemo remains the failure case (92/200 rated 1-3).
+
+## 2026-11-10: noise and rule steering on attention's own vectors (r360-r367)
+
+Advisor's idea: act on attention's query, key and value vectors directly. 50 stories per
+version, middle-school prompt, OLMo-3-7B and Qwen3-8B. Distinct = NoveltyBench judge on the
+whole story (distinct of 10). Quality = blind 1-10 rating by Sonnet raters, gap paired with
+untouched on the same seeds, 95% interval. Rules = rules broken per story. Reference rows for
+OLMo rules are the 200-story run r242; Qwen reference rows are r253.
+
+### Random noise (`--attn-noise`), usual residual rule steering kept, no residual noise
+
+Queries: one fixed random direction per head and layer per story, added to the query of each
+written word, full for 32 words then faded. Prompt keys / values: random noise added once to
+the prompt's stored keys / values. Sizes in units of the vector's RMS.
+
+| Model | Version | Distinct | Readable /50 | Quality | Quality gap vs untouched | Rules |
+|---|---|---|---|---|---|---|
+| OLMo | untouched | 1.13 | 50 | 5.00 | - | 1.57 |
+| | top-p | 1.95 | 50 | 3.60 | -1.40 [-1.68, -1.14] | 1.81 |
+| | current method | 1.17 | 50 | 4.96 | -0.04 [-0.36, +0.28] | 1.48 |
+| | keys 0.5 | 1.67 | 50 | 4.88 | -0.12 [-0.38, +0.14] | 1.36 |
+| | keys 1 | 1.57 | 50 | 4.28 | -0.72 [-1.06, -0.38] | 1.30 |
+| | keys 2 | broken | 29 | - | - | 4.14 |
+| | keys 3 | broken | 31 | - | - | 4.30 |
+| | queries 1 | 1.25 | 50 | 4.48 | -0.52 [-0.88, -0.16] | 1.24 |
+| | queries 1.5 | 1.87 | 49 | 4.28 | -0.82 [-1.16, -0.48] | 1.42 |
+| | queries 2 | 2.34 | 47 | 3.24 | -1.76 [-2.10, -1.42] | 1.76 |
+| | queries 1 + keys 1 | 1.98 | 49 | 3.60 | -1.50 [-1.84, -1.16] | 1.44 |
+| Qwen | untouched | 1.00 | 50 | 5.00 | - | 2.06 |
+| | top-p | 1.00 | 50 | 4.68 | -0.32 [-0.64, -0.02] | 1.72 |
+| | current method | 1.14 | 50 | 4.42 | -0.58 [-0.92, -0.24] | 1.86 |
+| | keys 0.5 | 1.57 | 49 | 4.78 | -0.22 [-0.58, +0.14] | 2.04 |
+| | keys 0.7 | broken | 38 | - | - | 3.74 |
+| | keys 1 | broken | 13 | - | - | 4.72 |
+| | queries 1 | 1.30 | 49 | 4.10 | -0.90 [-1.26, -0.54] | 2.20 |
+| | queries 1.4 | broken | 38 | - | - | 2.88 |
+| | queries 2 | broken | 22 | - | - | 3.14 |
+| | queries 1 + keys 0.5 | broken | 25 | - | - | 3.34 |
+| | values 0.5 | 1.00 | 50 | - | - | 2.22 |
+
+(The last two OLMo rows and queries 1.5 were rated in a second round where untouched rated
+5.10, top-p 3.58, current 4.98.)
+
+- Prompt-key noise at 0.5 is the one setting that raises variety on both models with a
+  quality gap whose interval includes zero. Gain is about half a distinct story of 10.
+- Larger key noise adds no variety before it breaks the model; the limit differs by model
+  (Qwen breaks at 0.7, OLMo between 1 and 2), so a fixed size will not transfer.
+- Query noise trades variety for quality one-for-one, like residual pushes. Value noise at
+  0.5 does nothing on Qwen.
+- Not done: embedding-similarity second reading, 200 stories, Llama.
+
+### Rule steering inside attention (`--hidden-context qsteer:B | vsteer:B | boost:B`), no noise
+
+qsteer / vsteer: the contrast-pair rule direction computed in query / value space and added
+there. boost: B added to the attention scores of the instruction text for every written word.
+
+| Model | Version | Rules | Distinct | Readable /50 | Mean words |
+|---|---|---|---|---|---|
+| OLMo | untouched (r242) | 1.57 | 1.13 | 50 | 141 |
+| | residual steering only | 1.16 | 1.28 | 50 | 145 |
+| | instruction boost +1 | 1.32 | 1.04 | 50 | 155 |
+| | instruction boost +2 | 1.36 | 1.01 | 50 | 176 |
+| | query direction 0.25 / 0.5 / 1 / 2 | 1.52 / 1.60 / 2.52 / 3.62 | 1.41 / 1.25 / 2.30 / broken | 50 / 50 / 50 / 19 | 152 / 150 / 86 / 26 |
+| | value direction 0.25 / 0.5 / 1 | 1.70 / 3.32 / 4.60 | 1.80 / broken / broken | 50 / 39 / 21 | 157 / 58 / 66 |
+| Qwen | untouched (r253) | 2.06 | 1.00 | 50 | 142 |
+| | residual steering only | 2.26 | 1.00 | 50 | 123 |
+| | instruction boost +1 | 1.30 | 1.00 | 50 | 150 |
+| | instruction boost +2 | 1.50 | 1.00 | 50 | 169 |
+| | query direction 1 / 2 | 3.22 / 5.72 | 1.32 / broken | 38 / 0 | 183 / 302 |
+| | value direction 1 | 5.02 | broken | 19 | 159 |
+
+- The instruction boost at +1 lowers rules on both models with stories unchanged; on Qwen
+  it beats residual steering. Rule directions in query or value space do not lower rules at
+  any size. No quality rating on this table.
+
+### Boost + key noise together (`boostk:B:K`), Qwen, nothing in the residual stream
+
+| Version | Rules | Distinct | Readable /50 |
+|---|---|---|---|
+| boost 1 + keys 0.35 | 1.34 | 1.00 | 50 |
+| boost 1 + keys 0.5 | 1.52 | 1.12 | 49 |
+| boost 1 + keys 0.7 | 4.78 | broken | 19 |
+
+- The rule gain survives; the variety gain of key noise (1.57 with residual steering) does
+  not.
