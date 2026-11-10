@@ -2319,7 +2319,7 @@ def main() -> None:
             if k not in ("words", "sentence", "self") and not k.startswith(
                     ("latent:", "noisy:", "select:", "weights:", "transplant:", "transplantiso:",
                      "amplify:", "premise:", "ampremise:", "think:", "qsteer:", "vsteer:",
-                     "boost:")):
+                     "boost:", "boostk:")):
                 raise SystemExit(f"--hidden-context: unknown kind {k!r}")
         made += [dataclasses.replace(base, hidden_context=k,
                                      hidden_tokens=int(args.hidden_tokens),

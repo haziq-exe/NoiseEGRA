@@ -80,7 +80,7 @@ d = AS.contrast_directions(egra, ids, [2, 3], "q")
 check("a query-space direction per layer at unit RMS",
       set(d) == {2, 3} and abs(float(d[2].pow(2).mean().sqrt()) - 1) < 1e-4)
 plain = egra.generate(P, max_new_tokens=8, do_sample=True, seed=5)
-for kind in ("qsteer:1.0", "vsteer:1.0", "boost:1.0"):
+for kind in ("qsteer:1.0", "vsteer:1.0", "boost:1.0", "boostk:1.0:0.5"):
     o = AS.generate_with_attn_steer(egra, P, 5, kind, (2, 3), max_new_tokens=8, story_index=0)
     check(f"{kind} writes a story and leaves nothing behind",
           isinstance(o, str) and egra.generate(P, max_new_tokens=8, do_sample=True, seed=5) == plain)

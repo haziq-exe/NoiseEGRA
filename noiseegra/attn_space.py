@@ -253,9 +253,12 @@ def generate_with_attn_steer(model, prompt, seed: int, kind: str, layers, *,
     ``vsteer:B``  the same in value space, on every position's values: what
                   attention reads out is shifted toward rule-following text.
     ``boost:B``   attention to the instruction raised by B (instruction_boost).
+    ``boostk:B:K`` the boost plus per-story random noise of K x RMS on the prompt's
+                  stored keys: rules and variety both from inside attention.
     """
-    which, val = kind.split(":")
-    beta = float(val)
+    parts = kind.split(":")
+    which, beta = parts[0], float(parts[1])
+    key_noise = float(parts[2]) if which == "boostk" else 0.0
     chat = model.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
     ids = model.tokenizer(chat, return_tensors="pt")["input_ids"].to(model._input_device())
     n_prompt = int(ids.shape[-1])
@@ -286,7 +289,9 @@ def generate_with_attn_steer(model, prompt, seed: int, kind: str, layers, *,
 
         handles = [_site(blocks[li].self_attn, w).register_forward_hook(hook_for(li))
                    for li in layers if li in dirs]
-    elif which == "boost":
+    elif which in ("boost", "boostk"):
+        if key_noise > 0:
+            handles, _ = attach(model, layers, n_prompt, seed, spec={"k": key_noise})
         span = _instruction_span(model, prompt, chat, n_prompt)
         ctx = instruction_boost(beta, span, n_prompt)
         note = f", instruction tokens {span[0]}-{span[1]} of {n_prompt}"
