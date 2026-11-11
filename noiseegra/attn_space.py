@@ -521,10 +521,12 @@ def _rope_shift(model, seed: int, span, size: float, slow_only: bool, slow_wavel
     from .arch_noise import _rotary
     a, b = int(span[0]), int(span[1])
 
-    def hook(module, inp, out):
-        if not isinstance(out, (tuple, list)) or len(out) != 2 or len(inp) < 2:
+    def hook(module, inp, kwargs, out):
+        if not isinstance(out, (tuple, list)) or len(out) != 2:
             return None
-        position_ids, inv = inp[1], getattr(module, "inv_freq", None)
+        # transformers passes the positions by keyword; older code by position
+        position_ids = kwargs.get("position_ids", inp[1] if len(inp) > 1 else None)
+        inv = getattr(module, "inv_freq", None)
         if position_ids is None or inv is None:
             return None
         inside = (position_ids >= a) & (position_ids < b)
@@ -540,7 +542,7 @@ def _rope_shift(model, seed: int, span, size: float, slow_only: bool, slow_wavel
         cos, sin = out
         return (emb.cos() * k).to(device=cos.device, dtype=cos.dtype), \
                (emb.sin() * k).to(device=sin.device, dtype=sin.dtype)
-    return [rot.register_forward_hook(hook) for rot in _rotary(model)]
+    return [rot.register_forward_hook(hook, with_kwargs=True) for rot in _rotary(model)]
 
 
 def generate_with_attn_steer(model, prompt, seed: int, kind: str, layers, *,
