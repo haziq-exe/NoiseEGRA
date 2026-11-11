@@ -493,6 +493,9 @@ def _spec_to_run_id(model_name: str, spec: ExperimentSpec) -> str:
             elif kind.startswith("amplify:"):
                 _, rr, kk = kind.split(":")
                 kind = f"amplify{_float_tag(float(rr))}s{int(kk)}"
+            elif kind.startswith(("emph:", "knoise:", "kgrad:", "ksign:", "ropeslow:", "ropeall:")):
+                head, *vals = kind.split(":")
+                kind = head + "s".join(_float_tag(float(v)) for v in vals)
             elif kind.startswith("boostk:"):
                 _, bb, kk = kind.split(":")
                 kind = f"boostk{_float_tag(float(bb))}k{_float_tag(float(kk))}"

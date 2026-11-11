@@ -80,7 +80,8 @@ d = AS.contrast_directions(egra, ids, [2, 3], "q")
 check("a query-space direction per layer at unit RMS",
       set(d) == {2, 3} and abs(float(d[2].pow(2).mean().sqrt()) - 1) < 1e-4)
 plain = egra.generate(P, max_new_tokens=8, do_sample=True, seed=5)
-for kind in ("qsteer:1.0", "vsteer:1.0", "boost:1.0", "boostk:1.0:0.5"):
+for kind in ("qsteer:1.0", "vsteer:1.0", "boost:1.0", "boostk:1.0:0.5", "knoise:0.5", "emph:1:2",
+             "kgrad:0.5", "ksign:0.5", "ropeslow:1", "ropeall:1"):
     o = AS.generate_with_attn_steer(egra, P, 5, kind, (2, 3), max_new_tokens=8, story_index=0)
     check(f"{kind} writes a story and leaves nothing behind",
           isinstance(o, str) and egra.generate(P, max_new_tokens=8, do_sample=True, seed=5) == plain)
@@ -96,4 +97,46 @@ check("the attention function is restored", F.scaled_dot_product_attention is or
 from noiseegra.setup_experiment import _spec_to_run_id
 check("run ids", _spec_to_run_id("M", ExperimentSpec(hidden_context="boost:1.0")) == "M__HIDDENboost1"
       and _spec_to_run_id("M", ExperimentSpec(hidden_context="qsteer:0.5")) == "M__HIDDENqsteer0p5")
+print("\n== emphasis, gradients, position ==")
+def last_logits():
+    with torch.no_grad():
+        return egra.model(input_ids=ids, use_cache=False).logits[0, -1].clone()
+base = last_logits()
+b1 = AS.emphasis_bias(3, (2, 10), 12, 1.0, 2.0); b2 = AS.emphasis_bias(4, (2, 10), 12, 1.0, 2.0)
+check("emphasis: mean and spread as asked, zero outside the instruction, differs by story",
+      abs(float(b1[2:10].mean()) - 1) < 1e-4 and abs(float(b1[2:10].std()) - 2) < 1e-3
+      and float(b1[:2].abs().sum() + b1[10:].abs().sum()) == 0 and not torch.allclose(b1, b2))
+with AS.attention_bias(b1, 12, 10) as ab:
+    e = last_logits()
+check("emphasis changes the prediction after the prompt", ab.calls > 0 and not torch.allclose(e, base, atol=1e-5))
+for obj in ("plan", "sign"):
+    d3 = AS.key_gradient_push(egra, ids, [1, 2], 3, obj, 0.5); d4 = AS.key_gradient_push(egra, ids, [1, 2], 4, obj, 0.5)
+    rel = []
+    for li in d3:
+        kk = {}
+        hk = AS._site(blocks[li].self_attn, "k").register_forward_hook(lambda m, i, o: kk.__setitem__("k", o.detach().clone()))
+        last_logits(); hk.remove()
+        rel.append((float(d3[li].pow(2).mean().sqrt()) / float(kk["k"][0, 1:].pow(2).mean().sqrt())) ** 2)
+    check(f"gradient push ({obj}): one per layer, size as asked, first token untouched, differs by story",
+          len(d3) == 2 and abs((sum(rel) / len(rel)) ** 0.5 - 0.5) < 0.02
+          and float(d3[1][0].abs().sum()) == 0 and not torch.allclose(d3[1], d4[1]))
+    hs = AS._apply_key_delta(egra, d3); g = last_logits()
+    for h_ in hs: h_.remove()
+    check(f"gradient push ({obj}) changes the prediction and comes off cleanly",
+          not torch.allclose(g, base, atol=1e-5) and torch.allclose(last_logits(), base))
+tg = AS._plan_layer(blocks); pc = AS._plan_state(egra, ids, min(tg, len(blocks) - 1)).detach().float()
+dp = AS.key_gradient_push(egra, ids, [0, 1], 3, "plan", 0.5)
+r = AS._unit(3, ("plan",), (pc.shape[-1],), pc.device); r = r / r.norm()
+hs = AS._apply_key_delta(egra, {li: d * 0.05 for li, d in dp.items()})
+with torch.no_grad(): pm = AS._plan_state(egra, ids, min(tg, len(blocks) - 1)).float()
+for h_ in hs: h_.remove()
+check("the plan gradient moves the planning state along its random direction", float(((pm - pc) @ r).sum()) > 0,
+      f"{float(((pm - pc) @ r).sum()):.2e}")
+for slow in (True, False):
+    hs = AS._rope_shift(egra, 3, (2, 10), 1.0, slow); e = last_logits()
+    for h_ in hs: h_.remove()
+    check(f"position shift (slow only {slow}) hooks the rotary code and changes the prediction",
+          len(hs) > 0 and not torch.allclose(e, base, atol=1e-5) and torch.allclose(last_logits(), base))
+check("run ids for the new kinds", _spec_to_run_id("M", ExperimentSpec(hidden_context="emph:1:2")) == "M__HIDDENemph1s2"
+      and _spec_to_run_id("M", ExperimentSpec(hidden_context="kgrad:0.25")) == "M__HIDDENkgrad0p25")
 print(); print("all passed" if not FAILURES else f"FAILED: {FAILURES}"); sys.exit(1 if FAILURES else 0)
