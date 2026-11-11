@@ -526,22 +526,28 @@ def _rope_shift(model, seed: int, span, size: float, slow_only: bool, slow_wavel
             return None
         # transformers passes the positions by keyword; older code by position
         position_ids = kwargs.get("position_ids", inp[1] if len(inp) > 1 else None)
+        # one set of frequencies, or one per layer type (Olmo3: sliding / full attention)
+        lt = kwargs.get("layer_type", inp[2] if len(inp) > 2 else None)
         inv = getattr(module, "inv_freq", None)
+        if inv is None and lt is not None:
+            inv = getattr(module, f"{lt}_inv_freq", None)
         if position_ids is None or inv is None:
             return None
         inside = (position_ids >= a) & (position_ids < b)
         if not bool(inside.any()):
             return None
-        phi = float(size) * _unit(seed, ("rope",), tuple(inv.shape), inv.device)
-        if slow_only:
-            phi = phi * ((2 * math.pi / inv.float().clamp_min(1e-12)) > slow_wavelength)
-        freqs = position_ids[:, :, None].float().to(inv.device) * inv.float()[None, None, :]
-        freqs = freqs + inside[:, :, None].to(freqs.device).float() * phi[None, None, :]
-        emb = torch.cat((freqs, freqs), dim=-1)
-        k = float(getattr(module, "attention_scaling", 1.0) or 1.0)
         cos, sin = out
-        return (emb.cos() * k).to(device=cos.device, dtype=cos.dtype), \
-               (emb.sin() * k).to(device=sin.device, dtype=sin.dtype)
+        phi = float(size) * _unit(seed, ("rope",), tuple(inv.shape), "cpu").to(cos.device)
+        if slow_only:
+            phi = phi * ((2 * math.pi / inv.float().clamp_min(1e-12)) > slow_wavelength).to(cos.device)
+        phi = torch.cat((phi, phi), dim=-1)[None, None, :] * inside[:, :, None].to(cos.device).float()
+        # rotate the angle by phi on the module's own output, keeping its scaling
+        c, s_ = phi.cos(), phi.sin()
+        cf, sf = cos.float(), sin.float()
+        state["fired"] = state.get("fired", 0) + 1
+        return (cf * c - sf * s_).to(cos.dtype), (sf * c + cf * s_).to(sin.dtype)
+    state = {}
+    _rope_shift.state = state
     return [rot.register_forward_hook(hook, with_kwargs=True) for rot in _rotary(model)]
 
 
@@ -634,6 +640,7 @@ def generate_with_attn_steer(model, prompt, seed: int, kind: str, layers, *,
         span = _instruction_span(model, prompt, chat, n_prompt)
         handles = _rope_shift(model, seed, span, beta, which == "ropeslow")
         note = f", instruction tokens {span[0]}-{span[1]} of {n_prompt}, {len(handles)} rotary module(s)"
+        rope_state = _rope_shift.state
     else:
         raise ValueError(f"unknown attention steering {kind!r}")
 
@@ -656,6 +663,8 @@ def generate_with_attn_steer(model, prompt, seed: int, kind: str, layers, *,
     finally:
         for h in handles:
             h.remove()
+    if show and which in ("ropeslow", "ropeall"):
+        note += f", shift applied {rope_state.get('fired', 0)} times"
     if show:
         print(f"  [attention steering {kind}] story {story_index}: layers {layers[0]}-{layers[-1]}"
               f"{note}", flush=True)
