@@ -82,7 +82,7 @@ check("a query-space direction per layer at unit RMS",
 plain = egra.generate(P, max_new_tokens=8, do_sample=True, seed=5)
 for kind in ("qsteer:1.0", "vsteer:1.0", "boost:1.0", "boostk:1.0:0.5", "knoise:0.5", "emph:1:2",
              "kgrad:0.5", "ksign:0.5", "ropeslow:1", "ropeall:1", "kreal:0.5", "krealw:0.5", "kalt:0.5",
-             "kdiag:1"):
+             "kreal:0.5:3", "kalt:0.5:3", "knoise:0.5:3", "kdiag:1"):
     o = AS.generate_with_attn_steer(egra, P, 5, kind, (2, 3), max_new_tokens=8, story_index=0)
     check(f"{kind} writes a story and leaves nothing behind",
           isinstance(o, str) and egra.generate(P, max_new_tokens=8, do_sample=True, seed=5) == plain)
@@ -98,6 +98,14 @@ check("the attention function is restored", F.scaled_dot_product_attention is or
 from noiseegra.setup_experiment import _spec_to_run_id
 check("run ids", _spec_to_run_id("M", ExperimentSpec(hidden_context="boost:1.0")) == "M__HIDDENboost1"
       and _spec_to_run_id("M", ExperimentSpec(hidden_context="qsteer:0.5")) == "M__HIDDENqsteer0p5")
+full = AS.generate_with_attn_steer(egra, P, 5, "kreal:0.5", (2, 3), max_new_tokens=8)
+cut = AS.generate_with_attn_steer(egra, P, 5, "kreal:0.5:3", (2, 3), max_new_tokens=8)
+none = AS.generate_with_attn_steer(egra, P, 5, "kreal:0.0:3", (2, 3), max_new_tokens=8)
+ftok = egra.tokenizer(full, add_special_tokens=False)["input_ids"][:2]
+ctok = egra.tokenizer(cut, add_special_tokens=False)["input_ids"][:2]
+check("removed after the opening: same opening as the kept change", ftok == ctok, f"{full!r} {cut!r}")
+check("run id with a removal point",
+      _spec_to_run_id("M", ExperimentSpec(hidden_context="kreal:0.04:32")) == "M__HIDDENkreal0p04s32")
 print("\n== emphasis, gradients, position ==")
 def last_logits():
     with torch.no_grad():

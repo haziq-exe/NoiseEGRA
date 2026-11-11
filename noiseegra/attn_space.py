@@ -575,6 +575,12 @@ def generate_with_attn_steer(model, prompt, seed: int, kind: str, layers, *,
     ``kalt:K``    prompt keys moved along the gradient toward a first word
                   drawn from the model's own alternatives.
     ``kdiag:1``   no change to the story; prints subspace_report for it.
+
+    The key kinds (knoise, kgrad, ksign, kreal, krealw, kalt) take a further
+    ``:N``: the change is on while the first N tokens are written and is then
+    removed entirely -- the untouched model re-reads the prompt and those N
+    tokens as plain text and writes the rest, so nothing of the change remains
+    but the opening's words.
     """
     parts = kind.split(":")
     which, beta = parts[0], float(parts[1])
@@ -585,6 +591,9 @@ def generate_with_attn_steer(model, prompt, seed: int, kind: str, layers, *,
     layers = [int(l) for l in layers]
     handles, ctx, note = [], None, ""
     show = story_index is not None and int(story_index) < 3
+    drop = 0
+    if which in ("knoise", "kgrad", "ksign", "kreal", "krealw", "kalt") and len(parts) > 2:
+        drop = int(float(parts[2]))
     tgt = min(_plan_layer(blocks), len(blocks) - 1)
     clean = None
     if show and which not in ("qsteer", "vsteer"):
@@ -651,8 +660,36 @@ def generate_with_attn_steer(model, prompt, seed: int, kind: str, layers, *,
                 moved = _plan_state(model, ids, tgt).float()
             note += (f", planning state moved {float((moved - clean).norm(dim=-1).mean()) / float(clean.norm(dim=-1).mean()):.3f}"
                      f" x its size")
-        return model.generate(prompt, max_new_tokens=max_new_tokens, do_sample=True,
-                              temperature=temperature, seed=seed, max_words=max_words)
+        if drop <= 0:
+            return model.generate(prompt, max_new_tokens=max_new_tokens, do_sample=True,
+                                  temperature=temperature, seed=seed, max_words=max_words)
+        tok, m = model.tokenizer, model.model
+        torch.manual_seed(int(seed))
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(int(seed))
+        sampling = model._sampling_kwargs(do_sample=True, temperature=temperature, top_p=None,
+                                          top_k=None)
+        pad = {"pad_token_id": tok.pad_token_id if tok.pad_token_id is not None
+               else tok.eos_token_id}
+        first = m.generate(input_ids=ids, attention_mask=torch.ones_like(ids),
+                           max_new_tokens=min(drop, int(max_new_tokens)), **sampling, **pad)
+        for h in handles:
+            h.remove()
+        handles.clear()
+        wrote = int(first.shape[-1]) - n_prompt
+        ended = tok.eos_token_id is not None and bool((first[0, n_prompt:] == tok.eos_token_id).any())
+        if show:
+            note += f", change removed after {wrote} tokens: {tok.decode(first[0, n_prompt:], skip_special_tokens=True)!r}"
+            with torch.no_grad():
+                back = _plan_state(model, ids, tgt).float()
+            note += f", planning state after removal {float((back - clean).norm(dim=-1).mean()) / float(clean.norm(dim=-1).mean()):.3f} x its size from clean"
+        if ended or wrote < drop or wrote >= int(max_new_tokens):
+            return tok.decode(first[0, n_prompt:], skip_special_tokens=True).strip()
+        stopper = model._word_budget_stopper(n_prompt, max_words)
+        out = m.generate(input_ids=first, attention_mask=torch.ones_like(first),
+                         max_new_tokens=int(max_new_tokens) - wrote, **sampling, **pad,
+                         **({"stopping_criteria": stopper} if stopper is not None else {}))
+        return tok.decode(out[0, n_prompt:], skip_special_tokens=True).strip()
     try:
         if ctx is not None:
             with ctx:
