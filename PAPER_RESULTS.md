@@ -4449,3 +4449,75 @@ there. boost: B added to the attention scores of the instruction text for every 
 
 - The rule gain survives; the variety gain of key noise (1.57 with residual steering) does
   not.
+
+## 2026-11-11: attention changes "smarter than noise" (r370-r381)
+
+All versions: the untouched model plus one change inside attention, no rule steering, no other
+noise; 50 stories, middle-school prompt. Distinct = NoveltyBench judge on the whole story.
+Quality gap = blind 1-10 Sonnet rating, paired with untouched on the same seeds, 95% interval
+(several rating rounds; untouched rated 4.86-5.26 across them). Plan moved = movement of the
+planning state (block at 2/3 depth, last 8 prompt positions) relative to its size, first 3
+stories. Kinds are `--hidden-context` values (noiseegra/attn_space.py).
+
+Key changes taken from one backward pass on the prompt, size in the unit of key noise
+(RMS of the change / RMS of the keys):
+- `kgrad` random-plan gradient: a random direction in the planning state; the gradient of the
+  state's component along it w.r.t. the prompt keys.
+- `ksign` sign-flip: gradient of the favourite first word's log-probability, sign flipped at
+  random per head.
+- `kreal` real-state direction: as kgrad, direction = random blend of the prompt's own states
+  at the planning block (centred); `krealw` = uniform direction in their span.
+- `kalt` sampled alternative: gradient of log p(y) - log p(favourite), y a first word sampled
+  from the model's own distribution without the favourite.
+Others: `knoise` plain key noise; `emph:B:S` per-story random attention-score emphasis over
+the instruction (mean B, spread S); `ropeslow/ropeall:S` per-story random phase (S rad) on the
+instruction's rotary positions, slow pairs (wavelength > 32) / all pairs.
+
+| Model | Version | Plan moved | Distinct | Readable /50 | Quality gap | Rules |
+|---|---|---|---|---|---|---|
+| OLMo | untouched | - | 1.13 | 50 | - | 1.57 |
+| | top-p | - | 1.95 | 50 | -1.48 [-1.76, -1.20] | 1.81 |
+| | knoise 0.5 | 0.19-0.21 | 1.30 | 50 | - | 1.74 |
+| | kgrad 0.01 | 0.40-0.51 | 1.74 | 50 | -0.22 [-0.46, +0.04] | 1.66 |
+| | kgrad 0.02 | 0.57-0.67 | 1.92 | 50 | -0.20 [-0.50, +0.10] | 1.80 |
+| | kgrad 0.04 | 0.69-0.82 | 2.36 | 46 | -0.84 [-1.24, -0.44] | 2.72 |
+| | ksign 0.01 / 0.03 / 0.1 | 0.14-0.18 / 0.35-0.43 / 0.74-0.78 | 1.53 / 1.68 / 1.89 | 50 / 50 / 50 | -0.30 / -0.76 / -3.16 | 1.56 / 1.90 / 3.20 |
+| | kreal 0.01 | 0.38-0.54 | 1.88 | 50 | -0.18 [-0.54, +0.16] | 1.50 |
+| | kreal 0.02 | 0.53-0.67 | 2.40 | 50 | -0.36 [-0.70, +0.02] | 1.72 |
+| | kreal 0.04 | 0.73-0.81 | 3.16 | 48 | -1.50 [-1.94, -1.06] | 2.52 |
+| | kreal 0.08 | 0.82-0.97 | 3.95 | 37 | - | 3.74 |
+| | krealw 0.02 / 0.04 | 0.63-0.65 / 0.68-0.76 | 1.98 / 3.62 | 50 / 46 | -0.60 [-0.92, -0.30] / - | 2.10 / 2.48 |
+| | kalt 0.01 | 0.38-0.41 | 2.65 | 49 | -0.36 [-0.70, -0.02] | 2.30 |
+| | kalt 0.03 / 0.06 | 0.64-0.67 / 0.79-0.82 | 2.64 / 3.09 | 45 / 44 | -1.44 [-1.84, -1.06] / - | 2.96 / 3.54 |
+| | emph 0:1 / 0:2 / 1:1 / 1:2 | 0.17-0.22 / 0.39-0.48 / 0.29-0.36 / 0.51-0.60 | 1.28 / 1.18 / 1.04 / broken | 50 / 34 / 43 / 9 | - | 1.76 / 3.50 / 2.38 / 5.40 |
+| | ropeslow 0.1 / 0.2 / 0.3 | - | 1.42 / 1.54 / 1.93 | 50 / 49 / 47 | - / - / -1.02 [-1.52, -0.54] | 1.62 / 1.54 / 2.20 |
+| | ropeslow 0.5 / 1 / 2, ropeall 1 | 0.24-0.60 and up | broken | 36 / 27 / 17 / 28 | - | 3.46-4.68 |
+| | ropeall 0.2 | - | 1.73 | 49 | - | 1.72 |
+| Qwen | untouched | - | 1.00 | 50 | - | 2.06 |
+| | top-p | - | 1.00 | 50 | -0.24 [-0.52, +0.02] | 1.72 |
+| | knoise 0.5 | 0.35-0.60 | 1.17 | 50 | -0.14 [-0.50, +0.20] | 1.68 |
+| | kgrad 0.01 / 0.02 / 0.04 | 0.32-0.35 / 0.44-0.45 / 0.51-0.86 | 1.00 / 1.12 / broken | 50 / 39 / 19 | - | 1.80 / 2.58 / 3.28 |
+| | ksign 0.01 / 0.03 / 0.1 | 0.17-0.22 / 0.38-0.50 / 0.75-1.05 | 1.00 / 1.29 / broken | 50 / 47 / 4 | - | 1.38 / 2.26 / 5.60 |
+| | kreal 0.01 | 0.40-0.50 | 1.00 | 50 | +0.24 [-0.04, +0.52] | 1.90 |
+| | kreal 0.02 / 0.04 / 0.08 | - | 1.14 / broken / broken | 42 / 28 / 1 | - | 2.50 / 3.62 / 5.30 |
+| | krealw 0.02 / 0.04 | - | 1.10 / broken | 46 / 27 | - | 2.34 / 4.00 |
+| | kalt 0.01 | 0.29-0.30 | 1.17 | 50 | -0.18 [-0.46, +0.10] | 1.68 |
+| | kalt 0.03 | 0.43-0.46 | 2.87 | 49 | -1.42 [-1.68, -1.14] | 1.94 |
+| | kalt 0.06 | 0.61-0.67 | broken | 3 | - | 4.32 |
+| | emph 0:1 / 0:2 / 1:1 / 1:2 | - | 1.00 / 1.09 / 1.00 / 1.16 | 50 / 40 / 50 / 23 | - | 1.92 / 2.48 / 1.88 / 3.66 |
+| | ropeslow 0.5 / 1 / 2, ropeall 1 | - | broken | 29 / 11 / 9 / 8 | - | 4.54-6.02 |
+
+- OLMo: the real-state direction at 0.02 is the best point so far: 2.40 distinct (top-p 1.95)
+  with a quality gap of -0.36 that just includes zero (top-p -1.48). One size up quality
+  falls by 1.5. The random-plan gradient at 0.02 gives 1.92 at -0.20.
+- Qwen: no version exceeds about 1.2 distinct without a quality loss; kalt 0.03 reaches 2.87
+  at -1.42 quality.
+- Random emphasis and the rotary position shift give no usable variety on either model.
+- Subspace diagnostic (10 prompts each): the share of plan movement lying in the span of the
+  prompt's own states at the planning block is flat in size (OLMo 0.11-0.13, Qwen 0.16-0.23
+  for kgrad; blind share 0.045) and rises only to 0.15 / 0.24 when aimed at a real-state
+  direction. Gradient pushes are sublinear in size (OLMo 0.27 / 0.42 / 0.57 moved at 0.005 /
+  0.01 / 0.02); key noise is linear.
+- The gradient step adds no measurable time (OLMo 12.1-12.3 s/story vs 12.4 for key noise).
+- Olmo3 keeps rotary frequencies per layer type; the first position-shift runs (r370, r376,
+  r379) were a no-op there and are void.
