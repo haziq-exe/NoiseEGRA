@@ -247,7 +247,7 @@ def _instruction_span(egra, prompt, chat: str, n_prompt: int):
 # --------------------------------------------------------------------------- #
 
 KINDS = ("qsteer:", "vsteer:", "boost:", "boostk:", "emph:", "knoise:", "kgrad:", "ksign:",
-         "ropeslow:", "ropeall:")
+         "ropeslow:", "ropeall:", "kreal:", "krealw:", "kalt:", "kdiag:")
 N_PLAN = 8                      # the last prompt positions, where the reply is planned
 
 
@@ -318,12 +318,29 @@ def _plan_layer(blocks) -> int:
 
 def _plan_state(model, ids, tgt: int):
     """The state where the reply is planned: block ``tgt`` at the last prompt positions."""
+    return _layer_states(model, ids, tgt)[-N_PLAN:]
+
+
+def real_state_basis(states: torch.Tensor):
+    """The directions real states vary in at this layer for this prompt: the
+    prompt's own states (every position after the first), centred, and their
+    principal directions. Returns (centred states, principal directions as
+    rows, their sizes), most important first."""
+    C = states[1:].detach().float()
+    C = C - C.mean(0, keepdim=True)
+    _, S, Vh = torch.linalg.svd(C.cpu(), full_matrices=False)
+    keep = S > 1e-3 * S[0]
+    return C, Vh[keep].to(C.device), S[keep].to(C.device)
+
+
+def _layer_states(model, ids, tgt: int):
+    """Block ``tgt``'s state at every prompt position (the forward stops there)."""
     from .hidden_context import _Stop
     box = {}
 
     def grab(module, inp, out):
         t = out[0] if isinstance(out, (tuple, list)) else out
-        box["h"] = t[0, -N_PLAN:]
+        box["h"] = t[0]
         raise _Stop
     h = model._get_transformer_blocks()[int(tgt)].register_forward_hook(grab)
     try:
@@ -347,6 +364,15 @@ def key_gradient_push(model, ids, layers, seed: int, objective: str, size: float
     ``sign``  The gradient of the model's chance of its favourite first word.
               Each head's share is kept or flipped at random: some heads push
               toward the default opening, some away from it.
+    ``real``  As ``plan``, but the direction the plan is sent in is a random
+              blend of the prompt's own states at the planning block (each
+              position's state minus their mean, random weights): a direction
+              real states do differ in, not one of the thousands they never do.
+    ``realw`` The same space with every principal direction given equal weight
+              (a uniformly random direction inside the span of the real states).
+    ``alt``   A first word other than the favourite is drawn from the model's own
+              chances for it; the gradient raises that word and lowers the
+              favourite: the push is a sample of the model's own uncertainty.
 
     The whole change is scaled so its RMS, relative to the keys' own RMS and
     averaged over the layers, is ``size`` -- the unit prompt-key noise uses, so
@@ -354,7 +380,8 @@ def key_gradient_push(model, ids, layers, seed: int, objective: str, size: float
     gave them."""
     blocks = model._get_transformer_blocks()
     tgt = _plan_layer(blocks)
-    layers = [int(l) for l in layers if objective != "plan" or int(l) < tgt]
+    planlike = objective in ("plan", "real", "realw")
+    layers = [int(l) for l in layers if not planlike or int(l) < tgt]
     for p in model.model.parameters():
         p.requires_grad_(False)
     deltas, rms = {}, {}
@@ -369,13 +396,31 @@ def key_gradient_push(model, ids, layers, seed: int, objective: str, size: float
     hs = [_site(blocks[li].self_attn, "k").register_forward_hook(mk(li)) for li in layers]
     try:
         with torch.enable_grad():
-            if objective == "plan":
-                h = _plan_state(model, ids, tgt).float()
-                r = _unit(seed, ("plan",), (h.shape[-1],), h.device)
-                loss = (h @ (r / r.norm())).sum()
+            if planlike:
+                full = _layer_states(model, ids, tgt).float()
+                h = full[-N_PLAN:]
+                if objective == "plan":
+                    r = _unit(seed, ("plan",), (h.shape[-1],), h.device)
+                else:
+                    C, Vh, _ = real_state_basis(full)
+                    if objective == "real":
+                        r = _unit(seed, ("real",), (C.shape[0],), h.device) @ C
+                    else:
+                        r = _unit(seed, ("realw",), (Vh.shape[0],), h.device) @ Vh
+                loss = (h @ (r / r.norm()).detach()).sum()
             else:
                 o = model.model(input_ids=ids, use_cache=False)
-                loss = torch.log_softmax(o.logits[0, -1].float(), dim=-1).max()
+                lp = torch.log_softmax(o.logits[0, -1].float(), dim=-1)
+                if objective == "alt":
+                    pr = lp.detach().exp().cpu()
+                    top = int(pr.argmax())
+                    pr[top] = 0
+                    g_ = torch.Generator(device="cpu").manual_seed(
+                        (int(seed) * 1000003 + zlib.crc32(b"alt")) & 0x7FFFFFFF)
+                    y = int(torch.multinomial(pr / pr.sum(), 1, generator=g_))
+                    loss = lp[y] - lp[top]
+                else:
+                    loss = lp.max()
             loss.backward()
     finally:
         for h_ in hs:
@@ -404,6 +449,49 @@ def key_gradient_push(model, ids, layers, seed: int, objective: str, size: float
     if not (total > 0 and math.isfinite(total)):
         return {}
     return {li: g * (float(size) / total) for li, g in out.items()}
+
+
+def subspace_report(model, ids, layers, seed: int) -> str:
+    """How much of the planning state's movement stays inside the space real
+    states vary in, as the key change grows. For the random-plan gradient and
+    for plain key noise at several sizes: how far the plan moved (x its size)
+    and the share of that movement's squared length lying in the top 16 / 64 /
+    all principal directions of the prompt's own states at the planning block
+    (the plan positions themselves left out of the basis). A direction chosen
+    blind to that space would have dim/width of it."""
+    blocks = model._get_transformer_blocks()
+    tgt = min(_plan_layer(blocks), len(blocks) - 1)
+    with torch.no_grad():
+        full = _layer_states(model, ids, tgt).float()
+    clean = full[-N_PLAN:]
+    _, Vh, _ = real_state_basis(full[:-N_PLAN])
+    scale = float(clean.norm(dim=-1).mean())
+    width = clean.shape[-1]
+
+    def measure(handles):
+        try:
+            with torch.no_grad():
+                d = _plan_state(model, ids, tgt).float() - clean
+        finally:
+            for h in handles:
+                h.remove()
+        tot = float(d.pow(2).sum())
+        ins = [float((d @ Vh[:k].T).pow(2).sum()) / max(tot, 1e-12) for k in (16, 64, Vh.shape[0])]
+        return float(d.norm(dim=-1).mean()) / scale, ins
+
+    rows = [f"  [subspace] seed {seed}: basis of {Vh.shape[0]} real directions in {width}; blind share "
+            f"{16 / width:.3f} / {64 / width:.3f} / {Vh.shape[0] / width:.3f}"]
+    for obj in ("plan", "real"):
+        unit = key_gradient_push(model, ids, layers, seed, obj, 1.0)
+        for size in (0.005, 0.01, 0.02, 0.04, 0.1, 0.25):
+            mv, ins = measure(_apply_key_delta(model, {li: d * size for li, d in unit.items()}))
+            rows.append(f"  [subspace] seed {seed} gradient-{obj} size {size:<5}: moved {mv:.3f}, inside "
+                        f"{ins[0]:.3f} / {ins[1]:.3f} / {ins[2]:.3f}")
+    for size in (0.25, 0.5, 1.0, 2.0):
+        mv, ins = measure(attach(model, layers, int(ids.shape[-1]), seed, spec={"k": size})[0])
+        rows.append(f"  [subspace] seed {seed} key-noise size {size:<5}: moved {mv:.3f}, inside "
+                    f"{ins[0]:.3f} / {ins[1]:.3f} / {ins[2]:.3f}")
+    return "\n".join(rows)
 
 
 def _apply_key_delta(model, deltas):
@@ -474,6 +562,11 @@ def generate_with_attn_steer(model, prompt, seed: int, kind: str, layers, *,
                   word, kept or flipped at random per head.
     ``ropeslow:S`` / ``ropeall:S``  per-story phase shift of the instruction's
                   rotary positions, slow pairs only / all pairs (_rope_shift).
+    ``kreal:K`` / ``krealw:K``  as kgrad, the plan sent in a random direction
+                  inside the space of the prompt's own real states.
+    ``kalt:K``    prompt keys moved along the gradient toward a first word
+                  drawn from the model's own alternatives.
+    ``kdiag:1``   no change to the story; prints subspace_report for it.
     """
     parts = kind.split(":")
     which, beta = parts[0], float(parts[1])
@@ -527,8 +620,12 @@ def generate_with_attn_steer(model, prompt, seed: int, kind: str, layers, *,
         ctx = attention_bias(bias, n_prompt, span[1])
         note = (f", instruction tokens {span[0]}-{span[1]} of {n_prompt}, emphasis "
                 f"{float(bias[span[0]:span[1]].min()):+.2f} to {float(bias[span[0]:span[1]].max()):+.2f}")
-    elif which in ("kgrad", "ksign"):
-        deltas = key_gradient_push(model, ids, layers, seed, "plan" if which == "kgrad" else "sign", beta)
+    elif which == "kdiag":
+        print(subspace_report(model, ids, layers, seed), flush=True)
+        max_new_tokens = min(int(max_new_tokens), 8)
+    elif which in ("kgrad", "ksign", "kreal", "krealw", "kalt"):
+        deltas = key_gradient_push(model, ids, layers, seed, {"kgrad": "plan", "ksign": "sign", "kreal": "real",
+                                                              "krealw": "realw", "kalt": "alt"}[which], beta)
         handles = _apply_key_delta(model, deltas)
         note = f", gradient taken on {len(deltas)} layers" + ("" if deltas else " (NO USABLE GRADIENT: untouched)")
     elif which in ("ropeslow", "ropeall"):

@@ -81,7 +81,8 @@ check("a query-space direction per layer at unit RMS",
       set(d) == {2, 3} and abs(float(d[2].pow(2).mean().sqrt()) - 1) < 1e-4)
 plain = egra.generate(P, max_new_tokens=8, do_sample=True, seed=5)
 for kind in ("qsteer:1.0", "vsteer:1.0", "boost:1.0", "boostk:1.0:0.5", "knoise:0.5", "emph:1:2",
-             "kgrad:0.5", "ksign:0.5", "ropeslow:1", "ropeall:1"):
+             "kgrad:0.5", "ksign:0.5", "ropeslow:1", "ropeall:1", "kreal:0.5", "krealw:0.5", "kalt:0.5",
+             "kdiag:1"):
     o = AS.generate_with_attn_steer(egra, P, 5, kind, (2, 3), max_new_tokens=8, story_index=0)
     check(f"{kind} writes a story and leaves nothing behind",
           isinstance(o, str) and egra.generate(P, max_new_tokens=8, do_sample=True, seed=5) == plain)
@@ -109,7 +110,7 @@ check("emphasis: mean and spread as asked, zero outside the instruction, differs
 with AS.attention_bias(b1, 12, 10) as ab:
     e = last_logits()
 check("emphasis changes the prediction after the prompt", ab.calls > 0 and not torch.allclose(e, base, atol=1e-5))
-for obj in ("plan", "sign"):
+for obj in ("plan", "sign", "real", "realw", "alt"):
     d3 = AS.key_gradient_push(egra, ids, [1, 2], 3, obj, 0.5); d4 = AS.key_gradient_push(egra, ids, [1, 2], 4, obj, 0.5)
     rel = []
     for li in d3:
@@ -137,6 +138,20 @@ for slow in (True, False):
     for h_ in hs: h_.remove()
     check(f"position shift (slow only {slow}) hooks the rotary code and changes the prediction",
           len(hs) > 0 and not torch.allclose(e, base, atol=1e-5) and torch.allclose(last_logits(), base))
+tg2 = min(tg, len(blocks) - 1)
+with torch.no_grad(): fullc = AS._layer_states(egra, ids, tg2).float()
+Cc, Vh, _ = AS.real_state_basis(fullc)
+dr = AS.key_gradient_push(egra, ids, [0, 1], 3, "real", 0.5)
+rr = AS._unit(3, ("real",), (Cc.shape[0],), Cc.device) @ Cc; rr = rr / rr.norm()
+check("the real-state direction lies inside the span of the prompt's states",
+      float((rr @ Vh.T).pow(2).sum()) > 0.999)
+hs = AS._apply_key_delta(egra, {li: d * 0.05 for li, d in dr.items()})
+with torch.no_grad(): pm = AS._plan_state(egra, ids, tg2).float()
+for h_ in hs: h_.remove()
+check("and the plan moves along it", float(((pm - fullc[-AS.N_PLAN:]) @ rr).sum()) > 0)
+rep_ = AS.subspace_report(egra, ids, [0, 1], 3)
+check("the subspace report prints and leaves nothing hooked", rep_.count("[subspace]") == 17 and torch.allclose(last_logits(), base))
+print(rep_.splitlines()[0]); print(rep_.splitlines()[3]); print(rep_.splitlines()[-2])
 check("run ids for the new kinds", _spec_to_run_id("M", ExperimentSpec(hidden_context="emph:1:2")) == "M__HIDDENemph1s2"
       and _spec_to_run_id("M", ExperimentSpec(hidden_context="kgrad:0.25")) == "M__HIDDENkgrad0p25")
 print(); print("all passed" if not FAILURES else f"FAILED: {FAILURES}"); sys.exit(1 if FAILURES else 0)

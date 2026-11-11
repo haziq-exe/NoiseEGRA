@@ -180,7 +180,8 @@ def generate_one(model, spec, mode, story_prompt, seed, max_new_tokens, max_word
                 tuple(spec.hidden_layers or ()), max_new_tokens=max_new_tokens,
                 max_words=max_words, temperature=spec.temperature)
         if kind.startswith(("qsteer:", "vsteer:", "boost:", "boostk:", "emph:", "knoise:",
-                            "kgrad:", "ksign:", "ropeslow:", "ropeall:")):
+                            "kgrad:", "ksign:", "ropeslow:", "ropeall:", "kreal:", "krealw:",
+                            "kalt:", "kdiag:")):
             from noiseegra.attn_space import generate_with_attn_steer
             return generate_with_attn_steer(
                 model, story_prompt, seed, kind, tuple(spec.hidden_layers or ()),

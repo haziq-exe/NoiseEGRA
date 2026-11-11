@@ -2320,7 +2320,7 @@ def main() -> None:
                     ("latent:", "noisy:", "select:", "weights:", "transplant:", "transplantiso:",
                      "amplify:", "premise:", "ampremise:", "think:", "qsteer:", "vsteer:",
                      "boost:", "boostk:", "emph:", "knoise:", "kgrad:", "ksign:",
-                     "ropeslow:", "ropeall:")):
+                     "ropeslow:", "ropeall:", "kreal:", "krealw:", "kalt:", "kdiag:")):
                 raise SystemExit(f"--hidden-context: unknown kind {k!r}")
         made += [dataclasses.replace(base, hidden_context=k,
                                      hidden_tokens=int(args.hidden_tokens),
