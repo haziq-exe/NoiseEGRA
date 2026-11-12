@@ -4596,3 +4596,62 @@ Qwen3-8B, kalt (350-story rating round, untouched rated 5.02):
 
 kalt 0.02 with removal is the first Qwen setting with a variety gain (1.6-1.7 vs 1.00) at
 untouched quality, all stories readable, fewer rules broken than untouched.
+
+### Embedding second reading of the removed-after-opening runs (r388), same day
+
+Every story from r382-r387 embedded in full with BAAI/bge-m3; mean pairwise cosine
+similarity per version (lower = more varied), 95% bootstrap interval (resampling stories) for
+the difference from the same model's untouched stories and from top-p. 50 stories each.
+Distinct = NoveltyBench judge, whole story, distinct of 10. Quality = paired blind gap vs
+untouched from the rounds above ("--" = not rated).
+
+| Version | Similarity | vs untouched | vs top-p | Distinct | Quality gap |
+|---|---|---|---|---|---|
+| OLMo untouched | 0.605 | -- | -0.009 [-0.025, +0.006] | 1.13 | -- |
+| OLMo top-p | 0.615 | +0.009 [-0.006, +0.025] | -- | 1.95 | -1.08 |
+| OLMo current | 0.619 | +0.014 [-0.003, +0.032] | +0.005 [-0.011, +0.021] | 1.17 | +0.24 |
+| OLMo real-state 0.02, removed after 32 | 0.609 | +0.003 [-0.015, +0.021] | -0.006 [-0.022, +0.010] | 1.99 | -0.08 |
+| OLMo real-state 0.03, removed after 16 | 0.597 | -0.008 [-0.027, +0.010] | -0.018 [-0.035, -0.002] | 1.67 | -- |
+| OLMo real-state 0.04, removed after 8 | 0.590 | -0.015 [-0.034, +0.003] | -0.024 [-0.042, -0.007] | 1.91 | -- |
+| OLMo real-state 0.04, removed after 16 | 0.594 | -0.011 [-0.030, +0.008] | -0.020 [-0.038, -0.004] | 2.39 | -0.08 |
+| OLMo real-state 0.04, removed after 32 | 0.580 | -0.025 [-0.049, -0.003] | -0.035 [-0.056, -0.013] | 2.53 | -0.58 |
+| OLMo real-state 0.06, removed after 8 | 0.560 | -0.045 [-0.077, -0.016] | -0.054 [-0.085, -0.026] | 2.10 | -- |
+| OLMo real-state 0.06, removed after 16 | 0.540 | -0.065 [-0.094, -0.036] | -0.074 [-0.102, -0.046] | 2.74 | -- |
+| OLMo real-state 0.08, removed after 32 | 0.533 | -0.072 [-0.104, -0.042] | -0.081 [-0.111, -0.053] | 3.13 | -1.24 |
+| OLMo real-state 0.16, removed after 32 | 0.508 | -0.097 [-0.126, -0.068] | -0.107 [-0.134, -0.080] | 4.36 | -- |
+| OLMo sampled-alternative 0.03, removed after 16 | 0.613 | +0.008 [-0.016, +0.030] | -0.002 [-0.025, +0.019] | 2.27 | -0.04 |
+| OLMo sampled-alternative 0.03, removed after 32 | 0.612 | +0.007 [-0.020, +0.031] | -0.003 [-0.029, +0.021] | 2.92 | -0.50 |
+| OLMo sampled-alternative 0.06, removed after 32 | 0.581 | -0.024 [-0.059, +0.011] | -0.033 [-0.068, +0.001] | 2.58 | -0.86 |
+| Qwen untouched | 0.734 | -- | +0.053 [+0.030, +0.073] | 1.00 | -- |
+| Qwen top-p | 0.682 | -0.053 [-0.073, -0.031] | -- | 1.00 | -0.08 / -0.28 |
+| Qwen current | 0.589 | -0.145 [-0.165, -0.125] | -0.092 [-0.112, -0.071] | 1.14 | -0.38 / -0.52 |
+| Qwen sampled-alternative 0.02, removed after 16 | 0.643 | -0.091 [-0.120, -0.061] | -0.039 [-0.068, -0.008] | 1.61 | -0.14 |
+| Qwen sampled-alternative 0.02, removed after 32 | 0.635 | -0.100 [-0.133, -0.065] | -0.047 [-0.082, -0.012] | 1.68 | -0.02 |
+| Qwen sampled-alternative 0.03, removed after 8 | 0.650 | -0.085 [-0.113, -0.055] | -0.032 [-0.061, -0.004] | 1.73 | -0.36 |
+| Qwen sampled-alternative 0.03, removed after 16 | 0.655 | -0.080 [-0.108, -0.052] | -0.027 [-0.056, -0.000] | 1.84 | -0.50 |
+| Qwen sampled-alternative 0.03, removed after 32 | 0.642 | -0.093 [-0.124, -0.060] | -0.040 [-0.071, -0.008] | 2.20 | -0.56 |
+| Qwen sampled-alternative 0.04, removed after 16 | 0.627 | -0.108 [-0.134, -0.081] | -0.055 [-0.081, -0.028] | 1.72 | -0.70 |
+| Qwen sampled-alternative 0.06, removed after 32 | 0.706 | -0.028 [-0.069, +0.018] | +0.024 [-0.017, +0.069] | -- | -- (many unreadable) |
+| Qwen sampled-alternative 0.12, removed after 32 | 0.580 | -0.155 [-0.185, -0.123] | -0.102 [-0.134, -0.071] | -- | -- (many unreadable) |
+| Qwen real-state 0.04, removed after 16 | 0.566 | -0.169 [-0.203, -0.135] | -0.116 [-0.150, -0.082] | 1.28 | -1.22 |
+| Qwen real-state 0.04, removed after 32 | 0.557 | -0.177 [-0.211, -0.143] | -0.125 [-0.159, -0.090] | 1.24 | -1.26 |
+| Qwen real-state 0.08, removed after 32 | 0.580 | -0.154 [-0.198, -0.106] | -0.102 [-0.146, -0.051] | -- | -- (many unreadable) |
+| Qwen real-state 0.16, removed after 32 | 0.530 | -0.205 [-0.233, -0.175] | -0.152 [-0.180, -0.122] | -- | -- (many unreadable) |
+
+Qwen top-p and current have two quality gaps: first round / follow-up round.
+
+- Qwen: the best setting at untouched quality (sampled-alternative 0.02, removed after 32) is
+  more varied than untouched (-0.100) and than top-p (-0.047) on the embedding reading too, so
+  the two readings agree there. Its embedding gain is smaller than the current method's
+  (-0.145), which NoveltyBench scores at 1.14 and which costs quality. The real-state
+  direction looks most varied of all on embeddings, but a third of its openings are not
+  stories; dissimilar broken text reads as variety to an embedding.
+- OLMo: at the two settings with untouched quality (real-state 0.04 after 16, sampled-
+  alternative 0.03 after 16) the embedding reading finds no difference from untouched
+  (-0.011 and +0.008, both intervals cross zero); real-state 0.04 after 16 is slightly more
+  varied than top-p (-0.020 [-0.038, -0.004]). Embedding variety on OLMo appears only at sizes
+  that cost quality (0.06 and up). This repeats the earlier pattern: on OLMo the embedding
+  sees little difference where NoveltyBench sees a large one (top-p 1.95 vs 1.13, hidden idea
+  2.51; embeddings level for both).
+- Bigger changes lower similarity steadily on both models, with the same size ordering as
+  NoveltyBench.
