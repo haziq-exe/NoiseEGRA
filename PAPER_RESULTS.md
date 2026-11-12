@@ -4575,3 +4575,24 @@ kalt 0.03 with removal is the first Qwen setting near 2 distinct with all storie
 fewer rules broken than untouched, but quality is still -0.5 (kept on: 2.87 at -1.42); kreal
 breaks Qwen's openings (a third of stories not stories). Not done: embedding second reading,
 200 stories, more prompts, N<16, sizes between.
+
+### Follow-up grid (r386, r387), same day
+
+OLMo-3-7B, kreal (not quality-rated; none beats 0.04 N=16): 0.03 N=16 = 1.67 distinct, 49
+readable, rules 1.68; 0.04 N=8 = 1.91, 49, 1.82; 0.06 N=8 = 2.10, 42, 2.52; 0.06 N=16 = 2.74,
+39, 2.70. Earlier removal loses variety and does not let a larger size through.
+
+Qwen3-8B, kalt (350-story rating round, untouched rated 5.02):
+
+| setting | distinct | quality gap | rated <=2 | readable | rules |
+|---|---|---|---|---|---|
+| untouched | 1.00 | - | 0 | 50 | 2.06 |
+| top-p | 1.00 | -0.28 [-0.60,+0.04] | 0 | 50 | - |
+| current method | 1.14 | -0.52 [-0.88,-0.16] | 0 | 50 | - |
+| kalt 0.02, N=16 | 1.61 | -0.14 [-0.44,+0.14] | 0 | 50 | 1.36 |
+| kalt 0.02, N=32 | 1.68 | -0.02 [-0.34,+0.28] | 0 | 50 | 1.54 |
+| kalt 0.03, N=8 | 1.73 | -0.36 [-0.74,+0.00] | 1 | 49 | 1.56 |
+| kalt 0.04, N=16 | 1.72 | -0.70 [-1.12,-0.28] | 5 | 43 | 1.52 |
+
+kalt 0.02 with removal is the first Qwen setting with a variety gain (1.6-1.7 vs 1.00) at
+untouched quality, all stories readable, fewer rules broken than untouched.
