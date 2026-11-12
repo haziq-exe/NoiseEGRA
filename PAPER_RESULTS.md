@@ -4521,3 +4521,57 @@ instruction's rotary positions, slow pairs (wavelength > 32) / all pairs.
 - The gradient step adds no measurable time (OLMo 12.1-12.3 s/story vs 12.4 for key noise).
 - Olmo3 keeps rotary frequencies per layer type; the first position-shift runs (r370, r376,
   r379) were a no-op there and are void.
+
+## 2026-11-12: key change removed after the opening (r382-r385)
+
+Same key changes as 2026-11-11 (`kreal` random blend of the prompt's own plan-layer states;
+`kalt` toward a first word sampled from the model's alternatives), now with a third number:
+`--hidden-context kreal:SIZE:N`. The change is on while the first N tokens are written, then
+removed entirely: the untouched model re-reads the prompt and those N tokens as plain text and
+writes the rest (planning state after removal is 0.000 from clean). Untouched model + this one
+change, no rule steering, 50 stories, middle-school prompt. Distinct = NoveltyBench judge, whole
+story, of 10. Quality = blind 1-10 Sonnet rating, gap paired with untouched, 95% bootstrap.
+Each model's ratings are one shuffled round (OLMo 500 stories, Qwen 350).
+
+OLMo-3-7B (untouched rated 4.82 this round):
+
+| setting | distinct | quality gap | rated <=2 | readable | rules |
+|---|---|---|---|---|---|
+| untouched | 1.13 | - | 1 | 50 | 1.57 |
+| top-p | 1.95 | -1.08 [-1.42,-0.70] | 1 | 50 | 1.81 |
+| current method | 1.17 | +0.24 [-0.16,+0.64] | 0 | 50 | 1.48 |
+| kreal 0.02, N=32 | 1.99 | -0.08 [-0.42,+0.30] | 0 | 50 | 1.64 |
+| kreal 0.04, N=16 | 2.39 | -0.08 [-0.48,+0.34] | 1 | 49 | 1.82 |
+| kreal 0.04, N=32 | 2.53 | -0.58 [-0.96,-0.16] | 3 | 48 | 1.86 |
+| kreal 0.08, N=32 | 3.13 | -1.24 [-1.76,-0.70] | 15 | 38 | 2.58 |
+| kreal 0.16, N=32 | 4.36 | not rated | - | 34 | 3.12 |
+| kalt 0.03, N=16 | 2.27 | -0.04 [-0.48,+0.40] | 2 | 46 | 2.08 |
+| kalt 0.03, N=32 | 2.92 | -0.50 [-0.94,-0.02] | 3 | 46 | 2.28 |
+| kalt 0.06, N=32 | 2.58 | -0.86 [-1.36,-0.34] | 8 | 45 | 2.40 |
+
+Kept on for the whole story (2026-11-11): kreal 0.04 = 3.16 / -1.50 / rules 2.52; kreal 0.02 =
+2.40 / -0.36; kalt 0.03 = 2.64 / -1.44.
+
+Qwen3-8B (untouched rated 5.00 this round):
+
+| setting | distinct | quality gap | rated <=2 | readable | rules |
+|---|---|---|---|---|---|
+| untouched | 1.00 | - | 1 | 50 | 2.06 |
+| top-p | 1.00 | -0.08 [-0.38,+0.24] | 0 | 50 | - |
+| current method | 1.14 | -0.38 [-0.70,-0.04] | 0 | 50 | - |
+| kalt 0.03, N=16 | 1.84 | -0.50 [-0.82,-0.16] | 0 | 49 | 1.52 |
+| kalt 0.03, N=32 | 2.20 | -0.56 [-0.96,-0.16] | 1 | 49 | 1.56 |
+| kalt 0.06, N=32 | 3.78 | not rated | - | 13 | 1.80 |
+| kalt 0.12, N=32 | 3.50 | not rated | - | 22 | 4.28 |
+| kreal 0.04, N=16 | 1.28 | -1.22 [-1.86,-0.60] | 17 | 36 | 2.52 |
+| kreal 0.04, N=32 | 1.24 | -1.26 [-1.88,-0.66] | 16 | 32 | 2.72 |
+| kreal 0.08, N=32 | 3.61 | not rated | - | 10 | 3.26 |
+| kreal 0.16, N=32 | 3.11 | not rated | - | 11 | 4.58 |
+
+Reading. OLMo: removal after 16 tokens keeps about three quarters of the variety and returns
+quality to untouched (kreal 0.04: 2.39 distinct at -0.08, vs top-p 1.95 at -1.08); N=32 costs
+quality again; two sizes (0.02, 0.04) are now usable instead of one; 0.08 still breaks. Qwen:
+kalt 0.03 with removal is the first Qwen setting near 2 distinct with all stories readable and
+fewer rules broken than untouched, but quality is still -0.5 (kept on: 2.87 at -1.42); kreal
+breaks Qwen's openings (a third of stories not stories). Not done: embedding second reading,
+200 stories, more prompts, N<16, sizes between.
