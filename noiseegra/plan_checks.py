@@ -134,6 +134,8 @@ def cost_check(model, ids, layers, seeds, arms, n_stories=25, T=64):
         costs, kls, curves, release = [], [], [], []
         for x, story in enumerate(stories[:n_stories]):
             s = tok(story, add_special_tokens=False, return_tensors="pt")["input_ids"][:, :T].to(ids.device)
+            if s.shape[-1] < 8:                      # empty or broken story: nothing to score
+                continue
             full = torch.cat([ids, s], 1)
             with torch.no_grad():
                 clean = model.model(input_ids=full, use_cache=False).logits[0, n_prompt - 1:-1].float()
@@ -159,6 +161,8 @@ def cost_check(model, ids, layers, seeds, arms, n_stories=25, T=64):
                     break
             release.append(r)
             del clean, ch, lc, lq
+        if not curves:
+            continue
         L = min(len(c) for c in curves)
         curve = torch.stack([c[:L] for c in curves]).mean(0)
         fired = sorted(r for r in release if r is not None)
@@ -288,16 +292,24 @@ def run(get_model, model_name, messages, layers, seed_for, stories_path, out_dir
     arms = {k: v for k, v in data.items() if k.split(" ")[0].startswith(pre)}
     untouched = next(v for k, v in arms.items() if k.endswith("untouched"))
     res = {"model": model_name}
+    prev = out_dir / "plan_checks.json"
+    if prev.exists():                                # resume: keep the parts already done
+        res = json.loads(prev.read_text())
+        res.pop("cost", None)
     seeds = [seed_for(0, x, 0) for x in range(n_seeds)]
     # 3a. base model first, alone on the GPU
     plain = plain_prompt(messages)
     try:
+        if "base" in res:
+            raise StopIteration
         from transformers import AutoTokenizer
         from noiseegra.defaults import EN_MODEL_HF_IDS
         ctok = AutoTokenizer.from_pretrained(EN_MODEL_HF_IDS[model_name])
         chat_text = ctok.apply_chat_template(messages, tokenize=False, add_generation_prompt=True,
                                                enable_thinking=False)
         res["base"] = base_side(BASE_IDS[model_name], chat_text, plain, untouched[:20])
+    except StopIteration:
+        pass
     except Exception as e:  # the other checks still run
         res["base_error"] = repr(e)
         print(f"  [base] FAILED: {e!r}", flush=True)
@@ -307,10 +319,13 @@ def run(get_model, model_name, messages, layers, seed_for, stories_path, out_dir
     ids = egra.tokenizer(chat, return_tensors="pt")["input_ids"].to(egra._input_device())
     hl = tuple(range(int(layers[0]), int(layers[-1]) + 1))
     # 1. spread
-    res["spread"], lp = spread_check(egra, ids, hl, seeds, SETTINGS[model_name])
+    if "spread" in res and "suppressed_or_gone" in res:
+        lp = None
+    else:
+        res["spread"], lp = spread_check(egra, ids, hl, seeds, SETTINGS[model_name])
     (out_dir / "plan_checks.json").write_text(json.dumps(res, indent=1))
     # 3b. chat side of suppressed-or-gone
-    if "base" in res:
+    if "base" in res and "suppressed_or_gone" not in res:
         sb = _score(egra.model, egra.tokenizer, ids, res["base"]["base_openings"])
         sc = _score(egra.model, egra.tokenizer, ids, untouched[:20])
         res["suppressed_or_gone"] = compare(res["base"], lp, egra.tokenizer, sb, sc)
