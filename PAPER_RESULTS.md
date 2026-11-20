@@ -4655,3 +4655,96 @@ Qwen top-p and current have two quality gaps: first round / follow-up round.
   2.51; embeddings level for both).
 - Bigger changes lower similarity steadily on both models, with the same size ordering as
   NoveltyBench.
+
+## 2026-11-20: checks that write no new stories (r389 OLMo, r390 Qwen)
+
+Four checks proposed by the maths survey (seven research agents; field = large deviations and
+metastability, not extreme value theory), run on the prompt and on the stories of r382-r387.
+Code: noiseegra/plan_checks.py, `--plan-checks eval/removed_opening_arms.json`.
+
+**Effective number of plots** (from the judge's same-story share of all 1,225 pairs; 1/share):
+OLMo untouched 1.02, top-p 1.18, real-state 0.04 removed after 16 1.34 (same-story share 0.75);
+Qwen untouched 1.00, top-p 1.00, sampled-alternative 0.02 removed after 32 1.13 (share 0.88). If
+each story is either the default plot or its own, these shares mean about 86% of OLMo's and 94%
+of Qwen's stories at the best settings still tell the default plot; that reading reproduces the
+distinct-of-10 numbers. The methods let a minority of stories escape; they do not spread
+stories over many plots.
+
+**Spread of the key changes** (50 story seeds; planning-state movement per seed; participation
+ratio = how many independent directions the 50 movements fill, at most 50):
+
+| Model | Change | Participation | Share on top 1 / 3 / 5 directions | Mean abs. cosine | Plan moved (x its size) |
+|---|---|---|---|---|---|
+| OLMo | real-state 0.04 | 5.7 | 0.40 / 0.52 / 0.60 | 0.38 | 0.77 |
+| OLMo | sampled-alternative 0.03 | 3.1 | 0.54 / 0.73 / 0.82 | 0.51 | 0.61 |
+| OLMo | gradient to a uniformly random plan direction 0.02 | 7.4 | 0.35 / 0.45 / 0.52 | 0.31 | 0.57 |
+| OLMo | random key noise 0.5 | 19.4 | 0.18 / 0.28 / 0.35 | 0.14 | 0.21 |
+| Qwen | sampled-alternative 0.02 | 2.2 | 0.65 / 0.93 / 0.98 | 0.63 | 0.41 |
+| Qwen | real-state 0.04 | 4.3 | 0.45 / 0.68 / 0.75 | 0.45 | 0.70 |
+| Qwen | gradient to a uniformly random plan direction 0.02 | 4.9 | 0.42 / 0.63 / 0.71 | 0.39 | 0.54 |
+| Qwen | random key noise 0.5 | 3.4 | 0.53 / 0.61 / 0.65 | 0.53 | 0.41 |
+
+The changes do send the plan along few directions (2-6 of 50). The cause is not a steeply
+falling sensitivity: estimated from the uniformly random targets, the 2nd direction is 0.63
+(OLMo) / 0.75 (Qwen) as sensitive as the 1st and the 10th 0.49 / 0.41. Instead one shared
+direction takes 35-65% of every kind of change's movement, even when the target direction is
+uniformly random. Sampled-alternative targets: OLMo's favourite first word has p = 0.30 and the
+50 seeds aim at 29 different words (9-10 per 10 seeds); Qwen's favourite ("The") has p = 0.98
+and 33 of 50 seeds aim at "She" (9 different words of 50, 2-5 per 10 seeds).
+
+**Suppressed or gone** (base model before instruction tuning vs chat model; base sees the
+instruction as plain text; 20 base openings and 20 untouched chat openings, 16 tokens each,
+scored by both; log-probability per token):
+
+| | OLMo | Qwen |
+|---|---|---|
+| First word: slope of chat on base log-probability (correlation) | 0.97 (0.42) | 3.15 (0.52) |
+| First words the base gives >0.1% that the chat model gives <e^-15 (their base mass) | 1 (0.2%) | 66 (17.6%) |
+| Openings: slope of chat on base (correlation) | 2.32 (0.59) | 2.39 (0.94) |
+| Base openings, base / chat log-prob per token | -3.54 / -6.20 | -3.08 / -5.62 |
+| Chat openings, base / chat log-prob per token | -3.19 / -1.50 | -1.42 / -0.53 |
+
+At the level of whole openings both chat models look like the base model raised to a power of
+about 2.3-2.4 (on Qwen very cleanly, correlation 0.94): the base model's openings are
+suppressed, keeping their order, not deleted. Each costs about 2.5-2.7 nats per token more under
+the chat model, about 40 nats over 16 tokens. On the first word Qwen is sharpened further and
+has made a sixth of the base model's first-word mass all but impossible; OLMo has not.
+
+**Cost of the opening** (25 stories per setting; log-likelihood ratio of the changed model to
+the untouched model on the story's own words, summed over the tokens the change was on;
+quality gap from the rating rounds above):
+
+| Setting | Cost (nats) | Quality gap | Distinct |
+|---|---|---|---|
+| OLMo real-state 0.04, after 8 | 12.0 | not rated, 49 readable | 1.91 |
+| OLMo real-state 0.06, after 8 | 13.9 | not rated, 42 readable | 2.10 |
+| OLMo real-state 0.02, after 32 | 14.6 | -0.08 | 1.99 |
+| OLMo real-state 0.03, after 16 | 14.9 | not rated, 49 readable | 1.67 |
+| OLMo real-state 0.04, after 16 | 20.6 | -0.08 | 2.39 |
+| OLMo real-state 0.06, after 16 | 22.7 | not rated, 39 readable | 2.74 |
+| OLMo sampled-alternative 0.03, after 16 | 30.9 | -0.04 | 2.27 |
+| OLMo real-state 0.04, after 32 | 35.0 | -0.58 | 2.53 |
+| OLMo real-state 0.08, after 32 | 46.5 | -1.24 | 3.13 |
+| OLMo sampled-alternative 0.03, after 32 | 51.5 | -0.50 | 2.92 |
+| OLMo sampled-alternative 0.06, after 32 | 60.0 | -0.86 | 2.58 |
+| Qwen sampled-alternative 0.02, after 16 | 17.8 | -0.14 | 1.61 |
+| Qwen sampled-alternative 0.02, after 32 | 22.3 | -0.02 | 1.68 |
+| Qwen sampled-alternative 0.03, after 8 | 28.6 | -0.36 | 1.73 |
+| Qwen real-state 0.04, after 16 | 37.5 | -1.22 | 1.28 |
+| Qwen sampled-alternative 0.03, after 16 | 38.2 | -0.50 | 1.84 |
+| Qwen sampled-alternative 0.04, after 16 | 44.5 | -0.70 | 1.72 |
+| Qwen sampled-alternative 0.03, after 32 | 51.7 | -0.56 | 2.20 |
+| Qwen real-state 0.04, after 32 | 54.9 | -1.26 | 1.24 |
+
+- The best setting on each model costs about the same: 20.6 nats (OLMo) and 22.3 nats (Qwen),
+  though their sizes in key units differ two-fold (0.04 and 0.02). Quality holds up to about
+  20-30 nats on both models and falls above about 35. Cost does not explain everything: size
+  0.06 on OLMo breaks some stories at 14-23 nats, where the first word alone costs most, and
+  Qwen's real-state direction breaks at a cost where the sampled-alternative direction does not.
+- The changed and untouched models' next-word disagreement (KL) is largest at the first word
+  (OLMo 2.2-4.9, Qwen 5.5-26 nats), falls to about 0.4-2 by token 4, then stays at about
+  0.2-1 nat per token through token 63; it never approaches zero. A "release when the two
+  agree" rule (4-token average below a quarter of the first word's) fires at a median of 5-10
+  tokens on every setting -- about where the 8-token releases lost variety (OLMo real-state
+  0.04: 1.91 released after 8 vs 2.39 after 16). The agreement signal tracks the first word's
+  shock, not the plot settling: the adaptive release, as proposed, is not supported.
