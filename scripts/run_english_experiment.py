@@ -667,6 +667,10 @@ def main() -> None:
                     help="measure the model under the noise before any story (top-p's "
                          "shift, uncertainty, sensitivity, fluency cost) over N draws, "
                          "write scale_probe.json and exit")
+    ap.add_argument("--plan-checks", default=None, metavar="STORIES_JSON",
+                    help="run the checks that write no new stories (noiseegra.plan_checks): "
+                         "spread of the key changes, their cost on the stories in "
+                         "STORIES_JSON, base vs chat model; write plan_checks.json and exit")
     ap.add_argument("--diagnose-leakage", type=int, default=0, metavar="N",
                     help="measure how much of each perturbed arm's noise ends up "
                          "along the rule directions downstream, on the first N "
@@ -1733,6 +1737,11 @@ def main() -> None:
         args.baseline_top_k = None
     steering_needed = any(name not in ("baseline", "sampling", "references")
                           for name in suites_req)
+    if getattr(args, "plan_checks", None):
+        from noiseegra import plan_checks
+        plan_checks.run(get_model, args.model, messages[0], layers, seed_for, args.plan_checks, out)
+        raise SystemExit(0)
+
     vectors, rms_scale = None, 0.0
 
     # ---- steering vectors ------------------------------------------------- #
