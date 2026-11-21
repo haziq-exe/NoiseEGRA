@@ -82,7 +82,9 @@ check("a query-space direction per layer at unit RMS",
 plain = egra.generate(P, max_new_tokens=8, do_sample=True, seed=5)
 for kind in ("qsteer:1.0", "vsteer:1.0", "boost:1.0", "boostk:1.0:0.5", "knoise:0.5", "emph:1:2",
              "kgrad:0.5", "ksign:0.5", "ropeslow:1", "ropeall:1", "kreal:0.5", "krealw:0.5", "kalt:0.5",
-             "kreal:0.5:3", "kalt:0.5:3", "knoise:0.5:3", "kdiag:1"):
+             "kreal:0.5:3", "kalt:0.5:3", "knoise:0.5:3", "kdiag:1",
+             "kwreal:0.5:3", "kaltf:0.5:3", "kaltf:0.5:3:0.42", "kheavy:0.5:3", "kgauss:0.5:3",
+             "kalt:0.5:b2", "kreal:0.5:b2"):
     o = AS.generate_with_attn_steer(egra, P, 5, kind, (2, 3), max_new_tokens=8, story_index=0)
     check(f"{kind} writes a story and leaves nothing behind",
           isinstance(o, str) and egra.generate(P, max_new_tokens=8, do_sample=True, seed=5) == plain)
@@ -106,6 +108,21 @@ ctok = egra.tokenizer(cut, add_special_tokens=False)["input_ids"][:2]
 check("removed after the opening: same opening as the kept change", ftok == ctok, f"{full!r} {cut!r}")
 check("run id with a removal point",
       _spec_to_run_id("M", ExperimentSpec(hidden_context="kreal:0.04:32")) == "M__HIDDENkreal0p04s32")
+check("run id with a cost budget",
+      _spec_to_run_id("M", ExperimentSpec(hidden_context="kalt:0.03:b20")) == "M__HIDDENkalt0p03sb20")
+AS.BUDGET_LOG.clear()
+AS.generate_with_attn_steer(egra, P, 5, "kalt:2.0:b0.5", (2, 3), max_new_tokens=20)
+check("the budget stops the change once spent", len(AS.BUDGET_LOG) == 1 and
+      (AS.BUDGET_LOG[0][1] >= 0.5 or AS.BUDGET_LOG[0][0] >= 20), str(AS.BUDGET_LOG))
+g = AS.heavy_key_noise(egra, ids, [2, 3], 4, 0.5, None)
+h = AS.heavy_key_noise(egra, ids, [2, 3], 4, 0.5, 1.5)
+def relsize(d):
+    return sum(float(v.pow(2).mean()) for v in d.values()) ** 0.5
+check("heavy and Gaussian key noise have the same total size", abs(relsize(g) - relsize(h)) / relsize(g) < 0.5)
+check("the first token is left alone", all(float(v[0].abs().max()) == 0 for v in h.values()))
+U, shrink, gains = AS.whiten_basis(egra, ids, [2, 3], draws=12, k=4)
+check("whitening shrinks the most sensitive directions most", float(shrink[0]) <= float(shrink[-1]) <= 1.0 + 1e-6,
+      str(shrink))
 print("\n== emphasis, gradients, position ==")
 def last_logits():
     with torch.no_grad():

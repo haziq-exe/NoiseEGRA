@@ -247,7 +247,8 @@ def _instruction_span(egra, prompt, chat: str, n_prompt: int):
 # --------------------------------------------------------------------------- #
 
 KINDS = ("qsteer:", "vsteer:", "boost:", "boostk:", "emph:", "knoise:", "kgrad:", "ksign:",
-         "ropeslow:", "ropeall:", "kreal:", "krealw:", "kalt:", "kdiag:")
+         "ropeslow:", "ropeall:", "kreal:", "krealw:", "kalt:", "kdiag:", "kwreal:", "kaltf:",
+         "kheavy:", "kgauss:")
 N_PLAN = 8                      # the last prompt positions, where the reply is planned
 
 
@@ -352,7 +353,8 @@ def _layer_states(model, ids, tgt: int):
     return box["h"]
 
 
-def key_gradient_push(model, ids, layers, seed: int, objective: str, size: float):
+def key_gradient_push(model, ids, layers, seed: int, objective: str, size: float,
+                      target=None, raw: bool = False):
     """A per-story change to the prompt's stored keys taken from one backward
     pass over the prompt, in place of random noise. Returns {layer: delta}.
 
@@ -380,7 +382,7 @@ def key_gradient_push(model, ids, layers, seed: int, objective: str, size: float
     gave them."""
     blocks = model._get_transformer_blocks()
     tgt = _plan_layer(blocks)
-    planlike = objective in ("plan", "real", "realw")
+    planlike = objective in ("plan", "real", "realw", "wreal")
     layers = [int(l) for l in layers if not planlike or int(l) < tgt]
     for p in model.model.parameters():
         p.requires_grad_(False)
@@ -407,14 +409,28 @@ def key_gradient_push(model, ids, layers, seed: int, objective: str, size: float
                         r = _unit(seed, ("real",), (C.shape[0],), h.device) @ C
                     else:
                         r = _unit(seed, ("realw",), (Vh.shape[0],), h.device) @ Vh
-                loss = (h @ (r / r.norm()).detach()).sum()
+                if objective == "wreal":
+                    R = (r / r.norm()).detach().expand_as(h).reshape(-1)
+                    R = whiten_target(R, WHITEN_BASIS[0], WHITEN_BASIS[1]).view_as(h)
+                    loss = (h * R.to(h.dtype)).sum()
+                elif target is not None:
+                    loss = (h * target.to(h.device, h.dtype)).sum()
+                else:
+                    loss = (h @ (r / r.norm()).detach()).sum()
             else:
                 o = model.model(input_ids=ids, use_cache=False)
                 lp = torch.log_softmax(o.logits[0, -1].float(), dim=-1)
-                if objective == "alt":
+                if objective in ("alt", "altf"):
                     pr = lp.detach().exp().cpu()
                     top = int(pr.argmax())
                     pr[top] = 0
+                    if objective == "altf":
+                        # the model's 50 likeliest other first words, chances raised to
+                        # ALT_POWER: flatter than the model's own, as if undoing a sharpening
+                        keep = pr.topk(50).indices
+                        flat = torch.zeros_like(pr)
+                        flat[keep] = pr[keep].pow(float(ALT_POWER))
+                        pr = flat
                     g_ = torch.Generator(device="cpu").manual_seed(
                         (int(seed) * 1000003 + zlib.crc32(b"alt")) & 0x7FFFFFFF)
                     y = int(torch.multinomial(pr / pr.sum(), 1, generator=g_))
@@ -448,7 +464,117 @@ def key_gradient_push(model, ids, layers, seed: int, objective: str, size: float
     total = math.sqrt(sum(rel) / max(len(rel), 1))
     if not (total > 0 and math.isfinite(total)):
         return {}
+    if raw:
+        return out, total
     return {li: g * (float(size) / total) for li, g in out.items()}
+
+
+# Whitening of the plan target. The key change for a target R moves the plan by
+# about J J^T R (J: keys -> plan), so each of the plan's directions is weighted by
+# its sensitivity squared and the changes bunch onto the most sensitive few. From
+# random targets on the prompt alone (no stories) the top directions and their
+# gains are estimated, and a target's components along them are shrunk so every
+# direction gets the gain of the (K+1)th.
+ALT_POWER = 0.5
+KEY_KINDS = ("knoise", "kgrad", "ksign", "kreal", "krealw", "kalt", "kwreal", "kaltf", "kheavy", "kgauss")
+BUDGET_CAP = 48
+BUDGET_LOG: list = []               # (tokens the change stayed on, nats spent) per story
+WHITEN_BASIS = None                 # (directions K x 8D, shrink factors K), per prompt
+WHITEN_K, WHITEN_DRAWS = 8, 32
+
+
+def whiten_target(R, U, shrink):
+    R = R.float()
+    c = U.to(R.device) @ R
+    R = R - ((1 - shrink.to(R.device)) * c) @ U.to(R.device)
+    return R / R.norm().clamp_min(1e-12)
+
+
+def whiten_basis(model, ids, layers, draws: int = WHITEN_DRAWS, k: int = WHITEN_K):
+    """Top plan directions and shrink factors from ``draws`` uniformly random
+    targets, on the prompt only. Also returns a report of how many directions 16
+    real-state changes fill before and after whitening."""
+    blocks = model._get_transformer_blocks()
+    tgt = _plan_layer(blocks)
+    with torch.no_grad():
+        clean = _plan_state(model, ids, tgt).float()
+    shape = clean.shape
+
+    def move(deltas):
+        hs = _apply_key_delta(model, deltas)
+        try:
+            with torch.no_grad():
+                return (_plan_state(model, ids, tgt).float() - clean).flatten().cpu()
+        finally:
+            for h in hs:
+                h.remove()
+    c, M = None, []
+    for j in range(draws):
+        R = _unit(j, ("whiten",), shape, clean.device)
+        g, total = key_gradient_push(model, ids, layers, j, "plan", 1.0, target=R / R.norm(), raw=True)
+        if c is None:
+            c = 0.01 / total                 # one common scale: stays in the linear regime
+        M.append(move({li: d * c for li, d in g.items()}))
+    M = torch.stack(M).double()
+    _, S, Vh = torch.linalg.svd(M, full_matrices=False)
+    gain = S.pow(2).sqrt()                   # covariance eigenvalue ~ gain^2: gain ~ singular value
+    shrink = (gain[k] / gain[:k]).float()
+    U = Vh[:k].float()
+    return U, shrink, [float(x / gain[0]) for x in gain[:k + 2]]
+
+
+def participation(M):
+    M = M.double()
+    ev = torch.linalg.eigvalsh(M @ M.T).clamp_min(0)
+    return float(ev.sum() ** 2 / ev.pow(2).sum().clamp_min(1e-30)), float(ev.max() / ev.sum())
+
+
+def heavy_key_noise(model, ids, layers, seed: int, size: float, alpha: Optional[float]):
+    """Random noise on the prompt's keys, with each (layer, head) block's share
+    scaled by an independent Pareto(alpha) draw: a few heads get most of it.
+    alpha None = every head equal (plain Gaussian, the like-for-like reference).
+    The whole change has RMS ``size`` x the keys' RMS, averaged over layers, as
+    key_gradient_push. Returns {layer: delta}."""
+    blocks = model._get_transformer_blocks()
+    keys = {}
+
+    def mk(li):
+        def hook(module, inp, out):
+            keys[li] = out[0].detach()
+        return hook
+    hs = [_site(blocks[li].self_attn, "k").register_forward_hook(mk(li)) for li in layers]
+    try:
+        with torch.no_grad():
+            model.model(input_ids=ids, use_cache=False)
+    finally:
+        for h in hs:
+            h.remove()
+    out, rel = {}, []
+    for li in layers:
+        k = keys[li]
+        att = blocks[li].self_attn
+        hd = int(getattr(att, "head_dim", 0) or 0)
+        if k.dim() == 3:                       # positions x heads x head_dim already
+            heads = k.shape[1]
+        elif hd and k.shape[-1] % hd == 0:
+            heads = k.shape[-1] // hd
+        else:
+            heads = 1
+        z = _unit(seed, ("heavy", li), tuple(k.shape), k.device).float()
+        if alpha is not None:
+            g = torch.Generator(device="cpu").manual_seed(
+                (int(seed) * 1000003 + zlib.crc32(repr(("pareto", li)).encode())) & 0x7FFFFFFF)
+            w = torch.rand(heads, generator=g).clamp_min(1e-6).pow(-1.0 / float(alpha)).to(k.device)
+            if k.dim() == 3:
+                z = z * w.view(1, -1, 1)
+            else:
+                z = (z.view(k.shape[0], heads, -1) * w.view(1, -1, 1)).reshape(k.shape)
+        z[0] = 0                               # the first token is left alone
+        krms = float(k[1:].float().pow(2).mean().sqrt())
+        out[li] = z
+        rel.append((float(z.pow(2).mean().sqrt()) / max(krms, 1e-8)) ** 2)
+    total = math.sqrt(sum(rel) / max(len(rel), 1))
+    return {li: z * (float(size) / total) for li, z in out.items()}
 
 
 def subspace_report(model, ids, layers, seed: int) -> str:
@@ -575,13 +701,23 @@ def generate_with_attn_steer(model, prompt, seed: int, kind: str, layers, *,
     ``kalt:K``    prompt keys moved along the gradient toward a first word
                   drawn from the model's own alternatives.
     ``kdiag:1``   no change to the story; prints subspace_report for it.
+    ``kwreal:K``  as krealw (target spread evenly over the prompt's state directions), whitened: its components along the plan's
+                  most sensitive directions shrunk so the changes do not bunch
+                  onto them (whiten_basis, from the prompt only).
+    ``kaltf:K[:N[:A]]`` as kalt, the alternative first word drawn from the
+                  model's 50 likeliest others with chances raised to A (0.5).
+    ``kheavy:K[:N[:ALPHA]]`` random prompt-key noise with each head's share
+                  scaled by a Pareto(ALPHA=1.5) draw; ``kgauss:K`` the same with
+                  every head equal (heavy_key_noise).
 
     The key kinds (knoise, kgrad, ksign, kreal, krealw, kalt) take a further
     ``:N``: the change is on while the first N tokens are written and is then
     removed entirely -- the untouched model re-reads the prompt and those N
     tokens as plain text and writes the rest, so nothing of the change remains
-    but the opening's words.
+    but the opening's words. ``:bB`` instead keeps it on until the opening has
+    cost B nats against the untouched model (budget_write).
     """
+    global WHITEN_BASIS, ALT_POWER
     parts = kind.split(":")
     which, beta = parts[0], float(parts[1])
     chat = model.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
@@ -591,9 +727,12 @@ def generate_with_attn_steer(model, prompt, seed: int, kind: str, layers, *,
     layers = [int(l) for l in layers]
     handles, ctx, note = [], None, ""
     show = story_index is not None and int(story_index) < 3
-    drop = 0
-    if which in ("knoise", "kgrad", "ksign", "kreal", "krealw", "kalt") and len(parts) > 2:
-        drop = int(float(parts[2]))
+    drop, budget, deltas = 0, None, None
+    if which in KEY_KINDS and len(parts) > 2:
+        if parts[2].startswith("b"):
+            budget = float(parts[2][1:])
+        else:
+            drop = int(float(parts[2]))
     tgt = min(_plan_layer(blocks), len(blocks) - 1)
     clean = None
     if show and which not in ("qsteer", "vsteer"):
@@ -640,9 +779,41 @@ def generate_with_attn_steer(model, prompt, seed: int, kind: str, layers, *,
     elif which == "kdiag":
         print(subspace_report(model, ids, layers, seed), flush=True)
         max_new_tokens = min(int(max_new_tokens), 8)
-    elif which in ("kgrad", "ksign", "kreal", "krealw", "kalt"):
+    elif which in ("kheavy", "kgauss"):
+        alpha = (float(parts[3]) if len(parts) > 3 else 1.5) if which == "kheavy" else None
+        deltas = heavy_key_noise(model, ids, layers, seed, beta, alpha)
+        handles = _apply_key_delta(model, deltas)
+    elif which in ("kgrad", "ksign", "kreal", "krealw", "kalt", "kwreal", "kaltf"):
+        if which == "kaltf" and len(parts) > 3:
+            ALT_POWER = float(parts[3])
+        if which == "kwreal":
+            key = (n_prompt, tuple(layers))
+            if WHITEN_BASIS is None or WHITEN_BASIS[3] != key:
+                U, shrink, gains = whiten_basis(model, ids, layers)
+                WHITEN_BASIS = (U, shrink, gains, key)
+                tgt_ = _plan_layer(blocks)
+                with torch.no_grad():
+                    c0 = _plan_state(model, ids, tgt_).float()
+
+                def mv(obj):
+                    out_ = []
+                    for s_ in range(16):
+                        hs_ = _apply_key_delta(model, key_gradient_push(model, ids, layers, 7000 + s_, obj, beta))
+                        try:
+                            with torch.no_grad():
+                                out_.append((_plan_state(model, ids, tgt_).float() - c0).flatten().cpu())
+                        finally:
+                            for h_ in hs_:
+                                h_.remove()
+                    return participation(torch.stack(out_))
+                a_, b_ = mv("real"), mv("wreal")
+                print(f"  [whitening] sensitivity of the top plan directions (x the first): "
+                      + " ".join(f"{g:.2f}" for g in gains)
+                      + f"; 16 real-state changes fill {a_[0]:.2f} directions (top share "
+                      f"{a_[1]:.2f}), whitened {b_[0]:.2f} (top share {b_[1]:.2f})", flush=True)
         deltas = key_gradient_push(model, ids, layers, seed, {"kgrad": "plan", "ksign": "sign", "kreal": "real",
-                                                              "krealw": "realw", "kalt": "alt"}[which], beta)
+                                                              "krealw": "realw", "kalt": "alt", "kwreal": "wreal",
+                                                              "kaltf": "altf"}[which], beta)
         handles = _apply_key_delta(model, deltas)
         note = f", gradient taken on {len(deltas)} layers" + ("" if deltas else " (NO USABLE GRADIENT: untouched)")
     elif which in ("ropeslow", "ropeall"):
@@ -660,6 +831,8 @@ def generate_with_attn_steer(model, prompt, seed: int, kind: str, layers, *,
                 moved = _plan_state(model, ids, tgt).float()
             note += (f", planning state moved {float((moved - clean).norm(dim=-1).mean()) / float(clean.norm(dim=-1).mean()):.3f}"
                      f" x its size")
+        if budget is not None:
+            return budget_write()
         if drop <= 0:
             return model.generate(prompt, max_new_tokens=max_new_tokens, do_sample=True,
                                   temperature=temperature, seed=seed, max_words=max_words)
@@ -690,6 +863,60 @@ def generate_with_attn_steer(model, prompt, seed: int, kind: str, layers, *,
                          max_new_tokens=int(max_new_tokens) - wrote, **sampling, **pad,
                          **({"stopping_criteria": stopper} if stopper is not None else {}))
         return tok.decode(out[0, n_prompt:], skip_special_tokens=True).strip()
+    def budget_write():
+        """The change stays on until the opening has cost ``budget`` nats: the sum,
+        over the tokens written, of log q(token) - log p(token), q the changed
+        model and p the untouched one reading the same words (at most BUDGET_CAP
+        tokens). Then it is removed as in the :N form."""
+        nonlocal note
+        tok, m = model.tokenizer, model.model
+        for h in handles:
+            h.remove()
+        handles.clear()
+        torch.manual_seed(int(seed))
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(int(seed))
+        with torch.no_grad():
+            oc = m(input_ids=ids, use_cache=True)
+            hs = _apply_key_delta(model, deltas or {})
+            try:
+                oq = m(input_ids=ids, use_cache=True)
+            finally:
+                for h in hs:
+                    h.remove()
+            pc, pq = oc.past_key_values, oq.past_key_values
+            lc, lq = oc.logits[0, -1].float(), oq.logits[0, -1].float()
+            written, cost, eos = [], 0.0, tok.eos_token_id
+            for _ in range(min(BUDGET_CAP, int(max_new_tokens))):
+                q = torch.log_softmax(lq / float(temperature), -1)
+                p = torch.log_softmax(lc / float(temperature), -1)
+                y = int(torch.multinomial(q.exp(), 1))
+                cost += float(q[y] - p[y])
+                written.append(y)
+                if eos is not None and y == eos:
+                    break
+                yt = torch.tensor([[y]], device=ids.device)
+                oc = m(input_ids=yt, past_key_values=pc, use_cache=True)
+                oq = m(input_ids=yt, past_key_values=pq, use_cache=True)
+                pc, pq = oc.past_key_values, oq.past_key_values
+                lc, lq = oc.logits[0, -1].float(), oq.logits[0, -1].float()
+                if cost >= budget:
+                    break
+        first = torch.cat([ids, torch.tensor([written], device=ids.device)], 1)
+        BUDGET_LOG.append((len(written), cost))
+        if show:
+            note += (f", change removed after {len(written)} tokens at {cost:.1f} nats: "
+                     f"{tok.decode(written, skip_special_tokens=True)!r}")
+        if (eos is not None and eos in written) or len(written) >= int(max_new_tokens):
+            return tok.decode(written, skip_special_tokens=True).strip()
+        sampling = model._sampling_kwargs(do_sample=True, temperature=temperature, top_p=None, top_k=None)
+        pad = {"pad_token_id": tok.pad_token_id if tok.pad_token_id is not None else tok.eos_token_id}
+        stopper = model._word_budget_stopper(n_prompt, max_words)
+        out = m.generate(input_ids=first, attention_mask=torch.ones_like(first),
+                         max_new_tokens=int(max_new_tokens) - len(written), **sampling, **pad,
+                         **({"stopping_criteria": stopper} if stopper is not None else {}))
+        return tok.decode(out[0, n_prompt:], skip_special_tokens=True).strip()
+
     try:
         if ctx is not None:
             with ctx:
