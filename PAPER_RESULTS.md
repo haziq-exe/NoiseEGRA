@@ -4819,3 +4819,82 @@ this reading too, and more varied than top-p (-0.102). Heavy-tailed 1.0: 0.635 (
 -0.006]) and evenly spread real-state 0.581 (-0.024 [-0.048, +0.000]); whitened 0.595 (-0.010,
 interval crosses zero); every other OLMo setting level with untouched. As before, on OLMo the
 embedding reading sees little of what the judge sees.
+
+## Flattened alternative first word on other models, and the Qwen 200-story confirmation (2026-11-22, runs r396-r402)
+
+**Which models have the first-word clash.** For each model, the chance of its favourite first word
+on the middle-school prompt, and how many different first words 50 story seeds aim at under the
+sampled-alternative change: the model's own chances (`kalt`), and the 50 likeliest other words
+with chances raised to 0.5 or 0.25 (`kaltf`). Code: `--first-word-check`
+(noiseegra/plan_checks.py). Qwen3-8B reproduces the earlier count (33 of 50 seeds on "She").
+
+| Model | Favourite first word | Own chances: different of 50, commonest | Flattened 0.5 | Flattened 0.25 |
+|---|---|---|---|---|
+| Qwen3-4B | "L", 0.96 | 3, "The" 96% | 16, "The" 44% | 25 |
+| Granite-4.2-8B | "She", 0.99 | 6, "May" 78% | 16, "May" 36% | 26 |
+| Llama-3.2-3B | "As", 0.57 | 5, "She" 88% | 24, "She" 22% | 28 |
+| Qwen3-8B | "The", 0.98 | 9, "She" 66% | 20, "She" 18% | 28 |
+| Llama-3.1-8B | "She", 0.44 | 10, "As" 56% | 21, "As" 26% | 29 |
+| Granite-4.0-1B | "L", 0.71 | 8, "Sarah" 50% | 20 | 28 |
+| Qwen3-1.7B | "The", 0.53 | 11, "He" 44% | 21 | 26 |
+| Mistral-Nemo-12B | "In", 0.55 | 16, "Under" 30% | 26 | 30 |
+
+**Results (50 stories per setting, one prompt; untouched and top-p are the saved story sets
+on the same prompt and seeds, checked word for word where seeds overlap; one blind rating round
+per model; rules = average of the prompt's rules broken).**
+
+| Model, setting | Distinct of 10 | Quality gap vs untouched | Readable | Rules broken |
+|---|---|---|---|---|
+| **Qwen3-8B, 200 stories (fresh seeds; quality on 100 per setting, unpaired)** | | | | |
+| untouched (r351) | 1.00 | (4.86) | 200 | 1.79 (r351) |
+| top-p (r351) | 1.00 | -0.15 [-0.38, +0.07] | 200 | 1.51 (r351) |
+| alternative 0.02, removed after 32 | 1.57 | -0.20 [-0.40, +0.00] | 200 | 1.56 |
+| flattened 0.5, 0.02, removed after 32 | **2.40** | -0.23 [-0.46, -0.01]; vs old -0.03 [-0.25, +0.18] | 199 | 1.64 |
+| **Llama-3.2-3B** | | | | |
+| untouched (r142) | 2.80 | (4.84) | 50 | 1.92* |
+| top-p (r142) | 4.79 | -2.54 [-2.80, -2.28] | 48 | 2.02* |
+| alternative 0.03, removed after 16 | 1.52 | -1.70 [-1.98, -1.40] | 48 | 2.44* |
+| flattened 0.5 | 4.07 | -0.84 [-1.26, -0.44] | 45 | 2.20* |
+| flattened 0.25 | **5.47** | -0.70 [-1.10, -0.28] | 43 | 2.38* |
+| **Llama-3.1-8B** | | | | |
+| untouched (r238) | 2.69 | (4.48) | 50 | 1.06 |
+| top-p (r238) | 4.05 | -1.78 [-2.06, -1.50] | 50 | — |
+| alternative 0.03, removed after 16 | **5.58** | +0.34 [+0.12, +0.56] | 50 | 1.72 |
+| flattened 0.5, 0.03 | 4.73 | +0.28 [+0.00, +0.56] | 50 | 1.80 |
+| flattened 0.25, 0.03 | 5.10 | +0.04 [-0.30, +0.36] | 48 | 1.84 |
+| flattened 0.5, 0.02, removed after 32 | 4.85 | not rated | 50 | 2.12 |
+| **Granite-4.2-8B** | | | | |
+| untouched (r352) | 1.00 | (5.28) | 50 | 1.98 |
+| top-p (r352) | 1.13 | -0.52 [-0.88, -0.14] | 48 | — |
+| alternative 0.02, removed after 32 | 1.11 | -0.26 [-0.62, +0.08] | 50 | 2.12 |
+| flattened 0.5, 0.02 | 1.17 | not rated | 50 | 1.92 |
+| flattened 0.25, 0.02 | 1.35 | -0.86 [-1.32, -0.40] | 50 | 1.68 |
+| flattened 0.5, 0.03 | 1.74 | -0.80 [-1.26, -0.36] | 45 | 1.76 |
+| **Qwen3-4B (untouched and top-p written in this run: none saved)** | | | | |
+| untouched | 1.00 | not rated | 50 | 0.58 |
+| top-p | 1.00 | not rated | 50 | 1.12 |
+| alternative 0.02 / flattened 0.5 / flattened 0.25 / flattened 0.5 at 0.03 | 1.00 / 1.10 / 1.07 / 1.09 | not rated (no variety to trade) | 50/50/50/49 | 1.12 / 1.10 / 1.34 / 1.30 |
+
+\* Llama-3.2-3B rules from one offline pass of scripts/score_english.py with the prompt's eight
+rules over all five sets (the run's own table does not cover the saved sets).
+
+- The Qwen3-8B result holds at 200 stories on fresh seeds: 2.40 distinct against 1.57 for the
+  old alternative at the same quality (-0.03), both about 0.2 below untouched; top-p costs about
+  as much and adds no variety. Untouched opens all 200 stories with "The"; the flattened
+  version opens with "He" 45, "She" 37, "Lena" 25 and others; 3 of 200 open with a note about
+  the task ("I am writing a short story...").
+- Llama-3.2-3B is the clearest case of the clash doing damage: the old alternative sends 44 of
+  50 seeds to lowercase "she", and 39 of its 50 stories are loops ("she is speaking and she is
+  surrounding the place is being she is...") that the readability check passes. Flattening
+  removes most of them (11 loops at 0.5, 2 at 0.25) and gives the most variety (5.47, above
+  top-p's 4.79) at much less cost than top-p (-0.70 against -2.54), though still below
+  untouched and with 7 of 50 unreadable.
+- Llama-3.1-8B: flattening lowers variety, as on OLMo. The unflattened alternative is the best
+  setting tested on that model (5.58 against 2.69 untouched and 4.05 top-p, rated above
+  untouched) but breaks more rules (1.72 against 1.06).
+- Granite-4.2-8B and Qwen3-4B barely move at these sizes: the alternative change, flattened or
+  not, does not push past their one story. On Granite, the settings that move (1.35, 1.74) cost
+  more quality than top-p.
+- What predicts that flattening helps is not how concentrated the alternatives are (Llama-3.1-8B
+  is concentrated and flattening hurt) but whether the old target collapses the story: on
+  Qwen3-8B into near-identical openings, on Llama-3.2-3B into loops.
