@@ -671,6 +671,10 @@ def main() -> None:
                     help="run the checks that write no new stories (noiseegra.plan_checks): "
                          "spread of the key changes, their cost on the stories in "
                          "STORIES_JSON, base vs chat model; write plan_checks.json and exit")
+    ap.add_argument("--first-word-check", action="store_true",
+                    help="measure how concentrated the model's other first words are and which "
+                         "words the sampled-alternative key change would aim at for 50 story "
+                         "seeds; write first_word_check.json and exit (no stories)")
     ap.add_argument("--diagnose-leakage", type=int, default=0, metavar="N",
                     help="measure how much of each perturbed arm's noise ends up "
                          "along the rule directions downstream, on the first N "
@@ -1737,6 +1741,10 @@ def main() -> None:
         args.baseline_top_k = None
     steering_needed = any(name not in ("baseline", "sampling", "references")
                           for name in suites_req)
+    if getattr(args, "first_word_check", False):
+        from noiseegra import plan_checks
+        plan_checks.first_word_check(get_model, args.model, messages[0], seed_for, out)
+        raise SystemExit(0)
     if getattr(args, "plan_checks", None):
         from noiseegra import plan_checks
         plan_checks.run(get_model, args.model, messages[0], layers, seed_for, args.plan_checks, out)

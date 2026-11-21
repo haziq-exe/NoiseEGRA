@@ -335,3 +335,60 @@ def run(get_model, model_name, messages, layers, seed_for, stories_path, out_dir
     (out_dir / "plan_checks.json").write_text(json.dumps(res, indent=1))
     print(f"\nplan checks written to {out_dir / 'plan_checks.json'}", flush=True)
     return res
+
+
+def _targets(lp, seeds, power, top_n):
+    """First words the sampled-alternative change aims at, as in key_gradient_push:
+    power None = the model's own chances over all other words (kalt); otherwise the
+    top_n likeliest other words with chances raised to `power` (kaltf)."""
+    pr = lp.exp().clone()
+    top = int(pr.argmax())
+    pr[top] = 0
+    if power is not None:
+        keep = pr.topk(top_n).indices
+        flat = torch.zeros_like(pr)
+        flat[keep] = pr[keep].pow(float(power))
+        pr = flat
+    out = []
+    for s in seeds:
+        g = torch.Generator(device="cpu").manual_seed((int(s) * 1000003 + zlib.crc32(b"alt")) & 0x7FFFFFFF)
+        out.append(int(torch.multinomial(pr / pr.sum(), 1, generator=g)))
+    return out
+
+
+def first_word_check(get_model, model_name, messages, seed_for, out_dir, n_seeds=50):
+    """How concentrated the model's other first words are: the favourite's chance,
+    the next ten, and how many different words 50 story seeds aim at under the
+    model's own chances and under flattened chances (top 50 others, power 0.5 and
+    0.25). Writes first_word_check.json."""
+    egra = get_model()
+    chat = egra.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    ids = egra.tokenizer(chat, return_tensors="pt")["input_ids"].to(egra._input_device())
+    lp = _first_word_logprobs(egra, ids)
+    tok = egra.tokenizer
+    p = lp.exp()
+    order = p.argsort(descending=True)[:11].tolist()
+    others = p.clone()
+    others[order[0]] = 0
+    others = others / others.sum()
+    ent = float(-(others.clamp_min(1e-30) * others.clamp_min(1e-30).log()).sum())
+    seeds = [seed_for(0, x, 0) for x in range(n_seeds)]
+    res = {"model": model_name, "favourite": tok.decode([order[0]]), "favourite_p": float(p[order[0]]),
+           "next10": [[tok.decode([i]), float(p[i])] for i in order[1:]],
+           "other_words_effective_count": math.exp(ent), "targets": {}}
+    for name, power in (("own chances", None), ("flattened 0.5", 0.5), ("flattened 0.25", 0.25)):
+        t = _targets(lp, seeds, power, 50)
+        counts = {}
+        for y in t:
+            counts[y] = counts.get(y, 0) + 1
+        best = max(counts, key=counts.get)
+        res["targets"][name] = {"distinct_of_50": len(counts), "commonest": tok.decode([best]),
+                                "commonest_share": counts[best] / len(t),
+                                "distinct_per_10": [len(set(t[i:i + 10])) for i in range(0, len(t), 10)]}
+    (out_dir / "first_word_check.json").write_text(json.dumps(res, indent=1))
+    print(f"[first-word] {model_name}: favourite {res['favourite']!r} p={res['favourite_p']:.3f}, "
+          f"other words effective count {res['other_words_effective_count']:.1f}", flush=True)
+    for k, v in res["targets"].items():
+        print(f"[first-word]   {k:15s} {v['distinct_of_50']:2d} different of 50, commonest "
+              f"{v['commonest']!r} {v['commonest_share']:.0%}, per 10: {v['distinct_per_10']}", flush=True)
+    return res
