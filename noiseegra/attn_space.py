@@ -784,8 +784,8 @@ def generate_with_attn_steer(model, prompt, seed: int, kind: str, layers, *,
         deltas = heavy_key_noise(model, ids, layers, seed, beta, alpha)
         handles = _apply_key_delta(model, deltas)
     elif which in ("kgrad", "ksign", "kreal", "krealw", "kalt", "kwreal", "kaltf"):
-        if which == "kaltf" and len(parts) > 3:
-            ALT_POWER = float(parts[3])
+        if which == "kaltf":   # each arm sets its own power; 0.5 unless given
+            ALT_POWER = float(parts[3]) if len(parts) > 3 else 0.5
         if which == "kwreal":
             key = (n_prompt, tuple(layers))
             if WHITEN_BASIS is None or WHITEN_BASIS[3] != key:
