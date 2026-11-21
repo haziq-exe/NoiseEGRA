@@ -4748,3 +4748,74 @@ quality gap from the rating rounds above):
   tokens on every setting -- about where the 8-token releases lost variety (OLMo real-state
   0.04: 1.91 released after 8 vs 2.39 after 16). The agreement signal tracks the first word's
   shock, not the plot settling: the adaptive release, as proposed, is not supported.
+
+## 2026-11-21: the four follow-ups from the checks (r391-r394)
+
+50 stories each, untouched model plus one change, no rule steering; untouched, top-p and the
+current method are the earlier runs on the same seeds. Distinct = NoveltyBench judge, whole
+story, distinct of 10. Quality = blind 1-10 rating, paired gap vs untouched with 95% interval.
+Two rating rounds: the main round (all settings below that have a gap) and a calibration round
+that put the earlier best settings beside the new ones, because the main round rated top-p
+much lower than earlier rounds (-1.66 vs -1.08 on OLMo), so gaps from different rounds do not
+compare. Rules = mean rules broken per story (untouched: OLMo 1.57, Qwen 2.06).
+
+New kinds: `kalt:K:bB` / `kreal:K:bB` (change on until the opening has cost B nats against the
+untouched model, cap 48 tokens); `kwreal:K:N` (target spread evenly over the prompt's state
+directions, then its components along the 8 most sensitive plan directions shrunk -- estimated
+from 32 random targets on the prompt alone); `krealw:K:N` (spread evenly only); `kaltf:K:N[:A]`
+(alternative first word drawn from the model's 50 likeliest others with chances raised to
+A = 0.5); `kheavy:K:N` (prompt-key noise, each head's share scaled by a Pareto(1.5) draw) and
+`kgauss:K:N` (the same, every head equal).
+
+| Model | Setting | Distinct | Gap, main round | Gap, calibration round | Rules | Readable |
+|---|---|---|---|---|---|---|
+| OLMo | untouched | 1.13 | -- | -- | 1.57 | 50 |
+| OLMo | top-p | 1.95 | -1.66 [-1.96, -1.36] | | 1.81 | 50 |
+| OLMo | earlier best: real-state 0.04, removed after 16 | 2.39 | | -0.22 [-0.62, +0.18] | 1.82 | 49 |
+| OLMo | real-state 0.04, 20-nat budget | 2.76 | -0.62 [-0.94, -0.32] | -0.50 [-0.90, -0.12] | 1.68 | 50 |
+| OLMo | sampled-alternative 0.03, 20-nat budget | 2.54 | -0.88 [-1.20, -0.56] | | 1.78 | 48 |
+| OLMo | whitened real-state 0.04, after 16 | 2.62 | -0.48 [-0.80, -0.16] | -0.40 [-0.78, -0.04] | 1.90 | 49 |
+| OLMo | evenly spread real-state 0.04, after 16 | 2.10 | -0.48 [-0.82, -0.16] | | 1.86 | 47 |
+| OLMo | flattened sampled-alternative 0.03, after 16 | 1.83 | not rated | | 1.98 | 46 |
+| OLMo | Gaussian key noise 0.5 / 1.0, after 16 | 1.10 / 1.46 | not rated | | 1.62 / 1.76 | 50 / 50 |
+| OLMo | heavy-tailed key noise 0.5 / 1.0, after 16 | 1.25 / 1.34 | not rated | | 1.58 / 1.40 | 50 / 50 |
+| Qwen | untouched | 1.00 | -- | -- | 2.06 | 50 |
+| Qwen | top-p | 1.00 | -0.24 [-0.56, +0.08] | | -- | 50 |
+| Qwen | earlier best: sampled-alternative 0.02, after 32 | 1.68 | | -0.16 [-0.50, +0.16] | 1.54 | 50 |
+| Qwen | **flattened sampled-alternative 0.02, after 32** | **2.67** | -0.20 [-0.52, +0.10] | -0.16 [-0.56, +0.22] | 1.78 | 48 |
+| Qwen | sampled-alternative 0.03, 20-nat budget | 1.48 | -0.14 [-0.52, +0.24] | | 1.66 | 47 |
+| Qwen | sampled-alternative 0.02, 20-nat budget | 1.09 | not rated | | 1.44 | 49 |
+| Qwen | whitened real-state 0.02, after 16 | 1.04 | not rated | | 1.84 | 48 |
+| Qwen | real-state 0.02, after 16 | 1.12 | not rated | | 2.04 | 43 |
+| Qwen | Gaussian key noise 0.5 / 1.0, after 16 | 1.20 / 2.51 | not rated | | 1.64 / 2.50 | 50 / 27 |
+| Qwen | heavy-tailed key noise 0.5, after 16 | 1.15 | not rated | | 1.86 | 50 |
+| Qwen | heavy-tailed key noise 1.0, after 16 | 1.59 | +0.10 [-0.30, +0.48] | | 2.18 | 48 |
+
+- **Flattened alternative target (Qwen): the best Qwen result so far.** 2.67 distinct of 10 at
+  the same quality as the earlier best (1.68) in the same rating round, 48 of 50 readable, fewer
+  rules broken than untouched. It targets the problem the checks found: Qwen's own alternative
+  chances sent 33 of 50 stories toward "She"; raising the chances to the power 0.5 over the 50
+  likeliest other first words spreads the targets. On OLMo, whose targets were already varied
+  (29 different of 50), it lowers variety (1.83 vs 2.27) and readability: the fix is for
+  concentrated alternatives, not a general gain.
+- **Cost budget: not one rule for both models.** On OLMo, keeping the change on until 20 nats
+  are spent gives more variety (2.76) at more quality cost (-0.50 vs -0.22 for the earlier best
+  in the same round): a move along the same trade-off. On Qwen the first word alone costs about
+  20 nats, so the change is removed after 2 tokens and variety falls (1.48 and 1.09).
+- **Whitening: inconclusive.** OLMo 2.62 vs 2.39 for the earlier best, quality -0.40 vs -0.22 in
+  the same round (intervals overlap); evenly spreading the target alone gave 2.10. The measured
+  spread barely changed on the real model (16 changes filled 4.1 directions plain, 4.5
+  whitened; Qwen 3.4 and 3.9): at these sizes the plan moves 0.4-0.75 of its own size, far from
+  the linear range the correction assumes. Qwen: no variety (1.04).
+- **Heavy-tailed key noise: no gain on OLMo; on Qwen it stays readable where Gaussian breaks.**
+  Gaussian 1.0 on Qwen gives 2.51 distinct but only 27 of 50 readable; heavy-tailed 1.0 keeps 48
+  readable at 1.59 distinct and no measurable quality loss, but breaks more rules (2.18).
+
+**Embedding second reading** (r395; bge-m3, whole stories, mean pairwise similarity, lower =
+more varied; difference from untouched with 95% interval). Qwen: flattened alternative 0.580
+(-0.155 [-0.175, -0.134]; earlier best 0.635, -0.100), the most varied readable Qwen setting on
+this reading too, and more varied than top-p (-0.102). Heavy-tailed 1.0: 0.635 (-0.099); budget
+0.03: 0.649 (-0.085). OLMo: real-state 0.04 with the 20-nat budget 0.581 (-0.024 [-0.042,
+-0.006]) and evenly spread real-state 0.581 (-0.024 [-0.048, +0.000]); whitened 0.595 (-0.010,
+interval crosses zero); every other OLMo setting level with untouched. As before, on OLMo the
+embedding reading sees little of what the judge sees.
